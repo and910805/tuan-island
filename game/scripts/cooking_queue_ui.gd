@@ -162,7 +162,7 @@ class Controller extends Node:
 	func compact(enabled:bool)->void:
 		compact_mode=enabled
 		for id in recipe_buttons:
-			(recipe_buttons[id] as Button).custom_minimum_size=Vector2(80,84) if enabled else Vector2(84,94)
+			(recipe_buttons[id] as Button).custom_minimum_size=Vector2(80,68) if enabled else Vector2(84,70)
 
 	# ----------------------------------------------------------- model helpers
 
@@ -289,6 +289,8 @@ class Controller extends Node:
 		_text(column,"食譜本",19)
 		var footer:VBoxContainer=column
 		column=_scroll_column(column,"CookingCookbookScroll")
+		# Keep a full recipe card visible even when the ingredient panel grows.
+		(column.get_parent() as ScrollContainer).custom_minimum_size.y=72
 		var grid:=GridContainer.new()
 		grid.name="CookingRecipes"
 		grid.columns=4
@@ -304,7 +306,7 @@ class Controller extends Node:
 			button.toggle_mode=true
 			button.button_group=group
 			button.focus_mode=Control.FOCUS_ALL
-			button.custom_minimum_size=Vector2(84,94)
+			button.custom_minimum_size=Vector2(84,70)
 			button.tooltip_text=dish_name(kind)
 			var stack:=VBoxContainer.new()
 			stack.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -312,7 +314,7 @@ class Controller extends Node:
 			stack.alignment=BoxContainer.ALIGNMENT_CENTER
 			stack.add_theme_constant_override("separation",0)
 			button.add_child(stack)
-			var art:=_picture(Items.icon(kind),64)
+			var art:=_picture(Items.icon(kind),44)
 			art.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 			stack.add_child(art)
 			var title:=Label.new()

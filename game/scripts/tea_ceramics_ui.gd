@@ -294,9 +294,16 @@ static func kiln(app,page:VBoxContainer,actions:HBoxContainer,record:Dictionary,
 	var firing:Dictionary=record.kiln
 	var idle:=firing.is_empty()
 	var repair:bool=firing.get("repair",false)
+	var is_pot:bool=firing.get("kind")=="flower_pot"
+	var output_id:="flower_pot" if is_pot else "tea_jar"
+	var output_title:="花盆" if is_pot else "陶罐"
+	var duration:=float(tea.POT_SECONDS if is_pot else tea.KILN_SECONDS)
 	var ready:=not idle and seconds==0
 	var headline:="窯火已熄，可以取罐" if ready else ("補罐中" if repair else "燒罐中")
 	var detail:="修好的罐可再用三趟。" if repair else "新罐可用三趟。"
+	if is_pot:
+		headline="窯火已熄，可以取花盆" if ready else "燒製花盆中"
+		detail="陶花盆已完成。"
 	if idle:
 		headline="窯已空，可以備料"
 		detail="燒製或修補需 %d 秒，每次入窯一只。"%tea.KILN_SECONDS
@@ -315,27 +322,27 @@ static func kiln(app,page:VBoxContainer,actions:HBoxContainer,record:Dictionary,
 	flow.add_child(state)
 	workshop_text(app,state,headline,18,GOLD)
 	if not idle:
-		var inputs:="待修罐 ×1 ＋ 黏土 ×1" if repair else "黏土 ×2"
-		workshop_text(app,state,"%s → 陶罐 ×1"%inputs,14,LINEN)
+		var inputs:="黏土 ×%d"%tea.POT_CLAY if is_pot else ("待修罐 ×1 ＋ 黏土 ×1" if repair else "黏土 ×2")
+		workshop_text(app,state,"%s → %s ×1"%[inputs,output_title],14,LINEN)
 		var progress:=ProgressBar.new()
 		progress.name="TeaKilnProgress"
 		progress.show_percentage=false
-		progress.max_value=tea.KILN_SECONDS
-		progress.value=tea.KILN_SECONDS-seconds
+		progress.max_value=duration
+		progress.value=duration-seconds
 		progress.custom_minimum_size.y=10
 		progress.add_theme_stylebox_override("background",surface(Color("211d18"),Color("68503c"),0))
 		progress.add_theme_stylebox_override("fill",surface(Color("d69251") if not ready else Color("88a765"),Color("dabc83"),0))
 		state.add_child(progress)
 		if seconds>0:detail="剩 %d 秒"%seconds
-		elif int(bag.get("tea_jar",0))>=tea.LIMIT:detail="陶罐已達背包上限，騰出空間才能取罐。"
-		var output:=Shell.picture(Art.icon("tea_jar"),64)
+		elif int(bag.get(output_id,0))>=tea.LIMIT:detail="花盆已達背包上限，請先騰出空間。" if is_pot else "陶罐已達背包上限，騰出空間才能取罐。"
+		var output:=Shell.picture(Art.icon(output_id),64)
 		output.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 		if not ready:output.modulate=Color(1,1,1,0.50)
 		flow.add_child(output)
 	workshop_text(app,state,detail,14,LINEN).name="TeaKilnStatus"
 	if not record.intro:return
 	if not idle:
-		var take:=Helpers.action(app,actions,"TeaFireTake","取出陶罐",func():app.session.perform("tea_fire_take",cell),nearby and ready and int(bag.get("tea_jar",0))<tea.LIMIT)
+		var take:=Helpers.action(app,actions,"TeaFireTake","取出"+output_title,func():app.session.perform("tea_fire_take",cell),nearby and ready and int(bag.get(output_id,0))<tea.LIMIT)
 		take.tooltip_text="請靠近製罐窯。" if not nearby else detail
 		return
 	var recipes:=HBoxContainer.new()
@@ -353,6 +360,8 @@ static func kiln(app,page:VBoxContainer,actions:HBoxContainer,record:Dictionary,
 		elif clay==0:repair_block="還缺 1 份黏土"
 	var fire:=kiln_recipe(app,recipes,"TeaFire","開始燒製",["clay"],"黏土 %d／2"%clay,fire_block,nearby,func():app.session.perform("tea_fire",cell))
 	var mend:=kiln_recipe(app,recipes,"TeaRepair","修補陶罐",["tea_spent_jar","clay"],"待修罐 %d／1　黏土 %d／1"%[spent,clay],repair_block,nearby,func():app.session.perform("tea_repair",cell))
+	var pot_block:=unlock if not unlock.is_empty() else ("還缺 %d 份黏土"%(tea.POT_CLAY-clay) if clay<tea.POT_CLAY else "")
+	kiln_recipe(app,recipes,"TeaFirePot","燒製花盆",["clay"],"黏土 %d／%d"%[clay,tea.POT_CLAY],pot_block,nearby,func():app.session.perform("tea_fire_pot",cell))
 	fire.accessibility_name="開始燒製 · 兩份黏土製成一只可用三趟的陶罐"
 	mend.accessibility_name="修補陶罐 · 一只待修罐加一份黏土，修好後可再用三趟"
 

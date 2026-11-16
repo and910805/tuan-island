@@ -46,6 +46,12 @@ func visible(item:Control)->bool:
 func press(id:String)->void:
 	await settle()
 	var button:=control(id) as Button
+	if button and not visible(button):
+		var parent:=button.get_parent()
+		while parent:
+			if parent is ScrollContainer:parent.ensure_control_visible(button)
+			parent=parent.get_parent()
+		await process_frame
 	check(visible(button) and not button.disabled,"Enabled and visible "+id)
 	if button and not button.disabled:
 		await create_timer(0.11).timeout
@@ -268,6 +274,26 @@ func run()->void:
 	advance(Tea.KILN_SECONDS)
 	await press("TeaFireTake")
 	check(int(world.state.players[actor].inventory.tea_jar)==1,"Repair restores fresh three-use jar")
+	check((control("TeaFirePot") as Button).disabled,"Pot recipe disabled before four clay are held")
+	world.state.players[actor].inventory.clay=Tea.POT_CLAY
+	app.session._send_snapshot(1)
+	await inspect_worksite("kiln-pot-ready")
+	await press("TeaFirePot")
+	check(record().kiln.get("kind")=="flower_pot","Pot button starts its own kiln job")
+	check((control("TeaFireTake") as Button).disabled,"Pot cannot be collected early")
+	await inspect_worksite("kiln-pot-working")
+	advance(Tea.POT_SECONDS)
+	await inspect_worksite("kiln-pot-complete")
+	check((control("TeaFireTake") as Button).text=="取出花盆","Finished pot uses the pot claim label")
+	await press("TeaFireTake")
+	check(int(world.state.players[actor].inventory.flower_pot)==1 and record().kiln.is_empty(),"Claim button grants one pot and clears the kiln")
+	app._close_modal()
+	var pot_cell:=Vector2i(41,35)
+	place("home",pot_cell)
+	app.session.perform("build",pot_cell,"flower_pot")
+	await settle()
+	check(world.state.objects.get(World.key(pot_cell),{}).get("type")=="flower_pot","Fired pot appears on the home island")
+	await capture("flower-pot-placed")
 	place("home",Tea.RECEIVER)
 	app._shop()
 	await press("XiaoliTeaOrder")

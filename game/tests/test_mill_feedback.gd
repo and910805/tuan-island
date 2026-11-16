@@ -42,7 +42,7 @@ func within_sprite(drawn:Dictionary) -> bool:
 
 func _initialize()->void:
 	var recipes:Dictionary=World.processing_recipes("mill")
-	expect(recipes.keys()==["flour"],"mill catalog is flour only")
+	expect(recipes.keys()==["flour","feed"],"mill catalog includes flour and corn feed")
 	var owner:="0123456789abcdef"
 
 	# --- idle / paused / starved: never animated

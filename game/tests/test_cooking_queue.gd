@@ -35,6 +35,7 @@ func _initialize()->void:
 func run()->void:
 	R=World.RECIPES
 	test_recipe_expectations()
+	test_sugar_recipe_transition()
 	test_empty_state()
 	test_fifo_deductions_and_boundaries()
 	test_fractional_time_boundary()
@@ -52,6 +53,20 @@ func run()->void:
 	test_legacy_import()
 	print("COOKING_QUEUE_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(0 if failures==0 else 1)
+
+func test_sugar_recipe_transition()->void:
+	var old_catalog:=R.duplicate(true)
+	old_catalog.sugar.ingredients={"sugar_beet":1}
+	old_catalog.sugar.time=40.0
+	var old_batch:=Q.enqueue(Q.empty_state(),old_catalog,0.0,"alice","sugar",hid(1),{"sugar_beet":1})
+	var restored:Dictionary=JSON.parse_string(JSON.stringify(old_batch.state))
+	expect(Q.validate(restored,R,0.0),"old sugar queue remains valid with new catalog")
+	var old_ready:=Q.advance(restored,R,40.0)
+	var old_claim:=Q.claim(old_ready.state,R,40.0,{})
+	expect(old_claim.ok and int(old_claim.inventory.sugar)==2,"old paid batch still yields two sugar at 40 seconds")
+	expect(not Q.enqueue(Q.empty_state(),R,0.0,"alice","sugar",hid(1),{"sugar_beet":1}).ok,"new sugar requires two beets")
+	var new_batch:=Q.enqueue(Q.empty_state(),R,0.0,"alice","sugar",hid(1),{"sugar_beet":2})
+	expect(new_batch.ok and int(new_batch.inventory.get("sugar_beet",0))==0 and float(new_batch.state.active.finish)==60.0,"new sugar uses two beets and finishes after one minute")
 
 # ---------------------------------------------------------------- helpers
 

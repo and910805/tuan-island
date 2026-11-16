@@ -72,7 +72,7 @@ const STORY_POINTS:=3
 const LIKES:={
 	"aru":["tea_light","tea_deep","mist_tea_brew"],
 	"milu":["soup","carrot_soup","trout_hotpot","star_mushroom"],
-	"xiaoli":["strawberry_jam"],
+	"xiaoli":["strawberry_jam","strawberry_toast"],
 	"bobo":["crystal_sand","baked_potato","roasted_sweet_potato"],
 	"chacha":["tea_leaf","tea_light","tea_deep"],
 	"xinghe":["bluebell","orange_blossom","chime_herb","sapling","bluebell_seed","orange_blossom_seed","chime_herb_seed"],
@@ -103,7 +103,7 @@ const LIKE_TEXT:={
 	"bobo":"晶砂和烤薯（晶砂、烤馬鈴薯、烤地瓜）",
 }
 ## 每位居民都會收下的一般禮物（作物、花與家常料理）。
-const COMMON_GIFTS:=["radish","lettuce","wheat","carrot","potato","tomato","egg","milk","bread","salad","grilled_fish","pumpkin_pie","garden_cookie","bluebell","orange_blossom","chime_herb"]
+const COMMON_GIFTS:=["radish","lettuce","wheat","carrot","potato","tomato","egg","milk","bread","salad","grilled_fish","pumpkin_pie","garden_cookie","bluebell","orange_blossom","chime_herb","strawberry_toast"]
 
 const TALK_LINES:={
 	"aru":["今天刨了半塊板，木屑的味道很好。你那邊的屋子住得還習慣嗎？","渡口的風往東吹，晾木頭正好。慢慢來，木頭不催人。","我在想長椅旁要不要再放一張小桌。你覺得呢？"],

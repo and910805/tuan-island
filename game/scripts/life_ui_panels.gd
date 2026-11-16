@@ -33,12 +33,13 @@ const BUILD_NOTES := {
 	"sawmill":"E 加工木材成木板。完成後領取；取消退回原料。",
 	"charcoal_kiln":"E 將木材燒成木炭。加工中不可搬動或拆除。",
 	"loom":"靠近按 E，用棉球花或羊毛織布。",
+	"jam_pot":"靠近按 E，用 3 份草莓和 1 份糖熬製果醬。",
 	"glass_furnace":"靠近按 E，把晶砂燒成玻璃，或把脈石英熔碎成晶砂。",
 	"seed_maker":"靠近按 E，把成熟作物和木炭加工成種子。成品可領回背包。",
 	"mill":"公共廚房開張後解鎖。E 把小麥磨成麵粉，可排程或自動加工；輸送帶可送入小麥、帶出麵粉。"
 }
 const FOUNDATIONS := ["floor", "path", "wall", "door", "window", "roof", "greenhouse_roof"]
-const FURNITURE := ["bed", "lamp", "table", "chair", "long_bench", "sofa", "planter", "greenhouse_rack", "master_flower_bed", "fish_display", "author_sign", "author_shelf", "expedition_tent", "sign", "ore_display"]
+const FURNITURE := ["bed", "lamp", "table", "chair", "long_bench", "sofa", "planter", "flower_pot", "greenhouse_rack", "master_flower_bed", "fish_display", "author_sign", "author_shelf", "expedition_tent", "sign", "ore_display"]
 const ItemArt = preload("res://scripts/inventory_item_art.gd")
 const PixelTheme = preload("res://scripts/inventory_pixel_theme.gd")
 const BuildThumbnail = preload("res://scripts/pixel_build_thumbnail.gd")

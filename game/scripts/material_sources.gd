@@ -17,10 +17,10 @@ const PREPARE_ACTION := "prepare_material_box"
 const ACTIONS := ["craft", "cook", "queue_cook", "start_processing", "queue_processing"]
 const CANONICAL := {"craft":"craft", "cook":"queue_cook", "queue_cook":"queue_cook",
 	"start_processing":"queue_processing", "queue_processing":"queue_processing"}
-const STATION_FOR := {"craft":["bench"], "queue_cook":["stove"], "queue_processing":["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace"]}
-const STATIONS := ["bench", "stove", "sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace"]
+const STATION_FOR := {"craft":["bench"], "queue_cook":["stove"], "queue_processing":["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "jam_pot"]}
+const STATIONS := ["bench", "stove", "sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "jam_pot"]
 ## Processing stations are owner-only; bench and stove are shared by members.
-const OWNER_ONLY := ["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace"]
+const OWNER_ONLY := ["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "jam_pot"]
 const BOXES := ["chest", "private_chest"]
 const ID_LENGTH := 32
 const DIGEST_LENGTH := 16

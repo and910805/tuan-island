@@ -15,13 +15,15 @@ const SHIPPING_SECONDS:=20.0
 const RETURN_SECONDS:=20.0
 const COOLDOWN:=10.0
 const KILN_SECONDS:=10.0
+const POT_SECONDS:=60.0
+const POT_CLAY:=4
 const LIMIT:=1000000000
 const JAR_USES:={"tea_jar":3,"tea_returned_jar":2,"tea_worn_jar":1,"tea_spent_jar":0}
 const RETURN_ITEM:={"tea_worn_jar":"tea_spent_jar","tea_returned_jar":"tea_worn_jar","tea_jar":"tea_returned_jar"}
 const FRESH:={"intro":false,"potter":false,"roast":{},"kiln":{},"packed":{},"outbound":{},"empties":0,"empty_items":{},"returning":{},"reused":false,"reuse_count":0,"auto":false,"harvest_ready":{},"clay_ready":0.0,"trials":{"jar":false,"fiber":false},"tea_discussed":false,"potter_story":false,"comparison_complete":false}
 const SITES:={
 	"tea_intro":["home",RECEIVER],"tea_potter":[YINGGE,POTTER],
-	"tea_clay":[YINGGE,CLAY],"tea_fire":[YINGGE,KILN],"tea_fire_take":[YINGGE,KILN],"tea_repair":[YINGGE,KILN],
+	"tea_clay":[YINGGE,CLAY],"tea_fire":[YINGGE,KILN],"tea_fire_take":[YINGGE,KILN],"tea_repair":[YINGGE,KILN],"tea_fire_pot":[YINGGE,KILN],
 	"tea_discuss":[MAOKONG,TEA_NPC],"tea_potter_story":[YINGGE,POTTER],
 	"tea_pick":[MAOKONG,TEA_NODES],"tea_roast":[MAOKONG,ROASTER],
 	"tea_take":[MAOKONG,ROASTER],"tea_pack":[MAOKONG,PACKER],
@@ -70,7 +72,9 @@ static func timed_job_valid(job:Variant,now:float,kind:String) -> bool:
 		"roast":
 			var style=job.get("style")
 			return job.size()==2 and style in ROAST_SECONDS and time_valid(job.get("ready"),now,ROAST_SECONDS[style])
-		"kiln":return job.size()==2 and job.get("repair") is bool and time_valid(job.get("ready"),now,KILN_SECONDS)
+		"kiln":
+			if job.get("kind")=="flower_pot":return job.size()==2 and time_valid(job.get("ready"),now,POT_SECONDS)
+			return job.size()==2 and job.get("repair") is bool and time_valid(job.get("ready"),now,KILN_SECONDS)
 		"return":return job.size()==3 and whole(job.get("count"),1) and buckets_valid(job.get("items"),job.count) and time_valid(job.get("ready"),now,RETURN_SECONDS)
 	return false
 
@@ -169,19 +173,30 @@ static func perform(record:Dictionary,player:Dictionary,action:String,p:Vector2i
 			record.clay_ready=now+COOLDOWN
 			return ok("換到一份陶土。")
 		"tea_fire":
-			if not record.kiln.is_empty():return fail("先取出窯裡的陶罐。")
+			if not record.kiln.is_empty():return fail("先取出窯裡的成品。")
 			if not record.potter or int(inventory.get("clay",0))<2:return fail("先找陶師，再備妥兩份陶土。")
 			inventory.clay-=2
 			record.kiln={"ready":now+KILN_SECONDS,"repair":false}
 			return ok("陶罐已入窯。")
 		"tea_repair":
-			if not record.kiln.is_empty():return fail("先取出窯裡的陶罐。")
+			if not record.kiln.is_empty():return fail("先取出窯裡的成品。")
 			if not record.potter or int(inventory.get("clay",0))<1 or int(inventory.get("tea_spent_jar",0))<1:return fail("修補需要一只待修陶罐與一份陶土。")
 			inventory.clay-=1
 			inventory.tea_spent_jar-=1
 			record.kiln={"ready":now+KILN_SECONDS,"repair":true}
 			return ok("待修陶罐已入窯。")
+		"tea_fire_pot":
+			if not record.kiln.is_empty():return fail("請先取出窯裡的成品。")
+			if not record.potter or int(inventory.get("clay",0))<POT_CLAY:return fail("先找陶師，再準備 %d 份陶土。"%POT_CLAY)
+			inventory.clay-=POT_CLAY
+			record.kiln={"ready":now+POT_SECONDS,"kind":"flower_pot"}
+			return ok("花盆已入窯，約 %d 秒後可取出。"%POT_SECONDS)
 		"tea_fire_take":
+			if record.kiln.get("kind")=="flower_pot":
+				if not due(record.kiln,now):return fail("花盆還在燒製。")
+				if not grant(inventory,"flower_pot",1):return fail("花盆已達背包上限。")
+				record.kiln={}
+				return ok("製成一只陶花盆。")
 			if not due(record.kiln,now):return fail("窯裡沒有可領的陶罐。")
 			if not grant(inventory,"tea_jar",1):return fail("陶罐已達背包上限。")
 			var repaired:bool=record.kiln.repair

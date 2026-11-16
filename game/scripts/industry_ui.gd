@@ -27,7 +27,7 @@ func device(app, cell: Vector2i) -> void:
 	var key := World.key(cell)
 	var obj: Dictionary = app.session.snapshot.get("objects", {}).get(key, {})
 	var kind: String = obj.get("type", "")
-	if kind in World.LOGISTICS.PROCESSORS or kind in ["seed_maker","loom","glass_furnace"]:
+	if kind in World.LOGISTICS.PROCESSORS or kind in ["seed_maker","loom","glass_furnace","jam_pot"]:
 		# T036: manual queue + automatic buffer workbench owns its own layout,
 		# Session signals and refresh; this RefCounted keeps no reference to it.
 		update_view = Callable()

@@ -5,6 +5,7 @@ const FRAME_SIZE:=Vector2i(48,48)
 const ATLAS_SIZE:=Vector2i(288,192)
 const FOOT:=Vector2i(24,44)
 var atlas:Texture2D
+var blue_atlas:Texture2D
 var animals:Texture2D
 
 func setup() -> bool:
@@ -52,13 +53,29 @@ func draw_tinted(canvas:CanvasItem,foot:Vector2,facing:Vector2i,phase:float,walk
 	var frame:=frame_selection("",facing,phase,walking,reduced_motion)
 	canvas.draw_texture_rect_region(atlas,Rect2(foot.round()-Vector2(FOOT),Vector2(FRAME_SIZE)),Rect2(Vector2(frame*FRAME_SIZE),Vector2(FRAME_SIZE)),tint)
 
-func draw_person(canvas:CanvasItem,foot:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool) -> void:
+func blue_workwear_atlas()->Texture2D:
+	if blue_atlas!=null:return blue_atlas
+	var pixels:=atlas.get_image()
+	for row in 4:
+		for column in 3:
+			# Only replace the farmer's rust-coloured fabric around the torso.
+			for y in range(26,37):
+				for x in range(12,36):
+					var p:=Vector2i(column*48+x,row*48+y)
+					var c:=pixels.get_pixelv(p)
+					if c.a>0.0 and c.r>c.g*1.45 and c.g>c.b*1.2 and c.h<0.09 and c.v>0.36:
+						pixels.set_pixelv(p,Color.from_hsv(0.58,0.48,c.v,c.a))
+	blue_atlas=ImageTexture.create_from_image(pixels)
+	return blue_atlas
+
+func draw_person(canvas:CanvasItem,foot:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool,blue_workwear:=false) -> void:
 	if atlas==null:return
 	var frame:=frame_selection(style,facing,phase,walking,reduced_motion)
 	var at:=foot.round()
 	# 棉棉、阿潮、暖暖暫用米露、阿榆、小栗的圖格加染色以便區分；專用像素圖待做。
 	var tint:Color={"mianmian":Color(0.80,0.92,1.0),"achao":Color(0.86,0.96,0.94),"nuannuan":Color(1.0,0.80,0.68),"luoluo":Color(1.0,0.93,0.72),"lingpopo":Color(0.86,0.82,0.92),"diandian":Color(0.84,0.96,0.82)}.get(style,Color.WHITE)
-	canvas.draw_texture_rect_region(atlas,Rect2(at-Vector2(FOOT),Vector2(FRAME_SIZE)),Rect2(Vector2(frame*FRAME_SIZE),Vector2(FRAME_SIZE)),tint)
+	var texture:=blue_workwear_atlas() if blue_workwear and style in ["farmer","guest"] else atlas
+	canvas.draw_texture_rect_region(texture,Rect2(at-Vector2(FOOT),Vector2(FRAME_SIZE)),Rect2(Vector2(frame*FRAME_SIZE),Vector2(FRAME_SIZE)),tint)
 	if style=="guest":
 		# Use a small ground-level color tag to identify guests without tinting sprite pixels.
 		canvas.draw_rect(Rect2(at+Vector2(-4,3),Vector2(8,3)),Color("403d35"))

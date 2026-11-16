@@ -589,6 +589,13 @@ static func dye_panel(ctx:Dictionary,page:VBoxContainer)->void:
 	if not ctx.intro:why=INTRO_REASON
 	elif int(bag.get(first,0))<int(inputs[first]):why="%s不足 %d 朵（目前 %d）"%[item_name(first),int(inputs[first]),int(bag.get(first,0))]
 	act(ctx,page,"FlowerDye","開始染色（%d 秒）"%int(Flower.DYE.time),"flower_dye",why)
+	var snapshot:Dictionary=app.session.snapshot
+	var person:Dictionary=snapshot.get("players",{}).get(app.session.own_id,{})
+	if person.get("blue_outfit",false):
+		act(ctx,page,"FlowerOutfit","換回原色工作服","flower_outfit","","original")
+	else:
+		var outfit_reason:=INTRO_REASON if not ctx.intro else ("需要藍色染料 ×1" if int(bag.get("blue_dye",0))<1 else "")
+		act(ctx,page,"FlowerOutfit","藍染工作服 · 染料 ×1","flower_outfit",outfit_reason,"blue")
 
 static func market_panel(ctx:Dictionary,page:VBoxContainer)->void:
 	var app=ctx.app

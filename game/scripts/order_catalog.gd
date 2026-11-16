@@ -105,6 +105,14 @@ const SOURCES := {
 	"carp": [{"via":"home_river_fishing", "requires":[], "inputs":{}}],
 	"minnow": [{"via":"home_river_fishing", "requires":[], "inputs":{}}],
 	"bread": [{"via":"cook", "requires":[], "inputs":{"wheat":2, "@stove":1}}],
+	"strawberry_jam": [
+		{"via":"stocked", "requires":["stock:jam_batch","station:jam_pot"], "inputs":{}},
+		{"via":"jam_pot", "requires":["station:jam_pot","stock:sugar"], "inputs":{"strawberry":3}},
+	],
+	"strawberry": [
+		{"via":"stocked", "requires":["stock:strawberry_batch"], "inputs":{}},
+		{"via":"farm", "requires":["season:strawberry","shop"], "inputs":{}},
+	],
 	"@stove": [
 		{"via":"existing", "requires":["station:stove"], "inputs":{}},
 		{"via":"build", "requires":[], "inputs":{"wood":12, "stone":15}},
@@ -180,12 +188,21 @@ static func context_from_layers(state: Dictionary, roofs: Variant, crops: Varian
 	var stations := {}
 	if objects is Dictionary:
 		for obj: Variant in (objects as Dictionary).values():
+			if obj is Dictionary and obj.get("type")=="jam_pot" and obj.get("owner")==token:
+				stations["jam_pot"]=true
 			if obj is Dictionary and str(obj.get("type", "")) in ["stove", "bench", "mill"]:
 				stations[str(obj.type)] = true
 	var station_list: Array = stations.keys()
 	station_list.sort()
-	return make_context(int(WEATHER.day_index(state.get("time", 0.0))), state.get("board", false) == true,
+	var context:=make_context(int(WEATHER.day_index(state.get("time", 0.0))), state.get("board", false) == true,
 		own_greenhouse(roofs, crops, token), station_list, crop_seasons)
+	var bag:Dictionary=state.get("players",{}).get(token,{}).get("inventory",{})
+	context.stock={
+		"jam_batch":int(bag.get("strawberry_jam",0))>=2,
+		"sugar":int(bag.get("sugar",0))>=1,
+		"strawberry_batch":int(bag.get("strawberry",0))>=3,
+	}
+	return context
 
 
 ## True when `token` owns a greenhouse_roof whose tile is a crop plot also owned
@@ -417,6 +434,7 @@ static func _reachable(item: String, ctx: Dictionary, visiting: Dictionary, dept
 static func _tag(tag: String, ctx: Dictionary) -> bool:
 	if tag == "board":return ctx.get("board", false) == true
 	if tag == "shop":return ctx.get("shop", false) == true
+	if tag.begins_with("stock:"):return ctx.get("stock",{}).get(tag.substr(6),false)==true
 	if tag.begins_with("station:"):
 		var stations: Variant = ctx.get("stations", [])
 		return stations is Array and (stations as Array).has(tag.substr(8))

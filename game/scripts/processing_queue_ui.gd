@@ -101,9 +101,9 @@ class Controller extends Node:
 	const STATIONS:={"sawmill":{"kit":"sawmill_kit","output":"plank","input":"wood","field":"input_wood"},
 		"charcoal_kiln":{"kit":"kiln_kit","output":"charcoal","input":"wood","field":"input_wood"},
 		"mill":{"kit":"mill_kit","output":"flour","input":"wheat","field":"input_wheat"},
-		"seed_maker":{},"loom":{},"glass_furnace":{}}
+		"seed_maker":{},"loom":{},"glass_furnace":{},"jam_pot":{}}
 	## Owner-only manual stations: 10-slot queue, no conveyor/auto buffer section.
-	const MANUAL_ONLY:=["seed_maker","loom","glass_furnace"]
+	const MANUAL_ONLY:=["seed_maker","loom","glass_furnace","jam_pot"]
 	const ACK_TIMEOUT_MS:=10000
 	const INK:=Color("3d422d")
 	const MUTED:=Color("76694c")
@@ -352,6 +352,7 @@ class Controller extends Node:
 		if kind=="glass_furnace":
 			art=preload("res://scripts/glass_furnace_art.gd").texture()
 			if art==null:art=Items.icon("kiln_kit")
+		elif kind=="jam_pot":art=preload("res://assets/bakery/jam-pot.png")
 		elif kind in MANUAL_ONLY:art=preload("res://assets/bakery/seed-maker.png")
 		else:art=Items.icon(str(STATIONS[kind].kit))
 		var icon:=_picture(art,64)

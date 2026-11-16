@@ -76,6 +76,8 @@ var MILL:=Vector2i(-1,-1)
 var AUTO:=Vector2i(-1,-1)
 var KILN:=Vector2i(-1,-1)
 var FOREIGN:=Vector2i(-1,-1)
+var FLOUR_MILL:=Vector2i(-1,-1)
+var JAM_POT:=Vector2i(-1,-1)
 var legacy_job:={}
 var rate_marks:=[]
 var ids:=[]
@@ -253,12 +255,19 @@ func setup_world() -> bool:
 	for candidate in World.SHIPPING.CANDIDATES:avoid.append(candidate)
 	for candidate in World.COMMUNITY.CANDIDATES:avoid.append(candidate)
 	var sites:=[]
-	for i in 4:
+	for i in 6:
 		var s:=find_site(w0,avoid)
 		if s.x<0:return false
 		sites.append(s)
 		avoid.append(s)
 	MILL=sites[0];AUTO=sites[1];KILN=sites[2];FOREIGN=sites[3]
+	FLOUR_MILL=sites[4]
+	w0.state.objects[World.key(FLOUR_MILL)]={"type":"mill","owner":T,"items":{},"input_wheat":0,"auto_enabled":false}
+	w0.state.players[T].inventory["sweet_corn"]=1
+	JAM_POT=sites[5]
+	w0.state.objects[World.key(JAM_POT)]={"type":"jam_pot","owner":T,"items":{}}
+	w0.state.players[T].inventory["strawberry"]=3
+	w0.state.players[T].inventory["sugar"]=1
 	var shape:={"items":{},"input_wood":0,"auto_enabled":false}
 	for entry in [[MILL,"sawmill",T],[AUTO,"sawmill",T],[KILN,"charcoal_kiln",T],[FOREIGN,"charcoal_kiln",B]]:
 		var obj:Dictionary=shape.duplicate(true)
@@ -376,7 +385,7 @@ func press_key(code:Key) -> void:
 		root.push_input(e)
 	await settle()
 
-func open_at(c:Vector2i,label:String) -> bool:
+func open_at(c:Vector2i,label:String,has_tabs:=true) -> bool:
 	if is_instance_valid(app.modal):
 		app._close_modal()
 		await settle()
@@ -385,7 +394,7 @@ func open_at(c:Vector2i,label:String) -> bool:
 	await settle(6)
 	var ok:=ui()!=null
 	expect(ok,"%s: app.industry_ui.device(%s) opens a visible %s"%[label,c,ROOT_NAME])
-	if ok:await tab(MANUAL_TAB,label+" manual tab")
+	if ok and has_tabs:await tab(MANUAL_TAB,label+" manual tab")
 	return ok
 
 func capacity_text() -> String:
@@ -430,7 +439,7 @@ func shoot(state:String,check:Callable) -> void:
 	await settle(4)
 
 ## Bounded layout: `names` visible, sized, inside the window, unclipped, no overlap.
-func check_layout(label:String,names:Array) -> void:
+func check_layout(label:String,names:Array,has_tabs:=true) -> void:
 	var r:=ui()
 	expect(r!=null,"%s: %s visible"%[label,ROOT_NAME])
 	if r==null:return
@@ -438,7 +447,8 @@ func check_layout(label:String,names:Array) -> void:
 	expect(window.encloses(r.get_global_rect()),"%s: %s inside the window"%[label,ROOT_NAME])
 	if is_instance_valid(app.modal):expect(window.encloses(app.modal.get_global_rect()),"%s: modal inside the window"%label)
 	var rects:=[]
-	for node_name in [MANUAL_TAB,AUTO_TAB]+names:
+	var controls:=([MANUAL_TAB,AUTO_TAB] if has_tabs else [])+names
+	for node_name in controls:
 		var c:=ctl(node_name)
 		expect(shown(c),"%s: %s visible"%[label,node_name])
 		if not shown(c):continue
@@ -510,9 +520,38 @@ func run() -> void:
 		await flow_auto()
 		await flow_nonowner()
 		await flow_keys()
+		await flow_corn_feed()
+		await flow_jam_pot()
 	await finish()
 
 # ------------------------------------------------------------------ flows --
+
+func flow_corn_feed() -> void:
+	if not await open_at(FLOUR_MILL,"corn feed mill"):return
+	expect(shown(ctl("ProcessingRecipe_flour")),"mill retains flour selection")
+	if not await press("ProcessingRecipe_feed","select corn feed",false):return
+	expect(text_of(ctl("ProcessingRecipeCard")).contains("甜玉米"),"feed card lists sweet corn")
+	await shoot("corn-feed",func(label):await check_layout(label,manual_names()+["ProcessingRecipe_feed"]))
+	var before:=held("feed")
+	var fiber:=held("fiber")
+	if not await press(ENQUEUE,"queue corn feed"):return
+	expect(held("sweet_corn")==0 and held("fiber")==fiber-2,"mill UI charges one corn and two fiber")
+	expect(unusable(CLAIM),"mill UI prevents early claim")
+	await advance(60.0,"finish corn feed")
+	if not await press(CLAIM,"claim corn feed"):return
+	expect(held("feed")==before+4 and unusable(CLAIM),"mill UI grants four feed once")
+
+func flow_jam_pot() -> void:
+	if not await open_at(JAM_POT,"jam pot",false):return
+	expect(text_of(ctl("ProcessingRecipeCard")).contains("草莓果醬"),"jam pot card shows strawberry jam")
+	expect(not usable(AUTO_TAB),"jam pot is manual only")
+	await shoot("strawberry-jam",func(label):await check_layout(label,manual_names(),false))
+	if not await press(ENQUEUE,"queue strawberry jam"):return
+	expect(held("strawberry")==0 and held("sugar")==0,"jam pot charges three strawberries and one sugar")
+	expect(unusable(CLAIM),"jam pot prevents early claim")
+	await advance(180.0,"finish strawberry jam")
+	if not await press(CLAIM,"claim strawberry jam"):return
+	expect(held("strawberry_jam")==2 and unusable(CLAIM),"jam pot grants two jars once")
 
 func flow_open() -> bool:
 	await pose(near(MILL))

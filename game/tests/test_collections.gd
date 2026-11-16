@@ -125,9 +125,9 @@ func _initialize() -> void:
 	alice.inventory["strawberry"]=2
 	alice.inventory["cucumber"]=2
 	expect(not act("cook",STOVE,"strawberry_jam").ok and alice.inventory.strawberry==2,"Missing sugar leaves the strawberries intact")
-	alice.inventory["sugar_beet"]=1
+	alice.inventory["sugar_beet"]=2
 	expect(act("queue_cook",STOVE,"sugar").ok and alice.inventory.get("sugar_beet",0)==0,"Beet sugar recipe consumes the root")
-	expect(w.step(40.1,true) and act("claim_cook",STOVE).ok and alice.inventory.get("sugar",0)==2,"One beet produces two sugar")
+	expect(w.step(60.0,true) and act("claim_cook",STOVE).ok and alice.inventory.get("sugar",0)==2,"Two beets produce two sugar after one minute")
 	expect(not alice.collection.meals.has("sugar"),"Sugar is an ingredient and does not count as a dish")
 	alice.inventory["snow_trout"]=1
 	alice.inventory["cabbage"]=1

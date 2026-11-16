@@ -11,11 +11,17 @@ static var cache:Dictionary={}
 
 static func icon(id:String) -> Texture2D:
 	match id:
+		"rope":return preload("res://assets/ui-inventory/rope.png")
+		"flower_pot":return preload("res://assets/ui-inventory/flower-pot.png")
 		"cotton_cloth","wool_cloth":return icon("fiber")
 		"milk":return icon("tea_jar")
 		"wool":return icon("fiber")
 		"watermelon_platter":return icon("salad")
 		"corn_chowder":return chowder_icon()
+		"tea_pudding":return preload("res://assets/ui-inventory/tea-pudding.png")
+		"seaweed":return preload("res://assets/ui-inventory/shore-seaweed.png")
+		"star_rice_ball":return preload("res://assets/ui-inventory/star-rice-ball.png")
+		"strawberry_toast":return preload("res://assets/ui-inventory/strawberry-toast.png")
 		"mist_tea":return icon("tea_leaf")
 		"mist_tea_seed":return icon("sapling")
 		"mist_tea_brew":return icon("tea_light")
@@ -52,7 +58,7 @@ static func icon(id:String) -> Texture2D:
 		"cabbage_seed":return icon("lettuce_seed")
 		"sugar_beet":return icon("radish")
 		"sugar_beet_seed":return icon("radish_seed")
-		"strawberry_jam":return icon("tea_jar")
+		"strawberry_jam":return preload("res://assets/ui-inventory/strawberry-jam.png")
 		"cucumber_salad":return icon("salad")
 		"strawberry":return icon("tomato")
 		"cucumber":return icon("lettuce")

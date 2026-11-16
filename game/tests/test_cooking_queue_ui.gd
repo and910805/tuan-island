@@ -56,7 +56,7 @@ const PROGRESS:="CookingProgress"
 const RECIPE_PREFIX:="CookingRecipe_"
 const CANCEL_PREFIX:="CookingCancel_"
 # Explicit fixture stock, not normal-play balances.
-const STOCK:={"minnow":40,"sea_salt":40,"radish":40,"wheat":40,"fiber":40,"lettuce":40,"tomato":40,"potato":40,"carp":40,"carrot":40,"pumpkin":40,"flour":40,"sugar":40,"chime_herb":40,"egg":40,"strawberry":40,"cucumber":40,"sugar_beet":40,"snow_trout":40,"cabbage":40,"star_mushroom":40,"sweet_potato":40,"rice":40,"eggplant":40,"mist_tea":40,"watermelon":40,"sweet_corn":40,"milk":40}
+const STOCK:={"bread":40,"strawberry_jam":40,"minnow":40,"sea_salt":40,"radish":40,"wheat":40,"fiber":40,"lettuce":40,"tomato":40,"potato":40,"carp":40,"carrot":40,"pumpkin":40,"flour":40,"sugar":40,"chime_herb":40,"egg":40,"strawberry":40,"cucumber":40,"sugar_beet":40,"snow_trout":40,"cabbage":40,"star_mushroom":40,"sweet_potato":40,"rice":40,"eggplant":40,"mist_tea":40,"watermelon":40,"sweet_corn":40,"milk":40,"tea_leaf":40,"seaweed":40}
 
 var checks:=0
 var failures:=0
@@ -637,6 +637,13 @@ func flow_empty_error() -> void:
 	var claim:=ctl(CLAIM) as BaseButton
 	expect(claim==null or not claim.is_visible_in_tree() or claim.disabled,"empty: nothing to claim")
 	expect(has_number(capacity_text(),0) and has_number(capacity_text(),Queue.CAPACITY),"empty: capacity shows 0 of %d ('%s')"%[Queue.CAPACITY,capacity_text()])
+	if qa:
+		await select("tea_pudding","tea pudding preview")
+		await shoot("tea-pudding",func(l):await check_layout(l,false))
+		await select("star_rice_ball","star rice ball preview")
+		await shoot("star-rice-ball",func(l):await check_layout(l,false))
+		await select("strawberry_toast","strawberry toast preview")
+		await shoot("strawberry-toast",func(l):await check_layout(l,false))
 	await select("soup","empty")
 	await shoot("empty",func(l):await check_layout(l,false))
 	# Missing materials.

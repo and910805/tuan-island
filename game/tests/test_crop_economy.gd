@@ -270,7 +270,7 @@ func test_recipes() -> void:
 		expect(float(row.time)>0.0,"%s has a cooking time"%str(row.id))
 	unpriced.sort()
 	# 材料或成品沒有售價的料理（飼料、糖是中間產物；其餘用到麵粉、糖、海鹽或鮮奶）。
-	expect(unpriced==["corn_chowder","feed","garden_cookie","pumpkin_pie","salt_grilled_fish","strawberry_jam","sugar"],"recipes with an unpriced ingredient or product: %s"%str(unpriced))
+	expect(unpriced==["corn_chowder","feed","garden_cookie","pumpkin_pie","salt_grilled_fish","star_rice_ball","strawberry_jam","strawberry_toast","sugar","tea_pudding"],"recipes with an unpriced ingredient or product: %s"%str(unpriced))
 	for id:String in HAND_MARGINS:
 		var row:Dictionary=by_id.get(id,{})
 		expect(bool(row.get("priced",false)) and int(row.get("margin",-1))==int(HAND_MARGINS[id]),"%s margin %d (hand %d)"%[id,int(row.get("margin",-1)),int(HAND_MARGINS[id])])

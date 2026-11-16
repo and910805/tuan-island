@@ -92,7 +92,7 @@ const KITCHEN_SEAT_TYPE:="long_bench"
 const SeedMaker=preload("res://scripts/seed_maker.gd")
 ## T067 glass_furnace (no save bump): owner-only manual queue exactly like the
 ## loom (same version-26 rule, never `job`/`auto_enabled`/buffer items).
-const PROCESSING_STATIONS:=["sawmill","charcoal_kiln","mill","seed_maker","loom","glass_furnace"]
+const PROCESSING_STATIONS:=["sawmill","charcoal_kiln","mill","seed_maker","loom","glass_furnace","jam_pot"]
 const BOX_TYPES:=["chest","private_chest"]
 const BOX_ID_LENGTH:=32
 
@@ -262,6 +262,7 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 		if person.region in Transit.LOCAL and (not person.travel_book.visited.has(person.region) or Transit.blocked(Vector2i(int(person.x),int(person.y)),person.region)):return false
 		if version < 6:person.mine_energy=100
 		if not whole(person.get("mine_energy"),100):return false
+		if person.has("blue_outfit") and not person.blue_outfit is bool:return false
 		if person.region in Mines.IDS and Mines.IDS.find(person.region)>=int(s.mine_depths.get("unlocked",0)):return false
 		if version < 5 and person.region == Regions.JINGUASHI:return false
 		if person.region != Regions.HOME and not Regions.land(Vector2i(int(person.x),int(person.y)),person.region):return false
@@ -906,10 +907,10 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 			if not whole(p.stories.get(resident),Village.QUESTS[resident].size()):return false
 			p.stories[resident]=int(p.stories[resident])
 		if not number(p.orders.get("day"),-1) or floorf(float(p.orders.day))!=float(p.orders.day):return false
-		if not p.orders.get("done") is Array or p.orders.done.size()>3:return false
+		if not p.orders.get("done") is Array or p.orders.done.size()>Village.ORDERS.size():return false
 		var seen:Dictionary={}
 		for order in p.orders.done:
-			if order not in ["radish","fish","bread"] or seen.has(order):return false
+			if not order is String or OrderCatalog.find(order).is_empty() or seen.has(order):return false
 			seen[order]=true
 		if not orders_active_valid(p.orders,float(s.time)):return false
 		if not whole(p.trees_planted) or not whole(p.cooked):return false
@@ -1022,7 +1023,7 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 			# s.version here is still the candidate's input version (projections
 			# copy it; validate stamps VERSION only at the very end).
 			if obj.has("cooking") and not cooking_valid(s,obj,recipes):return false
-			if obj.type in ["seed_maker","loom","glass_furnace"] and (int(s.version)<26 or obj.has("job") or obj.has("auto_enabled") or not obj.items.is_empty()):return false
+			if obj.type in ["seed_maker","loom","glass_furnace","jam_pot"] and (int(s.version)<26 or obj.has("job") or obj.has("auto_enabled") or not obj.items.is_empty()):return false
 			if obj.has("processing") and not processing_valid(s,obj):return false
 			if obj.has("box_id") and (field!="objects" or not box_id_valid(s,obj)):return false
 			if obj.has("job"):
@@ -1093,6 +1094,8 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 	if not s.picnic_materials is Dictionary:return false
 	if not whole(s.picnic_materials.get("soup"),2) or not whole(s.picnic_materials.get("bread"),1):return false
 	if not s.has("quarry"):s.quarry={"hits":0,"ready":0.0}
+	if not s.has("seaweed_ready"):s.seaweed_ready=0.0
+	if not number(s.seaweed_ready,0,float(s.time)+60.0):return false
 	if not s.has("copper"):s.copper={"ready":0.0}
 	if not s.copper is Dictionary or not number(s.copper.get("ready"),0,float(s.time)+12):return false
 	if not s.quarry is Dictionary or not whole(s.quarry.get("hits"),2) or not number(s.quarry.get("ready")):return false

@@ -616,6 +616,11 @@ func _draw() -> void:
 				rock(at)
 				var remaining:=maxi(0,ceili(float(data.get("quarry",{}).get("ready",0))-float(data.time)))
 				if focused_label!="copper":world_label(at+Vector2(16,-10),"採石點" if remaining==0 else "石層恢復 %d 秒"%remaining,"quarry")
+			if p==World.SEAWEED_CELL:
+				var ripe:=float(data.get("seaweed_ready",0.0))<=float(data.time)
+				var frond:=preload("res://scripts/inventory_item_art.gd").icon("seaweed")
+				if frond:draw_texture_rect(frond,Rect2(at+Vector2(4,6),Vector2(24,24)),false,Color.WHITE if ripe else Color(1,1,1,0.35))
+				world_label(at+Vector2(16,-4),"海苔 · 斧頭採集" if ripe else "海苔正在生長","shore_seaweed")
 			if p==World.COPPER_CELL:
 				var ready:=float(data.get("copper",{}).get("ready",0))<=float(data.time)
 				AutomationArt.draw_copper(self,at,ready)
@@ -707,7 +712,7 @@ func _draw() -> void:
 				var tool_plan:=tool_action_plan(id) if fishing.is_empty() and operation.is_empty() else {}
 				if not tool_plan.is_empty():facing=tool_plan.facing
 				if not tool_plan.is_empty() and facing==Vector2i.UP:draw_tool_held(at,tool_plan)
-				person_sprite((at+tool_plan.get("lunge",Vector2.ZERO)).round(),shirt,"farmer" if local else "guest",facing,float(gait.get(id,0.0)),bool(walking.get(id,false)))
+				person_sprite((at+tool_plan.get("lunge",Vector2.ZERO)).round(),shirt,"farmer" if local else "guest",facing,float(gait.get(id,0.0)),bool(walking.get(id,false)),bool(person.get("blue_outfit",false)))
 				if not tool_plan.is_empty() and facing!=Vector2i.UP:draw_tool_held(at,tool_plan)
 				if not machine_kind.is_empty() and machine_facing!=Vector2i.UP:
 					draw_farm_machine(machine_kind,machine_at,machine_facing,working_now)
@@ -1166,6 +1171,11 @@ func object_sprite(at:Vector2,kind:String,object_data:Dictionary={}) -> void:
 		var device_key:=World.key(draw_cell(at))
 		if focused_label==device_key:world_label(at+Vector2(16,-20),World.BUILD[kind].name,device_key)
 		return
+	if kind=="jam_pot":
+		draw_texture(preload("res://assets/bakery/jam-pot.png"),at+Vector2(0,-16))
+		var device_key:=World.key(draw_cell(at))
+		if focused_label==device_key:world_label(at+Vector2(16,-20),"果醬鍋",device_key)
+		return
 	if kind=="mill":
 		# Q05 flour mill: the formal PNG (same placement as the furniture route)
 		# plus work overlays classified from this authoritative snapshot object at
@@ -1216,7 +1226,7 @@ func object_sprite(at:Vector2,kind:String,object_data:Dictionary={}) -> void:
 	if kind=="greenhouse_rack":
 		draw_texture(preload("res://assets/bakery/greenhouse-rack.png"),at+Vector2(0,-16))
 		return
-	if kind=="ore_display" and FurnitureArt.draw_sprite(self,at,kind):return
+	if kind in ["ore_display","flower_pot"] and FurnitureArt.draw_sprite(self,at,kind):return
 	# T071 紀念票兌換裝飾：程式繪製的 32px 圖，預覽美術與一般繪製都畫（其他家具在一般
 	# 繪製也有自己的圖形）。
 	if SouvenirArt.has_kind(kind) and SouvenirArt.draw(self,at,kind):return
@@ -1322,11 +1332,11 @@ func _draw_cooking_feedback(at:Vector2,obj:Dictionary) -> void:
 	if int(status.ready)>0:
 		world_label(at+Vector2(16,-18),"料理好了 · %d 鍋待領"%int(status.ready),World.key(draw_cell(at)))
 
-func person_sprite(at:Vector2,shirt:Color,style:="guest",facing:=Vector2i.DOWN,phase:=0.0,walking_now:=false) -> void:
+func person_sprite(at:Vector2,shirt:Color,style:="guest",facing:=Vector2i.DOWN,phase:=0.0,walking_now:=false,blue_workwear:=false) -> void:
 	if character_art:
-		character_art.draw_person(self,at,shirt,style,facing,phase,walking_now,reduced_motion)
+		character_art.draw_person(self,at,shirt,style,facing,phase,walking_now,reduced_motion,blue_workwear)
 		return
-	Art.person(self,at,shirt,style,facing,phase,walking_now,reduced_motion)
+	Art.person(self,at,Color("648eaa") if blue_workwear else shirt,style,facing,phase,walking_now,reduced_motion)
 
 func board(at:Vector2) -> void:
 	if village_art:

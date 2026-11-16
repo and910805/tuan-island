@@ -2269,7 +2269,7 @@ func _interact() -> void:
 		elif obj.type=="conveyor":logistics_ui.device(self,World.cell(closest))
 		elif obj.type=="waterworks":WaterworksUI.open(self,World.cell(closest))
 		elif obj.type=="mine_drill":MineDrillUI.open(self,World.cell(closest))
-		elif obj.type in ["water_tank","water_pump","sawmill","charcoal_kiln","mill","seed_maker","loom","glass_furnace"]:industry_ui.device(self,World.cell(closest))
+		elif obj.type in ["water_tank","water_pump","sawmill","charcoal_kiln","mill","seed_maker","loom","glass_furnace","jam_pot"]:industry_ui.device(self,World.cell(closest))
 		elif obj.type=="door":session.perform("door",World.cell(closest))
 		elif obj.type=="stove":_cook_menu(World.cell(closest))
 		else:_notice("這是你的落腳處。原型裡不必睡覺，隨時都可以繼續生活。",true)
@@ -2648,6 +2648,8 @@ func _open_inventory_grid() -> void:
 	modal=backpack
 	hud.add_child(backpack)
 	backpack.close_requested.connect(_close_modal)
+	backpack.rice_ball_requested.connect(func():session.perform("eat_rice_ball",Vector2i.ZERO))
+	backpack.rope_requested.connect(func():session.perform("handcraft_rope",Vector2i.ZERO))
 	backpack.setup(session.snapshot,session.own_id,hud.theme,binding_label)
 	backpack.layout_for(get_viewport().get_visible_rect().size)
 	LifeShell.reveal(self,backpack)

@@ -101,6 +101,7 @@ static func unlocked(app, person: Dictionary, id: String) -> bool:
 	if id == "fish_display":result = World.Collections.angling_level(person) >= World.Collections.FISH_DISPLAY_LEVEL
 	if id == "master_flower_bed":result = World.farming_level(person) >= World.MASTER_FARMING_LEVEL
 	if id == "greenhouse_rack":result = person.get("greenhouse_reported",false)
+	if id == "jam_pot":result = World.MARKET.unlocked(app.session.snapshot)
 	if id == "medium_sprinkler":result = World.farming_level(person) >= World.MEDIUM_SPRINKLER_LEVEL
 	if id == "seed_maker":result = World.farming_level(person) >= World.SEED_MAKER_LEVEL
 	if id == "waterworks":result = int(app.session.snapshot.get("mine_depths",{}).get("unlocked",1)) >= 4
@@ -138,6 +139,7 @@ static func lock_text(app, id: String) -> Array:
 	if id == "waterworks":return ["完成金瓜石第三層抽水工程後解鎖。", "先完成抽水工程"]
 	if id == "mine_drill":return ["完成金瓜石第四層工程、開通第五層後解鎖。", "先開通第五層"]
 	if id == "glass_furnace":return ["修好金瓜石的升降台後解鎖。", "完成卡住的升降台"]
+	if id == "jam_pot":return ["渡口野餐後開放。", "完成渡口野餐"]
 	if id == World.INDUSTRY.GATE_KIND:return [World.INDUSTRY.GATE_LOCKED, "完成旱日分流"]
 	if id == World.INDUSTRY.TOWER_KIND:return [World.INDUSTRY.TOWER_LOCKED, "完成旱日分流"]
 	if id in World.KITCHEN_GATED:return ["公共廚房開張後解鎖：先登記公共廚房，再和大家備齊蘿蔔湯 4、麵包 2、菜園沙拉 2。", "公共廚房開張後解鎖"]

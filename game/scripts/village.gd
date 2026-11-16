@@ -36,7 +36,8 @@ const QUESTS:={
 const ORDERS:=[
 	{"id":"radish","name":"渡口的家常湯","items":{"radish":3},"coins":90},
 	{"id":"fish","name":"小栗的魚貨籃","items":{"carp":1,"minnow":1},"coins":55},
-	{"id":"bread","name":"午后的麵包香","items":{"bread":2},"coins":120}
+	{"id":"bread","name":"午后的麵包香","items":{"bread":2},"coins":120},
+	{"id":"market_jam","name":"市集的草莓果醬","items":{"strawberry_jam":2},"coins":135}
 ]
 static func ensure_player(p:Dictionary) -> void:
 	if not p.has("stories"):p.stories={"aru":0,"milu":0,"xiaoli":0,"bobo":0}

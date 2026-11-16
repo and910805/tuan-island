@@ -88,6 +88,31 @@ func run() -> void:
 	expect(panel.selected_id == "tomato_seed", "selection persists when still visible")
 	panel.show_notice("已保存", true)
 	expect(panel.notice.visible and panel.notice.text == "已保存", "panel supports status notice")
+	world.state.players.player.inventory.star_rice_ball=1
+	world.state.players.player.mine_energy=94
+	panel.refresh(world.state,"player")
+	panel.select_item("star_rice_ball")
+	expect(not panel.eat_rice_ball.visible,"food action is hidden outside mines")
+	var mine_snapshot:Dictionary=world.state.duplicate(true)
+	mine_snapshot.region_id="mine_1"
+	panel.refresh(mine_snapshot,"player")
+	expect(panel.eat_rice_ball.visible and not panel.eat_rice_ball.disabled and panel.eat_rice_ball.text.contains("6"),"mine shows the actual capped recovery")
+	var requests:=[0]
+	panel.rice_ball_requested.connect(func():requests[0]+=1)
+	panel.eat_rice_ball.pressed.emit()
+	expect(requests[0]==1,"eat button sends one request")
+	mine_snapshot.players.player.mine_energy=100
+	panel.refresh(mine_snapshot,"player")
+	expect(panel.eat_rice_ball.disabled,"full energy disables food action")
+	panel.select_item("fiber")
+	expect(panel.craft_rope.visible and not panel.craft_rope.disabled,"fiber shows handcraft action")
+	var rope_requests:=[0]
+	panel.rope_requested.connect(func():rope_requests[0]+=1)
+	panel.craft_rope.pressed.emit()
+	expect(rope_requests[0]==1,"handcraft button sends one request")
+	world.state.players.player.inventory.fiber=4
+	panel.refresh(world.state,"player")
+	expect(panel.craft_rope.disabled,"handcraft button disables below five fiber")
 	panel.queue_free()
 	await process_frame
 	print("INVENTORY_PANEL_TESTS checks=%d failures=%d" % [checks, failures])

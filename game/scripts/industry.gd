@@ -112,6 +112,8 @@ const PROCESS := {
 	"plank":{"station":"sawmill","ingredients":{"wood":4},"time":12.0,"yield":2},
 	"charcoal":{"station":"charcoal_kiln","ingredients":{"wood":4},"time":16.0,"yield":2},
 	"flour":{"station":"mill","ingredients":{"wheat":2},"time":60.0,"yield":1},
+	"feed":{"station":"mill","ingredients":{"sweet_corn":1,"fiber":2},"time":60.0,"yield":4},
+	"strawberry_jam":{"station":"jam_pot","ingredients":{"strawberry":3,"sugar":1},"time":180.0,"yield":2},
 }
 
 static func near_river(world, tile:Vector2i) -> bool:

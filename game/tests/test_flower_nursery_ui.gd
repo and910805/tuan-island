@@ -98,6 +98,23 @@ func open(site:String)->void:
 	await settle()
 	check(is_instance_valid(app.modal) and app.modal.get_meta("flower_site","")==site,"Opens flower site "+site)
 
+func capture_workwear(name:String)->void:
+	var directory:=OS.get_environment("WORKWEAR_QA_OUTPUT")
+	if directory.is_empty():return
+	app._close_modal()
+	await settle()
+	var banners:Array[Control]=[]
+	for id in ["WanganArrival","TravelArrival"]:
+		var banner:=app.hud.get_node_or_null(id) as Control
+		if banner and banner.visible:
+			banners.append(banner)
+			banner.hide()
+	RenderingServer.force_draw()
+	var frame:=root.get_texture().get_image()
+	check(frame.save_png(directory.path_join(name+".png"))==OK,"captures "+name+" workwear on the map")
+	for banner in banners:banner.show()
+	await open("dye")
+
 func scroll_to(item:Control)->void:
 	if not item:return
 	var parent:=item.get_parent()
@@ -279,6 +296,17 @@ func run()->void:
 	publish()
 	await press("FlowerDyeTake")
 	check(int(person().inventory.get("blue_dye",0))==int(Flower.DYE.yield),"flower_dye_take yields dye")
+	await capture_workwear("01-original")
+	await press("FlowerOutfit")
+	check(person().get("blue_outfit",false) and int(person().inventory.blue_dye)==int(Flower.DYE.yield)-1,"apply workwear dye once")
+	var observer:Dictionary=app.session.public_state(Flower.REGION)
+	check(observer.players[app.session.own_id].get("blue_outfit",false),"other clients can see worn colour")
+	var reopened:=World.new()
+	check(reopened.load_world(world.save_path) and not reopened.recovered_from_backup and reopened.state.players.get(actor,{}).get("blue_outfit",false),"blue workwear survives primary-save reload")
+	await capture_workwear("02-blue")
+	await press("FlowerOutfit")
+	check(not person().get("blue_outfit",false) and int(person().inventory.blue_dye)==int(Flower.DYE.yield)-1,"restore original without spending dye")
+	check(reopened.load_world(world.save_path) and not reopened.state.players.get(actor,{}).has("blue_outfit"),"original workwear persists after changing back")
 
 	# Market + order card.
 	var saved_all:={"bluebell":true,"orange_blossom":true,"chime_herb":true}

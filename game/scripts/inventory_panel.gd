@@ -1,6 +1,8 @@
 extends PanelContainer
 
 signal close_requested
+signal rice_ball_requested
+signal rope_requested
 
 const World = preload("res://scripts/world.gd")
 const ItemArt = preload("res://scripts/inventory_item_art.gd")
@@ -12,7 +14,7 @@ const Souvenir = preload("res://scripts/souvenir_exchange.gd")
 ## Tianwei items the stall and shipping bin never buy (contract data_values.not_sellable).
 const NOT_SELLABLE := ["bluebell_seed", "orange_blossom_seed", "chime_herb_seed", "blue_dye", "sugar", "crystal_sand", "glass"]
 const CATEGORIES := ["全部", "素材", "種子", "收成", "其他"]
-const MATERIALS := ["cotton_cloth","wool_cloth","wood", "stone", "fiber", "copper_ore", "copper_joint", "plank", "resin", "charcoal", "flour", "clay","tea_jar", "tea_returned_jar", "tea_worn_jar", "tea_spent_jar", "blue_dye", "sugar", "crystal_sand", "glass", "ochre_earth", "vein_quartz", "warm_stone"]
+const MATERIALS := ["rope","cotton_cloth","wool_cloth","wood", "stone", "fiber", "copper_ore", "copper_joint", "plank", "resin", "charcoal", "flour", "clay","tea_jar", "tea_returned_jar", "tea_worn_jar", "tea_spent_jar", "blue_dye", "sugar", "crystal_sand", "glass", "ochre_earth", "vein_quartz", "warm_stone"]
 
 var selected_id := "wood"
 var category := 0
@@ -29,6 +31,10 @@ var detail_category: Label
 var detail_count: Label
 var detail_use: Label
 var detail_value: Label
+var eat_rice_ball:Button
+var craft_rope:Button
+var mine_energy:=100
+var in_mine:=false
 var notice: Label
 var binding_name:Callable
 
@@ -127,6 +133,8 @@ func show_notice(message: String, success: bool) -> void:
 func refresh(snapshot: Dictionary, own_id: String) -> void:
 	var person: Dictionary = snapshot.get("players", {}).get(own_id, {})
 	inventory = person.get("inventory", {})
+	mine_energy=int(person.get("mine_energy",100))
+	in_mine=str(snapshot.get("region_id","")) in World.MINES.IDS
 	balance.text = "鈴幣 %d" % int(person.get("coins", 0))
 	for id in slots:
 		slots[id].set_count(int(inventory.get(id, 0)))
@@ -198,6 +206,17 @@ func make_details() -> PanelContainer:
 	details.add_child(detail_use)
 	detail_value = make_label("", 16)
 	details.add_child(detail_value)
+	eat_rice_ball=Button.new()
+	eat_rice_ball.name="EatRiceBall"
+	eat_rice_ball.hide()
+	eat_rice_ball.pressed.connect(func():rice_ball_requested.emit())
+	details.add_child(eat_rice_ball)
+	craft_rope=Button.new()
+	craft_rope.name="CraftRope"
+	craft_rope.text="手作繩索 · 纖維 %d"%World.ROPE_FIBER_COST
+	craft_rope.hide()
+	craft_rope.pressed.connect(func():rope_requested.emit())
+	details.add_child(craft_rope)
 	return paper
 
 func update_details() -> void:
@@ -208,6 +227,11 @@ func update_details() -> void:
 	detail_count.text = "持有 %d" % int(inventory.get(id, 0)) if not id.is_empty() else ""
 	detail_use.text = use_for(id,binding_name)
 	detail_value.text = value_for(id)
+	eat_rice_ball.visible=id=="star_rice_ball" and in_mine
+	eat_rice_ball.disabled=mine_energy>=100 or int(inventory.get(id,0))<1
+	eat_rice_ball.text="體力已滿" if mine_energy>=100 else "吃一份 · 恢復 %d 體力"%mini(World.RICE_BALL_ENERGY,100-mine_energy)
+	craft_rope.visible=id=="fiber"
+	craft_rope.disabled=int(inventory.get("fiber",0))<World.ROPE_FIBER_COST
 
 static func make_label(value: String, font_size: int) -> Label:
 	var result := Label.new()
@@ -243,6 +267,8 @@ static func use_for(id: String, key_name:Callable=Callable()) -> String:
 		for action in shortcuts:
 			shortcuts[action]=key_name.call(action)
 	match id:
+		"star_rice_ball":return "在合作礦場食用，最多恢復 %d 點體力。"%World.RICE_BALL_ENERGY
+		"strawberry_toast":return "可送給居民，小栗特別喜歡。"
 		"tea_leaf":return "在貓空合作茶園採得，兩份可在烘焙台製成一批茶。"
 		"clay":return "由鶯歌合作陶坊供應；兩份可在工坊窯內燒製一只陶罐。"
 		"tea_jar":return "新罐可配送 3 次。小栗收貨後留下空罐，寄回即可再用；用完可修補。"
@@ -252,7 +278,8 @@ static func use_for(id: String, key_name:Callable=Callable()) -> String:
 		"tea_light","tea_deep":return "到貓空寄運桌選包材、寄往渡口；到小栗身旁結清茶貨。"
 		"": return ""
 		"wood", "stone": return "可用於建造，也能捐給渡口的共同工程。"
-		"fiber": return "可用於部分家具、屋頂和混合飼料。"
+		"fiber": return "可用於手作繩索、家具、屋頂和混合飼料。"
+		"rope": return "以五份纖維手作編成。"
 		"reinforced_pick": return "隨身攜帶後，可用十字鎬採集東北採石點旁的銅礦脈。"
 		"copper_ore": return "在工作臺加工成銅接頭。銅礦脈位於採石點旁，需攜帶強化石鎬。"
 		"copper_joint": return "用來組裝灑水器、種子機和溫室玻璃棚等設備。"
@@ -290,7 +317,7 @@ static func use_for(id: String, key_name:Callable=Callable()) -> String:
 		"bluebell_seed", "orange_blossom_seed", "chime_herb_seed":
 			var kind: String = id.trim_suffix("_seed")
 			return "在田尾育苗床或自家農田播種並澆水。目前全年可種，澆水後約 %d 秒成熟。不能出售。" % int(Flower.CROPS[kind].time)
-		"blue_dye": return "在田尾染色桌以鈴蘭藍花 %d 朵製成 %d 份，可捐給公共花園。不能出售。" % [int(Flower.DYE.ingredients.bluebell), int(Flower.DYE.yield)]
+		"blue_dye": return "可在田尾染色桌染工作服，或捐給公共花園。不能出售。"
 		"sugar": return "田尾花卉市集少量供應，每人每個遊戲日最多 %d 份。花園餅乾的材料。不能出售。" % Flower.SUGAR_DAILY
 		"garden_cookie":
 			var cookie: Dictionary = Flower.COOKIE.garden_cookie

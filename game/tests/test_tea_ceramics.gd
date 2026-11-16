@@ -107,6 +107,24 @@ func _initialize() -> void:
 	expect(act("tea_sell","home",Tea.RECEIVER).ok and int(world.state.players[ALPHA].coins)==coins+Tea.price_for("light","fiber") and own().returning.is_empty() and own().empties==0,"Fiber earns the lower price and sends no empty container")
 	expect(act("tea_auto","home",Tea.RECEIVER,"off").ok and not own().auto,"Automatic return can be disabled")
 
+	bag().clay=3 # FIXTURE: test kiln job boundaries.
+	expect(not act("tea_fire_pot",Tea.YINGGE,Tea.KILN).ok and bag().clay==3,"Flower pot requires four clay")
+	bag().clay=4
+	expect(act("tea_fire_pot",Tea.YINGGE,Tea.KILN).ok and bag().clay==0,"Start one flower pot and debit four clay")
+	expect(not act("tea_fire_take",Tea.YINGGE,Tea.KILN).ok and not act("tea_fire",Tea.YINGGE,Tea.KILN).ok,"Pot reserves kiln until ready and collected")
+	var pot_reload:=World.new()
+	expect(pot_reload.load_world(path) and Tea.own_record(pot_reload.state,ALPHA).kiln.get("kind")=="flower_pot","Active flower pot survives save load")
+	expect(world.step(60.0,true) and act("tea_fire_take",Tea.YINGGE,Tea.KILN).ok and bag().flower_pot==1,"Claim exactly one pot after 60 seconds")
+	expect(not act("tea_fire_take",Tea.YINGGE,Tea.KILN).ok,"Cannot claim the flower pot twice")
+	var pot_cell:=Vector2i(41,35)
+	var pot_destination:=Vector2i(41,36)
+	expect(act("build","home",pot_cell,"flower_pot").ok and bag().get("flower_pot",0)==0,"Place the fired pot from inventory")
+	expect(world.blocked(pot_cell),"Placed pot has furniture collision")
+	expect(not act("remove","home",pot_cell,"",BETA).ok,"Another player cannot remove the pot")
+	expect(act("move_object","home",pot_cell,World.key(pot_destination)).ok and not world.state.objects.has(World.key(pot_cell)),"Owner moves the pot without consuming another")
+	expect(pot_reload.load_world(path) and pot_reload.state.objects.get(World.key(pot_destination),{}).get("type")=="flower_pot","Placed pot persists in the primary save")
+	expect(act("remove","home",pot_destination).ok and bag().get("flower_pot",0)==1,"Dismantling returns the same ceramic pot")
+
 	var malformed:=world.state.duplicate(true)
 	malformed.tea_ceramics.players[ALPHA].returning={"count":-1,"ready":world.state.time}
 	expect(not valid(malformed),"Schema rejects a negative return batch")

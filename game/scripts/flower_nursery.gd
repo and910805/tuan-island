@@ -69,18 +69,19 @@ const STATION_CELLS:=[FARMER,SEED_TABLE,DYE_TABLE,XINGHE,MARKET]
 
 const FRESH:={"letter":false,"intro":false,"planted":{},"harvested":{},"saving":{},"saved":{},"dyeing":{},"shipped":false,"complete":false,"sugar_day":-1,"sugar_bought":0}
 const PHASES:=["locked","letter","travel","intro","plant","harvest","save","ship","garden","report","complete"]
-const ACTIONS:=["flower_letter","flower_intro","flower_save","flower_save_take","flower_dye","flower_dye_take","flower_buy","flower_ship","flower_give","flower_report"]
+const ACTIONS:=["flower_letter","flower_intro","flower_save","flower_save_take","flower_dye","flower_dye_take","flower_outfit","flower_buy","flower_ship","flower_give","flower_report"]
 ## action -> [region, cell]. flower_give accepts any cell of the GARDEN rect.
 const SITES:={
 	"flower_letter":[HOME,RECEIVER_HOME],
 	"flower_intro":[REGION,FARMER],
 	"flower_save":[REGION,SEED_TABLE],"flower_save_take":[REGION,SEED_TABLE],
 	"flower_dye":[REGION,DYE_TABLE],"flower_dye_take":[REGION,DYE_TABLE],
+	"flower_outfit":[REGION,DYE_TABLE],
 	"flower_buy":[REGION,MARKET],"flower_ship":[REGION,MARKET],
 	"flower_give":[REGION,GARDEN_CELL],
 	"flower_report":[REGION,XINGHE],
 }
-const OPTIONS:={"flower_save":["bluebell","orange_blossom","chime_herb"],"flower_buy":["bluebell_seed","orange_blossom_seed","chime_herb_seed","sugar"]}
+const OPTIONS:={"flower_outfit":["blue","original"],"flower_save":["bluebell","orange_blossom","chime_herb"],"flower_buy":["bluebell_seed","orange_blossom_seed","chime_herb_seed","sugar"]}
 const REJECT_MESSAGE:="田尾花圃只開放育苗床照顧和花圃工作台。"
 const HOME_SEED_MESSAGE:="完成田尾花圃的第三章後，小栗才會進花卉種子。"
 const FOREIGN_PLOT_MESSAGE:="這是其他島民的育苗床"
@@ -252,6 +253,17 @@ static func perform(record:Dictionary,garden:Dictionary,player:Dictionary,action
 			grant_all(inventory,{DYE.item:DYE.yield})
 			record.dyeing={}
 			return ok("領取藍色染料 ×2。")
+		"flower_outfit":
+			if not record.intro:return fail("先和花圃的阿蕾打聲招呼。")
+			if extra=="original":
+				if not player.get("blue_outfit",false):return fail("現在已穿著原色工作服。")
+				player.erase("blue_outfit")
+				return ok("換回原色工作服。")
+			if player.get("blue_outfit",false):return fail("現在已穿著藍染工作服。")
+			if int(inventory.get("blue_dye",0))<1:return fail("需要一份藍色染料。")
+			inventory.blue_dye-=1
+			player.blue_outfit=true
+			return ok("換上了藍染工作服，藍色染料 −1。")
 		"flower_buy":
 			if not record.intro:return fail("先和花圃的阿蕾打聲招呼。")
 			var price:int=MARKET_PRICES[extra]
