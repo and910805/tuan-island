@@ -1,0 +1,28 @@
+{
+  "status": "integrated_at_0.44; material sourcing follow-up at 0.45",
+  "followup_contract": "material-source-contract.json supersedes the original backpack-only sourcing restriction; automatic buffers remain unchanged. Historical protocol39/save21 evidence belongs to 0.44.",
+  "scope": "T036 manual sawmill/charcoal kiln ten-job queues; preserve automatic logistics. All other machines, material-chest sourcing and original full-plan requirements remain tracked separately, not declared complete.",
+  "save_version": 21,
+  "protocol": 39,
+  "field": "optional device.processing using existing CookingQueue canonical shape active/waiting/ready; never coexist with authoritative device.job or auto_enabled=true",
+  "recipes": "World.INDUSTRY.PROCESS filtered to the station type; reuse CookingQueue pure helper, no duplication or edits to its contract",
+  "actions": {
+    "queue_processing": "extra=recipe ID; owned device only; rejects auto mode/job; lazily imports legacy manual job only on successful enqueue",
+    "cancel_processing_job": "extra=exact 32-hex job ID; owned active/waiting only, full stored refund; never ready",
+    "start_processing": "unchanged on untouched legacy stations; enqueue when processing field exists",
+    "claim_processing": "oldest ready yield, exactly once, no cooking counters",
+    "cancel_processing": "legacy behavior unchanged; active cancellation if processing field exists; new UI uses exact ID"
+  },
+  "rules": [
+    "ten total active+waiting+ready; saved historical ingredients/yield/duration are authoritative",
+    "default backpack only; explicit single adjacent chest sourcing is specified separately by material-source-contract.json (0.45 follow-up)",
+    "regional world-time advance, including offline owners; whole-world empty pauses",
+    "active/waiting/ready queue blocks moving/removing and enabling automatic mode",
+    "empty processing may be removed atomically when enabling automatic mode; preserve input_wood/items",
+    "logistics must never start automatic work or duplicate projected manual jobs; manual queue outputs only enter backpack on claim",
+    "save failure and receipt replay preserve all state; history invalidation includes completed ticks",
+    "SaveSchema rejects wrong station, job coexistence, auto mode, malformed queue, owners different from device owner, duplicate IDs across both cooking and processing queues and all regions; old versions remain lazy",
+    "Session hashes every nested owner and may add display-only job projection for original art; never persist projection; action_completed includes exact sequence for all processing operations"
+  ],
+  "ui": "ProcessingQueueUI.open(app,cell) for sawmill/kiln through IndustryUI; compact manual queue / automatic buffer tabs; preserve all current automation actions; existing PNG/pixel theme; 1024x640 and1280x800; controls ProcessingEnqueue, ProcessingClaim, ProcessingCapacity, ProcessingCancel_<id>, ProcessingStatus"
+}

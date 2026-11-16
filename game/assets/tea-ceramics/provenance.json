@@ -1,0 +1,566 @@
+{
+  "generator": "OpenAI image_gen built-in",
+  "purpose": "Original tea/ceramics game sprites",
+  "date": "2026-11-14",
+  "items": {
+    "cells": [
+      {
+        "alpha_bounds": [
+          13,
+          235,
+          238,
+          244
+        ],
+        "cell_origin": [
+          0,
+          0
+        ],
+        "cell_size": [
+          271,
+          724
+        ],
+        "destination": [
+          2,
+          2
+        ],
+        "index": 0,
+        "name": "茶葉",
+        "scaled_size": [
+          27,
+          28
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          11,
+          266,
+          253,
+          208
+        ],
+        "cell_origin": [
+          271,
+          0
+        ],
+        "cell_size": [
+          272,
+          724
+        ],
+        "destination": [
+          34,
+          4
+        ],
+        "index": 1,
+        "name": "陶土",
+        "scaled_size": [
+          28,
+          23
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          17,
+          230,
+          240,
+          265
+        ],
+        "cell_origin": [
+          543,
+          0
+        ],
+        "cell_size": [
+          271,
+          724
+        ],
+        "destination": [
+          67,
+          2
+        ],
+        "index": 2,
+        "name": "空罐",
+        "scaled_size": [
+          25,
+          28
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          4,
+          265,
+          264,
+          209
+        ],
+        "cell_origin": [
+          814,
+          0
+        ],
+        "cell_size": [
+          272,
+          724
+        ],
+        "destination": [
+          98,
+          5
+        ],
+        "index": 3,
+        "name": "輕焙",
+        "scaled_size": [
+          28,
+          22
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          4,
+          265,
+          264,
+          209
+        ],
+        "cell_origin": [
+          1086,
+          0
+        ],
+        "cell_size": [
+          271,
+          724
+        ],
+        "destination": [
+          130,
+          5
+        ],
+        "index": 4,
+        "name": "深焙",
+        "scaled_size": [
+          28,
+          22
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          3,
+          257,
+          265,
+          222
+        ],
+        "cell_origin": [
+          1357,
+          0
+        ],
+        "cell_size": [
+          272,
+          724
+        ],
+        "destination": [
+          162,
+          4
+        ],
+        "index": 5,
+        "name": "纖維包",
+        "scaled_size": [
+          28,
+          23
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          17,
+          230,
+          241,
+          265
+        ],
+        "cell_origin": [
+          1629,
+          0
+        ],
+        "cell_size": [
+          271,
+          724
+        ],
+        "destination": [
+          195,
+          2
+        ],
+        "index": 6,
+        "name": "裝罐",
+        "scaled_size": [
+          25,
+          28
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          6,
+          237,
+          254,
+          251
+        ],
+        "cell_origin": [
+          1900,
+          0
+        ],
+        "cell_size": [
+          272,
+          724
+        ],
+        "destination": [
+          226,
+          2
+        ],
+        "index": 7,
+        "name": "茶叢",
+        "scaled_size": [
+          28,
+          28
+        ],
+        "touches_cell_edge": false
+      }
+    ],
+    "method": "8 horizontal cells with floor-rounded equal-width boundaries, alpha >= 16/255 bounds with 3px margin (ignore low-alpha background noise; original alpha preserved inside bounds), proportional scale to at most 28x28 using nearest neighbor, centered in 32x32 transparent cells",
+    "output": "game/assets/tea-ceramics/items.png",
+    "output_dimensions": [
+      256,
+      32
+    ],
+    "output_sha256": "3cad347a82659aa1a6d0cf3629928823255d8bca67afdab255c8439282bc7ab7",
+    "source": "game/assets/tea-ceramics/source/atlas.png",
+    "source_dimensions": [
+      2172,
+      724
+    ],
+    "source_sha256": "fccc7603679c8764fa4fb6a2974eec636932030f7746bd7245b772dd8407f319"
+  },
+  "buildings": {
+    "cells": [
+      {
+        "alpha_bounds_with_padding": [
+          7,
+          96,
+          713,
+          561
+        ],
+        "cell_origin": [
+          0,
+          0
+        ],
+        "cell_size": [
+          724,
+          724
+        ],
+        "destination": [
+          2,
+          26
+        ],
+        "index": 0,
+        "meaningful_alpha_touches_cell_edge": false,
+        "name": "茶屋",
+        "scaled_size": [
+          124,
+          98
+        ]
+      },
+      {
+        "alpha_bounds_with_padding": [
+          10,
+          46,
+          713,
+          618
+        ],
+        "cell_origin": [
+          724,
+          0
+        ],
+        "cell_size": [
+          724,
+          724
+        ],
+        "destination": [
+          130,
+          17
+        ],
+        "index": 1,
+        "meaningful_alpha_touches_cell_edge": false,
+        "name": "陶坊",
+        "scaled_size": [
+          124,
+          107
+        ]
+      },
+      {
+        "alpha_bounds_with_padding": [
+          12,
+          99,
+          712,
+          565
+        ],
+        "cell_origin": [
+          1448,
+          0
+        ],
+        "cell_size": [
+          724,
+          724
+        ],
+        "destination": [
+          258,
+          26
+        ],
+        "index": 2,
+        "meaningful_alpha_touches_cell_edge": false,
+        "name": "陶窯",
+        "scaled_size": [
+          124,
+          98
+        ]
+      }
+    ],
+    "method": "3 horizontal cells with floor-rounded boundaries, alpha >= 16/255 bounds plus 3px padding, original alpha preserved, nearest-neighbor proportional scaling at most 124x116, bottom edge aligned to y=124",
+    "output": "game/assets/tea-ceramics/buildings.png",
+    "output_dimensions": [
+      384,
+      128
+    ],
+    "output_sha256": "e8df8502400497dd73e8d23ffeb586decfa0f0a0fd38a5ba9c6ea2375eced616",
+    "source": "game/assets/tea-ceramics/source/buildings-clean.png",
+    "source_dimensions": [
+      2172,
+      724
+    ],
+    "source_sha256": "82165e92ba16b3d816240b618cc091209c46f760575846f756ba68ca568f3007"
+  },
+  "notes": "Source images preserved. Building image edited with image_gen to remove red fringes. Godot import scripts resize with nearest filtering and preserve alpha. Items are 32px cells, buildings128px cells.",
+  "files": {
+    "buildings.png": "e8df8502400497dd73e8d23ffeb586decfa0f0a0fd38a5ba9c6ea2375eced616",
+    "items.png": "3cad347a82659aa1a6d0cf3629928823255d8bca67afdab255c8439282bc7ab7",
+    "portraits.png": "025b20d748d37fb796db1f3f30e39be1c0e7725f6d6e8e59797a0d8d28007f87",
+    "residents.png": "197f9c975cb05f7024cf648e22b06a95365faa0f08b40fb0b10d8077343aaeda",
+    "source/atlas.png": "fccc7603679c8764fa4fb6a2974eec636932030f7746bd7245b772dd8407f319",
+    "source/buildings-clean.png": "82165e92ba16b3d816240b618cc091209c46f760575846f756ba68ca568f3007",
+    "source/buildings.png": "b4bd3e75e9a3a6a9412b0529ab82a704cad52296845c23a1409fc1f68e157cbb",
+    "source/residents-clean.png": "17dcf8e2e50e1a0d9bf79abaaaacd1fb564f5bd2525f83ef3fe3b50f45e2a245",
+    "source/residents.png": "877940310917de83a0d1fca82751b8df96b58a128db343fe98ef6d0c585227b7",
+    "source/wear.png": "612403b1a2233527922a33f873d6ae62a8faa9f6e33bc6c466a13f1d4bac1db8",
+    "wear.png": "35619021638940ec431a0dfe307de8eac1f68cb0917941a5fb7aec979de222f5"
+  },
+  "wear": {
+    "cells": [
+      {
+        "alpha_bounds": [
+          197,
+          150,
+          500,
+          583
+        ],
+        "cell_origin": [
+          0,
+          0
+        ],
+        "cell_size": [
+          887,
+          887
+        ],
+        "destination": [
+          4,
+          2
+        ],
+        "index": 0,
+        "name": "tea_worn_jar",
+        "scaled_size": [
+          24,
+          28
+        ],
+        "touches_cell_edge": false
+      },
+      {
+        "alpha_bounds": [
+          190,
+          150,
+          501,
+          583
+        ],
+        "cell_origin": [
+          887,
+          0
+        ],
+        "cell_size": [
+          887,
+          887
+        ],
+        "destination": [
+          36,
+          2
+        ],
+        "index": 1,
+        "name": "tea_spent_jar",
+        "scaled_size": [
+          24,
+          28
+        ],
+        "touches_cell_edge": false
+      }
+    ],
+    "method": "2 horizontal cells with floor-rounded equal-width boundaries, alpha >= 16/255 bounds with 3px margin (ignore low-alpha background noise; original alpha preserved inside bounds), proportional scale to at most 28x28 using nearest neighbor, centered in 32x32 transparent cells",
+    "output": "game/assets/tea-ceramics/wear.png",
+    "output_dimensions": [
+      64,
+      32
+    ],
+    "output_sha256": "35619021638940ec431a0dfe307de8eac1f68cb0917941a5fb7aec979de222f5",
+    "source": "game/assets/tea-ceramics/source/wear.png",
+    "source_dimensions": [
+      1774,
+      887
+    ],
+    "source_sha256": "612403b1a2233527922a33f873d6ae62a8faa9f6e33bc6c466a13f1d4bac1db8"
+  },
+  "residents": {
+    "cells": [
+      {
+        "alpha_bounds": [
+          67,
+          34,
+          511,
+          579
+        ],
+        "alpha_touches_cell_edge": false,
+        "cell_origin": [
+          0,
+          0
+        ],
+        "cell_size": [
+          633,
+          621
+        ],
+        "crop_bounds": [
+          64,
+          31,
+          517,
+          585
+        ],
+        "destination": [
+          5,
+          2
+        ],
+        "name": "chacha_portrait",
+        "scaled_size": [
+          53,
+          60
+        ]
+      },
+      {
+        "alpha_bounds": [
+          24,
+          34,
+          576,
+          579
+        ],
+        "alpha_touches_cell_edge": false,
+        "cell_origin": [
+          633,
+          0
+        ],
+        "cell_size": [
+          633,
+          621
+        ],
+        "crop_bounds": [
+          21,
+          31,
+          582,
+          585
+        ],
+        "destination": [
+          66,
+          2
+        ],
+        "name": "potter_portrait",
+        "scaled_size": [
+          60,
+          60
+        ]
+      },
+      {
+        "alpha_bounds": [
+          167,
+          79,
+          314,
+          524
+        ],
+        "alpha_touches_cell_edge": false,
+        "cell_origin": [
+          0,
+          621
+        ],
+        "cell_size": [
+          633,
+          621
+        ],
+        "crop_bounds": [
+          164,
+          76,
+          320,
+          530
+        ],
+        "destination": [
+          2,
+          1
+        ],
+        "name": "chacha_fullbody",
+        "scaled_size": [
+          28,
+          46
+        ]
+      },
+      {
+        "alpha_bounds": [
+          182,
+          77,
+          278,
+          526
+        ],
+        "alpha_touches_cell_edge": false,
+        "cell_origin": [
+          633,
+          621
+        ],
+        "cell_size": [
+          633,
+          621
+        ],
+        "crop_bounds": [
+          179,
+          74,
+          284,
+          532
+        ],
+        "destination": [
+          35,
+          1
+        ],
+        "name": "potter_fullbody",
+        "scaled_size": [
+          25,
+          46
+        ]
+      }
+    ],
+    "method": "Equal quadrants; alpha >= 16/255 for bounds, 3 source pixel crop margin with alpha preserved; proportional nearest-neighbor scaling; portraits padded 2, residents fit 30x46 and bottom aligned at y=47 exclusive.",
+    "original_source": "game/assets/tea-ceramics/source/residents.png",
+    "original_source_sha256": "877940310917de83a0d1fca82751b8df96b58a128db343fe98ef6d0c585227b7",
+    "portraits_sha256": "025b20d748d37fb796db1f3f30e39be1c0e7725f6d6e8e59797a0d8d28007f87",
+    "residents_sha256": "197f9c975cb05f7024cf648e22b06a95365faa0f08b40fb0b10d8077343aaeda",
+    "source": "game/assets/tea-ceramics/source/residents-clean.png",
+    "source_dimensions": [
+      1266,
+      1242
+    ],
+    "source_sha256": "17dcf8e2e50e1a0d9bf79abaaaacd1fb564f5bd2525f83ef3fe3b50f45e2a245",
+    "generator": "OpenAI built-in image_gen; original generation followed by fringe-cleanup edit",
+    "prompt_record": "work/tea-residents/prompts.json"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-11-14",
+  "nature": "AI-generated original high-resolution source (1774x887) with soft alpha; NOT hand-placed native pixel art. Depicts A-Lei, a fictional adult flower-nursery farmer designed for this game. No real person was named or referenced, and it is not a licensed or existing character.",
+  "assets": [
+    {
+      "file": "flower-resident.png",
+      "source": "work/flowers/art-source/flower-resident-source.png",
+      "generation_record": "work/flowers/art-source/resident-generation.json",
+      "sha256": "6d14eb8e45a42141e3bc43757abcce319c40b96ac9283b56e1259ecbf53754d2",
+      "size": [1774, 887],
+      "layout": "two equal 887x887 panels: left = full-body standing NPC, right = head-and-shoulders dialogue portrait of the same character",
+      "measured_alpha_gt8_bounds": {
+        "resident": {"x": [264, 645], "y": [51, 853]},
+        "portrait": {"x": [958, 1669], "y": [64, 845]}
+      },
+      "windows": {
+        "resident": {"region": [175, 16, 560, 840], "native": [32, 48], "src_px_per_native_px": 17.5, "feet_anchor": [16, 48]},
+        "portrait": {"region": [898, 27, 832, 832], "native": [64, 64], "src_px_per_native_px": 13.0}
+      }
+    }
+  ],
+  "integration": "Copied byte for byte (sha256 matches the source); no pixel edits and no Python/Pillow image editing. scripts/flower_resident_art.gd takes each window with Image.get_region, resizes it to native size with Image.INTERPOLATE_NEAREST and caches it, using the same pipeline as flower_art.gd. Each window has exactly the native aspect ratio, so nothing is stretched. Godot import is lossless (compress/mode=0) with no mipmaps.",
+  "alpha": "Faint haze (alpha 1-8) spreads across both panels, and edges are soft. Both are kept rather than thresholded. At native size the resident has 609 solid, 10 soft (64-223) and 59 ghost (1-63) pixels; the portrait has 2226 solid, 19 soft and 115 ghost pixels.",
+  "status": "Native 1x/4x galleries on grass and paper reviewed (work/flowers/resident-check). Usable as a display-only adapter. Not production-certified pixel art, and it has not been reviewed in-world."
+}

@@ -1,0 +1,32 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-11-14",
+  "nature": "AI-generated original high-resolution source (1254x1254) with soft alpha; NOT hand-placed native pixel art. Fictional designed nursery furniture/structures, not historical or architectural reconstruction; the shelter sign is blank (no operator, route or station name).",
+  "assets": [
+    {
+      "file": "flower-props.png",
+      "source": "work/flowers/art-source/flower-props-source.png",
+      "generation_record": "work/flowers/art-source/props-generation.json",
+      "sha256": "d8c55aec7b019f6796a11ccfb21a2c06eecdde88fc97fb47904608605614d311",
+      "size": [1254, 1254],
+      "layout": "nominal 2x2 (627px cells): seed_saving_table, dye_table / community_flower_trellis, nursery_shuttle_shelter. Objects are NOT on the equal-cell grid: the shelter starts at x606, left of the x627 line, so equal cells would clip it.",
+      "measured_alpha_gt8_bounds": {
+        "seed_saving_table": {"x": [43, 591], "y": [60, 572]},
+        "dye_table": {"x": [635, 1221], "y": [63, 571]},
+        "community_flower_trellis": {"x": [51, 562], "y": [633, 1199]},
+        "nursery_shuttle_shelter": {"x": [606, 1223], "y": [645, 1201]}
+      },
+      "gutters_alpha_gt8": {"top_row_x": [592, 634], "bottom_row_x": [563, 605], "rows_y": [573, 632]},
+      "per_prop_clip_and_window": {
+        "seed_saving_table": {"clip": [0, 0, 599, 602], "window": [13, 43, 608, 532], "native": [64, 56], "src_px_per_native_px": 9.5},
+        "dye_table": {"clip": [599, 0, 655, 602], "window": [624, 43, 608, 532], "native": [64, 56], "src_px_per_native_px": 9.5},
+        "community_flower_trellis": {"clip": [0, 602, 599, 652], "window": [18, 624, 576, 576], "native": [64, 64], "src_px_per_native_px": 9.0},
+        "nursery_shuttle_shelter": {"clip": [599, 602, 655, 652], "window": [595, 562, 640, 640], "native": [80, 80], "src_px_per_native_px": 8.0}
+      }
+    }
+  ],
+  "native_size_decision": "Proposed 64x48 tables rejected: the table silhouettes are ~1.07-1.15 w/h, so 64x48 would mean squashing or a 51x48 squat sprite. Both tables use one shared scale and are 64x56. Trellis 64x64 and shelter 80x80 keep the proposed footprints. Scales differ slightly (9.5 / 9.0 / 8.0 source px per native px) to honour the proposed world footprints; the source itself has no reliable shared scale.",
+  "integration": "Byte-for-byte copy (sha256 equal to source); no pixel edits, no Python/Pillow image editing, no geometry stand-ins. scripts/flower_scene_art.gd blits each prop's window from its own quadrant clip onto a transparent canvas (Godot Image.blit_rect; overhang stays transparent, so neighbours and stray haze never leak in), then resizes to the native size with Image.INTERPOLATE_NEAREST and caches per ID (same get_region/resize pipeline family as flower_art.gd and bakery_art.gd). Windows keep native aspect exactly, are centred on the measured bounds (<=1 source px off) and bottom-anchored 2-4 source px under the feet. Godot import: lossless (compress/mode=0), no mipmaps.",
+  "alpha_measurement": "Source has broad faint haze (alpha 1-8) across the canvas, including the gutters; visible content (alpha>8) never touches any clip border and lies fully inside each window. At native size each prop keeps 158-475 ghost pixels (alpha 1-7, visually invisible) and 31-109 fringe pixels (alpha 8-63). See work/flowers/props-check/test-output.txt.",
+  "status": "Native 1x/4x galleries on grass and soil reviewed (work/flowers/props-check). Acceptable as a display-only adapter. Native pixel validation is still PENDING: soft alpha edges and nearest downsampling of a non-native source mean small details (seed envelopes, sieve, shears) turn into noisy clusters. This is not production-certified pixel art. In-world review on real tiles at real camera zoom has not been done."
+}

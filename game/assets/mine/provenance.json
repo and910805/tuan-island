@@ -1,0 +1,44 @@
+{
+  "assets": [
+    {
+      "file": "props.png",
+      "source": "source/mine-props.png",
+      "tool": "OpenAI ImageGen",
+      "prompt_summary": "Transparent cozy pixel-art mining props with timber access, rest and service fixtures, and gold-bearing rock.",
+      "integration": "Godot generate_mine_atlas.gd splits the source into five columns, trims transparent bounds, fits each sprite within 29×35 px with nearest sampling, and anchors them to baseline 38 in 32×40 px cells."
+    },
+    {
+      "file": "cavern.png",
+      "source": "source/cavern.png",
+      "tool": "OpenAI ImageGen",
+      "prompt_summary": "Transparent cozy pixel-art rock wall, lantern-lit timber support, and mining rail.",
+      "integration": "Godot generate_cavern_atlas.gd crops three source regions and fits them into bottom-aligned 64×64 px cells using nearest sampling."
+    },
+    {
+      "file": "gold-ore.png",
+      "source": "props.png",
+      "integration": "Godot extracts the fifth cell at (128,0,32,40) and resizes it to a 32×32 px inventory texture using nearest sampling."
+    },
+    {
+      "file": "../jinguashi/mine-entrance-open.png",
+      "source": "../jinguashi/mine-entrance.png",
+      "tool": "OpenAI ImageGen",
+      "prompt_summary": "Open the timber mine portal by removing the blocking crossbars while preserving the surrounding pixel-art structure.",
+      "integration": "Godot loads the PNG and resizes it to 192×128 px using nearest sampling for the surface entrance."
+    },
+    {
+      "file": "freight.png",
+      "integration": "Godot work/generate_mine_freight_atlas.gd trims four source segments to their alpha bounds, scales nearest to 28 px maximum and aligns within 32×32 cells. Fifth cell duplicates the loaded cart with altered wheel hubs.",
+      "tool": "OpenAI ImageGen",
+      "prompt": "Transparent alpha spritesheet for TuanIsland, top-down 3/4 cozy 32px pixel life simulator. Four well separated equal columns in a single row with wide transparent margins, exact same scale. Columns: 1 empty side-view mine cart with cedar slats copper rims and 2 dark iron wheels pointing right; 2 identical cart filled with golden ore lumps, wheel spoke alternate orientation; 3 isolated wood crate with dark slate and gold ore visible; 4 short wooden delivery post with copper edged ore-cart symbol, no text. Hard pixel edges, limited warm palette, crisp game assets, isolated props without floor/platform/shadows/letters/UI. Avoid overlap and preserve full alpha transparency around sprites.",
+      "source": "source/freight.png"
+    },
+    {
+      "source": "source/gold-sample.png",
+      "prompt": "One isolated cozy Taiwanese 32px pixel game inventory icon, angled view of a small angular charcoal gray rock specimen crossed by one narrow ochre-gold vein, displayed atop a low dark walnut museum sample plinth with a tiny copper fastener. Compact silhouette. The rock is mostly gray, clearly a mounted mineral sample, no logs, no gold ingot, no glass case. Crisp chunky pixel edges, limited warm palette, no letters or background, alpha outside.",
+      "file": "gold-sample.png",
+      "integration": "Godot work/generate_gold_sample.gd trims the alpha bounds, fits within 28×28 using nearest sampling, and centers in a 32×32 transparent canvas.",
+      "tool": "OpenAI ImageGen"
+    }
+  ]
+}

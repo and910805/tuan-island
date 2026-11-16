@@ -1,0 +1,8 @@
+[configuration]
+entry_symbol = "island_world_lock_init"
+compatibility_minimum = "4.7"
+reloadable = false
+
+[libraries]
+windows.x86_64 = "res://addons/world_lock/island_world_lock.dll"
+linux.x86_64 = "res://addons/world_lock/libisland_world_lock.so"

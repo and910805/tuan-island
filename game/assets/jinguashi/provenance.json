@@ -1,0 +1,9 @@
+{
+  "generator": "built-in image_gen",
+  "transparent_background": true,
+  "source": "Original generated for TuanIsland; not copied from another game",
+  "file": "mine-entrance.png",
+  "sha256": "03bd02e78e808d88598bbcb5fb464b0db65b5d6e1e933b26df24a3c1ee6e2e8e",
+  "prompt": "One transparent pixel-art copper mine entrance inspired by Jinguashi, irregular mossy ochre-gray rock ledge, timber frame closed with crossbar, two amber lanterns, short rail, stacked timber and ore cart; orthographic 3/4 RPG view for warm 32px tile life simulation. Single isolated object, no text, UI, people or rectangular landscape.",
+  "runtime": "Original PNG preserved, nearest-neighbor 192x128 cached texture rendered 288x192; coherent grid scale needs further art review."
+}

@@ -1,0 +1,387 @@
+extends SceneTree
+## T017 hand-tool action feedback, local (no transport) level:
+## 1. Session records a public event only for a fresh, World-confirmed success of
+##    each hand tool; rejections, rate-limited, re-sent and receipt-replayed
+##    requests, non-tool actions and farm machines add nothing. Events carry only
+##    {n,actor,tool,x,y[,tx,ty]}; same-region filtering, TTL, cap, leaving player.
+## 2. ToolActionFeedback plays each event once: baseline on first snapshot,
+##    duplicate snapshots, region change, server epoch change, reset (reconnect),
+##    absent actors, invalid events, one animation per actor, expiry.
+## 3. Per-tool plans: motion + particles normally; reduced motion has a fixed
+##    pose, no lunge/lift and no particles. Held icons come from existing PNG art.
+## 4. WorldView draw path (real _draw frames): normal motion draws particles,
+##    lunges and a moving tool; reduced motion draws the tool but no particles,
+##    no lunge and a single angle.
+const Session=preload("res://scripts/session.gd")
+const World=preload("res://scripts/world.gd")
+const Feedback=preload("res://scripts/tool_action_feedback.gd")
+const View=preload("res://scripts/world_view.gd")
+const ALPHA:="tool-action-alpha-private-token"
+const BETA:="tool-action-beta-private-token"
+const GAMMA:="tool-action-gamma-private-token"
+const EVENT_KEYS:=["actor","n","tool","x","y"]
+const MOVE_KEYS:=["actor","n","tool","tx","ty","x","y"]
+
+var checks:=0
+var failures:=0
+var session
+var w
+var seqs:={1:0,2:0,3:0}
+var notices:Array=[]
+var clock_ms:=500000
+
+func expect(ok:bool,label:String)->void:
+	checks+=1
+	if not ok:
+		failures+=1
+		push_error("FAIL "+label)
+
+func _initialize()->void:
+	run.call_deferred()
+
+func on_notice(message:String,success:bool)->void:
+	notices.append([message,success])
+
+static func public_id(token:String)->String:
+	return token.sha256_text().left(16)
+
+## Sends one request through Session._action (the same path request_action uses).
+func send(id:int,action:String,p:Vector2i,extra:String="")->bool:
+	seqs[id]=int(seqs[id])+1
+	session.rates[id]=[]
+	var before:=notices.size()
+	session._action(id,int(seqs[id]),action,p,extra)
+	if id!=1:return true
+	return notices.size()>before and bool(notices.back()[1])
+
+func events_for(region:String)->Array:
+	return session.tool_action_view(region).events
+
+func run()->void:
+	await server_events()
+	client_observer()
+	tool_plans()
+	await view_draw_path()
+	print("TOOL_ACTION_FEEDBACK_TESTS checks=%d failures=%d"%[checks,failures])
+	quit(1 if failures>0 or checks==0 else 0)
+
+# ------------------------------------------------------------ 1. server --
+
+func server_events()->void:
+	session=Session.new()
+	root.add_child(session)
+	session.set_physics_process(false)
+	session.notice.connect(on_notice)
+	session.tool_action_clock=func():return clock_ms
+	session.world=World.new()
+	w=session.world
+	for token in [ALPHA,BETA,GAMMA]:w.add_player(token,token.left(10))
+	w.state.players[BETA].x=40.5
+	w.state.players[BETA].y=35.5
+	w.state.players[GAMMA].region="jinguashi"
+	session.peers={1:ALPHA,2:BETA,3:GAMMA}
+	session.sequences={1:0,2:0,3:0}
+	session.rates={1:[],2:[],3:[]}
+	expect(not session.tool_action_epoch.is_empty(),"server session has a random tool-action epoch")
+	expect(Session.PROTOCOL==45,"multiplayer protocol version unchanged")
+	me().inventory.wood=100
+	me().inventory.stone=50
+	var plot:=Vector2i(38,34)
+	var tree:=Vector2i(39,35)
+	w.state.forest[World.key(tree)]={"owner":ALPHA,"mature":true,"growth":World.TREE_TIME}
+	var rock:=find_rock()
+	expect(rock!=Vector2i(-1,-1),"fixture: a natural rock cell exists on the home island")
+	var steps:=[
+		["hoe",plot,""],
+		["seed",plot,"radish"],
+		["water",plot,""],
+		["harvest",plot,""],
+		["axe",tree,""],
+		["pick",rock,""],
+		["build",Vector2i(38,33),"chest"],
+		["move_object",Vector2i(38,33),"40,33"],
+		["remove",Vector2i(40,33),""],
+		["plant_tree",Vector2i(40,34),""],
+	]
+	var last_n:=0
+	var tools_seen:Array=[]
+	for step in steps:
+		var alpha:Dictionary=me()
+		alpha.x=World.SPAWN.x
+		alpha.y=World.SPAWN.y
+		if step[0]=="harvest":
+			w.state.crops[World.key(plot)].growth=float(World.CROPS.radish.time)
+			w.state.crops[World.key(plot)].wet=true
+		elif step[0]=="pick":
+			alpha.x=rock.x+0.5
+			alpha.y=rock.y+1.5
+		var count:=events_for("home").size()
+		var inventory_before:Dictionary=alpha.inventory.duplicate(true)
+		var ok:=send(1,step[0],step[1],step[2])
+		expect(ok,"%s succeeds on the server"%step[0])
+		var events:=events_for("home")
+		expect(events.size()==count+1,"%s success adds exactly one public event"%step[0])
+		if events.size()!=count+1:continue
+		var event:Dictionary=events.back()
+		var keys:Array=event.keys().map(func(key):return str(key))
+		keys.sort()
+		expect(keys==(MOVE_KEYS if step[0]=="move_object" else EVENT_KEYS),"%s event carries only %s (got %s)"%[step[0],"tool/actor/cell",keys])
+		expect(event.tool==step[0] and event.actor==public_id(ALPHA) and event.x==step[1].x and event.y==step[1].y,"%s event names tool, public actor and target cell"%step[0])
+		expect(int(event.n)>last_n,"%s event number increases"%step[0])
+		last_n=int(event.n)
+		tools_seen.append(event.tool)
+		if step[0]=="move_object":expect(event.tx==40 and event.ty==33,"move_object event carries the destination cell")
+		if step[0] in ["seed","plant_tree","build"]:expect(me().inventory!=inventory_before,"%s still consumed its normal cost"%step[0])
+	var expected_tools:Array=Session.TOOL_ACTION_EVENTS.duplicate()
+	expected_tools.sort()
+	tools_seen.sort()
+	expect(tools_seen==expected_tools,"every hand tool in T017 list produced its event: %s"%[tools_seen])
+	me().x=World.SPAWN.x
+	me().y=World.SPAWN.y
+
+	# Rejections: notice is a failure and no event appears.
+	me().inventory.sapling=0
+	var rejects:=[["hoe",plot,""],["seed",Vector2i(41,34),"radish"],["water",Vector2i(41,34),""],["harvest",Vector2i(41,34),""],
+		["axe",Vector2i(41,34),""],["pick",tree,""],["build",Vector2i(2,2),"wall"],["remove",Vector2i(41,34),""],
+		["plant_tree",Vector2i(41,34),""],["move_object",Vector2i(41,34),"abc"]]
+	for reject in rejects:
+		var count:=events_for("home").size()
+		var state_before:Dictionary=w.state.duplicate(true)
+		expect(not send(1,reject[0],reject[1],reject[2]),"%s rejection reported as failure"%reject[0])
+		expect(events_for("home").size()==count,"%s rejection adds no event"%reject[0])
+		expect(w.state.players[ALPHA].inventory==state_before.players[ALPHA].inventory,"%s rejection leaves the bag unchanged"%reject[0])
+
+	# Re-sent sequence (network retry) is dropped before World; no second event.
+	var water_count:=events_for("home").size()
+	expect(send(1,"water",plot),"fresh water request succeeds")
+	expect(events_for("home").size()==water_count+1,"fresh water request animates once")
+	session.rates[1]=[]
+	session._action(1,int(seqs[1]),"water",plot,"")
+	expect(events_for("home").size()==water_count+1,"re-sent sequence adds no event")
+
+	# A stored receipt is a replay of an old answer: World says ok, nothing is animated.
+	var replay_seq:=int(seqs[1])+1
+	var replay_id:="%s-%d-%d"%[session.session_nonce,1,replay_seq]
+	w.state.players[ALPHA].receipts[replay_id]={"ok":true,"message":"舊回覆"}
+	seqs[1]=replay_seq
+	session.rates[1]=[]
+	var replay_count:=events_for("home").size()
+	var before_notices:=notices.size()
+	session._action(1,replay_seq,"water",plot,"")
+	expect(notices.size()>before_notices and bool(notices.back()[1]),"receipt replay still answers ok")
+	expect(events_for("home").size()==replay_count,"receipt replay adds no event")
+
+	# Rate-limited request never reaches World and never animates.
+	seqs[1]=int(seqs[1])+1
+	var stamps:Array=[]
+	for i in 12:stamps.append(Time.get_ticks_msec())
+	session.rates[1]=stamps
+	var limited_count:=events_for("home").size()
+	session._action(1,int(seqs[1]),"water",plot,"")
+	expect(not bool(notices.back()[1]),"rate-limited request reported as failure")
+	expect(events_for("home").size()==limited_count,"rate-limited request adds no event")
+
+	# Farm machine keeps its own feedback and is not duplicated as a hand-tool event.
+	me().x=42.5
+	me().y=36.5
+	me().inventory.merge({"tiller":1,"charcoal":3},true)
+	var machine_count:=events_for("home").size()
+	expect(send(1,"till_area",Vector2i(42,36)),"till_area succeeds")
+	expect(events_for("home").size()==machine_count,"farm machine success adds no hand-tool event")
+	expect(not session.snapshot.get("players",{}).get(public_id(ALPHA),{}).get("last_till",{}).is_empty(),"farm machine keeps its existing last_till feedback")
+	me().x=World.SPAWN.x
+	me().y=World.SPAWN.y
+
+	# Snapshot projection: own region only, minimal data, nothing private.
+	expect(send(2,"water",plot),"beta request dispatched")
+	var home_events:=events_for("home")
+	expect(home_events.any(func(e):return e.actor==public_id(BETA) and e.tool=="water"),"beta's confirmed water is a home event")
+	session._record_tool_action(GAMMA,"hoe",Vector2i(5,5),"")
+	expect(not events_for("home").any(func(e):return e.actor==public_id(GAMMA)),"other-region action is not sent to home recipients")
+	expect(events_for("jinguashi").size()==1 and events_for("jinguashi")[0].actor==public_id(GAMMA),"other-region recipients get only their region's event")
+	session._send_snapshot(1)
+	var own_snap:Dictionary=session.snapshot
+	expect(own_snap.has("tool_actions") and own_snap.tool_actions.get("epoch")==session.tool_action_epoch,"own snapshot carries tool_actions with the server epoch")
+	var text:=JSON.stringify(own_snap.get("tool_actions",{}))
+	for secret in [ALPHA,BETA,GAMMA,session.session_nonce,"inventory","coins","message","receipts","radish"]:
+		expect(not text.contains(secret),"tool_actions payload does not contain %s"%("a raw token" if secret in [ALPHA,BETA,GAMMA] else secret))
+	expect(own_snap.tool_actions.events.all(func(e):return own_snap.players.has(e.actor)),"every event actor is an already-public player id")
+	# Recipient copies cannot alter the server buffer.
+	var original_tool:String=session.tool_actions[0].event.tool
+	own_snap.tool_actions.events[0].tool="remove" if original_tool!="remove" else "hoe"
+	expect(session.tool_actions[0].event.tool==original_tool,"recipient copy is detached from the server buffer")
+
+	# TTL and cap.
+	clock_ms+=Session.TOOL_ACTION_TTL_MS+1
+	expect(events_for("home").is_empty() and events_for("jinguashi").is_empty(),"events expire after the TTL")
+	for i in Session.TOOL_ACTION_MAX+8:session._record_tool_action(ALPHA,"water",plot,"")
+	expect(session.tool_actions.size()==Session.TOOL_ACTION_MAX,"server buffer is capped")
+	# Player leaves: their pending events are dropped.
+	session._record_tool_action(BETA,"water",plot,"")
+	session._peer_left(2)
+	expect(not events_for("home").any(func(e):return e.actor==public_id(BETA)),"leaving player's events are dropped")
+	# Save data is untouched: World state has no tool-action field.
+	expect(not JSON.stringify(w.state).contains("tool_action"),"World/save state carries no tool-action data")
+	session.world=null
+	session.queue_free()
+	await process_frame
+
+## Always the live record: a rejected World.act may restore a state copy.
+func me()->Dictionary:
+	return w.state.players[ALPHA]
+
+func find_rock()->Vector2i:
+	for y in range(15,60):
+		for x in range(20,80):
+			var p:=Vector2i(x,y)
+			if p==Vector2i(54,25) or p==World.COPPER_CELL:continue
+			if World.base_resource(p)=="rock" and not w.water(p) and not w.protected(p) and w.is_land(p+Vector2i(0,1)):return p
+	return Vector2i(-1,-1)
+
+# ------------------------------------------------------- 2. observer --
+
+func snap(region:String,epoch:String,events:Array,players:Array)->Dictionary:
+	var people:={}
+	for id in players:people[id]={"x":39.5,"y":33.5,"name":id}
+	return {"region_id":region,"players":people,"crops":{"38,34":{"kind":"radish"}},"tool_actions":{"epoch":epoch,"events":events}}
+
+func ev(n:int,actor:String,tool:String,x:int=38,y:int=34)->Dictionary:
+	return {"n":n,"actor":actor,"tool":tool,"x":x,"y":y}
+
+func client_observer()->void:
+	var a:="a1b2c3d4e5f60718"
+	var b:="0123456789abcdef"
+	var fb:=Feedback.new()
+	var first:=snap("home","E1",[ev(4,b,"hoe")],[a,b])
+	expect(fb.observe({},first,a,0.0).is_empty(),"first snapshot is a baseline (event already in flight is not replayed)")
+	expect(fb.active(b,0.0).is_empty(),"baseline leaves no animation")
+	var second:=snap("home","E1",[ev(4,b,"hoe"),ev(5,b,"seed")],[a,b])
+	expect(fb.observe(first,second,a,1.0)==[b],"a new event starts its actor's animation")
+	expect(fb.active(b,1.0).get("tool")=="seed" and fb.active(b,1.0).get("item")=="radish_seed","seed animation uses the sown crop's seed icon")
+	expect(fb.active(a,1.0).is_empty(),"another actor is not animated")
+	expect(fb.observe(second,second.duplicate(true),a,1.1).is_empty() and fb.active(b,1.1).get("started")==1.0,"duplicate snapshot does not restart")
+	expect(fb.active(b,1.0+Feedback.DURATION+0.01).is_empty(),"animation times out")
+	var third:=snap("home","E1",[ev(6,a,"axe",39,35),ev(7,a,"pick",39,35)],[a,b])
+	expect(fb.observe(second,third,a,2.0)==[a] and fb.active(a,2.0).tool=="pick","one animation per actor: the newest event wins")
+	expect(fb.active(a,2.0).n==7,"newest event number kept")
+	var harvest_prev:=snap("home","E1",[],[a,b])
+	var harvest_next:=snap("home","E1",[ev(8,a,"harvest")],[a,b])
+	harvest_next.crops={}
+	fb.observe(harvest_prev,harvest_next,a,3.0)
+	expect(fb.active(a,3.0).get("item")=="radish","harvest animation uses the crop from the previous snapshot")
+	var moved:=snap("home","E1",[ev(9,a,"move_object",38,33)],[a,b])
+	moved.tool_actions.events[0].merge({"tx":40,"ty":33})
+	fb.observe(harvest_next,moved,a,4.0)
+	expect(fb.active(a,4.0).get("to")==Vector2i(40,33),"move_object animation targets the destination")
+	var junk:=snap("home","E1",[{"n":10,"actor":ALPHA,"tool":"hoe","x":1,"y":1},ev(11,a,"fish"),ev(12,a,"till_area"),{"n":"13","actor":a,"tool":"hoe","x":1,"y":1},ev(14,"ffffffffffffffff","hoe")],[a,b])
+	expect(fb.observe(moved,junk,a,5.0).is_empty(),"malformed, non-hand-tool and absent-actor events are ignored")
+	var b_acts:=snap("home","E1",[ev(16,b,"build",38,33)],[a,b])
+	expect(fb.observe(junk,b_acts,a,6.0)==[b],"precondition: beta's build animates")
+	var left:=snap("home","E1",[ev(16,b,"build",38,33)],[a])
+	fb.observe(b_acts,left,a,6.1)
+	expect(fb.active(b,6.1).is_empty(),"an actor who left stops animating at once")
+	# Region change: baseline again (an old event in the new region is not replayed).
+	fb.observe(left,snap("home","E1",[ev(20,b,"water")],[a,b]),a,7.0)
+	expect(not fb.active(b,7.0).is_empty(),"precondition: home event animates")
+	var other:=snap("jinguashi","E1",[ev(15,b,"pick")],[a,b])
+	expect(fb.observe({},other,a,7.1).is_empty() and fb.active(b,7.1).is_empty(),"region change clears and baselines without replay")
+	expect(fb.observe(other,snap("jinguashi","E1",[ev(15,b,"pick"),ev(21,b,"axe")],[a,b]),a,7.2)==[b],"new event in the new region plays")
+	# Server restart (new epoch, counter restarts): baseline, no replay.
+	expect(fb.observe({},snap("jinguashi","E2",[ev(1,b,"hoe")],[a,b]),a,8.0).is_empty(),"new server epoch is a baseline")
+	expect(fb.observe({},snap("jinguashi","E2",[ev(1,b,"hoe"),ev(2,b,"water")],[a,b]),a,8.1)==[b],"after epoch baseline new events play")
+	# Reconnect (main.gd resets the observer on disconnect): baseline, no replay.
+	fb.reset()
+	expect(fb.observe({},snap("jinguashi","E2",[ev(2,b,"water"),ev(3,b,"axe")],[a,b]),a,9.0).is_empty(),"after reset the first snapshot does not replay")
+	# Own id change (another character in the same process): baseline.
+	expect(fb.observe({},snap("jinguashi","E2",[ev(3,b,"axe"),ev(4,b,"hoe")],[a,b]),b,9.5).is_empty(),"own id change is a baseline")
+	# Missing payload (older server) is harmless.
+	var bare:=snap("jinguashi","E2",[],[a,b])
+	bare.erase("tool_actions")
+	expect(fb.observe({},bare,b,10.0).is_empty(),"snapshot without tool_actions is ignored")
+
+# --------------------------------------------------------- 3. plans --
+
+func tool_plans()->void:
+	for tool in Feedback.TOOLS:
+		var particles:=0
+		var motion:={}
+		var lunges:=0
+		var reduced_particles:=0
+		var reduced_motion:={}
+		var reduced_lunge:=0
+		for facing in [Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP]:
+			for step in 21:
+				var t:=step/20.0
+				var normal:=Feedback.plan(tool,t,false,facing)
+				particles+=normal.particles.size()
+				motion["%s|%s|%s"%[snappedf(normal.angle,0.01),normal.lift,normal.lunge]]=true
+				if normal.lunge!=Vector2.ZERO:lunges+=1
+				var calm:=Feedback.plan(tool,t,true,facing)
+				reduced_particles+=calm.particles.size()
+				if calm.lunge!=Vector2.ZERO or calm.lift!=0.0:reduced_lunge+=1
+				reduced_motion["%s|%s"%[facing,snappedf(calm.angle,0.01)]]=true
+		expect(particles>0,"%s draws target particles with normal motion"%tool)
+		expect(motion.size()>4,"%s pose changes over the action with normal motion"%tool)
+		expect(reduced_particles==0,"%s reduced motion draws no particles"%tool)
+		expect(reduced_lunge==0,"%s reduced motion has no lunge or lift"%tool)
+		expect(reduced_motion.size()<=4,"%s reduced motion keeps one fixed pose per facing"%tool)
+		if tool in ["hoe","axe","pick","plant_tree"]:expect(lunges>0,"%s body leans into the action with normal motion"%tool)
+		expect(Feedback.held_icon(tool)!=null,"%s held icon comes from existing PNG art"%tool)
+	expect(Feedback.held_icon("seed","carrot_seed")!=null,"seed icon follows the sown crop")
+	expect(Feedback.held_icon("fish")==null,"fishing keeps its own art (no hand-tool icon)")
+	expect(Feedback.facing_toward(Vector2(39.5,33.5),Vector2i(41,33),Vector2i.DOWN)==Vector2i.RIGHT,"actor turns toward the target cell")
+	expect(Feedback.facing_toward(Vector2(39.5,33.5),Vector2i(39,33),Vector2i.LEFT)==Vector2i.LEFT,"own cell keeps the previous facing")
+
+# ------------------------------------------------------ 4. draw path --
+
+func view_draw_path()->void:
+	var host=Session.new()
+	root.add_child(host)
+	host.set_physics_process(false)
+	host.world=World.new()
+	host.world.add_player(ALPHA,"alpha")
+	host.peers={1:ALPHA}
+	host.sequences={1:0}
+	host.rates={1:[]}
+	var plot:=Vector2i(38,34)
+	var seq:=0
+	seq+=1
+	host._action(1,seq,"hoe",plot,"")
+	var view=View.new()
+	root.add_child(view)
+	view.update_snapshot(host.snapshot,host.own_id)
+	var results:={}
+	for reduced in [false,true]:
+		view.reduced_motion=reduced
+		view.tool_draw_stats={"held":0,"particles":0,"lunge":0,"angles":{}}
+		host.rates[1]=[]
+		seq+=1
+		host._action(1,seq,"water",plot,"")
+		view.update_snapshot(host.snapshot,host.own_id)
+		var started:float=view.elapsed
+		expect(not view.tool_action_plan(host.own_id).is_empty(),"view starts the confirmed water action (reduced=%s)"%reduced)
+		var deadline:=Time.get_ticks_msec()+3000
+		while view.elapsed-started<Feedback.DURATION+0.05 and Time.get_ticks_msec()<deadline:
+			await process_frame
+		results[reduced]=view.tool_draw_stats.duplicate(true)
+		expect(view.tool_action_plan(host.own_id).is_empty(),"view animation ends after its duration (reduced=%s)"%reduced)
+	var normal:Dictionary=results[false]
+	var calm:Dictionary=results[true]
+	print("TOOL_ACTION_DRAW normal=%s reduced=%s"%[normal,calm])
+	expect(int(normal.held)>0 and int(calm.held)>0,"held tool is drawn in both motion settings")
+	expect(int(normal.particles)>0,"normal motion draws water particles")
+	expect(int(calm.particles)==0,"reduced motion draws no particles")
+	expect(normal.angles.size()>1,"normal motion swings the held tool")
+	expect(calm.angles.size()==1,"reduced motion keeps the held tool still")
+	expect(int(calm.lunge)==0,"reduced motion never offsets the body")
+	# A rejected request must not start any animation in the view.
+	host.rates[1]=[]
+	seq+=1
+	var events_before:int=host.tool_action_view("home").events.size()
+	host._action(1,seq,"hoe",plot,"")
+	view.update_snapshot(host.snapshot,host.own_id)
+	expect(host.tool_action_view("home").events.size()==events_before and view.tool_action_plan(host.own_id).is_empty(),"rejected hoe does not animate in the view")
+	view.queue_free()
+	host.world=null
+	host.queue_free()
+	await process_frame

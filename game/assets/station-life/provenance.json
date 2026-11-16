@@ -1,0 +1,7 @@
+{
+  "generator": "OpenAI ImageGen (built-in, transparent background)",
+  "source": "source/residents.png",
+  "atlas": "atlas.png",
+  "prompt": "Production 3 equal columns × 3 equal rows transparent cozy Taiwanese farming RPG pixel art spritesheet. Isolated sprites, alpha gaps. Top row full-body chibi residents facing slightly toward viewer, same 40px tall scale after conversion: kind young male rail attendant navy cap and cream shirt, young adult woman bus dispatcher green short jacket with amber scarf and short hair, elderly woman Jiufen resident with round grey bun and burgundy apron. Oversized cute heads. Middle row matching bust portraits in same order. Bottom row broken short timber bench with cracked slat, repaired honey-wood bench with fresh slats, little terracotta pot with green leaves and pale flowers. Crisp 32px pixel art; no outside shadows, writing, floor, backdrop or other objects.",
+  "integration": "Godot work/generate_station_life_atlas.gd splits the uneven image rows, removes weak alpha, crops the visible sprites and scales nearest into 48×48 cells. World figures align feet at y44. No gameplay geometry changes."
+}

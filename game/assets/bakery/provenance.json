@@ -1,0 +1,24 @@
+{
+  "generator": "built-in imagegen",
+  "selection_reason": "OpenArt account inspection returned 5 credits; available image generation required at least 10 credits.",
+  "brief_record": "以下是設計摘要，並非已恢復的原始逐字 prompt。",
+  "style": "溫暖森林綠與木色、透明背景、32px療癒像素風；保留既有圖集，新增獨立圖集。",
+  "assets": [
+    {
+      "file": "pumpkin-growth.png",
+      "source": "exec-01091baa-48ab-420f-a1a8-25bb3e22cf25.png",
+      "brief": "2x2南瓜生長階段，依序子葉、小藤、花與未熟果、成熟橙色南瓜；每格目標32x32。"
+    },
+    {
+      "file": "items.png",
+      "source": "exec-6aec25af-e517-4388-9df7-8b685330768a.png",
+      "brief": "2x3道具圖集：南瓜、種子包、麵粉袋、南瓜派、磨坊套件、麥穗麵粉裝飾。此版由imagegen修訂透明背景。"
+    },
+    {
+      "file": "mill.png",
+      "source": "exec-c485f648-d26f-438f-8275-06c35bca11a7.png",
+      "brief": "木製磨坊工作站，灰色磨石、黃銅齒輪、麥穗料斗、麵粉袋、森林綠細節；目標32x48，非大型風車塔。"
+    }
+  ],
+  "integration": "原始PNG逐位元複製；Godot內建立32px道具、生長階段及32x48磨坊材質並以nearest取樣。原生素材接觸表與主場景、介面已視覺檢查，非Python改圖。"
+}

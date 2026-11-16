@@ -1,0 +1,7 @@
+{
+  "version":"0.11","protocol":11,"title":"田園耕作機",
+  "implemented":["可攜式手推耕田機與工作台配方","3×3逐格施工預覽與障礙保護","成功一次整地耗1木炭，最多9格","四向雙影格操作素材與施工回饋","保留供水、林業、輸送帶及原有手動種田"],
+  "limits":{"reach_per_cell":3.2,"cooldown_seconds":0.8,"max_cells":9,"autonomous_farming":false},
+  "not_implemented":["自動播種和收割","分流器與優先分配","台灣真實縣市大地圖","正式帳號與雲端營運部署"],
+  "release_scope":"第九階段農業效率工具，並非完整商業版。"
+}

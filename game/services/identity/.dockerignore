@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!requirements.txt
+!app.py
+!identity_store.py
+!serve.py
+!admin.py

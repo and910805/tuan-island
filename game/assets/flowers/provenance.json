@@ -1,0 +1,28 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-11-14",
+  "nature": "AI-generated original high-resolution sources with soft alpha; NOT hand-placed native pixel art. Fictional crops, not botanical or historical evidence.",
+  "assets": [
+    {
+      "file": "flower-growth.png",
+      "source": "work/flowers/art-source/flower-growth-source.png",
+      "generation_record": "work/flowers/art-source/generation.json",
+      "sha256": "0159c0b15bc17af71e91cd42669b39db5da23638aabc7d2cf1ead32e13eea83b",
+      "size": [1448, 1086],
+      "layout": "4 columns (sprout, juvenile, bud, mature) x 3 rows (bluebell, orange_blossom, chime_herb); 362px cells",
+      "crop_window_per_cell": {"x": 9, "y": 24, "w": 304, "h": 304}
+    },
+    {
+      "file": "flower-items.png",
+      "source": "work/flowers/art-source/flower-items-source.png",
+      "generation_record": "work/flowers/art-source/items-generation.json",
+      "sha256": "581a99ea644cd2d5ed13f95def9cc8febac8ca718db40e9db1ca494f062131b8",
+      "size": [1278, 1230],
+      "layout": "3x3, 426x410 cells; row1 bluebell/orange_blossom/chime_herb, row2 matching *_seed packets, row3 blue_dye/sugar/garden_cookie",
+      "crop_window_per_cell": {"x": 12, "y": 2, "w": 392, "h": 392}
+    }
+  ],
+  "integration": "Byte-for-byte copies (sha256 equal to sources); no pixel edits, no Python/Pillow image editing. scripts/flower_art.gd crops a fixed square window per cell and resizes in Godot to 32x32 with INTERPOLATE_NEAREST, cached per sprite (same pipeline as bakery_art.gd). Godot import: lossless (compress/mode=0), no mipmaps.",
+  "alpha_measurement": "Per-cell alpha (>16) bounds verified inside each crop window with clear gutters (no petal cut, no neighbour leakage). Opaque interiors are alpha ~249-253, not 255. Source has broad faint haze (alpha 1-31). At 32px the growth sprites keep ~200-340 ghost pixels at alpha 1-7 (visually invisible) and 9-50 fringe pixels at alpha 8-63 per sprite; icons 27-151 ghost / 2-25 fringe. See work/flowers/art-check/displayed-alpha-audit.json.",
+  "status": "Native 32px gallery reviewed (work/flowers/art-check). Acceptable as a display-only adapter; native pixel validation remains PENDING: soft alpha edges, near-opaque interiors and nearest downsampling of non-native sources mean this is not production-certified pixel art. In-world review on real tiles/UI not yet done."
+}

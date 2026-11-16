@@ -1,0 +1,33 @@
+{
+  "status": "integrated_0.46_local_functional_and_native_ui_verified_natural_journey_and_network_pending",
+  "scope": "Original section 18 Q04 and T042 public kitchen + two residents + absent member replay; full T037 recipe catalog and remaining chapters stay open.",
+  "save_version": 26,
+  "protocol": 45,
+  "state": {
+    "public_kitchen": {
+      "stove": "",
+      "seats": [],
+      "meals": {
+        "soup": 0,
+        "bread": 0,
+        "salad": 0
+      },
+      "opened": false
+    }
+  },
+  "requirements": {
+    "soup": 4,
+    "bread": 2,
+    "salad": 2
+  },
+  "registration": "After picnic and valid shared Community.table_cell, any home member may explicitly donate THEIR existing idle stove and two distinct THEIR existing long_bench seats to public use. Stove within Euclidean 8 tiles of shared table; both seats within Euclidean 3 tiles of stove. All three accessible from shared table via passable cardinal paths; do not place, move or overwrite any objects. Reject stove with any active/waiting/ready work, including finished output; an empty canonical cooking queue is idle. Shared table plus two seats satisfies furnishing. Existing build costs remain unchanged.",
+  "actions": {
+    "kitchen_register": "p=chosen stove; extra=canonical seat cell|canonical seat cell (exactly two unique sorted cells, max32 ASCII); one per world, validate current ownership and accessibility. Records exactly those cells; all three become protected from move/remove/undo. Explicit permanent donation warning in UI, user confirmation button. No automatic choice submission.",
+    "kitchen_contribute": "p=registered stove; extra empty. Any home member in reach may contribute min(backpack count, outstanding need) for soup/bread/salad only. No reward or item creation. Reject no contribution; opened=true exactly when all needs filled. Idempotent through World.act receipts; save failure rolls back all fields and inventory."
+  },
+  "helpers": "public_kitchen.gd no World preload. fresh(), valid(state, version), registered(state), stage(state), site_cells(state), candidate_stoves(world, token), candidate_seats(world, token, stove), events(state), perform(world,token,action,p,extra). Pure UI may derive candidate inventory with helper taking snapshot if needed; document exact API. Core world validates real reach/region/path independently.",
+  "events": "Immutable story text inferred from world milestones: picnic invitation (阿榆+米露), registration (shared roof/table discussion), opening (community meal and next repair hints). No personal reward/read flag needed. All current/late-joining members can replay all unlocked events any number of times through UI; no backend mutation when reading. No dependency on remote members being online.",
+  "migration": "Version23 required current public_kitchen shape. Older saves WITHOUT field get fresh only, no auto-donation or completion; older versions carrying field rejected. Validate exact keys, canonical distinct home cells, matching stove/long_bench live objects and existing owner(s), range invariants (access checked at registration, not every later save), nonnegative integer capped meals, empty unregistered state, opened iff full, picnic prerequisite. Region projections must not incorrectly validate home site against another region's objects. Do not validate historical copies as new live sites.",
+  "integration": "World state ensure on new world, World protected for registered cells HOME only, World.act mark all donated cells used/invalidate own earlier construction undo as well as foreign (must inspect existing undo contracts). Session protocol41 correlated actions, no new RPC; publish public_kitchen without private player IDs. Cooking and box source remain existing actions/queues, public kitchen stove callable by any member. UI entry in community table and journal, registration selectors + cost/ownership/permanence explanation, contribution icon counts, story pages using portraits; preserve existing chapter/tea progress and all previous functions.",
+  "verification": "Fresh/legacy save, ownership/region/reach/blocked path, busy stove, distinct/range seats, contribution partial/full/no-op/cancel-none, duplicate request/save rollback, all donated objects move/remove/undo refused, late player can inspect same event list after reload; native 1024x640 and1280x800 UI, real World flow. This slice is not cloud or full chapter completion."
+}

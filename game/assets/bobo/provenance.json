@@ -1,0 +1,14 @@
+{
+  "generator": "OpenAI ImageGen (built-in, transparent background)",
+  "source": "source/bobo.png",
+  "prompt": "Game spritesheet 4 equal columns ×2 equal rows, transparent, no text, large transparent separation, cozy Taiwanese farming sim pixel art at target 32px sprites, warm outlines clean blocky pixels. Row1 col1 same cute young adult miner Bobo facing camera idle, oversized head, brown mine hat with light, forest green pocket overalls and cream shirt, full body; col2 matching head and shoulders portrait; col3 dark warm wood mineral sorting table with small trays; col4 wood display shelf with ochre gold sample under little glass. Row2 col1 coarse stone sample, col2 medium stones sample, col3 fine stone grains sample, all warm grey with same mineral hue, visually different by grain sizes only; col4 short isolated warm lantern post. Orthographic 3/4 perspective, no floor and no shadows outside sprites.",
+  "atlas": "atlas.png",
+  "integration": "Godot work/generate_bobo_atlas.gd divides the source into 4×2 slots, thresholds alpha, crops to content, fits with nearest-neighbor sampling and packs into 48 px cells with stable baselines. Row order: world sprite, portrait, sorting desk, display shelf, coarse, medium, fine, lantern.",
+  "tray": {
+    "file": "tray.png",
+    "prompt": "One isolated horizontal shallow wooden mineral sorting tray for a cozy 32px pixel-art mining game interface, straight-on slight overhead view. Broad readable dark cedar frame with square wooden joinery and a very plain deep desaturated forest-green felt inset. Empty tray, no objects, no text, no labeling, no character, no table, no backdrop or ground shadow. Crisply stepped edges, limited warm palette, flat lighting. Intended downsampled footprint 64×48. Transparent outside the single tray, fill canvas with 8% empty margin.",
+    "integration": "Godot work/generate_bobo_tray.gd trims alpha, fits to 64×34 with nearest, restores alpha of the felt inset and centers the sprite in 64×48.",
+    "tool": "OpenAI ImageGen",
+    "source": "source/tray.png"
+  }
+}

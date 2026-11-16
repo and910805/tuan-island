@@ -1,0 +1,14 @@
+{
+  "version": "0.48-dev",
+  "protocol": 43,
+  "save_version": 24,
+  "scope": "T039 基礎天氣與露天澆水；並非完整四季與氣候系統",
+  "clock": "existing authoritative saved world time; paused with no players; no real-time offline catch-up",
+  "day_seconds": 1440,
+  "cycle": ["sunny", "cloudy", "rainy", "sunny", "sunny", "rainy", "cloudy"],
+  "watering": "calendar-day wetness; expires at midnight, rain re-wets exposed cultivated plots",
+  "shelter": "roof-covered cells and mine_1 through mine_5 do not receive rain",
+  "presentation": "snapshot time only; reduced-motion disables moving rain without changing water/growth",
+  "compatibility": "crop IDs and wet/growth fields unchanged; existing wet plots treated as watered for the current saved game day",
+  "limits": ["provisional shared outdoor weather; not a Taiwan climate simulation", "seasons, wind resources, snow, quality and crop seasonal dormancy remain open", "midnight watering expiry is calendar-day semantics, not 1440 seconds after each watering action"]
+}

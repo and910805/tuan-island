@@ -1,0 +1,218 @@
+{
+  "radish": {
+    "name": "奶白蘿蔔",
+    "season": "春秋",
+    "first_days": 2,
+    "seed_price": 12,
+    "yield_count": 1,
+    "sale_price": 24,
+    "use": "新手收入、湯"
+  },
+  "carrot": {
+    "name": "糖心胡蘿蔔",
+    "season": "春秋",
+    "first_days": 3,
+    "seed_price": 20,
+    "yield_count": 1,
+    "sale_price": 42,
+    "use": "料理、兔子互動"
+  },
+  "lettuce": {
+    "name": "圓葉萵苣",
+    "season": "春夏",
+    "first_days": 2,
+    "seed_price": 14,
+    "yield_count": 1,
+    "sale_price": 28,
+    "use": "沙拉、便當"
+  },
+  "potato": {
+    "name": "小馬鈴薯",
+    "season": "春冬",
+    "first_days": 4,
+    "seed_price": 25,
+    "yield_count": 2,
+    "sale_price": 30,
+    "use": "烤薯、濃湯"
+  },
+  "strawberry": {
+    "name": "蜜香草莓",
+    "season": "春",
+    "first_days": 5,
+    "seed_price": 70,
+    "yield_count": 2,
+    "sale_price": 36,
+    "use": "再生作物、果醬"
+  },
+  "cauliflower": {
+    "name": "雲朵花椰菜",
+    "season": "春冬",
+    "first_days": 5,
+    "seed_price": 45,
+    "yield_count": 1,
+    "sale_price": 95,
+    "use": "大型料理"
+  },
+  "tomato": {
+    "name": "太陽番茄",
+    "season": "夏",
+    "first_days": 4,
+    "seed_price": 55,
+    "yield_count": 2,
+    "sale_price": 28,
+    "use": "醬汁、再生作物"
+  },
+  "cucumber": {
+    "name": "波點黃瓜",
+    "season": "夏",
+    "first_days": 3,
+    "seed_price": 40,
+    "yield_count": 2,
+    "sale_price": 22,
+    "use": "涼拌、再生作物"
+  },
+  "sweet_corn": {
+    "name": "甜玉米",
+    "season": "夏秋",
+    "first_days": 5,
+    "seed_price": 60,
+    "yield_count": 2,
+    "sale_price": 35,
+    "use": "飼料、烤玉米"
+  },
+  "watermelon": {
+    "name": "小圓西瓜",
+    "season": "夏",
+    "first_days": 6,
+    "seed_price": 65,
+    "yield_count": 1,
+    "sale_price": 135,
+    "use": "分享料理、節慶"
+  },
+  "pumpkin": {
+    "name": "琥珀南瓜",
+    "season": "秋",
+    "first_days": 6,
+    "seed_price": 70,
+    "yield_count": 1,
+    "sale_price": 150,
+    "use": "濃湯、裝飾"
+  },
+  "sweet_potato": {
+    "name": "栗香地瓜",
+    "season": "秋",
+    "first_days": 4,
+    "seed_price": 32,
+    "yield_count": 2,
+    "sale_price": 34,
+    "use": "烤地瓜、點心"
+  },
+  "eggplant": {
+    "name": "紫絨茄子",
+    "season": "夏秋",
+    "first_days": 4,
+    "seed_price": 48,
+    "yield_count": 2,
+    "sale_price": 27,
+    "use": "燴飯、再生作物"
+  },
+  "wheat": {
+    "name": "星點小麥",
+    "season": "春夏秋",
+    "first_days": 3,
+    "seed_price": 18,
+    "yield_count": 2,
+    "sale_price": 19,
+    "use": "麵粉、麵包"
+  },
+  "rice": {
+    "name": "月牙稻米",
+    "season": "夏秋",
+    "first_days": 4,
+    "seed_price": 28,
+    "yield_count": 2,
+    "sale_price": 29,
+    "use": "飯糰、特殊水田"
+  },
+  "cabbage": {
+    "name": "雪白高麗菜",
+    "season": "冬",
+    "first_days": 5,
+    "seed_price": 44,
+    "yield_count": 1,
+    "sale_price": 94,
+    "use": "火鍋、醃菜"
+  },
+  "sugar_beet": {
+    "name": "霜糖甜菜",
+    "season": "冬",
+    "first_days": 4,
+    "seed_price": 30,
+    "yield_count": 1,
+    "sale_price": 66,
+    "use": "糖、染料"
+  },
+  "ginger": {
+    "name": "暖泉薑",
+    "season": "冬／溫室",
+    "first_days": 5,
+    "seed_price": 45,
+    "yield_count": 2,
+    "sale_price": 48,
+    "use": "薑茶、遠行料理"
+  },
+  "chime_herb": {
+    "name": "風鈴香草",
+    "season": "全季／溫室",
+    "first_days": 3,
+    "seed_price": 24,
+    "yield_count": 1,
+    "sale_price": 48,
+    "use": "調味、香氛"
+  },
+  "cotton": {
+    "name": "棉球花",
+    "season": "春夏",
+    "first_days": 5,
+    "seed_price": 40,
+    "yield_count": 2,
+    "sale_price": 42,
+    "use": "布料"
+  },
+  "bluebell": {
+    "name": "鈴蘭藍花",
+    "season": "春",
+    "first_days": 4,
+    "seed_price": 28,
+    "yield_count": 2,
+    "sale_price": 28,
+    "use": "藍色染料、花束"
+  },
+  "orange_blossom": {
+    "name": "蜜橙花",
+    "season": "夏秋",
+    "first_days": 4,
+    "seed_price": 28,
+    "yield_count": 2,
+    "sale_price": 28,
+    "use": "橙色染料、蜂蜜"
+  },
+  "star_mushroom": {
+    "name": "星夜菇",
+    "season": "洞內菌床",
+    "first_days": 4,
+    "seed_price": 36,
+    "yield_count": 2,
+    "sale_price": 36,
+    "use": "菇料理、發光裝飾"
+  },
+  "mist_tea": {
+    "name": "霧竹茶",
+    "season": "茶圃",
+    "first_days": 5,
+    "seed_price": 65,
+    "yield_count": 2,
+    "sale_price": 38,
+    "use": "茶飲、再生作物"
+  }
+}

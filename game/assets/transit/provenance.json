@@ -1,0 +1,8 @@
+{
+  "generator": "OpenAI ImageGen (built-in)",
+  "source": "source/stations.png",
+  "atlas": "atlas.png",
+  "prompt_summary": "Original cozy 32-pixel-style transit sheet inspired by Toucheng coastal architecture, a Ruifang hill station, a Jiufen tea house, a vintage railcar and bus, and a red lantern. Isolated on transparent background.",
+  "integration": "Godot work/generate_transit_atlas.gd uses manually selected 3×2 source bounds, removes weak alpha outside the prop, trims the visible silhouette, downsamples nearest, and packs 128×96 fixed cells. Building floor widths and baselines use core collision footprints; railway details reuse the existing cavern track.",
+  "scope": "Fictional compressed environments inspired by the named places."
+}

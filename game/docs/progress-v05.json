@@ -1,0 +1,1485 @@
+{
+  "planning_count": 96,
+  "verified_baseline": "0.4",
+  "baseline_checks": 437,
+  "current_version": "0.5",
+  "current_release": {
+    "version": "0.5",
+    "automated_checks": {
+      "test_world": 64,
+      "test_life": 45,
+      "test_regrowth": 43,
+      "test_save_schema": 69,
+      "test_ui": 109,
+      "test_village": 48,
+      "test_building": 24,
+      "test_festival": 43,
+      "test_collections": 81,
+      "test_comfort": 21,
+      "test_world_art": 27,
+      "test_build_catalog": 244
+    },
+    "total_checks": 818,
+    "exports": [
+      "Windows",
+      "Linux"
+    ],
+    "network": {
+      "status": "passed",
+      "cases": [
+        "Linux ENet、WS、WSS 生活競爭",
+        "WSS 最後一枚風鈴競爭",
+        "WSS 雙玩家圖鑑領獎與重連"
+      ]
+    },
+    "save_migration": {
+      "source": "0.4",
+      "target": "0.5",
+      "status": "passed",
+      "old_fields_preserved": 310,
+      "players": 4,
+      "new_collections_empty": true,
+      "method": "匯出的 Linux 0.5 伺服器讀寫實際四玩家存檔。"
+    },
+    "screenshots_reviewed": [
+      "糰糰島_美術更新後.png",
+      "糰糰島_collection.png",
+      "糰糰島_settings.png"
+    ],
+    "agent_playtest": {
+      "status": "partial",
+      "method": "代理以鍵鼠操作獨立 Windows 匯出版。",
+      "observed": [
+        "進入本機世界",
+        "鋤地、播蘿蔔、澆水成功提示",
+        "蘿蔔種子 5→4",
+        "木地板施工成功提示、可見地板、木材 12→10、新手家具目標勾選"
+      ],
+      "pending": [
+        "採收閉環",
+        "圖鑑與設定人工操作",
+        "五位真人的新手與舒適度試玩"
+      ]
+    },
+    "pending": [
+      "採收閉環及圖鑑與設定人工驗收",
+      "五位真人新手與舒適度試玩",
+      "兩台獨立實體機驗收",
+      "Zeabur 部署",
+      "Docker 映像建置及執行",
+      "八小時長測"
+    ],
+    "four_player_growth": {
+      "status": "verified",
+      "duration_seconds_approx": 375,
+      "binary_sha256": "fed90e819f58f7eed9ba21b221c89ab764864e4c88b9af40bc3408a962824336",
+      "scope": "每個客戶端四輪實時農作、兩輪種樹，蘿蔔圖鑑發現保存。",
+      "result": [
+        {
+          "wood": 24,
+          "player": "soak-player-0-test",
+          "radish": 4,
+          "sapling": 2
+        },
+        {
+          "wood": 24,
+          "player": "soak-player-1-test",
+          "radish": 4,
+          "sapling": 2
+        },
+        {
+          "wood": 24,
+          "player": "soak-player-2-test",
+          "radish": 4,
+          "sapling": 2
+        },
+        {
+          "wood": 24,
+          "player": "soak-player-3-test",
+          "radish": 4,
+          "sapling": 2
+        }
+      ]
+    }
+  },
+  "status_counts": {
+    "verified": 9,
+    "partial": 61,
+    "not_started": 17,
+    "blocked": 9
+  },
+  "evidence_files": [
+    "outputs/糰糰島_驗證紀錄_0.4.json",
+    "game/README.md",
+    "game/docs/playtest/",
+    "game/tests/",
+    "work/05-appendices.txt"
+  ],
+  "current_work": [
+    {
+      "ids": [
+        "T004",
+        "T035",
+        "T094"
+      ],
+      "title": "四向角色與生活動作動畫",
+      "status": "in_progress",
+      "verification": "world_art 27／27；已查看匯出版畫面，待真人轉向驗收。"
+    },
+    {
+      "ids": [
+        "T027",
+        "T028",
+        "T040",
+        "T063",
+        "T075"
+      ],
+      "title": "L 生活圖鑑與三個生活里程碑",
+      "status": "in_progress",
+      "verification": "collections 81／81；UI 109／109；待真人從新存檔體驗。"
+    },
+    {
+      "ids": [
+        "T005",
+        "T043",
+        "T086"
+      ],
+      "title": "Esc 提示音與動態設定",
+      "status": "in_progress",
+      "verification": "comfort 21／21；UI 109／109。涵蓋短提示音音量、靜音、減少動態與持久化設定；待真人舒適度驗收。"
+    },
+    {
+      "ids": [
+        "T023"
+      ],
+      "title": "十八種建物驗收",
+      "status": "verified",
+      "label": "原驗收已驗證",
+      "verification": "test_build_catalog 244／244，涵蓋放置、層、扣退料、通行及門開關。"
+    },
+    {
+      "ids": [
+        "T007",
+        "T008",
+        "T012",
+        "T059",
+        "T076"
+      ],
+      "title": "0.5 全套回歸與跨平台連線",
+      "status": "verified",
+      "label": "整合已驗證",
+      "verification": "818 項檢查通過。Windows／Linux 已匯出；Linux ENet、WS、WSS 生活競爭、WSS 風鈴競爭及雙玩家圖鑑領獎與重連均通過。舊存檔保留 310 欄位。四玩家約 375 秒實時農作與種樹通過。"
+    },
+    {
+      "ids": [
+        "T028",
+        "T044",
+        "T085",
+        "T086"
+      ],
+      "title": "匯出版鍵鼠試玩",
+      "status": "partial",
+      "label": "代理操作已觀察",
+      "verification": "代理實際鍵鼠完成鋤地、播蘿蔔、澆水和木地板施工。採收閉環、圖鑑與設定人工操作，以及五位真人的新手與舒適度試玩仍待完成。"
+    }
+  ],
+  "next_steps": [
+    {
+      "ids": [
+        "T028",
+        "T085",
+        "T086"
+      ],
+      "title": "實體機新手試玩",
+      "detail": "由真人跑一輪 30 分鐘完整路線，記錄找目標、採收、施工、重連和鏡頭反應，再邀五位新手複測。"
+    },
+    {
+      "ids": [
+        "T013",
+        "T014",
+        "T018"
+      ],
+      "title": "背包容量與採收守恆",
+      "detail": "補物品定義驗證、格位與堆疊，優先測滿背包採收與多人競爭。"
+    },
+    {
+      "ids": [
+        "T025",
+        "T026",
+        "T008"
+      ],
+      "title": "可撤回的多人邀請",
+      "detail": "補伺服器成員驗證、更新邀請碼與四人世界頁，再用兩台獨立電腦複測。"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "phase": "P0",
+      "title": "建立遊戲與伺服器專案結構",
+      "acceptance": "空專案可分別啟動玩家與世界模式",
+      "evidence_status": "verified",
+      "evidence": "game/project.godot 與 main.gd 提供 Windows 玩家模式及 Linux 無畫面世界模式，兩種模式均有實際啟動紀錄。",
+      "remaining": "原驗收已通過。",
+      "dependency": []
+    },
+    {
+      "id": "T002",
+      "phase": "P0",
+      "title": "固定引擎版本與 Windows 匯出",
+      "acceptance": "在未裝編輯器的測試機啟動",
+      "evidence_status": "partial",
+      "evidence": "README 固定 Godot 4.7.2，0.4 Windows 匯出檔在本機執行。",
+      "remaining": "在未安裝編輯器的獨立 Windows 機驗收。",
+      "dependency": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T003",
+      "phase": "P0",
+      "title": "基礎像素地圖與碰撞",
+      "acceptance": "角色不穿牆，水岸與道路可辨識",
+      "evidence_status": "verified",
+      "evidence": "world.gd 的地圖、碰撞與 test_world 的公告板阻擋、橋面通行斷言，加上原生地圖畫面，可核對岸線與道路。",
+      "remaining": "原型地圖驗收已通過。",
+      "dependency": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T004",
+      "phase": "P0",
+      "title": "四向角色移動與動畫",
+      "acceptance": "斜向速度一致，停止與轉向清楚",
+      "evidence_status": "partial",
+      "evidence": "0.4 有權威角色移動及 100 毫秒位置插值。",
+      "remaining": "驗證等速斜走、四向停走與轉向的真人辨識。",
+      "dependency": [
+        "T003"
+      ]
+    },
+    {
+      "id": "T005",
+      "phase": "P0",
+      "title": "兩種穩定鏡頭與舒適設定",
+      "acceptance": "可切換且不旋轉，不顫動",
+      "evidence_status": "partial",
+      "evidence": "test_ui 驗證兩種整數視野和固定鏡頭座標，0.4 無震動與動態模糊。",
+      "remaining": "真人比較移動與停止的抖動、舒適度。",
+      "dependency": [
+        "T004"
+      ]
+    },
+    {
+      "id": "T006",
+      "phase": "P0",
+      "title": "可重綁輸入與互動焦點",
+      "acceptance": "開箱不會同時使用工具",
+      "evidence_status": "partial",
+      "evidence": "main.gd 依距離選互動焦點，test_ui 覆蓋 HUD 操作及開面板取消施工。",
+      "remaining": "提供可重綁按鍵，驗證箱子與工具互斥及衝突處理。",
+      "dependency": [
+        "T004"
+      ]
+    },
+    {
+      "id": "T007",
+      "phase": "P0",
+      "title": "Linux 無畫面伺服器輸出",
+      "acceptance": "無桌面環境可啟動並回報健康",
+      "evidence_status": "verified",
+      "evidence": "匯出的 Linux 無畫面伺服器實際啟動並記錄綁定位址；Windows 客戶端連線完成請求。",
+      "remaining": "原型啟動與就緒驗收已通過。",
+      "dependency": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T008",
+      "phase": "P0",
+      "title": "兩人加入與離開同一世界",
+      "acceptance": "兩台電腦可互相看見並退出",
+      "evidence_status": "blocked",
+      "evidence": "0.4 兩個獨立 Windows 程序連至 Linux 世界；原型多人競爭測試包含共享結果。",
+      "remaining": "需要兩台獨立實體電腦驗證互見、退出及重連。",
+      "dependency": [
+        "T002",
+        "T007"
+      ]
+    },
+    {
+      "id": "T009",
+      "phase": "P0",
+      "title": "權威移動與畫面平滑",
+      "acceptance": "延遲下不任意穿過障礙",
+      "evidence_status": "partial",
+      "evidence": "session.gd 由伺服器裁定位置，原型試玩記錄輸入斷續 400 毫秒逾時與 100 毫秒插值。",
+      "remaining": "注入多檔延遲與丟包，查越障和修正幅度。",
+      "dependency": [
+        "T008"
+      ]
+    },
+    {
+      "id": "T010",
+      "phase": "P0",
+      "title": "基礎格子放置與版本檢查",
+      "acceptance": "同格競爭只成功一筆",
+      "evidence_status": "verified",
+      "evidence": "首輪試玩實測雙客戶端同格競爭只扣成功者材料；test_world 驗證佔用格拒絕；session.gd 有協定版本檢查。",
+      "remaining": "原型同格競爭驗收已通過。",
+      "dependency": [
+        "T003",
+        "T008"
+      ]
+    },
+    {
+      "id": "T011",
+      "phase": "P0",
+      "title": "世界保存載入樣本",
+      "acceptance": "重啟後建物位置一致",
+      "evidence_status": "verified",
+      "evidence": "test_save_schema 載入有小石灶的隔離存檔，檢查小石灶仍在 38,33 且保留未領的麵包工作；歷史世界另外完成重啟遷移。",
+      "remaining": "原型建物保存驗收已通過。",
+      "dependency": [
+        "T010"
+      ]
+    },
+    {
+      "id": "T012",
+      "phase": "P0",
+      "title": "Zeabur 測試部署與版本封包",
+      "acceptance": "實測遊戲傳輸入口、遠端連入、持久卷重啟、版本拒絕",
+      "evidence_status": "blocked",
+      "evidence": "Linux ENet、WS、測試 CA 的 WSS 與環境變數已測，deploy/README.md 有部署步驟。",
+      "remaining": "取得 Docker daemon 與授權測試環境，實測 Zeabur 遠端、持久卷重啟及版本拒絕。",
+      "dependency": [
+        "T007",
+        "T011"
+      ]
+    },
+    {
+      "id": "T013",
+      "phase": "P1",
+      "title": "物品定義與資料驗證",
+      "acceptance": "重複 ID、負數堆疊上限會被拒絕",
+      "evidence_status": "partial",
+      "evidence": "物品以資料定義與數量字典管理；test_save_schema 拒絕畸形或非法數量存檔。",
+      "remaining": "加入定義載入檢查並測重複 ID、負數堆疊上限。",
+      "dependency": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T014",
+      "phase": "P1",
+      "title": "背包格位與堆疊",
+      "acceptance": "拆堆合堆不多物也不丟物",
+      "evidence_status": "not_started",
+      "evidence": "README 說明現有背包是數量列表。",
+      "remaining": "實作格位、容量與拆堆合堆守恆。",
+      "dependency": [
+        "T013"
+      ]
+    },
+    {
+      "id": "T015",
+      "phase": "P1",
+      "title": "持久交易與請求去重",
+      "acceptance": "相同請求重送只生效一次",
+      "evidence_status": "verified",
+      "evidence": "test_world 的採收重送、保存失敗回滾與 test_festival 的獎勵重送測試通過。",
+      "remaining": "原型同一請求只生效一次；正式持久交易日誌另待實作。",
+      "dependency": [
+        "T011",
+        "T014"
+      ]
+    },
+    {
+      "id": "T016",
+      "phase": "P1",
+      "title": "伐木挖石與共享資源狀態",
+      "acceptance": "兩人採同一物件只出一份掉落",
+      "evidence_status": "partial",
+      "evidence": "四客戶端實測樹木循環；test_regrowth 與 test_village 覆蓋再生木石。",
+      "remaining": "雙客戶端同時採同一棵樹及同一石點，核對只產一份。",
+      "dependency": [
+        "T009",
+        "T015"
+      ]
+    },
+    {
+      "id": "T017",
+      "phase": "P1",
+      "title": "工具列與工具動作",
+      "acceptance": "工具選擇、消耗與動畫相符",
+      "evidence_status": "partial",
+      "evidence": "原生 HUD 有工具列，種植工具呼叫與扣料經 test_ui、test_world 檢查。",
+      "remaining": "補工具用途動畫，逐一驗證選擇、消耗、呈現。",
+      "dependency": [
+        "T006",
+        "T014"
+      ]
+    },
+    {
+      "id": "T018",
+      "phase": "P1",
+      "title": "農地播種澆水採收",
+      "acceptance": "滿背包時作物不被吞掉",
+      "evidence_status": "partial",
+      "evidence": "test_world 驗證鋤播水收，四客戶端各完成四輪真實時間蘿蔔成長。",
+      "remaining": "背包容量建立後，驗證滿背包採收保留原作物。",
+      "dependency": [
+        "T015",
+        "T017"
+      ]
+    },
+    {
+      "id": "T019",
+      "phase": "P1",
+      "title": "世界時間與無人暫停",
+      "acceptance": "離線一小時不偷跑成熟",
+      "evidence_status": "partial",
+      "evidence": "test_world、test_regrowth 驗證無玩家時作物或樹木停長。",
+      "remaining": "實際等待一小時再重連，並檢查保存與重新啟動期間的成熟度。",
+      "dependency": [
+        "T011",
+        "T018"
+      ]
+    },
+    {
+      "id": "T020",
+      "phase": "P1",
+      "title": "蘿蔔萵苣小麥資料與圖像",
+      "acceptance": "三種作物有各階段與正確產量",
+      "evidence_status": "partial",
+      "evidence": "0.4 有蘿蔔、萵苣、小麥定義及成長圖像，蘿蔔收成量有回歸。",
+      "remaining": "逐一對照三作物全階段畫面及精確產量。",
+      "dependency": [
+        "T018"
+      ]
+    },
+    {
+      "id": "T021",
+      "phase": "P1",
+      "title": "共用箱與私人箱",
+      "acceptance": "未授權者看不到可取內容",
+      "evidence_status": "verified",
+      "evidence": "test_world 驗證私人箱授權，0.4 雙客戶端連線驗證未授權者看不到或拿不到物品。",
+      "remaining": "原型箱子存取驗收已通過。",
+      "dependency": [
+        "T014",
+        "T015"
+      ]
+    },
+    {
+      "id": "T022",
+      "phase": "P1",
+      "title": "工作台與背包扣料製作",
+      "acceptance": "成品與扣料一起提交",
+      "evidence_status": "partial",
+      "evidence": "test_life 有石灶排程扣料、成品領取與取消退料。",
+      "remaining": "補工作台操作範圍、限制與成品扣料原子性全路徑測試。",
+      "dependency": [
+        "T015"
+      ]
+    },
+    {
+      "id": "T023",
+      "phase": "P1",
+      "title": "12 件基礎功能建物",
+      "acceptance": "放置、碰撞、拆除與材料一致",
+      "evidence_status": "verified",
+      "evidence": "Godot 4.7.2 現行 test_build_catalog 遍歷 World.BUILD 全部 67 種建物，889 項檢查零失敗，涵蓋施工層、初始狀態、精確扣料、碰撞、拆除退料與通行；test_building 38 項及 test_plot_permissions 81 項零失敗，共 1,008 項。摘要 work/t023-building-catalog-current/summary.json。",
+      "remaining": "T023 放置、碰撞、拆除與材料一致的核心驗收完成。單件家具用途與美術品質由各功能、UI 與美術項目另行驗收。",
+      "dependency": [
+        "T010",
+        "T022"
+      ]
+    },
+    {
+      "id": "T024",
+      "phase": "P1",
+      "title": "建物選取移動與安全拆除",
+      "acceptance": "滿箱不可拆，移位不複製",
+      "evidence_status": "verified",
+      "evidence": "新增 test_build_safety 19 項零失敗：任一拆除退款超過物品上限時拒絕且世界／背包不變，剛好到上限可精確退料，重複拆除不會重複退款；已裝物品私人箱搬移後唯一副本保留內容及擁有者、不改材料，移到在線玩家格拒絕。test_building 另驗搬移與存檔失敗回滾。摘要 work/t023-building-catalog-current/safety-summary.json。",
+      "remaining": "核心安全規則已驗；遊戲畫面中的建物選取／搬移操作仍待真人可用性驗收。",
+      "dependency": [
+        "T023"
+      ]
+    },
+    {
+      "id": "T025",
+      "phase": "P1",
+      "title": "帳號與世界成員識別",
+      "acceptance": "改名字不改權限，不冒用別人角色",
+      "evidence_status": "verified",
+      "evidence": "核心驗收完成：現行 identity_session 22、world_membership 35、admission_session 39 項及身份服務 test_identity_store／test_api 49 項零失敗；修正多程序驗收器使用 release.json 的現行 protocol 後，HTTPS/WSS 真實本機測試通過 13 情境，含同名帳號隔離、舊角色映射、邀請與撤銷、TLS 拒絕、冒用拒絕、重連及登出。摘要 work/t025-identity-current/summary.json。",
+      "remaining": "公開註冊、自助帳號恢復與 Zeabur／騰訊雲正式身份服務部署仍待完成。",
+      "dependency": [
+        "T008"
+      ]
+    },
+    {
+      "id": "T026",
+      "phase": "P1",
+      "title": "邀請碼與四人世界頁",
+      "acceptance": "更新邀請後舊碼不能再入會",
+      "evidence_status": "verified",
+      "evidence": "核心驗收完成：test_world_membership 35、identity service test_directory 20、test_identity_entry_ui 27 項零失敗；實際登入／私人世界頁／入島護照／邀請輪替與撤銷 UI 流程通過。更新後舊邀請在 HTTPS 目錄查詢回 404，且持舊碼的第三帳號實際 WSS 加入遭拒；新碼可入。現行最多 8 位成員（含管理者）。摘要 work/t026-invitations-current/summary.json。",
+      "remaining": "Zeabur／騰訊雲正式入口及 Windows 原生登入驗收待做。",
+      "dependency": [
+        "T025",
+        "T012"
+      ]
+    },
+    {
+      "id": "T027",
+      "phase": "P1",
+      "title": "三個新手委託與公共捐料",
+      "acceptance": "四人交料只結算一次工程",
+      "evidence_status": "verified",
+      "evidence": "三種生活訂單（蘿蔔湯、魚貨籃、麵包）之 catalog 13、board world 12、village 91 項檢查零失敗。真實四客戶端 WebSocket 同步捐料：30 木材／10 石材一次完成，完成事件只寫一筆，四人材料精確扣除且伺服器存檔提交 4 次。摘要 work/t027-bridge-donation-current/network-result.json。",
+      "remaining": "程式化旅程不取代真人新手體驗；需於 T028 自然試玩驗收。",
+      "dependency": [
+        "T015",
+        "T022"
+      ]
+    },
+    {
+      "id": "T028",
+      "phase": "P1",
+      "title": "第一次 30 分鐘完整試玩",
+      "acceptance": "完成公告板、建小屋、重連保留成果",
+      "evidence_status": "blocked",
+      "evidence": "代理以實際鍵鼠在 0.5 匯出版完成鋤地、播蘿蔔、澆水及放置木地板。",
+      "remaining": "真人走完 30 分鐘小屋、公告板、採收和重連路線。",
+      "dependency": [
+        "T019",
+        "T020",
+        "T021",
+        "T024",
+        "T026",
+        "T027"
+      ]
+    },
+    {
+      "id": "T029",
+      "phase": "P2",
+      "title": "正式 HUD 背包與提示設計",
+      "acceptance": "資訊清楚，720p 不擋主要操作",
+      "evidence_status": "partial",
+      "evidence": "test_ui 覆蓋 1280×800 邊界、捲動與 HUD 操作。",
+      "remaining": "真人驗證 720p 下 HUD、背包與提示均不擋操作。",
+      "dependency": [
+        "T028"
+      ]
+    },
+    {
+      "id": "T030",
+      "phase": "P2",
+      "title": "中文字型與介面縮放",
+      "acceptance": "四級縮放與長名稱無裁切",
+      "evidence_status": "partial",
+      "evidence": "0.4 原生截圖可讀中文，test_ui 檢查固定尺寸捲動。",
+      "remaining": "四級介面縮放與長中文名裁切檢查。",
+      "dependency": [
+        "T029"
+      ]
+    },
+    {
+      "id": "T031",
+      "phase": "P2",
+      "title": "主島切片手工地圖",
+      "acceptance": "住家商店資源區在合理步行距離",
+      "evidence_status": "partial",
+      "evidence": "island_map.gd 與原生地圖渲染可見住家、攤位、採石點及河灣。",
+      "remaining": "實測步行時間與無引導路徑理解。",
+      "dependency": [
+        "T028"
+      ]
+    },
+    {
+      "id": "T032",
+      "phase": "P2",
+      "title": "地塊與公共保護區",
+      "acceptance": "無法封死重生與必要入口",
+      "evidence_status": "partial",
+      "evidence": "test_world 拒絕在公共路徑與重生格蓋牆，test_building 保護批次和搬移。",
+      "remaining": "完成地塊制及各必要入口包圍案例。",
+      "dependency": [
+        "T025",
+        "T031"
+      ]
+    },
+    {
+      "id": "T033",
+      "phase": "P2",
+      "title": "牆門屋頂與房間辨識",
+      "acceptance": "可進出且遮擋時屋頂正確隱藏",
+      "evidence_status": "partial",
+      "evidence": "test_world 檢查門開關碰撞，原生屋頂畫面呈現相連屋頂淡化。",
+      "remaining": "補邊界牆、房間辨識及多房進出真人驗收。",
+      "dependency": [
+        "T024",
+        "T032"
+      ]
+    },
+    {
+      "id": "T034",
+      "phase": "P2",
+      "title": "施工預覽批次與撤銷",
+      "acceptance": "他人依賴存在時不誤撤銷",
+      "evidence_status": "partial",
+      "evidence": "test_building 驗證批次成本、重疊、保存回滾；test_ui 驗證拖曳預覽。",
+      "remaining": "實作依賴感知撤銷並測多人競爭。",
+      "dependency": [
+        "T033",
+        "T015"
+      ]
+    },
+    {
+      "id": "T035",
+      "phase": "P2",
+      "title": "一套原木美術風格",
+      "acceptance": "地板牆窗與家具尺度一致",
+      "evidence_status": "partial",
+      "evidence": "world_view.gd 提供原木地板、牆窗、家具的原型畫法。",
+      "remaining": "依全套原木資產驗證比例、一致性與各狀態圖。",
+      "dependency": [
+        "T033"
+      ]
+    },
+    {
+      "id": "T036",
+      "phase": "P2",
+      "title": "機台隊列與領取",
+      "acceptance": "重連不重複完成或領成品",
+      "evidence_status": "partial",
+      "evidence": "test_life 驗證石灶等待、提前領取拒絕及取消；雙客戶端只領一份。",
+      "remaining": "驗證實際重連前後隊列狀態與領取不重複。",
+      "dependency": [
+        "T019",
+        "T022"
+      ]
+    },
+    {
+      "id": "T037",
+      "phase": "P2",
+      "title": "12 項切片料理加工配方",
+      "acceptance": "原料可取得，無解鎖循環",
+      "evidence_status": "partial",
+      "evidence": "0.4 已實作七項加工配方（六料理和飼料）。",
+      "remaining": "補五項，驗證全部原料來源與解鎖圖。",
+      "dependency": [
+        "T036",
+        "T020"
+      ]
+    },
+    {
+      "id": "T038",
+      "phase": "P2",
+      "title": "商店出貨箱與私人金錢",
+      "acceptance": "出售預覽和實收相同",
+      "evidence_status": "partial",
+      "evidence": "test_world 驗證種子攤買賣、定價與私人鈴幣。",
+      "remaining": "實作出貨箱及出售預覽和實收對照。",
+      "dependency": [
+        "T015",
+        "T025"
+      ]
+    },
+    {
+      "id": "T039",
+      "phase": "P2",
+      "title": "6 種作物與基礎雨天",
+      "acceptance": "下雨澆水與關閉雨動畫結果相同",
+      "evidence_status": "partial",
+      "evidence": "0.4 有六種作物，test_village 驗證番茄三收與各輪重澆。",
+      "remaining": "實作雨天及關閉雨動畫時的相同澆水結果。",
+      "dependency": [
+        "T019",
+        "T020"
+      ]
+    },
+    {
+      "id": "T040",
+      "phase": "P2",
+      "title": "兩種釣魚模式與 4 種魚",
+      "acceptance": "無快速反應模式同樣能完成圖鑑",
+      "evidence_status": "partial",
+      "evidence": "test_life 驗證四種魚及等待式釣魚。",
+      "remaining": "完成兩種模式與兩者皆能完成圖鑑的檢查。",
+      "dependency": [
+        "T017",
+        "T038"
+      ]
+    },
+    {
+      "id": "T041",
+      "phase": "P2",
+      "title": "雞圈餵食產蛋與收集籃",
+      "acceptance": "缺料停產，斷線不重複產蛋",
+      "evidence_status": "partial",
+      "evidence": "test_life 覆蓋餵雞、缺料停產、產蛋和領取。",
+      "remaining": "完成收集籃及斷線重連的重複產蛋驗證。",
+      "dependency": [
+        "T019",
+        "T021"
+      ]
+    },
+    {
+      "id": "T042",
+      "phase": "P2",
+      "title": "兩位居民與公共廚房故事",
+      "acceptance": "缺席玩家能補看事件",
+      "evidence_status": "partial",
+      "evidence": "test_village 驗證兩位居民各四段個人故事；原生 J 手帳可回看。",
+      "remaining": "驗證完整公共廚房故事，含兩人離線、回來補看。",
+      "dependency": [
+        "T027",
+        "T037"
+      ]
+    },
+    {
+      "id": "T043",
+      "phase": "P2",
+      "title": "音效音量與低動態呈現",
+      "acceptance": "多人採集不爆音，重要提示有替代",
+      "evidence_status": "partial",
+      "evidence": "0.4 固定鏡頭且無震動；HUD 有文字訊息。",
+      "remaining": "完成音量設定與多人採集音效測量、等價提示驗收。",
+      "dependency": [
+        "T035",
+        "T029"
+      ]
+    },
+    {
+      "id": "T044",
+      "phase": "P2",
+      "title": "一小時垂直切片試玩",
+      "acceptance": "玩家自行完成採集製作建造與一次共同活動",
+      "evidence_status": "blocked",
+      "evidence": "自動測試覆蓋採集、加工、施工與風鈴接力；代理以鍵鼠完成 0.5 匯出版的種植和木地板施工。",
+      "remaining": "招募真人完成一小時獨立試玩。",
+      "dependency": [
+        "T030",
+        "T034",
+        "T037",
+        "T038",
+        "T039",
+        "T040",
+        "T041",
+        "T042",
+        "T043"
+      ]
+    },
+    {
+      "id": "T045",
+      "phase": "P3",
+      "title": "森林河灣與區域載入",
+      "acceptance": "進出區域不重生錯位或丟物",
+      "evidence_status": "partial",
+      "evidence": "同一主島可經修橋進入河灣。",
+      "remaining": "實作森林河灣區域載入，測往返時位置及物品。",
+      "dependency": [
+        "T031",
+        "T044"
+      ]
+    },
+    {
+      "id": "T046",
+      "phase": "P3",
+      "title": "地圖分區訂閱與同步裁減",
+      "acceptance": "遠區變化不全量發給每人",
+      "evidence_status": "not_started",
+      "evidence": "README 指出四人原型使用完整快照。",
+      "remaining": "建立分區訂閱，量測遠區快照排除效果。",
+      "dependency": [
+        "T045",
+        "T009"
+      ]
+    },
+    {
+      "id": "T047",
+      "phase": "P3",
+      "title": "三技能初版與工具升級",
+      "acceptance": "農耕採集手作升級正確保存",
+      "evidence_status": "not_started",
+      "evidence": "0.3 操作補充列出技能未實作。",
+      "remaining": "建立農耕、採集、手作經驗與工具升級保存。",
+      "dependency": [
+        "T016",
+        "T018",
+        "T040"
+      ]
+    },
+    {
+      "id": "T048",
+      "phase": "P3",
+      "title": "四季休眠與再生作物",
+      "acceptance": "跨季不枯死，收成次數不重置",
+      "evidence_status": "partial",
+      "evidence": "test_village 驗證番茄三收，test_regrowth 驗證木材再生。",
+      "remaining": "加入四季休眠與跨季收成次數持久化。",
+      "dependency": [
+        "T039"
+      ]
+    },
+    {
+      "id": "T049",
+      "phase": "P3",
+      "title": "12 作物內容與經濟資料",
+      "acceptance": "成長與價格表通過一致性檢查",
+      "evidence_status": "partial",
+      "evidence": "可執行 0.4 有六作物及種子攤定價，規劃另有擴充資料。",
+      "remaining": "擴至十二種並驗證時間、價格、可取得性。",
+      "dependency": [
+        "T048",
+        "T038"
+      ]
+    },
+    {
+      "id": "T050",
+      "phase": "P3",
+      "title": "羊牛與自動收集器",
+      "acceptance": "同一產出只進一個收集位置",
+      "evidence_status": "not_started",
+      "evidence": "目前生活回歸只有小雞。",
+      "remaining": "實作羊牛及自動收集器，驗證單一領取位置。",
+      "dependency": [
+        "T041",
+        "T036"
+      ]
+    },
+    {
+      "id": "T051",
+      "phase": "P3",
+      "title": "茶屋海邊兩套建築風格",
+      "acceptance": "新材質不改壞通行與屋頂",
+      "evidence_status": "not_started",
+      "evidence": "可執行版有原木原型，兩套風格屬規劃。",
+      "remaining": "加入茶屋海邊建材並跑碰撞及屋頂回歸。",
+      "dependency": [
+        "T035"
+      ]
+    },
+    {
+      "id": "T052",
+      "phase": "P3",
+      "title": "礦洞五層與休息站",
+      "acceptance": "可進出，倒下不丟工具",
+      "evidence_status": "not_started",
+      "evidence": "README 的可玩區域未列礦洞。",
+      "remaining": "製作五層和休息站，驗證離開、倒下與工具保留。",
+      "dependency": [
+        "T045",
+        "T047"
+      ]
+    },
+    {
+      "id": "T053",
+      "phase": "P3",
+      "title": "生活與冒險事件樣本",
+      "acceptance": "兩種模式皆取得必要材料",
+      "evidence_status": "not_started",
+      "evidence": "目前生活訂單與接力未構成雙模式礦洞事件。",
+      "remaining": "為生活及冒險兩模式配置等價的必要材料來源。",
+      "dependency": [
+        "T052"
+      ]
+    },
+    {
+      "id": "T054",
+      "phase": "P3",
+      "title": "六居民與前三章工程",
+      "acceptance": "所有需求在解鎖順序中可取得",
+      "evidence_status": "partial",
+      "evidence": "0.4 有兩居民與公告板公共工程，規劃另有事件鏈。",
+      "remaining": "補至六居民、前三章工程與可達性驗證。",
+      "dependency": [
+        "T042",
+        "T049",
+        "T052"
+      ]
+    },
+    {
+      "id": "T055",
+      "phase": "P3",
+      "title": "訂單生成與期限",
+      "acceptance": "不派發無法取得的材料要求",
+      "evidence_status": "partial",
+      "evidence": "test_village 驗證三種世界日訂單及每 24 分鐘刷新。",
+      "remaining": "驗證所有解鎖階段都只派發可取得材料，明確期限行為。",
+      "dependency": [
+        "T019",
+        "T038",
+        "T054"
+      ]
+    },
+    {
+      "id": "T056",
+      "phase": "P3",
+      "title": "公共基金與貢獻紀錄",
+      "acceptance": "無人可把基金轉回私人帳戶",
+      "evidence_status": "partial",
+      "evidence": "test_world 驗證共同捐料，test_festival 有個人貢獻及離線獎勵。",
+      "remaining": "實作獨立公共基金與貢獻紀錄，禁止轉回私人帳戶。",
+      "dependency": [
+        "T015",
+        "T027"
+      ]
+    },
+    {
+      "id": "T057",
+      "phase": "P3",
+      "title": "管理員與細分地塊權限",
+      "acceptance": "放取採拆權限各自可測",
+      "evidence_status": "partial",
+      "evidence": "test_world、test_building 有箱子、搬移與拆除所有權檢查。",
+      "remaining": "完成管理員和放取採拆分權矩陣，逐項核對。",
+      "dependency": [
+        "T032",
+        "T025"
+      ]
+    },
+    {
+      "id": "T058",
+      "phase": "P3",
+      "title": "雙方確認交易",
+      "acceptance": "改單撤確認，斷線不部分扣款",
+      "evidence_status": "not_started",
+      "evidence": "雙人共享箱不是確認式交換流程；0.4 可玩功能無此交易。",
+      "remaining": "建立雙方確認與改單取消，測斷線原子性。",
+      "dependency": [
+        "T015",
+        "T021",
+        "T038"
+      ]
+    },
+    {
+      "id": "T059",
+      "phase": "P3",
+      "title": "備份還原與遷移演練",
+      "acceptance": "在副本還原物品建築與故事",
+      "evidence_status": "partial",
+      "evidence": "test_save_schema 驗證壞主檔回復與保全備份；0.3→0.4 副本重啟保存保留 273 舊欄位。",
+      "remaining": "以包含實際居民故事進度的世界演練備份還原和遷移。",
+      "dependency": [
+        "T011",
+        "T015",
+        "T054"
+      ]
+    },
+    {
+      "id": "T060",
+      "phase": "P3",
+      "title": "多組朋友跨日封測",
+      "acceptance": "收集實際問題並修完存檔與交易重大缺陷",
+      "evidence_status": "blocked",
+      "evidence": "四程序短測已完成；沒有跨日真人封測紀錄。",
+      "remaining": "招募多組朋友，補齊前置功能後進行跨日封測並收斂缺陷。",
+      "dependency": [
+        "T046",
+        "T050",
+        "T051",
+        "T053",
+        "T055",
+        "T056",
+        "T057",
+        "T058",
+        "T059"
+      ]
+    },
+    {
+      "id": "T061",
+      "phase": "P4",
+      "title": "八人負載與多人場景修正",
+      "acceptance": "擁擠與分區遊玩皆通過量測門檻",
+      "evidence_status": "partial",
+      "evidence": "0.5 四個客戶端約 375 秒各完成四輪實時農作及兩輪種樹，蘿蔔圖鑑發現均保存。",
+      "remaining": "完成分區與擁擠場景，八人負載下測量延遲、記憶體與保存。",
+      "dependency": [
+        "T060"
+      ]
+    },
+    {
+      "id": "T062",
+      "phase": "P4",
+      "title": "24 作物與種子機溫室",
+      "acceptance": "無種子免費循環套利，跨季可用",
+      "evidence_status": "partial",
+      "evidence": "0.4 有六種可玩作物，內容設定集有規劃資料。",
+      "remaining": "完成 24 種、種子機與溫室，驗證跨季及套利。",
+      "dependency": [
+        "T049",
+        "T036"
+      ]
+    },
+    {
+      "id": "T063",
+      "phase": "P4",
+      "title": "12 魚圖鑑與保底",
+      "acceptance": "保底依世界玩家保存，重登不重置",
+      "evidence_status": "partial",
+      "evidence": "test_life 驗證四種魚的循環。",
+      "remaining": "完成十二魚圖鑑、玩家與世界級保底及重登回歸。",
+      "dependency": [
+        "T040",
+        "T048"
+      ]
+    },
+    {
+      "id": "T064",
+      "phase": "P4",
+      "title": "完成五技能與追趕機制",
+      "acceptance": "新玩家能用公共設施且借用物不可刷錢",
+      "evidence_status": "not_started",
+      "evidence": "技能系統目前尚未進入可玩版本。",
+      "remaining": "完成五技能、設施共享與追趕機制防套利。",
+      "dependency": [
+        "T047",
+        "T060"
+      ]
+    },
+    {
+      "id": "T065",
+      "phase": "P4",
+      "title": "完成 12 動物角色",
+      "acceptance": "家畜寵物野生行為各有可見用途",
+      "evidence_status": "partial",
+      "evidence": "一隻小雞有餵食、親密度與產蛋。",
+      "remaining": "完成十二種角色和家畜、寵物、野生行為。",
+      "dependency": [
+        "T050"
+      ]
+    },
+    {
+      "id": "T066",
+      "phase": "P4",
+      "title": "完成 12 居民與關係事件",
+      "acceptance": "每階段有事件，缺席不阻塞他人",
+      "evidence_status": "partial",
+      "evidence": "可玩版兩位居民各四段事件；內容設定集編排 12 位居民、48 段事件。",
+      "remaining": "整合其餘居民與資產，驗證缺席不阻塞。",
+      "dependency": [
+        "T054"
+      ]
+    },
+    {
+      "id": "T067",
+      "phase": "P4",
+      "title": "外島與十五層礦洞",
+      "acceptance": "區域任務來源完整，出口皆有效",
+      "evidence_status": "not_started",
+      "evidence": "現有可玩地圖是主島，無外島或十五層礦洞。",
+      "remaining": "完成區域任務、材料來源、進出與出口驗收。",
+      "dependency": [
+        "T052",
+        "T053"
+      ]
+    },
+    {
+      "id": "T068",
+      "phase": "P4",
+      "title": "五章故事與風鈴節",
+      "acceptance": "世界進度一次完成，個人事件可重看",
+      "evidence_status": "partial",
+      "evidence": "0.4 有兩位居民手帳和風鈴接力。",
+      "remaining": "補五章、正式節慶與完整世界一次性結算。",
+      "dependency": [
+        "T066",
+        "T067"
+      ]
+    },
+    {
+      "id": "T069",
+      "phase": "P4",
+      "title": "96 件家具設施與六風格",
+      "acceptance": "定義清單去重，全部可預覽放置",
+      "evidence_status": "partial",
+      "evidence": "可玩版十八種建造物；內容設定集驗證 96 項資料 ID。",
+      "remaining": "接入六風格及 96 項遊戲資產，逐件預覽與放置。",
+      "dependency": [
+        "T051",
+        "T062"
+      ]
+    },
+    {
+      "id": "T070",
+      "phase": "P4",
+      "title": "16 料理與共享餐",
+      "acceptance": "份數固定，重連不重領",
+      "evidence_status": "partial",
+      "evidence": "test_life 與雙客戶端檢查共享石灶只領一份；原型有六料理。",
+      "remaining": "補十種料理與分份共享餐，驗證重連不重領。",
+      "dependency": [
+        "T037",
+        "T062",
+        "T063"
+      ]
+    },
+    {
+      "id": "T071",
+      "phase": "P4",
+      "title": "市集與三種合作活動",
+      "acceptance": "退出活動後背包還原且獎勵不重發",
+      "evidence_status": "partial",
+      "evidence": "test_festival 及 WSS 最後一鈴競爭測試通過，已有一種接力。",
+      "remaining": "補市集及其餘合作活動，測退出後背包復原。",
+      "dependency": [
+        "T055",
+        "T058",
+        "T070"
+      ]
+    },
+    {
+      "id": "T072",
+      "phase": "P4",
+      "title": "藍圖儲存與套用",
+      "acceptance": "材料權限碰撞預覽正確",
+      "evidence_status": "not_started",
+      "evidence": "已有拖曳施工，沒有已存布局的藍圖功能。",
+      "remaining": "實作儲存與套用，驗證材料權限碰撞預覽。",
+      "dependency": [
+        "T034",
+        "T069"
+      ]
+    },
+    {
+      "id": "T073",
+      "phase": "P4",
+      "title": "表情標記與文字聊天",
+      "acceptance": "靜音可用，聊天不誤觸角色操作",
+      "evidence_status": "not_started",
+      "evidence": "現有 HUD 可提示但沒有玩家聊天或靜音流程。",
+      "remaining": "加入表情、文字聊天與靜音，測輸入焦點。",
+      "dependency": [
+        "T025",
+        "T029"
+      ]
+    },
+    {
+      "id": "T074",
+      "phase": "P4",
+      "title": "手把完整操作",
+      "acceptance": "不用滑鼠也能建造交易改設定",
+      "evidence_status": "not_started",
+      "evidence": "README 操作是鍵鼠。",
+      "remaining": "支援全手把操作、焦點與交易、建造、設定。",
+      "dependency": [
+        "T006",
+        "T030",
+        "T073"
+      ]
+    },
+    {
+      "id": "T075",
+      "phase": "P4",
+      "title": "近況卡圖鑑與回憶冊",
+      "acceptance": "缺席者清楚知道進度且能補看",
+      "evidence_status": "partial",
+      "evidence": "J 手帳可回看兩位居民的個人故事。",
+      "remaining": "補近況卡、圖鑑內容與缺席玩家重連試玩。",
+      "dependency": [
+        "T068",
+        "T063",
+        "T073"
+      ]
+    },
+    {
+      "id": "T076",
+      "phase": "P4",
+      "title": "完整公開測試候選包",
+      "acceptance": "完整流程無阻塞，交付已知問題清單",
+      "evidence_status": "partial",
+      "evidence": "已交付 0.4 Windows、Linux 和原始碼封包及已知限制。",
+      "remaining": "完整 P4 內容及回歸後，再出公開測試候選包。",
+      "dependency": [
+        "T061",
+        "T062",
+        "T063",
+        "T064",
+        "T065",
+        "T066",
+        "T067",
+        "T068",
+        "T069",
+        "T070",
+        "T071",
+        "T072",
+        "T074",
+        "T075"
+      ]
+    },
+    {
+      "id": "T077",
+      "phase": "P5",
+      "title": "世界啟停租約與防雙寫",
+      "acceptance": "同時啟動只保留一個合法寫入程序",
+      "evidence_status": "not_started",
+      "evidence": "有本機保存與備份，README 明列未實作正式租約。",
+      "remaining": "實作單一寫入者，驗證並行啟動與租約轉移。",
+      "dependency": [
+        "T059",
+        "T061"
+      ]
+    },
+    {
+      "id": "T078",
+      "phase": "P5",
+      "title": "容量成本與休眠量測",
+      "acceptance": "五種負載有數據和成本試算",
+      "evidence_status": "not_started",
+      "evidence": "只有四程序短測與零星樣本，無五種負載量測。",
+      "remaining": "測空載、不同人數與休眠，提供可重現成本試算。",
+      "dependency": [
+        "T077"
+      ]
+    },
+    {
+      "id": "T079",
+      "phase": "P5",
+      "title": "維運世界列表與警報",
+      "acceptance": "能識別未保存世界並個別處理",
+      "evidence_status": "not_started",
+      "evidence": "Linux 啟動日誌與本機保存失敗提示已可用。",
+      "remaining": "建立管理列表、保存延遲偵測與逐世界處理。",
+      "dependency": [
+        "T078"
+      ]
+    },
+    {
+      "id": "T080",
+      "phase": "P5",
+      "title": "部署更新及 Zeabur → 騰訊雲搬遷",
+      "acceptance": "保存停機、單一寫入者、備份匯入、入口切換與帶最新進度回退均完成演練",
+      "evidence_status": "blocked",
+      "evidence": "deploy/README.md 有搬遷步驟，本機代理通過 WSS，未建 Docker 映像。",
+      "remaining": "取得授權環境後實測單一寫入、持久卷搬遷、入口切換及攜帶最新進度回退。",
+      "dependency": [
+        "T077",
+        "T079"
+      ]
+    },
+    {
+      "id": "T081",
+      "phase": "P5",
+      "title": "發行安裝更新與版本檢查",
+      "acceptance": "新機可安裝；啟動或連線發現版本低於最低支援版本時，客戶端清楚彈出更新提示並提供更新入口；不相容版本不能入服，更新經驗簽後安全替換並保留回復能力",
+      "evidence_status": "partial",
+      "evidence": "Windows ZIP 可執行，session.gd 有協定版本檢查。",
+      "remaining": "實作啟動版本目錄檢查、更新對話框與一鍵下載；客戶端收到伺服器版本拒絕時顯示更新提示；建立正式下載來源、Windows 安裝包、簽章／SHA-256 驗證、獨立更新程序及回復流程，並在新機完成驗收。",
+      "dependency": [
+        "T002",
+        "T080"
+      ]
+    },
+    {
+      "id": "T082",
+      "phase": "P5",
+      "title": "發行素材與資產授權清冊",
+      "acceptance": "截圖符合實際版本，素材來源完整",
+      "evidence_status": "partial",
+      "evidence": "0.4 有實際引擎截圖與三個封包雜湊。",
+      "remaining": "針對發行候選版完成資產來源、授權與素材對照。",
+      "dependency": [
+        "T076"
+      ]
+    },
+    {
+      "id": "T083",
+      "phase": "P5",
+      "title": "服務方案與支援政策定稿",
+      "acceptance": "雲端費用保存期限恢復責任說明清楚",
+      "evidence_status": "not_started",
+      "evidence": "規劃書有營運方向，未見定稿且可驗證的費用保存政策。",
+      "remaining": "用容量成本與復原演練定稿服務費及支援責任。",
+      "dependency": [
+        "T078",
+        "T082"
+      ]
+    },
+    {
+      "id": "T084",
+      "phase": "P5",
+      "title": "發行候選整體審查",
+      "acceptance": "未通過項目明列，不把候選版稱正式完成",
+      "evidence_status": "partial",
+      "evidence": "0.4 的驗證紀錄明列未完成項與封包雜湊。",
+      "remaining": "完成發行候選完整清單審查和決議。",
+      "dependency": [
+        "T076",
+        "T081",
+        "T083",
+        "T096"
+      ]
+    },
+    {
+      "id": "T085",
+      "phase": "QA",
+      "title": "新手無協助測試",
+      "acceptance": "5 人觀察紀錄及卡關修正",
+      "evidence_status": "blocked",
+      "evidence": "已有代理實際鍵鼠種植和建造紀錄，真人新手觀察仍待進行。",
+      "remaining": "約五位新手無協助遊玩，記錄卡關、修正並複測。",
+      "dependency": [
+        "T044"
+      ]
+    },
+    {
+      "id": "T086",
+      "phase": "QA",
+      "title": "鏡頭與舒適度比較",
+      "acceptance": "記錄個別不適、替代選項與改進",
+      "evidence_status": "blocked",
+      "evidence": "已有近遠固定視野與減少動態設定，真人舒適度未評分。",
+      "remaining": "請真人比較兩種視野，記錄各人不適和替代選項。",
+      "dependency": [
+        "T005",
+        "T043"
+      ]
+    },
+    {
+      "id": "T087",
+      "phase": "QA",
+      "title": "延遲丟包與重連測試",
+      "acceptance": "規定條件下交易建物一致",
+      "evidence_status": "partial",
+      "evidence": "真實 Linux 連線驗證競爭與斷線部分行為，原型亦有移動逾時。",
+      "remaining": "注入指定延遲與丟包，核對重連後建物及雙方交易一致。",
+      "dependency": [
+        "T046",
+        "T058"
+      ]
+    },
+    {
+      "id": "T088",
+      "phase": "QA",
+      "title": "交易競爭與重送測試",
+      "acceptance": "採收箱子交易各 100 次無複製",
+      "evidence_status": "partial",
+      "evidence": "test_world 與跨平台測試驗證重送、重複採收及單一領取。",
+      "remaining": "完成三類各 100 次含並發及失敗重試的可重複測試。",
+      "dependency": [
+        "T015",
+        "T058"
+      ]
+    },
+    {
+      "id": "T089",
+      "phase": "QA",
+      "title": "強制中斷與磁碟錯誤",
+      "acceptance": "錯誤可見，未提交不部分生效",
+      "evidence_status": "partial",
+      "evidence": "test_world、test_building、test_festival 驗證保存失敗回滾，test_save_schema 驗證損壞復原。",
+      "remaining": "注入實際強制中斷、磁碟滿、只讀與不同寫入時點。",
+      "dependency": [
+        "T059",
+        "T077"
+      ]
+    },
+    {
+      "id": "T090",
+      "phase": "QA",
+      "title": "八小時混合操作測試",
+      "acceptance": "記憶體保存重連曲線無未解釋異常",
+      "evidence_status": "partial",
+      "evidence": "0.5 四客戶端約 375 秒完成實時農作與種樹，並核對磁碟物資及圖鑑。",
+      "remaining": "跑八小時混合操作並記錄程序記憶體、保存耗時和重連曲線。",
+      "dependency": [
+        "T061",
+        "T077"
+      ]
+    },
+    {
+      "id": "T091",
+      "phase": "QA",
+      "title": "硬體與密集場景量測",
+      "acceptance": "參考硬體與幀時間記錄可重現",
+      "evidence_status": "partial",
+      "evidence": "原型畫面記錄使用 Radeon RX 9060 XT，未記錄密集場景幀時間。",
+      "remaining": "定義參考硬體和密集場景，產出可重現幀時間量測。",
+      "dependency": [
+        "T061",
+        "T069"
+      ]
+    },
+    {
+      "id": "T092",
+      "phase": "QA",
+      "title": "文字縮放與手把無障礙",
+      "acceptance": "全主流程焦點清楚且無裁切",
+      "evidence_status": "partial",
+      "evidence": "test_ui 有固定 1280×800 面板邊界回歸。",
+      "remaining": "完成四級縮放、手把焦點及全流程無裁切驗收。",
+      "dependency": [
+        "T074"
+      ]
+    },
+    {
+      "id": "T093",
+      "phase": "QA",
+      "title": "經濟配方與解鎖依賴檢查",
+      "acceptance": "無負成本循環與無來源必要材料",
+      "evidence_status": "partial",
+      "evidence": "test_life、test_world 檢查部分扣料、買賣及取消退款。",
+      "remaining": "驗證正式經濟圖無負成本循環、必要材料都有來源。",
+      "dependency": [
+        "T062",
+        "T068",
+        "T070"
+      ]
+    },
+    {
+      "id": "T094",
+      "phase": "QA",
+      "title": "內容及素材一致性檢查",
+      "acceptance": "資產對應 ID，所有狀態有可用圖",
+      "evidence_status": "partial",
+      "evidence": "內容設定集有唯一 ID、故事先後與材料正數檢查。",
+      "remaining": "核對全部可執行資產與 ID，覆蓋每個狀態圖。",
+      "dependency": [
+        "T065",
+        "T066",
+        "T069",
+        "T082"
+      ]
+    },
+    {
+      "id": "T095",
+      "phase": "QA",
+      "title": "異地備份與版本遷移復測",
+      "acceptance": "實測復原點復原時間與失敗處理",
+      "evidence_status": "blocked",
+      "evidence": "歷史 0.3→0.4 副本保留 273 欄位，尚無異地備份復原實測。",
+      "remaining": "取得測試儲存環境，記錄復原點、復原時間及失敗處理。",
+      "dependency": [
+        "T080"
+      ]
+    },
+    {
+      "id": "T096",
+      "phase": "QA",
+      "title": "發行阻擋問題清單清零",
+      "acceptance": "無未解決的丟檔複製權限繞過或主流程阻塞",
+      "evidence_status": "partial",
+      "evidence": "0.4 驗證紀錄列 437 自動檢查通過與未測範圍。",
+      "remaining": "完成各 QA 前置後，逐案關閉發行阻擋並重跑。",
+      "dependency": [
+        "T085",
+        "T086",
+        "T087",
+        "T088",
+        "T089",
+        "T090",
+        "T091",
+        "T092",
+        "T093",
+        "T094",
+        "T095"
+      ]
+    }
+  ]
+}

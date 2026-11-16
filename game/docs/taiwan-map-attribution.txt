@@ -1,0 +1,4 @@
+Taiwan overview uses a generalized Natural Earth 1:10m main-island outline (public domain).
+Source: https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson
+Terms: https://www.naturalearthdata.com/about/terms-of-use/
+North up; not cadastral, road, administrative-boundary or navigation data. Local playable farm locations are fictional and distances compressed. Offshore island regions are not yet implemented.

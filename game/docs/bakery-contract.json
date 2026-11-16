@@ -1,0 +1,68 @@
+{
+  "scope": "原規劃 R21 製粉、R29 南瓜派，以及必要的南瓜種植與磨坊加工鏈",
+  "status": "integrated_incremental_feature_not_full_plan_completion",
+  "plan_alignment": {
+    "T037": "12 項料理加工配方，並非 12 道料理",
+    "T070": "完整 16 道料理仍是後續驗收範圍",
+    "crop_target": 24
+  },
+  "ids": [
+    "pumpkin",
+    "pumpkin_seed",
+    "mill",
+    "mill_kit",
+    "flour",
+    "pumpkin_pie"
+  ],
+  "pumpkin": {
+    "growth_world_seconds": 270,
+    "seed_price": 70,
+    "sale_price": 150,
+    "yield": 1,
+    "source": "現有渡口種子商店；引進栽培作物，不宣稱台灣原生物種"
+  },
+  "mill": {
+    "unlock": "public_kitchen.opened",
+    "kit_ingredients": {
+      "plank": 8,
+      "stone": 16,
+      "copper_joint": 4
+    },
+    "manual_queue": 10,
+    "automatic_input": "wheat",
+    "automatic_output": "flour"
+  },
+  "flour": {
+    "station": "mill",
+    "ingredients": {
+      "wheat": 2
+    },
+    "time": 60,
+    "yield": 1
+  },
+  "pumpkin_pie": {
+    "station": "stove",
+    "ingredients": {
+      "pumpkin": 1,
+      "flour": 1,
+      "egg": 1
+    },
+    "time": 120,
+    "yield": 4,
+    "sale_price": 80
+  },
+  "compatibility": "既有 bread、feed 等配方、物品 ID、已排隊工作快照不變；保留原公共廚房解鎖流程，避免麵包與磨坊形成循環依賴。歷史存檔遷移切點不變。",
+  "remaining_plan_gaps": [
+    "完整24種作物與季節限制",
+    "完整16道料理",
+    "原計畫麵包改用麵粉的解鎖流程重整",
+    "磨坊飼料及果醬、糖、乳品的完整供應鏈"
+  ],
+  "verification_required": [
+    "正常材料可取得",
+    "所有新動作與舊功能回歸",
+    "佇列與自動化互斥、退款、持久化",
+    "多人協定與權限",
+    "原生畫面、背包、磨坊、料理介面與最小解析度"
+  ]
+}

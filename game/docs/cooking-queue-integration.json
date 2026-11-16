@@ -1,0 +1,241 @@
+{
+  "status": "world_save_session_ui_integrated_network_verified",
+  "current_release": {
+    "version": "0.43-dev",
+    "protocol": 38,
+    "save": 20,
+    "download_package_replaced": false
+  },
+  "backend_verified": {
+    "evidence": "work/cooking-queue/integration-all/results.json",
+    "suites": 140,
+    "render_suites": 4,
+    "checks": 43003,
+    "source_unchanged_during_run": true,
+    "world_checks": 705,
+    "schema_checks": 825,
+    "session_checks": 53,
+    "legacy_artifact_log": "work/cooking-queue/legacy-artifacts-final.log",
+    "legacy_artifact_versions": [
+      1,
+      4,
+      7,
+      17,
+      19
+    ],
+    "legacy_artifact_checks": 192,
+    "legacy_artifact_sources_unchanged": true,
+    "existing_blueprint_ws_regression": "work/house-rooms/blueprint-ws/20261113T222240Z/summary.json",
+    "existing_blueprint_ws_runner_checks": 83,
+    "limits": "World queue competition is scripted actors; Session routing uses local fixture/host dispatch, not real queue transport. WS regression exercises existing blueprints with protocol38/save20, not cooking queues. No new cooking visual or natural-play claim. Documentation updated after source-stable regression; runtime code unchanged."
+  },
+  "implemented_backend": {
+    "storage": "optional stove.cooking; mutually exclusive with authoritative legacy stove.job",
+    "lazy_conversion": "old job remains unchanged on general load; first successful queue_cook imports it and charges only newly enqueued ingredients; rejected request retains original job",
+    "actions": {
+      "queue_cook": "recipe ID",
+      "cancel_queued_cook": "exact 32-hex job ID",
+      "claim_cook": "oldest ready food",
+      "cancel_cook": "currently active owned job; UI uses exact job ID on queue stoves"
+    },
+    "ordinary_cook": "legacy single job remains on untouched stoves; existing cooking-enabled stoves enqueue",
+    "clock": "all regional queues advance in World.step_region; inactive whole world pauses; completed output stays until claimed",
+    "transaction": "normal World.act nonce receipts and rollback; tick completions save or restore whole prior state; nonempty queue blocks moving/removing stove and invalidates construction undo",
+    "public_state": "nested queue owners hashed once; display-only job projection takes oldest ready else active; authoritative World never contains both fields",
+    "compatibility_ui": "existing menus can show projected job; ready output cannot cancel hidden active job; active cancel targets displayed id to avoid completion race"
+  },
+  "verified": {
+    "evidence": "work/cooking-queue/final/results.json",
+    "suites": 7,
+    "checks": 1808,
+    "source_unchanged": true,
+    "queue_checks": 1289,
+    "recipe_history_checks": 27,
+    "existing_life_checks": 61,
+    "live_fix": "existing single-job cooking now checks all refund ingredients and claimed output against inventory count cap before mutation; exact-cap save/reload tested",
+    "limits": "isolated pure helper tests; no queue gameplay, queue migration, queue networking or new visual verification yet"
+  },
+  "record_contract": {
+    "state": [
+      "active",
+      "waiting",
+      "ready"
+    ],
+    "base_record": [
+      "id",
+      "kind",
+      "owner",
+      "ingredients",
+      "yield",
+      "recipe_version",
+      "duration"
+    ],
+    "active_extra": [
+      "started",
+      "finish"
+    ],
+    "ready_extra": [
+      "completed"
+    ],
+    "historical_values": "stored bounded ingredients, yield and duration may differ from current recipe; new enqueue always copies current recipe",
+    "legacy_time": "old jobs only saved ready deadline; preserve it, infer a bounded start for unfinished work, and import already completed work directly into ready",
+    "owner_bound": "64 characters, aligned with production SaveSchema.owner"
+  },
+  "requirements": {
+    "source": "outputs/糰糰島_完整遊戲規劃書.html#s13",
+    "tasks": [
+      "T036",
+      "T037",
+      "T042"
+    ],
+    "capacity_per_station": 10,
+    "timing": "world time; continue while players visit other regions; pause when whole world is empty",
+    "refund": "only contributor cancels; full original ingredients for waiting or unfinished active work; never refund completed food",
+    "recipe_history": "preserve submitted ingredients, yield, duration and recipe version across later recipe edits",
+    "material_sources": "Original 0.43 evidence is backpack-only. Explicit authorized single adjacent chest sourcing is added by the 0.45 follow-up material-source-contract.json; retain historical evidence limits below."
+  },
+  "integration_boundaries": {
+    "world": [
+      "advance every regional stove from World.step_region and commit completion changes with rollback on save failure",
+      "act requests use existing persistent nonce receipts; reject wrong station, region or interaction range",
+      "queue state and inventory swap atomically within existing World transaction",
+      "block moving or removing a stove with active, waiting or unclaimed ready work",
+      "record construction-history dependencies for actions and automatic completion"
+    ],
+    "save_schema": [
+      "versioned migration preserving current job ingredients and yield, including historical changed-recipe jobs",
+      "validate bounded queues and exact record shape; never replace malformed state with empty queues",
+      "rollback backups and migration retain owners; do not change inventory item IDs or storage format"
+    ],
+    "session": [
+      "redact owners in all nested active/waiting/ready records to public actor IDs",
+      "protocol version gate prevents old clients interpreting new cooking state incorrectly"
+    ],
+    "ui": [
+      "dedicated cookbook, visible queue and ready-food shelf using existing item PNGs",
+      "show each job contributor, ingredients, completion status and cancellation permission",
+      "preserve ordinary single-job cooking, feed recipe, collection registration and cooked counter",
+      "native screenshot review at 1024x640 and 1280x800 with Tab/Esc and unobstructed prompts"
+    ]
+  },
+  "verification_remaining": [
+    "natural resource journey through the actual queue interface",
+    "desktop/human keyboard validation distinct from scripted physical-key input",
+    "other machine queues, explicit attached material chest sourcing, full recipe/public kitchen story scope",
+    "remote TLS/cloud deployment, adverse transport and crash recovery cooking scenarios"
+  ],
+  "scope_note": "Players can use the dedicated ten-slot stove queue UI. Other machine queues, all twelve recipes, explicit material chest selection, public kitchen story and original P0-P5 gates remain open. T036 is not closed. Existing downloadable Windows package is unchanged.",
+  "ui_verified": {
+    "evidence": "work/cooking-queue/ui-final-verified/results.json",
+    "checks": 1023,
+    "native_resolutions": [
+      [
+        1024,
+        640
+      ],
+      [
+        1280,
+        800
+      ]
+    ],
+    "features": [
+      "all seven existing recipes",
+      "ten slots count active/waiting/ready",
+      "owned exact-ID cancellation",
+      "oldest ready claim",
+      "legacy stove conversion",
+      "fixed action buttons",
+      "classic and preview HUD routes",
+      "Tab/Esc synthetic physical-key events",
+      "correlated action replies; unrelated notices ignored"
+    ],
+    "art": "existing PNGs/StyleBoxTexture, cookbook and green kitchen with icon waiting cells",
+    "native_gameplay_capture": "work/cooking-queue/village-preview",
+    "manual_evidence": "work/cooking-queue/manual/run.log",
+    "manual_backpack": "work/cooking-queue/manual/backpack-after-cooking.jpg",
+    "manual_verified": "Mouse: soup cost 2 radish / yield2; bread cost2 wheat / cancel refunds2 / yield1; original backpack shows soup2 bread1; HUD restored; clean exit.",
+    "limits": "Seeded isolated resources/positions. Programmatic UI fixture advances world time; desktop keyboard injection failed and is not claimed as human keyboard verification."
+  },
+  "queue_transport_verified": {
+    "evidence": "work/cooking-queue/network-ws/20261113T225200Z/summary.json",
+    "transport": "loopback WebSocket",
+    "runner_checks": 160,
+    "client_checks": 286,
+    "phases": {
+      "contest": {
+        "seconds": 22.8,
+        "barriers": [
+          "race",
+          "raced",
+          "cancel_rules",
+          "own_cancel",
+          "refill",
+          "drain",
+          "drained",
+          "claim",
+          "history",
+          "history_claim",
+          "legacy1",
+          "legacy1_owner",
+          "legacy2",
+          "legacy_done",
+          "final_alpha",
+          "final_beta",
+          "final"
+        ],
+        "client_checks": {
+          "contest-alpha": 96,
+          "contest-beta": 96
+        }
+      },
+      "reconnect": {
+        "seconds": 1.9,
+        "barriers": [
+          "persisted_observed",
+          "final"
+        ],
+        "client_checks": {
+          "reconnect-alpha": 23,
+          "reconnect-beta": 23
+        }
+      },
+      "restart": {
+        "seconds": 3.4,
+        "barriers": [
+          "persisted_observed",
+          "final"
+        ],
+        "client_checks": {
+          "restart-alpha": 23,
+          "restart-beta": 25
+        }
+      }
+    },
+    "scope": "two real clients and a dedicated server; contention, capacity, exact charge/refund, claim race, owner redaction, historical recipe, legacy conversion, reconnect and normal restart",
+    "limits": [
+      "Seeded fixture world (stoves, legacy jobs, historical queue record, materials, positions, world time written directly into a temp save); not human or natural play; two clients; one server process at a time.",
+      "Legacy single-job stoves are seeded into a current save-20 file and converted lazily by queue_cook over the network; migration of an actual pre-20 save file is not exercised here (schema suites cover it).",
+      "Request dedup: World receipts are keyed by server session nonce + peer + sequence and are not addressable by a client. The test replays the SAME Session sequence via Session.perform (counter rewound); it is dropped by Session's per-peer sequence gate before World. World-level receipt replay is not exercised over the network; disk receipts are checked to hold exactly one entry per successful action.",
+      "Contention is two clients against one single-threaded server; the race shows the serialized outcome only.",
+      "Server restart is a normal --quit-after stop + restart; no crash/kill or save-failure injection.",
+      "Reconnect uses fresh client processes after a clean exit, not a mid-request network drop.",
+      "No cooking UI, screenshots, material chest sourcing or other machines are exercised.",
+      "Plain ws:// on 127.0.0.1 only: no TLS/WSS, certificates, proxies, CDN or cloud hosting tested.",
+      "Unauthenticated room-key path only (register_player); the identity/ticket path (join_authenticated) is not exercised.",
+      "No packet loss/latency injection."
+    ]
+  },
+  "current_regression": {
+    "evidence": "work/cooking-queue/ui-all-final/results.json",
+    "suites": 144,
+    "checks": 43988,
+    "render_suites": 5,
+    "source_unchanged_during_run": true,
+    "note": "This evidence JSON and the ledger/report were updated after the run; runtime sources were not changed."
+  },
+  "stove_feedback": {
+    "evidence": "work/cooking-queue/feedback-native/results.json",
+    "checks": 8,
+    "scope": "actual WorldView rendered stove pixel region changes with ordinary motion and is identical with reduced motion; ready food can coexist with a simmering pot"
+  }
+}

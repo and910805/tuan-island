@@ -1,0 +1,22 @@
+{
+  "date": "2026-11-14",
+  "tool": "builtin image_gen",
+  "use_case": "style-transfer new production sprite source",
+  "source": "work/flowers/art-source/flower-market-source.png",
+  "original": "C:/Users/eric.chuang/.codex/generated_images/01a1d13b-999b-7d40-aef5-916695fa0a14/exec-cfc81dff-6c5e-4e8b-86c2-46f6809a3686.png",
+  "reference_role": "game/assets/flowers/flower-props.png palette/material reference only; existing art not replaced",
+  "dimensions": [
+    1774,
+    887
+  ],
+  "mode": "RGBA",
+  "alpha_range": [
+    0,
+    255
+  ],
+  "layout": "Two equal887x887 cells: left daily stall, right decorated after community-garden completion. Same canopy/counter/post structure; flowers intentionally extend silhouette in right state.",
+  "logical_target": "64x64 each, or suitable common footprint after native inspection. Use same cell transform/baseline for both states to avoid shifting on completion.",
+  "prompt_summary": "Warm cozy pixel flower cooperative stall, sage/ivory canopy, wood counter, seed packets, sugar jar. Second state same stall with blue/orange/cream flowers. Front-facing top-down farming camera, light upper left, transparent, no people/text/logo/floor. Simplified clusters for64px readability.",
+  "review": "Original visible output has readable stable stall silhouette and recognizable completion decoration. Generated high-resolution source is not proven hand-authored64px pixel art; alpha fringes and downscale readability still require native review. No finished-game quality claim.",
+  "integration": "Copied to game/assets/flowers/flower-market.png; flower_scene_art.market_texture(completed) and market_anchor ready; native64px gallery reviewed; world scene placement pending."
+}

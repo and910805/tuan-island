@@ -1,0 +1,818 @@
+{
+  "title": "第四章增量「海邊的飯香」：臺南北門鹽風合作鹽田（定稿副本，含 lead 修正）",
+  "status": "已整合的第四章鹽田增量（0.50-dev / protocol 45 / save 26）。不是第四章或全遊戲完成聲明；原規劃39章、T001–T096、P0–P5、24作物、16料理、完整台灣仍未完成。本檔為開發者文件，不出現在遊戲內。",
+  "authored": "2026-11-14",
+  "scope_guard": {
+    "is_completion": false,
+    "statement": "第四章的一段增量切片。原規劃39章、T001–T096、P0–P5、24作物、16料理、完整台灣（10生活圈、5章故事）、四季與雲端全部維持開放。",
+    "chapter4_left_open": [
+      "南投／嘉義林鐵人工林輪伐補植",
+      "炭窯燃料分配與山區運補",
+      "高雄／屏東港口轉運",
+      "醃製食品與果醬",
+      "跨區定期貨運（海鹽回渡口）",
+      "更可靠的農機零件"
+    ],
+    "ledger_items_touched_not_closed": [
+      "T036",
+      "T037",
+      "T039",
+      "T055",
+      "T070"
+    ],
+    "freeze": "已解除（花卉 0.49-dev/44/25 完整回歸通過後）。"
+  },
+  "sources_read": {
+    "plan": "outputs/糰糰島_完整遊戲規劃書.html：§07 天氣（晴、小雨、多雲、微風、細雪；雨天不摧毀家園）、§10 材料表（海鹽／貝殼）、§14 料理表（香煎溪魚＝溪魚、海鹽）、§17 小栗。",
+    "design": "game/docs/taiwan-life-design.json 第4章；taiwan-resources-travel-design.json 臺南沿海(produced,salt)、travel_system、cargo_system；taiwan-history-design.json 臺南候選篇；weather-contract.json。",
+    "advisory": "work/plan-audit-20261114/next-stage.json（參考，非權威）；work/flowers/* 合約格式。",
+    "code": [
+      "world.gd(_apply、act、step、CRAFT、RECIPES、OTHER_SALES、NAMES、FLOWER_REJECTED、KITCHEN_GATED)",
+      "session.gd(_action 動作名≤24、extra≤32、每秒12次、CORRELATED_ACTIONS、public_state、_send_snapshot、PROTOCOL 44)",
+      "save_schema.gd(VERSION 25、遷移字面值、region 數量檢查)",
+      "regions.gd",
+      "transit.gd",
+      "weather.gd",
+      "flower_nursery.gd",
+      "mine_auto_freight.gd",
+      "mine_freight.gd(LIMIT、can_fit)",
+      "material_sources.gd(box_id、相鄰箱)",
+      "industry.gd(PROCESS plank)",
+      "forestry.gd(OUTPUT resin)",
+      "collections.gd(FISH minnow)",
+      "history_ui.gd/history_story.gd",
+      "life_ui_tasks.gd(島民手冊)",
+      "world_view.gd(TILE 32)",
+      "game/release.json(0.49-dev/44)"
+    ]
+  },
+  "audit_corrections": [
+    {
+      "claim": "16x16 地格、24x32 角色",
+      "fact": "現行 world_view.gd TILE=32；物品圖示32px；地圖角色32x48。全部美術依32px整數像素。"
+    },
+    {
+      "claim": "經臺北轉乘前往臺南",
+      "fact": "前往北門的唯一直接連線是田尾→北門南下合併轉乘，不經臺北。"
+    },
+    {
+      "claim": "木板只能來自宜蘭人工林／鋸木台",
+      "fact": "木板來自玩家自建的鋸木台（Industry.PROCESS plank：wood4→plank2，12秒），木材可來自任何現有可伐地或林務工作站；不另加宜蘭限定。"
+    },
+    {
+      "claim": "缺少溪魚",
+      "fact": "collections.gd 已有 minnow「銀線溪魚」(售22)。規劃§14香煎溪魚＝溪魚＋海鹽，可用既有 minnow 精確對應原料方向。"
+    },
+    {
+      "claim": "箱子有滿箱狀態",
+      "fact": "chest/private_chest 無格數上限，只有每品項 LIMIT=1e9。本切片的「滿」以玩家設定的收鹽箱存量上限定義（見 automation.full）。"
+    },
+    {
+      "claim": "首趟交通需新增免費機制",
+      "fact": "transit 本來不收費；不新增票價或新貨幣，返家永遠可選。"
+    },
+    {
+      "claim": "歷史鹽田＝可採鹽場",
+      "fact": "井仔腳是保存與體驗的文化景觀；可操作鹽田是虛構合作鹽田，兩者分區。"
+    },
+    {
+      "claim": "版本 0.50/45/26 已確定",
+      "fact": "暫定。以花卉實際最終值+1為準（預期花卉 0.49-dev/44/25 → 鹽田 0.50-dev/45/26），root 在花卉落地後確認並一次更新測試字面值。"
+    }
+  ],
+  "versions": {
+    "baseline_before": {
+      "release": "0.49-dev",
+      "protocol": 44,
+      "save": 25
+    },
+    "final": {
+      "release": "0.50-dev",
+      "protocol": 45,
+      "save": 26
+    },
+    "rule": "SaltPan.SAVE_VERSION 與 save_schema SALT_VERSION 為字面值 26；較舊遷移字面值全部保留。"
+  },
+  "ids": {
+    "region": "beimen",
+    "region_label": "北門・鹽風合作鹽田",
+    "root_state_key": "salt_pan",
+    "items_new": {
+      "sea_salt": "海鹽",
+      "salt_wheel_kit": "鹽田水車組",
+      "salt_rake_kit": "收鹽台組",
+      "salt_grilled_fish": "香煎溪魚"
+    },
+    "recipe_new": {
+      "salt_grilled_fish": {
+        "name": "香煎溪魚",
+        "ingredients": {
+          "minnow": 1,
+          "sea_salt": 1
+        },
+        "time": 15.0,
+        "yield": 1,
+        "station": "stove",
+        "basis": "原料方向為規劃§14精確；數量、15秒、產量為設計選擇"
+      }
+    },
+    "craft_new": {
+      "salt_wheel_kit": {
+        "name": "鹽田水車組",
+        "ingredients": {
+          "plank": 8,
+          "copper_joint": 2,
+          "resin": 2
+        },
+        "yield": 1
+      },
+      "salt_rake_kit": {
+        "name": "收鹽台組",
+        "ingredients": {
+          "plank": 6,
+          "stone": 6,
+          "fiber": 4,
+          "copper_joint": 1
+        },
+        "yield": 1
+      }
+    },
+    "preserved": "grilled_fish(香煎鯽魚, carp1) 配方、名稱、售價、收藏紀錄全部保留；新料理用新ID，不改名。",
+    "npc": {
+      "id": "salt_worker",
+      "name": "阿曬",
+      "role": "鹽風合作鹽田的當代鹽工（原創人物，非歷史人物見證）"
+    },
+    "actions": {
+      "salt_letter": "home／小栗攤位：收信",
+      "salt_intro": "beimen／阿曬：初次見面",
+      "salt_gate_give": "beimen／閘門：捐材料（extra=plank|resin|stone）",
+      "salt_flood": "beimen／鹽田格：引海水",
+      "salt_rake": "beimen／鹽田格：收鹽",
+      "salt_claim": "beimen／鹽田區任一格：認領鹽田區",
+      "salt_release": "beimen／鹽田區任一格：歸還鹽田區",
+      "salt_install": "beimen／水車座或收鹽台座：安裝（extra=wheel|rake）",
+      "salt_uninstall": "beimen／同上：拆回背包（extra=wheel|rake）",
+      "salt_auto_cfg": "beimen／收鹽台座：選收鹽箱與存量上限（extra=\"x,y|cap\"）",
+      "salt_auto_toggle": "beimen／收鹽台座：啟用／暫停",
+      "salt_note": "beimen／觀景解說牌：閱讀地方記憶",
+      "salt_order": "home／小栗攤位：交付海鹽委託",
+      "salt_report": "beimen／阿曬：回報，完成本段故事",
+      "salt_box_take": "beimen／合作社收鹽箱(47,23)：取回自己的海鹽與寄存的機器組"
+    },
+    "action_limits": "名稱最長16字元（session 上限24）；extra 皆≤32 ASCII，走既有 PLAIN_EXTRA_MAX，不加新 RPC。",
+    "correlated_actions_add": [
+      "salt_gate_give",
+      "salt_rake",
+      "salt_install",
+      "salt_uninstall",
+      "salt_auto_cfg",
+      "salt_order",
+      "salt_box_take"
+    ],
+    "forward_ids": [
+      "sea_salt",
+      "salt_wheel_kit",
+      "salt_rake_kit",
+      "salt_grilled_fish",
+      "beimen",
+      "salt_pan"
+    ]
+  },
+  "geography_layout": {
+    "grid": "80x60 region, 32px/tile. 海在西側（x<6，臺灣海峽方向）。座標皆為 Vector2i。",
+    "LAND": "Rect2i(6,10,46,32)  # x6..51, y10..41",
+    "SEA": "x<6 或 LAND 外 → water",
+    "DIKE": "x6..7 可走堤岸",
+    "GATES": {
+      "rows_oy": [
+        13,
+        20,
+        27
+      ],
+      "gate": "Rect2i(8,oy+1,2,1) 固體",
+      "note": "配合 2x1 道具美術（salt_props_art 64x64 固定視窗、腳底錨點 (32,64)）"
+    },
+    "CHANNEL": "Rect2i(8,oy,2,1) 與 Rect2i(8,oy+2,2,1) 水道",
+    "LOT_ORIGINS": {
+      "0": [
+        12,
+        13
+      ],
+      "1": [
+        22,
+        13
+      ],
+      "2": [
+        32,
+        13
+      ],
+      "3": [
+        12,
+        20
+      ],
+      "4": [
+        22,
+        20
+      ],
+      "5": [
+        32,
+        20
+      ],
+      "6": [
+        22,
+        27
+      ],
+      "7": [
+        32,
+        27
+      ]
+    },
+    "PUBLIC_LOT": {
+      "index": 8,
+      "origin": [
+        12,
+        27
+      ],
+      "note": "保留手作池：只有兩方鹽田，無機器座，任何人可手作，不可認領、不可接水車"
+    },
+    "per_lot_from_origin": {
+      "wheel_socket": "Rect2i(ox-1,oy+1,2,1)",
+      "pan0": "Rect2i(ox+1,oy,3,3)",
+      "pan1": "Rect2i(ox+5,oy,3,3)",
+      "divider": "x=ox+4 可走",
+      "rake_socket": "Rect2i(ox+3,oy+3,2,1)",
+      "chest_sockets": "[(ox+2,oy+3),(ox+5,oy+3)]（僅該區認領人可建箱）",
+      "paths": "y=oy-1、y=oy+4"
+    },
+    "pan_ids": "pan index = lot*2+i（lot 0..9）→ 0..19；公共手作池 16、17；學徒區 18、19",
+    "PUBLIC_SIGN": "(16,30) 固體小牌「保留手作池」",
+    "HERITAGE_VIEW": "Rect2i(14,34,22,5) 固體，不可互動的瓦盤鹽田文化景觀觀景區",
+    "HERITAGE_SIGN": "(24,33) 固體；salt_note 互動點",
+    "SHED": "Rect2i(42,13,6,3) 固體合作社工寮",
+    "SALT_WORKER": "(44,17) 固體；salt_intro／salt_report",
+    "TRANSFER": "(48,25)；BUS_SHELTER Rect2i(48,25,3,1) 固體（96x64 候車亭美術）；ARRIVAL (47.5,25.5)",
+    "ARRIVAL": "Vector2(47.5,25.5)",
+    "XIAOLI_HOME": "沿用 FlowerNursery.RECEIVER_HOME (43,29)，以 preload 引用，不複製字面值",
+    "reach": "沿用 world.gd dist ≤ 3.2；鹽田3x3任一格可為 p，站在上下田埂或中間走道都能碰到全部9格",
+    "collision_fn": "SaltPan.blocked(p)= not land(p) or 閘門/水道/鹽田/機器座/公示牌/觀景區/解說牌/工寮/阿曬/站牌；機器座永遠固體，所以安裝或拆除不改碰撞、不會困住人。",
+    "regions_hooks": "Regions.land/water/protected/resource/blocked 對 beimen 委派 SaltPan；resource 恆為 \"\"（無樹、無礦）；protected 為全部固定設施格與 chest_sockets 以外的地面（禁止建造）。",
+    "APPRENTICE_LOT": {
+      "index": 9,
+      "origin": [
+        42,
+        20
+      ],
+      "pans": [
+        18,
+        19
+      ],
+      "coop_chest": "(47,23) 固定設施（非物件）"
+    }
+  },
+  "data_values": {
+    "note": "全部為設計選擇，以現行時鐘（1日=1440世界秒、晴雨循環7日）調成「一個晴天可完成手作循環」；非歷史工法或真實產量。",
+    "GATE_NEEDS_EACH": {
+      "plank": 6,
+      "resin": 1,
+      "stone": 4
+    },
+    "GATE_TOTAL": {
+      "plank": 18,
+      "resin": 3,
+      "stone": 12,
+      "why": "約等於36木材經鋸木台；一人約半小時可備齊，多人分攤更快。"
+    },
+    "NEED": 480.0,
+    "RATES": {
+      "sunny": 1.0,
+      "cloudy": 0.5,
+      "rainy": -0.25,
+      "indoor": 0.0,
+      "future_breezy": 1.25,
+      "why": "晴天8分鐘成鹽、多雲16分鐘；雨天停曬並使未成鹽的滷水退回（最低0），已成鹽蓋草蓆保護不減少。"
+    },
+    "YIELD": 3,
+    "YIELD_why": "手作與自動相同，不給自動化倍率；委託所需6海鹽＝2方鹽田。",
+    "CAP_DEFAULT": 60,
+    "CAP_RANGE": [
+      3,
+      999
+    ],
+    "ORDER": {
+      "sea_salt": 4,
+      "salt_grilled_fish": 2,
+      "pay": 120,
+      "why": "2份香煎溪魚市值68＋海鹽與跨區送貨的合作溢價；一次性。"
+    },
+    "SELL": {
+      "salt_grilled_fish": 34,
+      "sea_salt": "不可出貨、不可賣給小栗（防自動化金錢泵）"
+    },
+    "LIMIT": 1000000000,
+    "LOTS_CLAIMABLE": 8,
+    "LOT_PER_PLAYER": 1,
+    "lot_count_why": "同時在線上限4人（session.gd），8區保留給更多成員；第9區永久保留手作。",
+    "SHIFT_SECONDS": 4320.0,
+    "OFFER_SECONDS": 720.0
+  },
+  "weather_time_semantics": {
+    "clock": "只用持久化 state.time；無人在線時世界暫停（既有 World.step active=false）。不用電腦時鐘、不補算離線時間、不因一人旅行跳時間。",
+    "lazy_progress": "每方鹽田存 p（進度）與 t（結算時刻）。目前進度＝advance(p,t,now)。只在狀態轉換（成鹽、引水、收鹽）時寫入，不每 tick 存檔。",
+    "advance(p, t0, t1, region)": "逐日分段精確積分；ADVANCE_MAX_SEGMENTS=16 保護，觸發時回傳 ok:false 不改狀態（不以最後一日直接結算）。",
+    "evaporation_rate(weather_id, ctx)": "ctx={region, day, season:null}。目前只用 weather_id；season 預留給 T048，回傳乘數，不需改存檔。未知 id → 0。",
+    "rain": "雨天：手動與水車都不引水（訊息：下雨天先不引水，雨停再來）；滷水倒退；已成鹽不變（畫面蓋草蓆）；收鹽照常可做（手動與收鹽台）。",
+    "no_softlock": "現行循環最多連續1天雨；成鹽永不消失；引水不耗材料；閘門修好後永久；手作池永遠開放；返家永遠免費。",
+    "step_order": "SaltPan.step 為精確事件模擬（成鹽 t*、收鹽台同時收、水車於第一個非雨時刻補水、學徒輪班到期/結業/名單邀請），每單位事件上限 MAX_EVENTS=4096；拒絕時 World.step 整筆回滾（時間、committed、各區、背包、箱、undo 均還原、不存檔），step_error=salt_step_rejected，session 暫停世界並告知玩家。",
+    "restart": "重啟後 p,t 與 state.time 原樣讀回，進度由同一函數算出，結果與不重啟相同（測試需逐位比對）。"
+  },
+  "persisted_state": {
+    "root": "state.salt_pan",
+    "shape": {
+      "players": "{token: RECORD}",
+      "gates": "[{plank:int,resin:int,stone:int} x3]  各值 0..GATE_NEEDS_EACH",
+      "givers": "{token: true}  僅伺服器",
+      "repaired_at": "float；-1.0 表示未全修好；三道皆滿時於同一交易設為 now",
+      "pans": "[{s,p,t,f} x20]",
+      "lots": "[{owner:\"\"|token, wheel:bool, rake:bool, chest:\"\"|\"x,y\", box:\"\"|32hex, cap:int, on:bool} x8]",
+      "apprentice": "{tenant,since,wheel,rake,cap,on}",
+      "coop_box": "{token:int>0} 合作社收鹽箱個人格（海鹽）",
+      "kit_box": "{token:{salt_wheel_kit,salt_rake_kit}} 輪班結束放不進背包的機器組寄存",
+      "waitlist": "{order:[{token,missed:0|1}],offer_at:float} 公平輪班名單"
+    },
+    "RECORD": {
+      "letter": false,
+      "intro": false,
+      "raked": 0,
+      "wheel_raked": 0,
+      "auto_raked": 0,
+      "note": false,
+      "order": false,
+      "complete": false
+    },
+    "fresh": "players {}；gates 全0；givers {}；repaired_at -1.0；pans 全 {s:empty,p:0.0,t:0.0,f:\"\"}；lots 全 {owner:\"\",wheel:false,rake:false,chest:\"\",box:\"\",cap:60,on:false}",
+    "validation": [
+      "root 鍵集合完全等於 players,gates,givers,repaired_at,pans,lots；陣列長度精確 3/18/8。",
+      "players/givers 的鍵必須存在於 state.players；RECORD 鍵集合精確；整數 0..LIMIT；不變式 intro⇒letter；raked>0⇒intro；wheel_raked≤raked；auto_raked>0⇒某時曾裝收鹽台（只檢查 auto_raked>0⇒raked≥1）；order⇒raked≥1；complete⇒order。",
+      "letter 為 true 時 FlowerNursery.own_record(token).complete 必須為 true。",
+      "gates 值為整數且不超過需求；repaired_at==-1 ⇔ 有任一道未滿；否則 0≤repaired_at≤state.time。",
+      "pans：empty⇒p==0,f==\"\"；brine⇒0≤p<NEED 且 f∈{hand,wheel}；salt⇒p==NEED 且 f∈{hand,wheel}；0≤t≤state.time；repaired_at==-1 ⇒ 全部 empty。",
+      "lots：owner 為空時其他欄位皆為 fresh 值；每個 token 至多擁有一區；rake⇒wheel；chest/box 同時為空或同時有效，chest∈該區 chest_sockets；cap 整數 1..999；on⇒rake 且 chest 非空。",
+      "beimen region layers：crops/ground/roofs/forest/removed/damage 必為空；objects 只能是 chest/private_chest 且位於任一 lot 的 chest_sockets；box_id 唯一性沿用 v22 全層檢查。",
+      "任何失敗：整份存檔拒絕，不部分套用、不剝除。"
+    ],
+    "migration": "save < SALT_VERSION：若已出現 beimen region、salt_pan 根鍵、或在任何背包/箱/石灶排程/加工/旅行簿出現 forward_ids → 拒絕（未知未來狀態）。否則加入 regions.beimen=Regions.fresh()（在 region 數量檢查之前）與 salt_pan=fresh()；其他欄位逐位不變。travel_book 格式不變（Transit.valid 接受 ROUTE 新增 beimen）。",
+    "transaction": "所有 salt 動作走既有 World.act：before 快照→套用→收據→保存；保存失敗整筆回滾。重送同一 request_id 回傳原收據。",
+    "root_keys": [
+      "players",
+      "gates",
+      "givers",
+      "repaired_at",
+      "pans",
+      "lots",
+      "apprentice",
+      "coop_box",
+      "kit_box",
+      "waitlist"
+    ]
+  },
+  "progression": {
+    "PHASES": [
+      "locked",
+      "letter",
+      "travel",
+      "intro",
+      "gates",
+      "first_salt",
+      "claim",
+      "wheel",
+      "rake",
+      "automate",
+      "order",
+      "report",
+      "complete"
+    ],
+    "phase(state,token)": {
+      "locked": "FlowerNursery.own_record(token).complete != true",
+      "letter": "未收信",
+      "travel": "travel_book.visited.beimen != true",
+      "intro": "未與阿曬見面",
+      "gates": "repaired_at == -1（共享）",
+      "first_salt": "raked == 0",
+      "claim": "未擁有鹽田區",
+      "wheel": "自己的區未裝水車",
+      "rake": "已裝水車但未裝收鹽台",
+      "automate": "auto_raked == 0（收鹽台尚未自動收進箱子）",
+      "order": "未交委託",
+      "report": "未回報阿曬",
+      "complete": "complete"
+    },
+    "craft_gates": {
+      "salt_wheel_kit": "raked ≥ 1（第一次手作收鹽後，阿曬教做水車）",
+      "salt_rake_kit": "wheel_raked ≥ 1（親手收過一方由水車引水的鹽田）"
+    },
+    "craft_gate_message": "鹽田水車組要先在北門親手收過一次鹽；收鹽台組要先收過一方水車引水的鹽田。",
+    "gates_skip_for_late_joiner": "閘門已修好時，晚加入者從 intro 直接進 first_salt；不需重捐。",
+    "order_and_report_independent_of_lot": "若8區已滿且自己沒有區，claim 階段顯示「目前鹽田區都有人照顧，可先在保留手作池收鹽」；這是已知限制（見 unresolved），委託與手作仍可進行，但故事完成需自動化步驟。",
+    "story_lines": {
+      "locked": "田尾公共花園開花之後，小栗的攤位會收到一封從臺南沿海寄來的信。",
+      "letter": "小栗遞來一封沾著海風的信：「北門的合作鹽田閘門木板爛了，鹽曬不起來，南邊的攤子都在等鹽。」",
+      "travel": "從田尾搭花圃接駁，經縱貫線鐵路一路南下，再轉沿海公車，就到北門的鹽風合作鹽田。",
+      "intro": "阿曬把斗笠往後推：「海水要靠閘門引進來。三道閘門都換上新木板，鹽田才會醒過來。」",
+      "gates": "閘門需要木板、樹脂和石材。大家可以分次帶來，修好一道算一道。",
+      "first_salt": "閘門開了。選一方鹽田引海水，晴天曬得最快，下雨就先等等。結成白白的鹽再用耙子收起來。",
+      "claim": "阿曬指著一排鹽田：「選一區自己照顧吧。最靠近我們這邊的兩方是保留給大家手作的。」",
+      "wheel": "「每天來回提水太累了。」阿曬畫了一張水車的圖，回家的工作台就能做。",
+      "rake": "水車引的水曬成鹽了，你親手收過一次。接下來做一座收鹽台，讓鹽自己進箱子。",
+      "automate": "在收鹽台旁放一個箱子，選好存量上限再啟用。箱子滿了、下雨或被搬走，收鹽台都會停下來告訴你。",
+      "order": "把海鹽帶回渡口，用銀線溪魚和海鹽做香煎溪魚，交給小栗。",
+      "report": "小栗說南邊的攤子收到了。回北門告訴阿曬吧。",
+      "complete": "阿曬望向觀景區那片老瓦盤：「機器替我們提水收鹽，我們才有空去看看前人留下的鹽田。」"
+    }
+  },
+  "actions": {
+    "common": "beimen 動作必須在 beimen、走在 3.2 格內、且對象格精確屬於該設施；home 動作在 XIAOLI_HOME。全部失敗訊息為玩家語言。",
+    "salt_letter": "phase==letter → letter=true。訊息「收下北門寄來的信」。",
+    "salt_intro": "phase==intro 或之後重訪時回顯台詞；第一次設 intro=true。",
+    "salt_gate_give": "intro==true；extra∈{plank,resin,stone}；gate=p 所在閘門；捐 min(背包量, 該道剩餘需求)；0 → 失敗「這道閘門已經不缺這項材料」或「背包沒有這項材料」；givers[token]=true；三道全滿且 repaired_at==-1 → repaired_at=now 並廣播事件「北門合作鹽田的三道閘門都修好了」。只會結算一次。",
+    "salt_flood": "repaired_at≥0；目標 pan 為 empty；非雨天；public pan 任何 intro 玩家可；lot pan 僅 owner；設 s=brine,p=0,t=now,f=hand。",
+    "salt_rake": "先以 now 結算；s==salt；public pan 任何 intro 玩家可（先到先得，第二個請求得到「這方鹽田剛被收完了」）；lot pan 僅 owner；背包+YIELD 不超過 LIMIT；設 empty；raked+=1；若 f==wheel 則 wheel_raked+=1。",
+    "salt_claim": "phase≥claim（raked≥1）；目標 lot 0..7 且 owner==\"\"；token 尚無 lot → owner=token。同時兩人搶同一區：先提交者得，後者「這區剛被認領了」。",
+    "salt_release": "owner==token；wheel==false 且 rake==false；兩方鹽田皆 empty；兩個 chest_sockets 上無物件 → 欄位回 fresh。",
+    "salt_install": "owner==token；p 為該區對應座；wheel：背包有 salt_wheel_kit 且 wheel==false；rake：wheel==true 且有 salt_rake_kit 且 rake==false；扣1組。",
+    "salt_uninstall": "owner==token；rake：on==false → rake=false, chest/box 清空, 退回1組；wheel：rake==false → wheel=false，退回1組；水車引的 brine 保留（手動照常）。",
+    "salt_auto_cfg": "owner==token 且 rake==true 且 on==false；extra 正則 ^(\\d{1,2}),(\\d{1,2})\\|(\\d{1,3})$；cell∈該區 chest_sockets；物件為 chest 或自己的 private_chest；若無 box_id 依 MaterialSources 同法產生並寫入（全層唯一）；cap 1..999；寫 chest、box、cap。",
+    "salt_auto_toggle": "owner==token 且 rake 且 chest 已設定 → on=!on。",
+    "salt_note": "beimen 解說牌；note=true（可重看，不給物品）。",
+    "salt_order": "phase==order；背包 sea_salt≥4 且 salt_grilled_fish≥2 → 扣除、coins+=120、order=true；同交易。",
+    "salt_report": "phase==report → complete=true；開放手帳地方記憶頁「北門瓦盤鹽田」與阿曬居民頁。"
+  },
+  "automation": {
+    "devices": "水車（wheel）：自動引水到自己區內 empty 鹽田；收鹽台（rake）：把自己區內 salt 鹽田收進選定的相鄰收鹽箱。設備資料存在 salt_pan.lots，不放入 objects 層，不經 build/undo/blueprint，所以不影響既有建造、復原與藍圖系統。",
+    "status(state,token) 優先序": [
+      {
+        "id": "unset",
+        "text": "收鹽台還沒選收鹽箱。"
+      },
+      {
+        "id": "off",
+        "text": "已暫停。水車與收鹽台都不動，成鹽會留在鹽田裡。"
+      },
+      {
+        "id": "invalid",
+        "text": "收鹽箱不在原位或已換成新箱子；放回原箱或重新選擇。"
+      },
+      {
+        "id": "owner",
+        "text": "這個位置現在是其他島民的私人箱，收鹽台不能使用。"
+      },
+      {
+        "id": "full",
+        "text": "收鹽箱的海鹽已達設定上限，成鹽先留在鹽田裡。"
+      },
+      {
+        "id": "rain",
+        "text": "下雨天水車不引水；成鹽已蓋好，不會流失。"
+      },
+      {
+        "id": "waiting",
+        "text": "正在曬鹽。"
+      },
+      {
+        "id": "running",
+        "text": "水車與收鹽台運作中。"
+      }
+    ],
+    "reserve": {
+      "id": "reserve",
+      "text": "這兩方是保留給大家手作的鹽田，不能接水車或收鹽台。",
+      "where": "對 public lot 嘗試認領／安裝／設定時，及 UI 選到手作池時顯示。"
+    },
+    "wheel_only_status": "未裝收鹽台時，水車在非雨天、未暫停時引水；手動收鹽。暫停開關在裝收鹽台前不存在，水車可拆回。",
+    "chest_match": "objects[chest] 存在、type∈{chest,private_chest}、box_id==box；private_chest.owner 必須==lot owner，否則 owner 狀態；任何不符皆不移動物品。",
+    "full": "chest.items.sea_salt + YIELD > cap 或 > LIMIT → full；該鹽田保持 salt（不損失），水車也不會重灌它。",
+    "remote": "玩家不在北門時仍運作（世界時鐘只要有人在線就前進），與既有礦脈採掘機規則一致。",
+    "removal_of_chest": "玩家可照既有規則拆除自己的箱子（空箱）；收鹽台隨即顯示 invalid，不需特別處理。",
+    "status_final": [
+      "unset",
+      "off",
+      "invalid",
+      "owner",
+      "full",
+      "rain",
+      "waiting",
+      "running",
+      "wheel_only",
+      "reserve",
+      "manual"
+    ]
+  },
+  "shared_concurrency": {
+    "serialization": "所有動作經 World.act 單執行緒序列化；同一 request_id 收據去重；不同 request 依提交順序。",
+    "races_required": [
+      "兩人同時捐同一閘門最後缺口：只扣到需求為止，repaired_at 只設一次，事件只一次",
+      "兩人同時收手作池同一方：一人得3，一人失敗，總量守恆",
+      "兩人同時認領同一區：一人成功",
+      "收鹽台自動收鹽與 owner 手動收同一方在同一 tick：step 與 act 不並行，先者生效",
+      "設定中的箱子被同 tick 拆除：下一次 status=invalid，不複製不消失"
+    ],
+    "conservation": "測試以全世界 sea_salt、plank、resin、stone、kits、minnow、salt_grilled_fish 總量（背包＋所有箱＋石灶排程＋閘門已捐）檢查每步守恆。"
+  },
+  "session_and_privacy": {
+    "public": "SaltPan.public(state)：gates（各項已捐數）、repaired（bool）、giver_count、pans（s,p,t；不含 f 以外的身分；f 可公開）、lots（free/taken 與 wheel/rake 是否安裝，供畫面繪製；不含 owner token、不含 chest/box/cap/on）。",
+    "own": "data.salt_pan.own = SaltPan.own_view(state,token)：RECORD、phase、guidance、lot index（或 -1）、該區 chest/cap/on/status、available_lot_count。",
+    "projection": "public_state 先 erase(\"salt_pan\") 再放 public；_send_snapshot 依接收者加 own；所有區域與接收者的 public 部分完全相同。",
+    "never_sent": [
+      "players",
+      "givers",
+      "其他人的 lot owner/設定",
+      "任何 token"
+    ],
+    "lot_mine_flag": "public.lots[i].mine 只由 _send_snapshot 依接收者填（其他人看到 false）。",
+    "rejected_in_beimen": "build（除 chest/private_chest 於 chest_sockets）、build_area、move_object、plant_tree、axe、pick、till_area、seed_area、harvest_area、craft、cook、queue_cook、claim_cook、cancel_cook、cancel_queued_cook、fish_start、fish_catch、door、prepare_material_box、所有 blueprint。訊息「合作鹽田只開放鹽田工作、收鹽箱與轉乘。」",
+    "allowed_in_beimen": "移動、transit、rescue、salt_*、deposit/withdraw、在 chest_sockets 建／拆箱、undo_build（只會作用於那些箱）。"
+  },
+  "travel_graph": {
+    "ROUTE_append": "beimen（加在 tianwei 之後）",
+    "CONNECTIONS": {
+      "tianwei": [
+        "yingge",
+        "beimen"
+      ],
+      "beimen": [
+        "tianwei"
+      ]
+    },
+    "POINTS": {
+      "tianwei.transfer.links": [
+        "yingge",
+        "beimen"
+      ],
+      "beimen": {
+        "bus": {
+          "cell": "(48,25)",
+          "label": "鹽田站牌",
+          "mode": "沿海公車",
+          "links": [
+            "tianwei"
+          ]
+        }
+      }
+    },
+    "STATIONS.beimen": {
+      "name": "北門・鹽風合作鹽田",
+      "cell": "(48,25)",
+      "arrival": "(47.5,25.5)",
+      "size": "(80,60)"
+    },
+    "SALT_MODE": "花圃接駁・縱貫線鐵路南下・轉沿海公車（合併轉乘）",
+    "mode_override": "direct 且 {region,station}=={tianwei,beimen} → SALT_MODE；排在 FLOWER_MODE 與「經臺北」判斷之前。",
+    "unlock": "options() 新參數 salt_open=SaltPan.route_open(state,token)（letter==true）；未開時不列出 beimen。",
+    "return": "beimen 永遠可選 home（既有規則），intermediate 經 tianwei、yingge、maokong、ruifang、toucheng，標「合併轉乘」；免費；rescue 回站牌安全點。",
+    "visited": "抵達才寫 visited.beimen；舊簿相容。",
+    "map": "taiwan_map.gd 加北門點（臺南沿海），未開放時顯示輪廓與「未開放」，不可點入。"
+  },
+  "world_integration_points": {
+    "world.gd": [
+      "preload SALT_PAN",
+      "ensure_life_fields: salt_pan",
+      "CRAFT 加兩組；SALT_GATED 在 plain/sourced craft 檢查",
+      "RECIPES 加 salt_grilled_fish；OTHER_SALES 加 34；NAMES 加四項",
+      "_apply：在 FLOWER 之後加 beimen 拒絕表與 SALT_PAN.ACTIONS 分派（傳 state、token、action、_region、p、extra、state.objects 當前層）",
+      "blocked(): beimen → SaltPan.blocked",
+      "build/remove 在 beimen 只允許箱子於 chest_sockets",
+      "step(): SaltPan.step 於 TEA_CERAMICS.step 之後，納入 changed",
+      "apply_blueprint／_blueprint_stage：beimen 拒絕（同 tianwei 寫法）",
+      "小栗 buy 清單與 shipping 不加 sea_salt"
+    ],
+    "save_schema.gd": [
+      "SALT_VERSION 字面值",
+      "region 遷移於數量檢查前",
+      "forward id 拒絕",
+      "SaltPan.valid"
+    ],
+    "session.gd": [
+      "PROTOCOL+1 與註解",
+      "CORRELATED_ACTIONS 加六項",
+      "public_state/_send_snapshot 投影",
+      "extra_allowed：salt_auto_cfg 走一般32字元上限，World 做語意檢查"
+    ],
+    "regions.gd/transit.gd/travel_ui.gd/taiwan_map.gd": "見 travel_graph",
+    "world_view.gd/main.gd": [
+      "beimen 地形、設施、鹽田狀態、機器、阿曬由 salt_art 繪製",
+      "E 互動依格子路由到 salt 動作或開 salt UI",
+      "雨天鹽田稀釋／草蓆覆蓋狀態可見；低動態無動畫但有靜態標記"
+    ],
+    "life_ui_tasks.gd": "島民手冊加阿曬居民頁與地方記憶頁「北門瓦盤鹽田」（事實摘要、來源、原創聲明）",
+    "inventory_item_art.gd": "四個新物品圖示"
+  },
+  "ui_layout": {
+    "principles": "沿用像素主題、320px 底部居民對話、右側手冊式面板；1024x640 與 1280x800 不重疊、不截字；Tab 焦點循環、E 互動、Esc 關閉；不出現開發用語。",
+    "panels": {
+      "dialogue": "阿曬／小栗：肖像64、台詞、下一步按鈕（收信、見面、回報、交委託）。",
+      "gates": "三道閘門橫列卡：每道三種材料圖示＋已捐/需要；每項「捐出」按鈕（顯示將捐數量）；底部「已有N位島民出過力」；修好後顯示完成章。",
+      "pan": "靠近鹽田時的小卡：狀態（空、滷水 xx%、成鹽、被雨水稀釋、草蓆覆蓋）、今天天氣與預估「晴天約X分鐘」/「雨停後繼續」、引水或收鹽按鈕；別人區的鹽田只顯示「其他島民照顧中」。",
+      "lot": "右側面板：認領／歸還；水車座、收鹽台座兩格（已裝/可裝/缺組件）；兩個收鹽箱位置的小示意圖可選；存量上限加減（1/10）；啟用/暫停；狀態膠囊（圖示＋文字，見 automation.status）；手作池顯示 reserve 文字。",
+      "order": "小栗攤位：所需海鹽4、香煎溪魚2 的實際持有數與交付按鈕；報酬120鈴幣。",
+      "journal": "地方記憶頁：左舊物小圖（瓦盤鹽田插畫），右事實摘要、來源可展開、原創聲明；可重看。"
+    },
+    "estimates": "預估時間以遊戲分鐘顯示，由 SaltPan.eta(p,now) 在客戶端用快照時間計算；不寫真實時間承諾。"
+  },
+  "exploit_checks": [
+    "sea_salt 不在出貨價、小栗收購、OTHER_SALES。",
+    "香煎溪魚售34 < 銀線溪魚22＋海鹽替代成本與時間，自動化最多每區每晴天約18海鹽，仍受溪魚供應限制。",
+    "委託一次性，order 旗標防重；收據防重送。",
+    "拆裝不產生或消失組件；歸還區時不得遺留機器或箱子。",
+    "閘門超捐不扣；手作池先到先得不複製。",
+    "背包、箱子、閘門 LIMIT 檢查。"
+  ],
+  "art_request_manifest": {
+    "pipeline": "與花卉相同：root 用內建影像生成產生高解析透明 PNG 原圖（存 work/salt/art-source/ 並記錄 provenance json：生成方式、日期、sha256、裁切窗、原生尺寸），art worker 以 salt_art.gd 裁切縮放到32px整數格；不得用幾何色塊代替。",
+    "style": "與 game/assets/flowers、tea-ceramics、village-preview 相同的溫暖像素風：鼠尾草綠、橄欖、赭褐、奶油色，海岸加入低彩度藍綠與鹽白；左上光源；透明背景；無文字、無商標、無真實業者或路線標示。",
+    "sheets": [
+      {
+        "id": "salt_terrain",
+        "target": "game/assets/salt/salt-terrain.png",
+        "native_cell": "32x32",
+        "cells": [
+          "沙地堤岸x2",
+          "夯土田埂x2",
+          "海面x2（含淺浪靜態）",
+          "海岸轉角x4",
+          "木蓋水溝（橫）",
+          "水道水面",
+          "瓦片鋪面鹽田底（乾）",
+          "鹽田邊框9宮格（9格）"
+        ]
+      },
+      {
+        "id": "salt_pan_states",
+        "target": "game/assets/salt/salt-pan-states.png",
+        "native_cell": "96x96（3x3地格，無外溢）",
+        "frames": [
+          "empty 乾瓦盤",
+          "brine 新引海水",
+          "evaporating_1",
+          "evaporating_2",
+          "salt 結晶鹽堆",
+          "diluted 雨水稀釋",
+          "covered 草蓆覆蓋的成鹽"
+        ]
+      },
+      {
+        "id": "salt_props",
+        "target": "game/assets/salt/salt-props.png",
+        "items": [
+          {
+            "name": "sluice_gate_broken",
+            "native": "32x112",
+            "footprint": "1x3",
+            "anchor": "bottom-left 對齊地格，向上外溢16px"
+          },
+          {
+            "name": "sluice_gate_repaired",
+            "native": "32x112",
+            "footprint": "1x3",
+            "anchor": "同上"
+          },
+          {
+            "name": "salt_wheel",
+            "native": "32x64 x2影格＋靜態",
+            "footprint": "1x1",
+            "anchor": "bottom-center，向上外溢32px"
+          },
+          {
+            "name": "wheel_socket_empty",
+            "native": "32x32",
+            "footprint": "1x1"
+          },
+          {
+            "name": "salt_rake_station",
+            "native": "32x48",
+            "footprint": "1x1",
+            "anchor": "bottom-center"
+          },
+          {
+            "name": "rake_socket_empty",
+            "native": "32x32",
+            "footprint": "1x1"
+          },
+          {
+            "name": "public_lot_sign",
+            "native": "32x48",
+            "footprint": "1x1",
+            "note": "空白牌面"
+          },
+          {
+            "name": "coop_shed",
+            "native": "192x128",
+            "footprint": "6x3",
+            "anchor": "bottom-left，向上外溢32px"
+          },
+          {
+            "name": "coast_bus_stop",
+            "native": "32x64",
+            "footprint": "1x1",
+            "note": "空白站牌，無業者名"
+          },
+          {
+            "name": "heritage_sign",
+            "native": "32x48",
+            "footprint": "1x1",
+            "note": "空白解說牌"
+          },
+          {
+            "name": "heritage_tile_pans",
+            "native": "704x160",
+            "footprint": "22x5",
+            "note": "不可操作的老瓦盤鹽田景觀，碎瓦鋪面概括表現，與合作鹽田明顯不同（較淡、有圍欄）"
+          }
+        ]
+      },
+      {
+        "id": "salt_resident",
+        "target": "game/assets/salt/salt-resident.png",
+        "native_cell": "32x48",
+        "frames": [
+          "正面待機x2",
+          "背面",
+          "側面"
+        ],
+        "spec": "原創中年鹽工阿曬：斗笠、袖套、雨鞋、木耙；腳底對齊格底中央；非真實人物。"
+      },
+      {
+        "id": "salt_portrait",
+        "target": "game/assets/salt/salt-portrait.png",
+        "native": "64x64",
+        "spec": "同一角色對話肖像，框法同 tea-ceramics/portraits.png。"
+      },
+      {
+        "id": "salt_items",
+        "target": "game/assets/salt/salt-items.png",
+        "native_cell": "32x32 透明",
+        "icons": [
+          "sea_salt 海鹽（小布袋＋白結晶）",
+          "salt_wheel_kit 鹽田水車組（捆好的木葉片）",
+          "salt_rake_kit 收鹽台組（木耙與木框）",
+          "salt_grilled_fish 香煎溪魚（銀線細長溪魚＋鹽粒，須與香煎鯽魚圓胖外形明顯不同）"
+        ]
+      }
+    ],
+    "provenance": "work/salt/art-source/*.png 與 game/assets/salt/provenance.json；授權登錄給 T082。",
+    "low_motion": "水車與海浪僅在非低動態模式動；稀釋與草蓆為靜態圖。"
+  },
+  "worker_ownership": {
+    "note": "實際分工與結果見 work/salt/implementation-summary.json"
+  },
+  "dependency_graph": {
+    "edges": [
+      "flower_final_landed → contract_frozen(root 確認版本)",
+      "contract_frozen → W1, W3, root_art_generation",
+      "root_art_generation → W2",
+      "W1 → W4",
+      "W3 → W4（regions.ALL 與 Transit.ROUTE 先落地）",
+      "W4 → W5（快照形狀）",
+      "W2 + W4 → W6",
+      "W4 + W5 + W6 → root_integration",
+      "root_integration → W7",
+      "W7 → root_full_regression_and_manual"
+    ],
+    "parallel_safe": "W1、W3、美術生成可並行；W5 可先用合約中的 own_view 形狀做固定資料，但不得在 W4 前提交依賴 World 的測試。"
+  },
+  "tests_required": {
+    "core": "advance 逐日分段（晴/雲/雨/跨午夜/長時段上限/非有限值）、精確成鹽時刻、雨天成鹽不減、閘門封頂與一次結算、手作池先到先得、lot 規則、status 每種狀態、valid/legacy_clean 正反例、fresh 形狀。",
+    "schema": "v25 及更早所有既有夾具遷移後其他欄位逐位相等；帶 forward_ids 的舊檔拒絕；損壞 salt_pan 各欄位逐項拒絕且不部分套用。",
+    "world": "動作全流程、拒絕表、碰撞不變、craft 閘門、配方與售價、保存失敗回滾、step 的三段順序與保存、重啟前後進度一致。",
+    "session": "快照不含 token/givers/他人設定；mine 旗標只給本人；CORRELATED 回覆；extra 上限。",
+    "transit": "未收信不列出；田尾↔北門 SALT_MODE；北門回家合併轉乘；visited 只在抵達寫；舊旅行簿相容。",
+    "ui": "1024x640 與 1280x800 各面板不重疊；鍵盤焦點；所有狀態文字顯示；無開發用語掃描。",
+    "art": "每張圖尺寸為32px整數倍、透明、指定錨點與碰撞框一致、低動態靜態影格存在、與香煎鯽魚圖示差異。",
+    "scene_render": "北門原生截圖：未修/已修閘門、七種鹽田狀態、水車與收鹽台、阿曬、觀景區、雨天。"
+  },
+  "acceptance": {
+    "earned_world_journey": "World API 從新存檔、無贈料：完成既有花卉賺得旅程（或從其賺得終點存檔接續）→收信→田尾轉乘南下→見阿曬→自製木板/樹脂/石材修三道閘門→手作引水與收鹽（含一次雨天，驗證暫停、稀釋、成鹽不失）→認領→做水車並親收水車鹽→做收鹽台→設定相鄰箱與上限→自動收鹽進箱（含 full、invalid、off 恢復）→帶鹽回家→釣到銀線溪魚→石灶煮香煎溪魚→交小栗委託→回北門回報→手冊頁出現。主存檔中途重載兩次；每步物品守恆。僅加速程序內世界時鐘，標明為程序驗證、不是人類節奏。",
+    "true_websocket": "獨立程序、真實 WebSocket（另做 ENet 冒煙）：A 在北門、B 在家耕作；閘門最後缺口同時捐；手作池同方同時收；同區同時認領；自動收鹽中 A 斷線重連；伺服器正常重啟後鹽田進度與箱內數量一致；晚加入者看到已修閘門與自己的空白進度。明確寫「單機多程序，非兩台實體電腦、非雲端」。",
+    "native_screens": "root 以原生視窗在1024x640與1280x800：滑鼠＋鍵盤（E/Tab/Esc）完成轉乘、捐閘門、引水收鹽、設定自動化、煮魚、交委託；截圖逐張檢查重疊與可讀性。",
+    "full_regression": "所有已登錄測試（含新增）在整合後跑完整回歸；前後原始碼指紋不變；跑前依記憶規則等候120秒無 sibling 寫入。",
+    "ledger": "台帳只寫「第四章鹽田切片」，列出未完成的第四章其餘內容與全量規劃；不得宣稱雲端、實體多機、人類試玩或第四章完成。"
+  },
+  "unresolved": [
+    "海鹽回渡口的定期貨運（沿用礦務寄運或新的跨區物流）留給後續第四章切片；本切片為背包自提。",
+    "evaporation_rate 的季節乘數與微風天氣待 T048 與天氣擴充；目前循環無微風。",
+    "具體鐵路轉乘站與沿海公車未查官方來源，遊戲文字不出現站名。"
+  ],
+  "resolved": {
+    "1818": "依 root 指示採官方來源用語「1818年遷至現址」（遊戲內手帳）。game/docs/taiwan-history-design.json 舊註記『在現址開闢』未改動，待 root 統一。",
+    "late_joiner": "學徒區 + 機器組寄存 + 公平輪班名單（見 lead_corrections）",
+    "versions": "0.50-dev / 45 / 26"
+  },
+  "lead_corrections_markdown": "# Salt lead corrections to `work/salt/implementation-contract.json`\n\nAuthoritative over the contract and `worker-briefs.md` where they conflict. Lead: flower_exec_salt_lead (Claude Opus 5.5), 2026-11-14. Root pre-approved routine design decisions; these resolve root design review items 1-5.\n\n## 0. Release gate and versions (decided)\n- Flower baseline landed: 0.49-dev / protocol 44 / save 25, full regression 187 suites 65637 checks PASS (`work/flowers/lead/full-regression-final/results.json`). Flower lead PID20880 and resume worker are terminal. **game/ is unfrozen for salt owners.**\n- Target: release `0.50-dev`, `Session.PROTOCOL=45`, `SaveSchema.VERSION=26`, `SaltPan.SAVE_VERSION:=26`, `save_schema SALT_VERSION:=26`. Preserve every older migration literal (`FLOWER_VERSION:=25`, `BAKERY_VERSION:=24`, `version<15`, ...). Never blanket-replace numbers; change only assertions about the *current* version, and deliberately update synthetic \"current version\" fixtures.\n- Release.json, docs, ledger, outputs, final contract copy = lead only.\n\n## 1. Late joiner / saturated lots (root item 1) — 學徒區 (apprentice station)\nProblem: 8 private 鹽田區 held by old players blocks a new player's wheel → automation milestones forever. Solution keeps private ownership and the public manual pool, and never bypasses a milestone flag.\n\n- New **apprentice lot** `APPRENTICE_LOT := 9` (合作社學徒區), origin `(42,20)`, two pans (pan ids 18, 19), wheel socket, rake socket, and a FIXED cooperative salt chest 合作社收鹽箱 at `APPRENTICE_CHEST := Vector2i(47,23)` (protected solid prop, NOT an object, so it can never block the socket).\n- Public manual pool stays lot 8 (pans 16,17), always open to every player with `intro`, never claimable, never automatable.\n- Pans array length is now **20** (`lot*2+i`, lots 0..9). `lots` array stays length 8 (private only).\n- New persisted fields: `salt_pan.apprentice = {tenant:\"\", since:0.0, wheel:false, rake:false, cap:60, on:false}` and `salt_pan.coop_box = {token:int>0}` (per-player compartments; only the owner can take). Root key set is now exactly `players,gates,givers,repaired_at,pans,lots,apprentice,coop_box`.\n- **Taking a shift** (`salt_claim` targeting any apprentice-lot cell): requires intro, `raked>=1`, `auto_raked==0`, the player owns no private lot, **all 8 private lots are taken**, and `tenant==\"\"`. Sets tenant=token, since=now. Message when private lots are free: 「還有空的鹽田區，請先認領自己的鹽田區。」; when busy: 「學徒區正由另一位島民輪班，最晚約 N 分鐘後開放；先到保留手作池收鹽吧。」 (N computed from since+SHIFT_SECONDS-now, game minutes).\n- The tenant uses their OWN earned kits through the same `salt_install / salt_uninstall / salt_auto_cfg / salt_auto_toggle` actions (extra for cfg must name the cooperative chest cell: `47,23|cap`). Same craft gates (`raked>=1` for wheel kit, `wheel_raked>=1` for rake kit), same `f==\"wheel\"` hand-rake credit, same automation code path delivering 3 salt into `coop_box[tenant]`.\n- **Shift end** (graduation, expiry or voluntary `salt_release`): installed kits are returned to the tenant's inventory (works offline because inventories live in `state.players`), apprentice resets to fresh, and apprentice pans' `f` is set to `\"hand\"` so no later raker can gain wheel credit from someone else's wheel. Pans keep their brine/salt (cooperative pans; next tenant may rake them for ordinary `raked` credit only). Salt in `coop_box` stays with its owner forever until taken.\n  - Graduation: in `step`, immediately after the first automatic delivery for which tenant `auto_raked` becomes >=1.\n  - Expiry: `SHIFT_SECONDS := 4320.0` (3 game days) after `since`; processed exactly at that time inside `step`. The same player may re-take an empty shift; all RECORD progress is kept, so expiry never loses progression.\n  - ~~If returning a kit would exceed `LIMIT` the shift end is deferred~~ **SUPERSEDED after root review (integrated 13:3x, core sha ae403378…):** shift end is total and never deferred. Kits that do not fit in the tenant's bag go to the owner's escrow `salt_pan.kit_box[token]`; `salt_box_take` returns own salt + escrowed kits (each bounded by LIMIT, remainder stays, never readable by others). Apprentice install is refused if the owner's escrow could overflow.\n  - **Fair waiting list** `salt_pan.waitlist={order:[{token,missed}],offer_at}`: `salt_claim` on a busy station joins the list (ok); when the station frees, only the head may take it within `OFFER_SECONDS=720` world s; first miss → back of list, second miss → removed (may rejoin); ex-tenants rejoin at the back; `salt_release` leaves the list. Position p gets a shift within p shifts, so waiting is bounded and disconnected waiters cannot head-block. Root keys are now 10 (`+kit_box,+waitlist`); `public()` unchanged; `own_view().apprentice` adds `queued, position, waiting, offer, offer_minutes, can_join, kits`. Evidence: work/salt/staged-apprentice-fix/result.json, root replays work/salt/root-escrow-extended-review/.\n- Only the tenant may flood/rake apprentice pans. Vacant apprentice pans are untouched until the next tenant.\n- New action **`salt_box_take`** (at the cooperative chest): moves the caller's whole compartment into inventory (bounded by LIMIT; remainder stays). Correlated. 15 salt actions total.\n- Guarantee: every player eventually gets a shift (each shift ≤ 3 game days; world time only advances while someone is online); the public pool is always available meanwhile; nobody's private lot/items are touched. Tests must cover 8 private owners + a 9th late joiner earning manual → wheel → automatic chest delivery → order → report → complete, plus a 10th waiting/after-expiry case.\n\n## 2. Weather / time semantics (root item 2)\n- Rates: sunny 1.0, cloudy 0.5, rainy −0.25 (floor 0), unknown 0. `NEED=480`. Any full non-rainy day (≥720 progress) crystallises from any p, and the cycle never has 2 rainy days in a row, so crystallisation is reached within ≤3 day-segments; `advance()` loops at most `ADVANCE_MAX_SEGMENTS := 16` and returns `{ok:false}` (state untouched) if that guard is ever hit — never \"jump to last day\".\n- `advance(p,t0,t1)->{ok,p,salt,at}`: exact piecewise integration across midnights (midnight belongs to the new day, same as Weather). Rejects non-finite, `t1<t0`, `t0<0`, `t1>MAX_TIME (1.0e12)`.\n- **Automation is an exact event simulation**, not \"once per step\": `step(state,t0,t1,objects)` processes each automated unit (private lot or apprentice) in time order: crystallise at exact t*; collector (rake installed, on, chest valid, not full) collects at that instant; wheel (installed and (on or no rake)) refills an empty pan at the first non-rainy instant ≥ when it emptied (rain day → next midnight). Bounded: collections ≤ ⌈cap/3⌉ (cap ≤ 999) per unit, so ≤ `MAX_EVENTS := 4096` per unit; if exceeded or inputs invalid, step returns `{ok:false, changed:false}` and leaves salt_pan unchanged (honest rejection, tested). A 10-day single step must equal 14400 one-second steps bit-for-bit for pans/chest/records.\n- Rain: hand flood and wheel fill are refused/paused; brine dilutes; formed salt never decreases (drawn under straw mats); **hand rake and the collector keep working in rain**. Status text for rain (accurate): 「下雨天水車暫停引水；已經成的鹽照常收進箱子，不會流失。」\n- Status precedence: `unset, off, invalid, owner, full, rain, waiting(正在曬鹽。), running`, plus `wheel_only` (「水車會自動引水，成鹽請親手來收。」) when wheel without rake, and `reserve` for the public pool. `off` text: 「已暫停：水車與收鹽台都不動，成鹽會留在鹽田裡。」\n- Cap: `CAP_MIN := 3` (= YIELD), `CAP_MAX := 999`, default 60. `salt_auto_cfg` with cap<3 fails 「存量上限至少要 3 份，收鹽台一次收 3 份鹽。」 `full` when `chest_salt + 3 > cap` (or > LIMIT): 「收鹽箱再收一次（3 份）就會超過存量上限，成鹽先留在鹽田裡。」 UI stepper floor 3.\n- Numeric bounds: all counts ints 0..LIMIT(1e9); pan `p` finite 0..NEED; `t` finite 0..state.time; `since` 0..state.time; validation rejects anything else (whole save rejected, no partial apply).\n- Reload: only persisted `p,t,s,f` + `state.time`; no wall clock; restart produces identical results (tests compare `var_to_bytes`).\n\n## 3. IDs (root item 3)\n- Existing function/action IDs and the old 62 + 9 flower items are unchanged. Add exactly 4 items: `sea_salt, salt_wheel_kit, salt_rake_kit, salt_grilled_fish` (inventory total 71 → 75; keep exact-ID assertions, update the count only after verifying old IDs).\n- `grilled_fish` (香煎鯽魚) untouched. New recipe `salt_grilled_fish` 香煎溪魚 = minnow 1 + sea_salt 1, 15 s, yield 1, sells 34. `sea_salt` never sellable/shippable.\n\n## 4. Scope / travel (root item 4)\n- Session online cap stays 4 (room). Do not claim the plan's 8-player target or phase 4 complete.\n- Travel stays free; first trip and return never need coins. Beimen always lists 風鈴渡口 (home). Gate materials come from any existing production (no Yilan forcing).\n\n## 5. Layout reconciled with delivered 2x1 prop art (root ART)\nProps use staged `salt_props_art.gd` fixed 64x64 windows, foot anchor (32,64), 2x1 footprints, no per-state autocrop. Layout (overrides contract `geography_layout`):\n- `LAND := Rect2i(6,10,46,32)`; sea x<6; dike x6..7 walkable.\n- Gate g (rows `oy ∈ [13,20,27]`): `Rect2i(8,oy+1,2,1)` solid; channel water `Rect2i(8,oy,2,1)` and `Rect2i(8,oy+2,2,1)` (blocked).\n- Per private lot origin (contract LOT_ORIGINS unchanged): wheel socket `Rect2i(ox-1,oy+1,2,1)`; pan0 `Rect2i(ox+1,oy,3,3)`; pan1 `Rect2i(ox+5,oy,3,3)`; divider x=ox+4 walkable; rake socket `Rect2i(ox+3,oy+3,2,1)`; chest sockets `[(ox+2,oy+3),(ox+5,oy+3)]` (each adjacent to the rake socket). Sockets always solid (install/uninstall never changes collision).\n- Public lot 8 origin (12,27): pans only; sign `(16,30)`.\n- Apprentice lot 9 origin (42,20): same per-lot geometry; cooperative chest `(47,23)` instead of chest sockets (no buildable cells).\n- Heritage view `Rect2i(14,34,22,5)` solid, sign `(24,33)`; shed `Rect2i(42,13,6,3)`; 阿曬 `(44,17)`; transfer `(48,25)`, arrival `(47.5,25.5)`.\n- `protected(p)` = every beimen cell except the 16 private chest-socket cells. Only chest/private_chest may be built there.\n\n## 6. UI (root item 5)\n- Purpose-specific warm pixel panels with item icons, owned/needed counts, costs and previews (gate cards with three material icons; pan card with state preview + weather/ETA; lot board with socket slots, chest picker mini-map, cap stepper, status chip; order card; dialogue with 64px portrait; journal heritage page). No oversized beige text-list windows.\n- No developer wording (切片, 設計選擇, lot, socket, tick, status id, save, protocol) in player text. Journal heritage page states facts from geography-evidence + 「鹽風合作鹽田與阿曬是遊戲原創」.\n- While a salt modal is open, suppress unrelated world interaction prompts if safe; Tab focus cycle, E interact, Esc close preserved.\n\n## 7. API contract for parallel workers (`game/scripts/salt_pan.gd`, static, `extends RefCounted`)\nConstants: `SAVE_VERSION, REGION:=\"beimen\", LABEL, NEED, YIELD, CAP_MIN, CAP_MAX, CAP_DEFAULT, LIMIT, LOT_COUNT:=8, PUBLIC_LOT:=8, APPRENTICE_LOT:=9, PAN_COUNT:=20, SHIFT_SECONDS, MAX_TIME, MAX_EVENTS, ADVANCE_MAX_SEGMENTS, RATES, GATE_NEEDS_EACH, GATE_ROWS, LOT_ORIGINS (10 entries incl. public+apprentice), APPRENTICE_CHEST, LAND, HERITAGE_VIEW, HERITAGE_SIGN, PUBLIC_SIGN, SHED, SALT_WORKER, TRANSFER, ARRIVAL, ACTIONS (15), HOME_ACTIONS:=[\"salt_letter\",\"salt_order\"], ITEMS (4 names), FORWARD_IDS, RECIPE, CRAFT, SALT_FISH_PRICE:=34, ORDER:={\"sea_salt\":4,\"salt_grilled_fish\":2}, ORDER_PAY:=120, STORY, STATUS_TEXT, REJECT_MESSAGE:=\"合作鹽田只開放鹽田工作、收鹽箱與轉乘。\", GATE_EVENT:=\"北門合作鹽田的三道閘門都修好了\"`.\nFunctions:\n- Layout: `land(p)`, `water(p)`, `blocked(p)`, `protected(p)`, `chest_socket_lot(p)->int`, `pan_at(p)->int`, `pan_rect(i)->Rect2i`, `lot_of_pan(i)->int`, `gate_at(p)->int`, `lot_at(p)->int` (any lot cell incl. sockets, -1), `wheel_socket(lot)->Rect2i`, `rake_socket(lot)->Rect2i`, `chest_sockets(lot)->Array[Vector2i]`, `site_at(p)->String` (\"gate:g\",\"pan:i\",\"wheel:l\",\"rake:l\",\"worker\",\"heritage\",\"coop_chest\",\"public_sign\",\"transfer\",\"\").\n- Time: `evaporation_rate(weather_id, ctx={})`, `advance(p,t0,t1)`, `pan_view(pan,now)->{s,ratio,diluted,covered,eta_minutes}`.\n- Records: `fresh()`, `own_record(state,token)`, `phase(state,token)`, `guidance(state,token)->{phase,text,region,cell}`, `route_open(state,token)` (letter==true), `craft_allowed(state,token,kit)->bool`, `CRAFT_LOCKED_MESSAGE`.\n- Mutation: `apply(state,token,action,region,p,extra,objects,now)->{ok,message,...}`; World guarantees beimen/home region match, reach ≤3.2, and passes the beimen objects layer. For `salt_auto_cfg` World ensures the target chest has a `box_id` (MaterialSources generation) before calling.\n- `step(state,t0,t1,objects)->{ok,changed}`; `status(state,token,objects,now)->{id,text}`.\n- `valid(state)->bool` (whole `state` incl. players/time/beimen objects in `state.regions.beimen.objects`), `legacy_clean(state)->bool`.\n- Views: `public(state,now)` → `{gates:[{plank,resin,stone}]x3, needs, repaired, giver_count, pans:[{s,p,t,f}]x20, lots:[{taken,wheel,rake,active,mine:false}]x8, apprentice:{taken,wheel,rake,active,ends_at}, weather:{id,label,raining}}`; `own_view(state,token,objects,now)` → `{record, phase, guidance, lot:int, unit:{kind:\"lot\"|\"apprentice\"|\"\", index, wheel, rake, chest, cap, on, status:{id,text}}, apprentice:{eligible,busy,mine,ends_in_minutes,message}, coop_box:int, free_lots:int, can_craft:{salt_wheel_kit,salt_rake_kit}, order:{need,have,pay}}`. Session sets `public.lots[i].mine` per recipient only.\n\n## 8. Ownership (overrides contract worker_ownership)\n- `flower_exec_salt_core`: `game/scripts/salt_pan.gd`, `game/tests/test_salt_pan_core.gd`.\n- `flower_exec_salt_travel`: `transit.gd`, `regions.gd`, `travel_ui.gd`, `taiwan_map.gd`, `game/tests/test_salt_transit.gd`.\n- `flower_exec_salt_world`: `world.gd`, `save_schema.gd`, `session.gd`, `game/tests/test_salt_pan_world.gd`, `test_salt_pan_schema.gd`, `test_salt_pan_session.gd`, current-version literal lines in existing tests, `test_inventory_panel.gd` count line only.\n- `flower_exec_salt_ui`: `game/scripts/salt_pan_ui.gd`, `life_ui_tasks.gd` (journal pages), `game/tests/test_salt_pan_ui.gd`.\n- Later `flower_exec_salt_scene`: `salt_props_art.gd` (lead copies), new `salt_art.gd`, `salt_world_art.gd`, `inventory_item_art.gd` (4 icons), `world_view.gd`, `main.gd`, `game/tests/test_salt_pan_scene.gd`, `test_salt_pan_art.gd`, `game/assets/salt/*` (after root delivery).\n- Later `flower_exec_salt_journey` / `flower_exec_salt_network`: journey + network tests.\n- Lead: release.json, docs, ledger, outputs, status files, final contract copy, staged props copy, full regression, native captures.\n",
+  "root_review_requirements_applied": [
+    "fair waitlist + bounded offer window",
+    "escrow instead of deferred shift end",
+    "World.step atomic rollback on SaltPan.step rejection",
+    "1818 遷至現址 wording",
+    "stable-base machine animation (no whole-frame flips)",
+    "3-tile bus shelter collision"
+  ]
+}

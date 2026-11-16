@@ -1,0 +1,115 @@
+{
+ "what": "Beimen salt-pan chapter art. Every PNG is a built-in image_gen original delivered by root and copied byte-for-byte; textures are rebuilt in memory by game/scripts/salt_art.gd and salt_props_art.gd with fixed per-cell windows and nearest sampling (no per-state autocrop, no hand edits).",
+ "copied_by": "flower_exec_salt_scene (except salt-props.png: lead copy, re-verified here)",
+ "date": "2026-11-14",
+ "import": "Godot 4.7.2 --import, compress/mode=0 (lossless), mipmaps off",
+ "fiction": "鹽風合作鹽田, 阿曬, gates and machines are original fiction; no text/logos in art.",
+ "files": {
+  "salt-terrain.png": {
+   "sha256": "74c024a2808c71f24999a90d47aca4f59d512f838e713a088d2fe8b7c2643ff1",
+   "source": "work/salt/art-source/salt-terrain-source.png",
+   "source_sha256": "74c024a2808c71f24999a90d47aca4f59d512f838e713a088d2fe8b7c2643ff1",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/terrain-generation.json",
+   "size": [
+    1254,
+    1254
+   ],
+   "mode": "RGB",
+   "windows": "4x4 cells, boundaries 0,314,627,941,1254; each tile = its whole cell (clipped, no neighbour bleed) -> 32x32 nearest (SaltArt.terrain_window); sea_b/channel_b never alternated"
+  },
+  "salt-pan-states.png": {
+   "sha256": "5da696f23ea2b839a72e0042c38e30eb0f00c87d9c7638b431b2c2103d3d7d8e",
+   "source": "work/salt/art-source/salt-pan-states-source.png",
+   "source_sha256": "5da696f23ea2b839a72e0042c38e30eb0f00c87d9c7638b431b2c2103d3d7d8e",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/pan-states-generation.json",
+   "size": [
+    1774,
+    887
+   ],
+   "mode": "RGBA",
+   "windows": "4x2 cells x 0,444,887,1331,1774 / y 0,444,887; one cell-relative window (25,16,396,396) for all 8 states -> 96x96 nearest, rim centred on the 3x3 footprint; brine_alt never drawn"
+  },
+  "salt-machines.png": {
+   "sha256": "98875ff353ffe6bbb0a20feec18765f3c72158b3100527afe8b08b186c124732",
+   "source": "work/salt/art-source/salt-machines-source.png",
+   "source_sha256": "98875ff353ffe6bbb0a20feec18765f3c72158b3100527afe8b08b186c124732",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/machines-generation.json",
+   "size": [
+    1254,
+    1254
+   ],
+   "mode": "RGBA",
+   "windows": "2x2 cells of 627; empty pads wheel (30,12,576,576), collector (10,11,576,576) -> 64x64 feet (32,64); collector working cell window (11,12,576,576) used ONLY as a source of RAKE_ROI/GRAIN_ROI pixels composited onto the idle props frame; raw working frames never drawn whole"
+  },
+  "salt-structures.png": {
+   "sha256": "e360994d21fb695b77ad1f40bcc1f79433571af429b1ae1913b99ef4aef2f4d9",
+   "source": "work/salt/art-source/salt-structures-source.png",
+   "source_sha256": "e360994d21fb695b77ad1f40bcc1f79433571af429b1ae1913b99ef4aef2f4d9",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/structures-generation.json",
+   "size": [
+    1774,
+    887
+   ],
+   "mode": "RGBA",
+   "windows": "root clips shed[0,0,930,445] bus[930,0,844,445] sign[0,445,887,442] chest[887,445,887,442]; windows shed(72,-119,840,560)->192x128, bus(1059,52,576,384)->96x64 (drawn bottom-centred on SaltPan.BUS_SHELTER 3x1), sign(238,132,488,732)->32x48, chest(1038,297,560,560)->32x32; bottom-centre anchors"
+  },
+  "salt-resident.png": {
+   "sha256": "2cdd43bbe1625651a0e2bb4b8b6364a9054697fc289208fab5a69d02e3faf1d9",
+   "source": "work/salt/art-source/salt-resident-source.png",
+   "source_sha256": "2cdd43bbe1625651a0e2bb4b8b6364a9054697fc289208fab5a69d02e3faf1d9",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/resident-generation.json",
+   "size": [
+    1254,
+    1254
+   ],
+   "mode": "RGBA",
+   "windows": "2x2 cells of 627 (front, front_blink, back, right); one cell-relative window (118,5,400,600) -> 32x48, feet (16,48); left = mirror of right; blink not animated (not root-approved)"
+  },
+  "salt-portrait.png": {
+   "sha256": "d9b2c08c32c77114c46bf01a9d758e485b7fcd762447b9bdfc08b3097cdb370a",
+   "source": "work/salt/art-source/salt-portrait-source.png",
+   "source_sha256": "d9b2c08c32c77114c46bf01a9d758e485b7fcd762447b9bdfc08b3097cdb370a",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/portrait-generation.json",
+   "size": [
+    1254,
+    1254
+   ],
+   "mode": "RGBA",
+   "windows": "single bust; whole canvas (0,0,1254,1254) -> 64x64"
+  },
+  "salt-items.png": {
+   "sha256": "238694880c19b80fd28ed14a7764ebaeeae80c65afe66ab2160390050fdc7fdc",
+   "source": "work/salt/art-source/salt-items-source.png",
+   "source_sha256": "238694880c19b80fd28ed14a7764ebaeeae80c65afe66ab2160390050fdc7fdc",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/items-generation.json",
+   "size": [
+    1254,
+    1254
+   ],
+   "mode": "RGBA",
+   "windows": "2x2 cells of 627 (sea_salt, salt_wheel_kit, salt_rake_kit, salt_grilled_fish); whole cell -> 32x32"
+  },
+  "salt-props.png": {
+   "sha256": "148bba4f521f1f43e07080b6265da496195c7d075299957ca4d36f119e664bff",
+   "source": "work/salt/art-source/salt-props-source-v2.png",
+   "source_sha256": "148bba4f521f1f43e07080b6265da496195c7d075299957ca4d36f119e664bff",
+   "byte_identical": true,
+   "generation": "work/salt/art-source/props-generation-v2.json",
+   "size": [
+    1254,
+    1254
+   ],
+   "mode": "RGBA",
+   "windows": "staged adapter salt_props_art.gd (copied by lead): 2x2 cells of 627, 576 windows -> 64x64, foot (32,64)"
+  }
+ },
+ "adapter": "game/scripts/salt_art.gd = root-reviewed staged adapter work/salt/staged-full-art/salt_art.gd (sha256 4d9dbdb60cf1bbd898c76a1d11341e28c7e66be4e72d0cdcb174da96bfe6d5df) + production panel_art(); reconciled by flower_exec_salt_scene2 2026-11-14. Haze alpha<=8 zeroed on textures built from these sheets.",
+ "animation": "Running machines: idle salt-props frame always drawn; only SaltArt.animated_rois change (waterwheel flume/outlet water pixels advanced 2px/phase, wheel does not rotate; collector tray rake from the registered working cell + real grain pixels). 4 phases x 0.15 s. Reduced motion and every non-running status = the identical idle texture. Sea/channel tiles static; brine_alt and blink unused."
+}

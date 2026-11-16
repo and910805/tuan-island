@@ -1,0 +1,6 @@
+{
+  "generator":"OpenAI ImageGen (built-in, transparent)",
+  "source":"source/drill.png",
+  "prompt":"One isolated TOP-DOWN overhead 32px game pixel sprite for cozy Taiwanese farming RPG: square low timber/gray stone mining drill machine, copper flywheel and tiny amber grease fitting in center, short unmistakable tapered steel drill bit pointing RIGHT (east) attached to front housing, compact flat base, limited warm shades and crisp stepped edges. No perspective horizon, no characters, no shadows outside object, no text, no floor. Render at clear low 40x32 effective pixel resolution enlarged; transparent exterior. Drill bit must be the rightmost ~20 percent, on the central horizontal axis; static chassis clearly distinct from bit.",
+  "integration":"Godot work/generate_mine_drill.gd trims the source and resizes nearest to 40×26; the four work frames advance the bit, rotate sampled flywheel pixels and vary two dust flecks sampled from village terrain. Each row is up, right, down or left; each column is idle, then four working frames. Each frame is 48×48, with unchanged chassis and anchor. The bottom-left 32×32 cell is the kit icon."
+}

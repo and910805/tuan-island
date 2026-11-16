@@ -1,0 +1,36 @@
+{
+  "status": "integrated_0.45_followup_public_kitchen_0.46",
+  "scope": "Original section13/T036: explicit single adjacent chest + backpack sourcing for existing bench craft, stove queue, sawmill/kiln manual queue. Remaining station catalog/full plan remain open.",
+  "introduced": {
+    "save_version": 22,
+    "protocol": 40
+  },
+  "save_version": 26,
+  "protocol": 45,
+  "selection": "Per open station UI defaults to backpack only. User explicitly selects ONE cardinal-adjacent chest; source is held only in that UI, not persisted as a global/per-station binding. Shared chest usable by members, private chest only its owner and never auto-selected. No global or nearby-box draining.",
+  "identity": "Optional box_id32 lowerhex on chest/private_chest ONLY. Assigned LAZILY by prepare_material_box successful World.act; no eager migration/new-build injection. Old saves/chests/history untouched until explicit prepare. Preserve existing ID on move, never adopt another box. Unique across all live regional objects. Old version<22 carrying box_id rejected. Non-owner private chest public snapshot must strip box_id.",
+  "prepare_action": "prepare_material_box, p=station cell, extra=box cell; validates station type, processing ownership, adjacency, box access before any identity lookup/assignment; return source_cell and source_id, idempotent through receipts; marks chest use for undo, saves atomically.",
+  "source_actions": [
+    "craft",
+    "cook",
+    "queue_cook",
+    "start_processing",
+    "queue_processing"
+  ],
+  "wire": "plain recipe ID stays backward-compatible backpack-only. Sourced extra = recipe|box_cell|box_id32|digest16, <=96 ASCII bytes. cook/start_processing sourced calls MUST use queue_cook/queue_processing paths; never change legacy job schema. Session only extends extra limit for these five actions, existing limits for all others remain.",
+  "allocation": "MaterialSupply.plan(recipe.ingredients, backpack, chosen_box.items) pure immutable; backpack first. Supplied temporary inventory tops up ONLY chest share, then existing World action does full canonical debit. Success yields original backpack minus its share and box minus its share; failure/save failure rolls all back. Cancellation existing stored full ingredients refunds to submitter backpack; clearly disclosed before confirmation.",
+  "confirmation": "Client displays EXACT split and sends digest of that displayed split. Canonical digest includes canonical action, station type+cell, recipe ID and full recipe definition, chest cell+ID, from_backpack/from_chest. Server recomputes using current data and rejects mismatch with requote=true before mutation. Unrelated stock changes that preserve exact split need not reject. Frozen pending request; no autoretry. The default backpack-only action stays unchanged.",
+  "shared_helper": {
+    "file": "res://scripts/material_sources.gd (no preload World; accept World instance for mutation helpers)",
+    "candidates": "static candidates(objects:Dictionary, actor:String, station_cell:Vector2i)->Array of {cell:String,type:String,id:String}; deterministic y/x order; only eligible adjacent shared/own private chests; missing id is empty",
+    "digest": "static digest(action:String,station_kind:String,station_key:String,recipe_id:String,recipe:Dictionary,chest_key:String,chest_id:String,allocation:Dictionary)->String; canonical sorted recursive representation SHA256.left(16); normalize cook=>queue_cook,start_processing=>queue_processing; include only positive from_backpack/from_chest maps plus full recipe definition",
+    "encode": "static encode(recipe_id:String,chest_key:String,chest_id:String,quote_digest:String)->String",
+    "prepare": "static prepare(world,token:String,p:Vector2i,box_key:String)->Dictionary called in World._apply",
+    "perform": "static perform(world,token:String,action:String,p:Vector2i,extra:String)->Dictionary called in World._apply only for supported action with | payload; all original canonical unlock, owner, distance, cap/queue, history/save checks retained"
+  },
+  "history": "prepare and successful sourced commit expose safe source_cell/source_id metadata, debit from_backpack/from_chest. World.act marks remote source chest with _undo_mark_remote_chest before _undo_observe. Do not keep ephemeral mutation state across failed acts. No raw owner tokens in result metadata.",
+  "schema": "Current VERSION23; introduced VERSION22, literal MATERIAL_SOURCE_VERSION22; existing literal cutoffs21processing/20cooking/19blueprint/18undo/17roof unchanged. box_id optional, exact lowerhex32, only chest/private_chest, global uniqueness. No eager migration or mandatory IDs on old chests.",
+  "session": "Current PROTOCOL41 (public kitchen followup), introduced PROTOCOL40; correlated actions add craft,prepare_material_box and sourced existing actions. Preserve maximum action-name bound exception for collect_processing_output. Source result metadata no secret IDs from inaccessible boxes; private box_id stripped in _send_snapshot.",
+  "ui": "Reusable MaterialSourceUI integrated in automation workbench,cooking queue,processing queue. Existing functionality remains. Compact dropdown/list '只用背包' + eligible adjacent boxes. Explicit private selection triggers prepare only if missing ID. Show actual backpack held separately from exact debit split; never label combined total as backpack. Missing material, stale quote, prepare pending and failure readable. Clear refund-to-backpack sentence. Existing controllers keep exact sequence+action ack correlation, no notices-as-ack. Maintain 1024x640,1280x800,Tab/Esc,HUD restore.",
+  "verification": "Actual World act/save/reload/replay, shared/private roles, station access differences, move/replace, stale split, no eager old-save changes, both queue station types+stove+bench, cancellation to backpack, overflow, save failure, remote chest undo invalidation, native source dropdown+split+confirm and existing automation preserved. Full previous regression and actual captures before declaring integration done. Tests/fixtures must be labelled. No assertion-only substitutes for live integration."
+}

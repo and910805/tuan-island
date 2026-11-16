@@ -1,0 +1,11 @@
+{
+  "version": "0.17",
+  "protocol": 15,
+  "world_save_version": 1,
+  "membership_version": 2,
+  "identity_schema": 3,
+  "title": "世界明信片與朋友的邀請",
+  "implemented": ["登入帳號的私人世界清單與分頁", "完整 TI1 邀請解析與島嶼預覽", "持久發布版本及目錄同步確認後才分享", "離線、滿員、撤銷與版本不符提示", "固定返回導航與獨立世界清單捲動"],
+  "verified": ["36 套 2400 項 Godot 檢查", "72 個 Python 案例", "13 個真實本機 HTTPS/WSS 情境", "島主與訪客實際程序的入口流程與三解析度渲染", "Windows 匯出啟動保存、WSL2 Linux 匯出伺服器與 Windows 匯出客戶端本機信任房間連線保存"],
+  "remaining": ["原生實體鍵事件、改鍵與重開驗收", "Windows 發行 EXE 原生登入流程", "公開註冊、帳號恢復、自助開世界", "成員與世界跨檔原子提交、單一寫入租約", "Zeabur 持久卷、外部 Windows、雲端 Linux、Docker 與容量", "完整規劃書其他關卡"]
+}

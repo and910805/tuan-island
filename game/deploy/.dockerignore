@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!entrypoint.sh
+!tuan-island-server.x86_64
+!libisland_world_lock.so

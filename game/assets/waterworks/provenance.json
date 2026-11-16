@@ -1,0 +1,7 @@
+{
+  "generator": "OpenAI ImageGen (built-in transparent mode)",
+  "source": "source/press.png",
+  "atlas": "atlas.png",
+  "prompt": "Transparent 2-column pixel-art sprite sheet for 32px cozy Taiwanese farming simulator. Left: compact stationary water-powered copper press machine, honey wood frame, low gray stone base, polished copper inlet pipes, small press block and a round wooden waterwheel with spokes on right side. Right: identical detached waterwheel only, front facing, round circular with 7 alternating wooden paddles and copper hub, no structure behind. Warm outline, bold stepped 16-bit pixel clusters, orthographic 3/4, no text or ground shadows, wide separation and generous transparent borders. Machine silhouette fits 40x48 pixels at final scale.",
+  "integration": "Godot work/generate_waterworks.gd trims the generated press and wheel, nearest-scales their pixels, and keeps the press and foot anchor fixed across 48×48 frames. Wheel rotations are sampled at four angles, with ripples sourced from the existing village terrain PNG. The idle frame is reused in reduced motion. The bottom-left 32×32 cell is the inventory kit."
+}

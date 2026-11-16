@@ -1,0 +1,8 @@
+.godot/
+work/
+outputs/
+.env
+.env.*
+*.log
+*.writer-lock
+*.bak
