@@ -994,6 +994,10 @@ func public_state(region:String="home") -> Dictionary:
 		person.erase("travel_book")
 		person.erase("resident_participation")
 		person.erase("bonds")
+		person.erase(World.RESIDENT_GOALS.ROUTE_KEY)
+		person.erase(World.RESIDENT_GOALS.SKETCH_KEY)
+		person.erase(World.RESIDENT_GOALS.CROP_TRADE_KEY)
+		person.erase(World.RESIDENT_GOALS.CHICKEN_FED_KEY)
 		person.erase(World.RESIDENT_GOALS.RECORD_KEY) # T066「一起做的事」只給本人（data.resident_goals）
 		person.erase(World.RESIDENT_GOALS.KEEPSAKE_KEY) # T066 紀念小物領取紀錄只給本人（data.resident_goals 的 keepsake）
 		person.erase("market")
@@ -1103,6 +1107,10 @@ func _send_snapshot(id:int) -> void:
 	# T066: relationship progress is personal; only the recipient's own summary is sent.
 	data.resident_bonds=World.RESIDENT_BOND.view(world.state.players[route_actor],float(world.state.time))
 	data.resident_goals=World.RESIDENT_GOALS.view(world.state.players[route_actor],world.state,route_actor) # T066「一起做的事」本人摘要。
+	if World.RESIDENT_GOALS.done(world.state.players[route_actor],"xiaoli").has(1):
+		data.own_shop_history=World.TRANSACTION_LEDGER.shop_history(world.state,route_actor)
+	data.own_achao_route_marks=int(world.state.players[route_actor].get(World.RESIDENT_GOALS.ROUTE_KEY,0))
+	data.own_crop_sketches=world.state.players[route_actor].get(World.RESIDENT_GOALS.SKETCH_KEY,{}).duplicate()
 	data.own_market=world.market_view(route_actor) # T071：攤位庫存、錢箱、結算只給本人。
 	data.own_harvest=world.harvest_view(route_actor) # T071：豐收接力本人摘要與紀念票。
 	data.own_fish_meet=world.fish_meet_view(route_actor) # T071：河岸釣魚會本人摘要與紀念票。

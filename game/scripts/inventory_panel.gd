@@ -279,7 +279,7 @@ static func use_for(id: String, key_name:Callable=Callable()) -> String:
 		"": return ""
 		"wood", "stone": return "可用於建造，也能捐給渡口的共同工程。"
 		"fiber": return "可用於手作繩索、家具、屋頂和混合飼料。"
-		"rope": return "以五份纖維手作編成。"
+		"rope": return "以五份纖維手作編成。可用來建造航海繩掛架。"
 		"reinforced_pick": return "隨身攜帶後，可用十字鎬採集東北採石點旁的銅礦脈。"
 		"copper_ore": return "在工作臺加工成銅接頭。銅礦脈位於採石點旁，需攜帶強化石鎬。"
 		"copper_joint": return "用來組裝灑水器、種子機和溫室玻璃棚等設備。"
@@ -309,6 +309,7 @@ static func use_for(id: String, key_name:Callable=Callable()) -> String:
 		"seeder": return "按 %s 選種子、%s 拿起播種機。只播種自己的空農田，每格用 1 顆種子，成功才消耗 1 木炭。" % [shortcuts["seeds"],shortcuts["seed_area"]]
 		"harvester": return "按 %s 拿起收割機。最多收割九格有權採收的成熟作物，成功才消耗 1 木炭。" % [shortcuts["harvest_area"]]
 		"sapling": return "在空地種植，三分鐘長成。"
+		"egg_basket": return "到渡口找糯米雞，從照料面板裝設收集籃。"
 		"feed": return "靠近糯米雞，從照料面板餵食。"
 		"soup", "bread": return "可交給渡口野餐，也可以在小栗的攤位出售。"
 		"bluebell": return "田尾育苗床種出的鈴蘭藍花。%d 朵可在染色桌製成藍色染料 %d 份；在留種台 1 朵換 1 包種子。" % [int(Flower.DYE.ingredients.bluebell), int(Flower.DYE.yield)]

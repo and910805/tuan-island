@@ -13,6 +13,7 @@ const SourcePicker = preload("res://scripts/material_source_ui.gd")
 ## `keys` so rebinding stays accurate. test_workbench_guidance.gd checks every
 ## field against the real recipe, build and device data.
 const GUIDE := {
+	"egg_basket":{"kind":"animal_facility","text":"帶著收集籃到渡口找糯米雞，在照料面板裝設。籃子可放六顆雞蛋，裝滿後先領取再餵食。"},
 	"supply_box_kit":{"kind":"place","build":"supply_box","tab":"生活","text":"探索六級解鎖。到建造目錄「生活」放置，清空後可拆回背包。"},
 	"glass":{"kind":"collection","build":"greenhouse_roof","tab":"基礎",
 		"text":"金瓜石五層採晶砂。建造目錄「基礎」用玻璃 2、銅接頭 1 在自家農田蓋溫室玻璃棚。"},
@@ -28,8 +29,8 @@ const GUIDE := {
 		"text": "開通第五層後可製作。建造目錄「生活」放在礦層指定礦點旁，裝木炭自動採礦。"},
 	"waterworks_kit": {"kind": "place", "build": "waterworks", "tab": "生活",
 		"text": "第三層抽水工程完成後可製作。建造目錄「生活」放置並接水管，把銅礦與木材加工成銅接頭。"},
-	"copper_joint": {"kind": "part", "used_in_build": ["loom", "glass_furnace", "seed_maker", "greenhouse_roof", "medium_sprinkler"], "feeds": ["mine_drill_kit", "waterworks_kit", "sprinkler_kit", "pipe_kit", "pump_kit", "forester_kit", "conveyor_kit", "tiller", "seeder", "harvester", "mill_kit", "salt_wheel_kit", "salt_rake_kit", "diversion_gate_kit", "water_tower_kit"],
-		"text": "供織布機、玻璃爐、種子機、溫室玻璃棚、灑水器與鹽田機具使用。種子機需 2 個，玻璃棚 1 個。"},
+	"copper_joint": {"kind": "part", "used_in_build": ["loom", "jam_pot", "glass_furnace", "seed_maker", "greenhouse_roof", "medium_sprinkler"], "feeds": ["mine_drill_kit", "waterworks_kit", "sprinkler_kit", "pipe_kit", "pump_kit", "forester_kit", "conveyor_kit", "tiller", "seeder", "harvester", "mill_kit", "salt_wheel_kit", "salt_rake_kit", "diversion_gate_kit", "water_tower_kit"],
+		"text": "果醬鍋、織布機、玻璃爐、種子機、玻璃棚、灑水器與鹽田機具的零件。"},
 	"sprinkler_kit": {"kind": "place", "build": "sprinkler", "tab": "生活",
 		"text": "建造目錄「生活」放在田邊，替上下左右自家作物澆水；手動補水或接水管。"},
 	"pipe_kit": {"kind": "place", "build": "water_pipe", "tab": "生活",

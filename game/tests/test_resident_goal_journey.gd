@@ -131,7 +131,7 @@ const RG_CHOOSE:="請先選一個做法。"
 const RG_NO_GOAL:="這一階還沒有可以一起做的事。"
 const RG_ORDER:="順序不太對。鈴婆婆說不急，再看一次圖示。"
 const RG_NEED_MSG:="還不能一起做這件事：要先「%s」。"
-const RG_TOTAL:=28
+const RG_TOTAL:=32
 const RG_VILLAGE=preload("res://scripts/village.gd")
 ## World.gd literals: what one felled tree / one grass tile gives, the 小床 message.
 const RG_TREE_YIELD:={"wood":6,"fiber":2,"sapling":1,"resin":1}

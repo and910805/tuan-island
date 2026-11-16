@@ -57,7 +57,7 @@ const CATEGORY_NAMES:={"produce":"農漁產","dish":"料理","flower":"花"}
 const THEMES:=["produce","dish","flower"]
 const FLOWERS:=["bluebell","orange_blossom","chime_herb"]
 ## 有出貨價、但不屬於作物或魚的農牧產品。
-const PRODUCE_EXTRA:=["egg","milk"]
+const PRODUCE_EXTRA:=["egg","milk","wool"]
 ## 原料不上市集（只能出貨）。
 const RAW:=["wood","stone","fiber","resin"]
 const MAX_KINDS:=4

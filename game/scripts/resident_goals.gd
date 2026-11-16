@@ -15,8 +15,7 @@ extends RefCounted
 ## 第二批（共 28 項）：再接入 11 項，其中 6 項有「前提」（needs，見 NEEDS）——
 ## 讀既有的世界紀錄（自己放的小床、燒過溫室玻璃、市集結算過一輪、風鈴接力辦過、
 ## 認識三位居民、當天沒下雨），不新增存檔欄位；其餘 5 項只用材料或等價選項。
-## 設定集的「出售收成再買種子」「餵糯米雞」沒有個人紀錄可讀：前者未接入，
-## 後者改成交 1 份飼料。選項文字（紀念牌、店名、信上的一句話、椅子）為實作補寫。
+## 小栗第一階使用本人的作物販售與當季購種順序；棉棉第一階使用本人的首次餵食時間。選項文字（紀念牌、店名、信上的一句話、椅子）為實作補寫。
 ##
 ## 純規則：不讀檔、不看現實時鐘、不用亂數。紀錄只寫本人的
 ## player.bond_goals={居民:{"階數":"選項 id 或空字串"}}（第一次完成才寫入），
@@ -25,9 +24,29 @@ const Bond=preload("res://scripts/resident_bond.gd")
 const Weather=preload("res://scripts/weather.gd")
 
 const ACTION:="resident_goal"
+const ROUTE_ACTION:="achao_route_mark"
+const ROUTE_KEY:="achao_route_marks"
+const ROUTE_MASK:=7
+const ROUTE_SIGNS:={
+	"board":{"bit":1,"name":"渡口公告板","hint":"廣場中央，小栗的攤子西側"},
+	"ferry":{"bit":2,"name":"渡口轉乘牌","hint":"從廣場沿路往東，到交通船轉乘處"},
+	"river":{"bit":4,"name":"河岸釣魚會告示牌","hint":"沿河走到河灣橋南岸"},
+}
+const SKETCH_ACTION:="sketch_crop"
+const SKETCH_KEY:="crop_sketches"
+const SKETCH_TARGET:=3
+const SKETCH_ANIMALS:={"chicken":"糯米雞","cow":"奶糖牛","sheep":"雲朵羊"}
+const APRON_ACTION:="milu_apron"
+const APRON_KEY:="milu_apron"
 const RECORD_KEY:="bond_goals"
 ## 步驟一律三個；每個步驟只做一次。
 const STEP_COUNT:=3
+const CROP_TRADE_KEY:="first_crop_trade"
+const CROP_SOLD:=1
+const SEED_BOUGHT:=2
+const SHARED_MEAL_EVENT:="shared_meal"
+const CHICKEN_FED_KEY:="first_chicken_feed_at"
+const CHICKEN_APPROACH_SECONDS:=5.0
 
 ## 鍵為階數 1–4（對應 Bond.STAGES）。欄位：
 ## title 設定集標題；task 要做的事；items 要交的物品；options 等價選項
@@ -49,6 +68,9 @@ const GOALS:={
 		3:{"title":"不是同一道湯","task":"帶兩碗湯來辦一場小試吃。蘿蔔湯或胡蘿蔔濃湯都可以。",
 			"options":[{"id":"soup","label":"蘿蔔湯","items":{"soup":2}},{"id":"carrot_soup","label":"胡蘿蔔濃湯","items":{"carrot_soup":2}}],
 			"quote":["味道和以前不同，卻有人喝完還想再添。","原來食譜最後一行，不一定得寫得一模一樣。"],"keepsake":"試吃會的空碗"},
+		4:{"title":"記得替自己留一碗","task":"親手把至少四份料理擺上渡口共餐桌，再找米露回報。一個人也能完成。",
+			"needs":["shared_meal"],
+			"quote":["今天這一碗，我先盛給自己。","剩下的位置都空著，你們隨時可以來。"],"keepsake":"米露的共餐食譜"},
 	},
 	"bobo":{
 		1:{"title":"口袋裡的小山","task":"交給波波 8 塊石材，看他把石頭排成一座小島。",
@@ -74,10 +96,13 @@ const GOALS:={
 		1:{"title":"打不開的繩結","task":"照阿潮畫的圖示鬆開三段繩：先鬆船尾，再鬆中段，最後鬆船頭。不限時間，順序不對可以重來。",
 			"steps":["船頭那一段","中段","船尾那一段"],"order":[2,1,0],
 			"quote":["拉得更用力，不一定會更快。","先看看是哪一端在等你鬆手。"],"keepsake":"鬆開的舊繩結"},
+		2:{"title":"褪色的航線","task":"走訪渡口公告板、轉乘牌和河岸釣魚會告示牌，各記下一處方向，再回來找阿潮。",
+			"needs":["route_marks"],
+			"quote":["這張圖上的空白，不是沒有地方。","是還沒有人替我們畫回來。"],"keepsake":"阿潮的手繪群島地圖"},
 	},
 	"mianmian":{
-		1:{"title":"先讓牠聞聞","task":"帶一份飼料來，和棉棉一起蹲著等糯米雞自己靠近。",
-			"items":{"feed":1},
+		1:{"title":"先讓牠聞聞","task":"親手餵糯米雞一份飼料，等牠自己靠近，再回來找棉棉。",
+			"needs":["chicken_fed"],
 			"quote":["牠不是不喜歡你，只是還在認識你的鞋子。","我們等一下，牠自己會走過來。"],"keepsake":"糯米雞的偏好筆記"},
 		3:{"title":"一個不太完美的玩具","task":"交 3 塊布料和 4 份纖維，再選玩具的樣子。兩種牠都會喜歡。",
 			"items":{"cotton_cloth":3,"fiber":4},
@@ -112,6 +137,9 @@ const GOALS:={
 			"quote":["你看，沒有風也能響。","有時候，我們自己伸手就好了。"],"keepsake":"親手敲響的那一聲"},
 	},
 	"xiaoli":{
+		1:{"title":"今天先賣一點點","task":"在種子攤或出貨箱賣出一份作物，再找小栗買一包當季種子。",
+			"needs":["crop_sold","seed_after_sale"],
+			"quote":["不用一次把背包賣空。","留一點給晚餐，也留一點給明天的計畫。"],"keepsake":"小栗的第一筆交易"},
 		2:{"title":"輪子停在哪裡","task":"交 12 根木材和 2 塊布料，再替攤車選一個停下來的地方。三個地方都可以。",
 			"items":{"wood":12,"cotton_cloth":2},
 			"options":[{"id":"tree","label":"風鈴樹下"},{"id":"dock","label":"渡口路邊"},{"id":"plaza","label":"廣場西側"}],
@@ -136,6 +164,9 @@ const GOALS:={
 			"quote":["今天沒有誰等著收這封信。","可是以後的我，應該會很高興。"],"keepsake":"寫給以後的信封"},
 	},
 	"diandian":{
+		1:{"title":"帽沿底下的顏色","task":"在渡口記下三種不同的動物或作物。靠近後從照料或農田面板畫速寫，不必捕捉或採收。",
+			"needs":["crop_sketches"],
+			"quote":["你走得慢一點，我就看見帽沿的影子了。","影子也是你的顏色。"],"keepsake":"點點的菜園貼紙"},
 		2:{"title":"沒畫好的手","task":"在池邊陪點點坐一會兒，選一個姿勢讓她參考。哪一個都可以。",
 			"options":[{"id":"knees","label":"手放在膝上"},{"id":"grass","label":"手撐著草地"},{"id":"cup","label":"捧著一只杯子"}],
 			"quote":["我總把手畫得太僵。","可能因為我忘了，它們也會在不知道做什麼時放鬆。"],"keepsake":"畫著放鬆的手的速寫"},
@@ -162,6 +193,12 @@ const GOALS:={
 ##   known_three   本人對洛洛以外的居民，至少三位好感已到「認識」
 ##   fair_weather  今天渡口（家園）沒有下雨
 const NEEDS:={
+	"route_marks":"記下渡口的三處路標方向",
+	"crop_sketches":"記錄三種不同動物或作物的色彩",
+	"shared_meal":"親手上一輪共享料理",
+	"crop_sold":"在種子攤或出貨箱賣出一份作物",
+	"seed_after_sale":"賣出作物後，買一包當季種子",
+	"chicken_fed":"親手餵一次糯米雞，等牠靠近",
 	"own_bed":"家園裡有一張你放的小床",
 	"glass_crafted":"自己燒過一次溫室玻璃",
 	"market_round":"你的市集攤位結算過一輪",
@@ -280,6 +317,15 @@ static func need_met(id:String,state:Dictionary,token:String) -> bool:
 	var found:Variant=players.get(token) if players is Dictionary else null
 	var person:Dictionary=found if found is Dictionary else {}
 	match id:
+		"route_marks":return int(person.get(ROUTE_KEY,0))==ROUTE_MASK
+		"crop_sketches":return person.get(SKETCH_KEY,{}).size()>=SKETCH_TARGET
+		"shared_meal":return person.get("resident_participation",{}).get(SHARED_MEAL_EVENT,false)==true
+		"crop_sold":return int(person.get(CROP_TRADE_KEY,0))>=CROP_SOLD
+		"seed_after_sale":return int(person.get(CROP_TRADE_KEY,0))==SEED_BOUGHT
+		"chicken_fed":
+			var fed:Variant=person.get(CHICKEN_FED_KEY)
+			var now:Variant=state.get("time")
+			return (fed is float or fed is int) and (now is float or now is int) and float(now)-float(fed)>=CHICKEN_APPROACH_SECONDS
 		"own_bed":
 			var objects:Variant=state.get("objects")
 			if not objects is Dictionary or token.is_empty():return false
@@ -350,6 +396,15 @@ static func done(person:Dictionary,resident:String) -> Dictionary:
 	for key in own:
 		if key is String and key.is_valid_int():result[int(key)]=str(own[key])
 	return result
+
+static func valid_sketches(value:Variant,crops:Dictionary) -> bool:
+	if not value is Dictionary or value.size()>SKETCH_TARGET:return false
+	for kind in value:
+		if (not crops.has(kind) and not SKETCH_ANIMALS.has(kind)) or not value[kind] is bool or not value[kind]:return false
+	return true
+
+static func apron_unlocked(person:Dictionary) -> bool:
+	return done(person,"milu").has(4)
 
 static func completed(person:Dictionary) -> int:
 	var count:=0

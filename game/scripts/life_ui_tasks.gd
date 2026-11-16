@@ -481,6 +481,15 @@ static func resident(app,id:String) -> void:
 		actions.add_child(app.button("交付這段委託",func():app.session.perform("quest",cell,request);app._close_modal()))
 	else:
 		line(app,section,"「"+Village.QUESTS[id].back().line+"」",18)
+	if id=="milu" and app.session.snapshot.get("resident_goals",{}).get("milu",{}).get("4",{}).get("state")=="done":
+		var cookbook:Button=app.button("翻閱米露的共餐食譜",shared_meal_book.bind(app))
+		cookbook.name="MiluCookbook"
+		actions.add_child(cookbook)
+		add_milu_apron_button(app,actions)
+	if id=="xiaoli" and app.session.snapshot.has("own_shop_history"):
+		var trade_book:Button=app.button("翻開交易簿",app.life_panels.trade_book.bind(app))
+		trade_book.name="ResidentTradeBook"
+		actions.add_child(trade_book)
 	if id=="bobo" and stage>=1 and app.has_method("_bobo_sort_menu"):
 		actions.add_child(app.button("到礦樣整理桌",app._bobo_sort_menu))
 	actions.add_child(app.button("打開島民手冊  %s"%app.binding_label("journal"),func():app._journal(id)))
@@ -745,6 +754,10 @@ static func bond_dialogue(app,id:String) -> void:
 	var events:Button=app.button("關係事件  %d／%d"%[int(bond.get("stage",0)),Bond.STAGES.size()],bond_events.bind(app,id))
 	events.name="BondEvents"
 	actions.add_child(events)
+	if id=="achao" and int(bond.get("stage",0))>=2:
+		var chart:Button=app.button("翻開阿潮的航線",achao_route_book.bind(app))
+		chart.name="AchaoRouteBook"
+		actions.add_child(chart)
 	body.add_child(actions)
 	line(app,body,"每個世界日第一次聊天和第一份禮物會增加好感。要站在%s身邊才能聊天或送禮。"%npc_name,14)
 	# 棉棉、阿潮、暖暖沒有另一張對話頁，好感頁就是入口，不放返回鈕。
@@ -788,6 +801,84 @@ static func bond_gifts(app,id:String) -> void:
 
 ## 一次只翻開一階事件：上排四個分頁（BondEventTab_0..3），下方一張 BondEventCard。
 ## selected<0 時預設最新展開的一階（都沒展開就是第一階）；未展開的分頁仍可選，顯示門檻。
+static func add_milu_apron_button(app,actions:Container) -> void:
+	if app.session.snapshot.get("resident_goals",{}).get("milu",{}).get("4",{}).get("state")!="done":return
+	var wearing:=bool(player(app).get(World.RESIDENT_GOALS.APRON_KEY,false))
+	var button:Button=app.button("收起米露的圍裙" if wearing else "穿上米露的圍裙",func():
+		var at:Vector2i=World.bond_place(app.session.snapshot,"milu")[1]
+		app.session.perform(World.RESIDENT_GOALS.APRON_ACTION,at)
+		app._close_modal())
+	button.name="MiluApron"
+	actions.add_child(button)
+
+static func achao_route_book(app) -> void:
+	var s:Dictionary=app.session.snapshot
+	var done:bool=s.get("resident_goals",{}).get("achao",{}).get("2",{}).get("state")=="done"
+	var body:VBoxContainer=app._open_modal("阿潮的手繪群島地圖" if done else "褪色的航線")
+	app.modal.set_meta("life_modal_layout","community_board")
+	var spread:=HBoxContainer.new()
+	spread.add_theme_constant_override("separation",12)
+	body.add_child(spread)
+	var notes:=VBoxContainer.new()
+	notes.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	spread.add_child(notes)
+	var page:=card(notes)
+	var marks:=int(s.get("own_achao_route_marks",0))
+	for sign:Dictionary in World.RESIDENT_GOALS.ROUTE_SIGNS.values():
+		var recorded:bool=(marks&int(sign.bit))!=0
+		line(app,page,"%s %s"%["✓" if recorded else "○",sign.name],17)
+		line(app,page,sign.hint,14)
+	if done:
+		var map:Control=preload("res://scripts/taiwan_map.gd").new()
+		map.name="AchaoChart"
+		map.set_meta("current_region",str(s.get("region_id","home")))
+		map.set_meta("travel_book",player(app).get("travel_book",{}))
+		spread.add_child(map)
+	elif marks==World.RESIDENT_GOALS.ROUTE_MASK:
+		line(app,notes,"三處方向都畫好了，回去跟阿潮說一聲。",16)
+	notes.add_child(app.button("回到阿潮",bond_dialogue.bind(app,"achao")))
+
+static func add_achao_route_marker(app,site:String) -> void:
+	var s:Dictionary=app.session.snapshot
+	if s.get("region_id")!=World.REGIONS.HOME or int(s.get("resident_bonds",{}).get("achao",{}).get("stage",0))<2:return
+	if is_instance_valid(app.modal)==false:return
+	var cell:=World.achao_route_cell(site)
+	var person:=player(app)
+	var at:=Vector2(person.get("x",0),person.get("y",0))
+	if at.distance_to(Vector2(cell)+Vector2(0.5,0.5))>3.2:return
+	var sign:Dictionary=World.RESIDENT_GOALS.ROUTE_SIGNS[site]
+	if (int(s.get("own_achao_route_marks",0))&int(sign.bit))!=0:return
+	var body:=app.modal.find_child("ModalContent",true,false) as VBoxContainer
+	if body==null:return
+	var button:Button=app.button("把%s記進阿潮的航線"%sign.name,func():
+		app.session.perform(World.RESIDENT_GOALS.ROUTE_ACTION,cell,site)
+		app._close_modal())
+	button.name="AchaoRouteMarker"
+	body.add_child(button)
+	body.move_child(button,0)
+
+static func shared_meal_book(app) -> void:
+	var body:VBoxContainer=app._open_modal("米露的共餐食譜")
+	app.modal.set_meta("life_modal_layout","community_board")
+	var cover:=card(body)
+	portrait_header(app,cover,"milu","",64)
+	line(app,cover,"今天這一碗，先留給自己。",18)
+	for dish:String in World.COMMUNITY.DISHES.values():
+		var recipe:Dictionary=World.RECIPES[dish]
+		var ingredients:=PackedStringArray()
+		for item:String in recipe.ingredients:
+			ingredients.append("%s ×%d"%[World.NAMES[item],recipe.ingredients[item]])
+		var row:=HBoxContainer.new()
+		row.add_theme_constant_override("separation",10)
+		cover.add_child(row)
+		add_icon(row,Art.icon(dish),32)
+		var note:=VBoxContainer.new()
+		note.add_theme_constant_override("separation",1)
+		row.add_child(note)
+		line(app,note,"%s · 每批 %d 份"%[recipe.name,recipe.yield],17)
+		line(app,note,"、".join(ingredients),15)
+	body.add_child(app.button("回到米露",resident.bind(app,"milu")))
+
 static func bond_events(app,id:String,selected:=-1) -> void:
 	var npc_name:String=Bond.name_of(id)
 	var body:VBoxContainer=app._open_modal("%s的關係事件"%npc_name)

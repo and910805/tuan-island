@@ -48,7 +48,14 @@ static func basket_texture() -> Texture2D:
 	cache["basket"]=ImageTexture.create_from_image(img)
 	return cache["basket"]
 
-static func _basket(img:Image) -> void:
+static func empty_basket_texture() -> Texture2D:
+	if not cache.has("empty_basket"):
+		var img:=_blank()
+		_basket(img,false)
+		cache["empty_basket"]=ImageTexture.create_from_image(img)
+	return cache["empty_basket"]
+
+static func _basket(img:Image,with_salt:bool=true) -> void:
 	_r(img,3,29,26,2,SHADOW)
 	# Bamboo hoop handle: an arch from the left rim (x 5) over the top (y 2) to the right rim (x 26).
 	var arch:=[[5,15],[5,14],[5,13],[6,12],[6,11],[6,10],[7,9],[7,8],[8,7],[9,6],[10,5],[11,4],[12,4],[13,3],[14,3],[15,3],[16,3],[17,3],[18,3],[19,4],[20,4],[21,5],[22,6],[23,7],[24,8],[24,9],[25,10],[25,11],[25,12],[26,13],[26,14],[26,15]]
@@ -57,17 +64,18 @@ static func _basket(img:Image) -> void:
 	for p:Array in arch:
 		_px(img,int(p[0]),int(p[1]),HANDLE)
 	for p:Array in arch.slice(9,23):_px(img,int(p[0]),int(p[1])-0,HANDLE_LIGHT)
-	# Heap of white sea salt above the rim (rows 8..16), shaded blue-grey to the lower right.
-	var heap:=[[14,4],[12,8],[10,12],[8,16],[7,18],[6,20],[5,22],[4,24],[4,24]]
-	for i in heap.size():
-		var y:=8+i
-		var x0:int=int(heap[i][0])
-		var w:int=int(heap[i][1])
-		_r(img,x0-1,y,w+2,1,SALT_DEEP)
-		_r(img,x0,y,w,1,SALT)
-		_r(img,x0+w-maxi(2,w/3),y,maxi(2,w/3),1,SALT_SHADE)
-	for p:Vector2i in [Vector2i(15,9),Vector2i(11,12),Vector2i(17,11),Vector2i(9,14),Vector2i(14,13),Vector2i(20,14),Vector2i(7,15)]:_px(img,p.x,p.y,Color.WHITE)
-	for p:Vector2i in [Vector2i(13,11),Vector2i(18,13),Vector2i(10,15),Vector2i(22,15)]:_px(img,p.x,p.y,SALT_SHADE)
+	if with_salt:
+		# Heap of white sea salt above the rim (rows 8..16), shaded blue-grey to the lower right.
+		var heap:=[[14,4],[12,8],[10,12],[8,16],[7,18],[6,20],[5,22],[4,24],[4,24]]
+		for i in heap.size():
+			var y:=8+i
+			var x0:int=int(heap[i][0])
+			var w:int=int(heap[i][1])
+			_r(img,x0-1,y,w+2,1,SALT_DEEP)
+			_r(img,x0,y,w,1,SALT)
+			_r(img,x0+w-maxi(2,w/3),y,maxi(2,w/3),1,SALT_SHADE)
+		for p:Vector2i in [Vector2i(15,9),Vector2i(11,12),Vector2i(17,11),Vector2i(9,14),Vector2i(14,13),Vector2i(20,14),Vector2i(7,15)]:_px(img,p.x,p.y,Color.WHITE)
+		for p:Vector2i in [Vector2i(13,11),Vector2i(18,13),Vector2i(10,15),Vector2i(22,15)]:_px(img,p.x,p.y,SALT_SHADE)
 	# Thick dark rim (rows 16..18) with a light top edge.
 	_r(img,2,16,28,3,OUTLINE)
 	_r(img,3,16,26,2,RIM)

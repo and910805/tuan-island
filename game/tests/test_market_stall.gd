@@ -143,6 +143,7 @@ func run()->void:
 	test_stock_take()
 	test_open_and_view()
 	test_settlement_counts()
+	test_ranch_products()
 	test_theme_ordering()
 	test_multi_day_and_offline()
 	test_caps()
@@ -167,12 +168,13 @@ func test_rules()->void:
 	expect(Market.visitors_for(0)==8,"visitors_for(0) is treated as one stall")
 	# Categories.
 	expect(Market.category_of("radish")=="produce" and Market.category_of("carp")=="produce" and Market.category_of("egg")=="produce","Crops, fish and eggs are produce")
+	expect(Market.category_of("milk")=="produce" and Market.category_of("wool")=="produce","Milk and wool join the farm-products theme")
 	expect(Market.category_of("cotton")=="produce","Cotton (a fibre crop) is produce, not a flower")
 	for flower in ["bluebell","orange_blossom","chime_herb"]:expect(Market.category_of(flower)=="flower","%s is a flower"%flower)
 	for dish:String in World.OTHER_SALES:
-		if dish=="egg":continue
+		if dish in Market.PRODUCE_EXTRA:continue
 		expect(Market.category_of(dish)=="dish","%s is a dish"%dish)
-	for raw in ["wood","stone","fiber","resin","sapling","plank","sprinkler_kit","milk","tea_light","sea_salt","sugar","blue_dye",""]:
+	for raw in ["wood","stone","fiber","resin","sapling","plank","sprinkler_kit","tea_light","sea_salt","sugar","blue_dye",""]:
 		expect(Market.category_of(raw)=="" and not Market.sellable(raw),"%s is not sellable"%raw)
 	for crop:String in World.CROPS:
 		expect(not Market.sellable(crop+"_seed"),"%s_seed is never sellable"%crop)
@@ -397,6 +399,18 @@ func settle_next_day(w)->void:
 	expect(w.step(0.5,true),"Step after midnight")
 
 # 7. Settlement numbers for 1/2/3/8 stalls.
+func test_ranch_products()->void:
+	var w:=make_world(["rancher"],0)
+	var seller:=pl(w,"rancher")
+	seller.inventory.milk=4
+	seller.inventory.wool=4
+	open_with(w,"rancher",{"milk":4,"wool":4})
+	settle_next_day(w)
+	var report:Dictionary=market_of(w,"rancher").report
+	expect(same(report.sold,{"milk":4,"wool":4}) and int(report.coins)==440,"Farm-products day sells both goods for 4×47 plus 4×63")
+	var before:=int(seller.coins)
+	expect(act(w,"rancher","market_collect",stall(w)).ok and int(seller.coins)-before==440,"Market pays the livestock proceeds once")
+
 func test_settlement_counts()->void:
 	# One stall, day 0 (produce): radish 3, soup 5, bluebell 4 -> 8 visitors.
 	var w:=make_world(["one"],0)

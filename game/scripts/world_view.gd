@@ -712,7 +712,7 @@ func _draw() -> void:
 				var tool_plan:=tool_action_plan(id) if fishing.is_empty() and operation.is_empty() else {}
 				if not tool_plan.is_empty():facing=tool_plan.facing
 				if not tool_plan.is_empty() and facing==Vector2i.UP:draw_tool_held(at,tool_plan)
-				person_sprite((at+tool_plan.get("lunge",Vector2.ZERO)).round(),shirt,"farmer" if local else "guest",facing,float(gait.get(id,0.0)),bool(walking.get(id,false)),bool(person.get("blue_outfit",false)))
+				person_sprite((at+tool_plan.get("lunge",Vector2.ZERO)).round(),shirt,"farmer" if local else "guest",facing,float(gait.get(id,0.0)),bool(walking.get(id,false)),bool(person.get("blue_outfit",false)),bool(person.get(World.RESIDENT_GOALS.APRON_KEY,false)))
 				if not tool_plan.is_empty() and facing!=Vector2i.UP:draw_tool_held(at,tool_plan)
 				if not machine_kind.is_empty() and machine_facing!=Vector2i.UP:
 					draw_farm_machine(machine_kind,machine_at,machine_facing,working_now)
@@ -731,12 +731,24 @@ func _draw() -> void:
 	if home:
 		# A resident chicken gives the first clearing a living, gentle focal point.
 		var chicken_pos:=Vector2(45.7,33.8)
-		if not reduced_motion:chicken_pos.x+=sin(elapsed*0.5)*0.6
+		var animal:Dictionary=data.get("animal",{})
+		var fed_at:=float(animal.get("egg_ready",-1))-World.CHICKEN_EGG_SECONDS
+		var since_feed:=float(data.time)-fed_at
+		var approach:=World.RESIDENT_GOALS.CHICKEN_APPROACH_SECONDS
+		if not reduced_motion:
+			chicken_pos.x+=sin(elapsed*0.5)*0.6
+			if since_feed>=0.0 and since_feed<=approach+4.0:
+				var weight:=minf(since_feed/approach,(approach+4.0-since_feed)/2.0)
+				chicken_pos=chicken_pos.lerp(Vector2(World.CHICKEN_CELL)+Vector2(0.5,0.5),clampf(weight,0.0,1.0))
 		chicken(screen(chicken_pos))
 		world_label(screen(chicken_pos)+Vector2(0,-25),"糯米雞","animal")
-		var animal:Dictionary=data.get("animal",{})
-		if float(animal.get("egg_ready",-1))>=0 and float(data.time)>=float(animal.egg_ready):
-			var egg_at:=screen(chicken_pos)+Vector2(12,0)
+		var basket_at:=screen(Vector2(46.5,34.7))
+		if animal.has("basket_eggs"):
+			var basket:=preload("res://scripts/salt_revisit_art.gd").empty_basket_texture()
+			draw_texture(basket,basket_at-Vector2(16,28))
+		var loose_egg:=float(animal.get("egg_ready",-1))>=0 and float(data.time)>=float(animal.egg_ready)
+		if int(animal.get("basket_eggs",0))>0 or loose_egg:
+			var egg_at:=basket_at-Vector2(3,19) if animal.has("basket_eggs") else screen(chicken_pos)+Vector2(12,0)
 			if not character_art or not character_art.draw_egg(self,egg_at+Vector2(3,8)):
 				draw_rect(Rect2(egg_at,Vector2(6,8)),Color("fff4d4"))
 				draw_rect(Rect2(egg_at+Vector2(1,-2),Vector2(4,11)),Color("fff4d4"))
@@ -1220,6 +1232,16 @@ func object_sprite(at:Vector2,kind:String,object_data:Dictionary={}) -> void:
 		var display_key:=World.key(draw_cell(at))
 		if focused_label==display_key:world_label(at+Vector2(16,-26),World.BUILD[kind].name,display_key)
 		return
+	if kind=="sketch_easel":
+		draw_texture(preload("res://assets/ui-inventory/sketch-easel.png"),at+Vector2(0,-16))
+		var easel_key:=World.key(draw_cell(at))
+		if focused_label==easel_key:world_label(at+Vector2(16,-27),World.BUILD[kind].name,easel_key)
+		return
+	if kind=="rope_rack":
+		draw_texture(preload("res://assets/ui-inventory/rope-rack.png"),at+Vector2(0,-16))
+		var rack_key:=World.key(draw_cell(at))
+		if focused_label==rack_key:world_label(at+Vector2(16,-26),World.BUILD[kind].name,rack_key)
+		return
 	if kind=="master_flower_bed":
 		draw_texture(preload("res://assets/bakery/master-flower-bed.png"),at+Vector2(0,-16))
 		return
@@ -1332,11 +1354,11 @@ func _draw_cooking_feedback(at:Vector2,obj:Dictionary) -> void:
 	if int(status.ready)>0:
 		world_label(at+Vector2(16,-18),"料理好了 · %d 鍋待領"%int(status.ready),World.key(draw_cell(at)))
 
-func person_sprite(at:Vector2,shirt:Color,style:="guest",facing:=Vector2i.DOWN,phase:=0.0,walking_now:=false,blue_workwear:=false) -> void:
+func person_sprite(at:Vector2,shirt:Color,style:="guest",facing:=Vector2i.DOWN,phase:=0.0,walking_now:=false,blue_workwear:=false,milu_apron:=false) -> void:
 	if character_art:
-		character_art.draw_person(self,at,shirt,style,facing,phase,walking_now,reduced_motion,blue_workwear)
+		character_art.draw_person(self,at,shirt,style,facing,phase,walking_now,reduced_motion,blue_workwear,milu_apron)
 		return
-	Art.person(self,at,Color("648eaa") if blue_workwear else shirt,style,facing,phase,walking_now,reduced_motion)
+	Art.person(self,at,Color("648eaa") if blue_workwear else shirt,style,facing,phase,walking_now,reduced_motion,milu_apron)
 
 func board(at:Vector2) -> void:
 	if village_art:
@@ -1461,7 +1483,7 @@ func draw_flower_row(y:int) -> void:
 		if id==focused_label or site in FlowerWorldArt.RESIDENT_SITES:
 			world_label(entry[0],str(FlowerWorldArt.SITE_LABELS.get(site,"")),id)
 
-const INTERACTIVE_OBJECTS:=["chest","private_chest","supply_box","bench","bed","door","stove","sprinkler","medium_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket"]
+const INTERACTIVE_OBJECTS:=["chest","private_chest","supply_box","bench","bed","door","stove","sprinkler","medium_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","sketch_easel","rope_rack","fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket"]
 
 ## Beimen focus: SaltWorldArt.focus plus the 第 40 章儲滷槽 cell ("salt:brine_tank"),
 ## same rule (strict nearest within SaltWorldArt.RADIUS; ties keep the earlier site).

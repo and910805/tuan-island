@@ -1,5 +1,6 @@
 extends RefCounted
 
+const APRON_ATLAS=preload("res://assets/life-art/milu-apron.png")
 const ATLAS_PATH:="res://assets/life-art/characters.png"
 const FRAME_SIZE:=Vector2i(48,48)
 const ATLAS_SIZE:=Vector2i(288,192)
@@ -68,7 +69,7 @@ func blue_workwear_atlas()->Texture2D:
 	blue_atlas=ImageTexture.create_from_image(pixels)
 	return blue_atlas
 
-func draw_person(canvas:CanvasItem,foot:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool,blue_workwear:=false) -> void:
+func draw_person(canvas:CanvasItem,foot:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool,blue_workwear:=false,milu_apron:=false) -> void:
 	if atlas==null:return
 	var frame:=frame_selection(style,facing,phase,walking,reduced_motion)
 	var at:=foot.round()
@@ -76,6 +77,8 @@ func draw_person(canvas:CanvasItem,foot:Vector2,shirt:Color,style:String,facing:
 	var tint:Color={"mianmian":Color(0.80,0.92,1.0),"achao":Color(0.86,0.96,0.94),"nuannuan":Color(1.0,0.80,0.68),"luoluo":Color(1.0,0.93,0.72),"lingpopo":Color(0.86,0.82,0.92),"diandian":Color(0.84,0.96,0.82)}.get(style,Color.WHITE)
 	var texture:=blue_workwear_atlas() if blue_workwear and style in ["farmer","guest"] else atlas
 	canvas.draw_texture_rect_region(texture,Rect2(at-Vector2(FOOT),Vector2(FRAME_SIZE)),Rect2(Vector2(frame*FRAME_SIZE),Vector2(FRAME_SIZE)),tint)
+	if milu_apron and style in ["farmer","guest"]:
+		canvas.draw_texture_rect_region(APRON_ATLAS,Rect2(at-Vector2(FOOT),Vector2(FRAME_SIZE)),Rect2(Vector2(frame*FRAME_SIZE),Vector2(FRAME_SIZE)))
 	if style=="guest":
 		# Use a small ground-level color tag to identify guests without tinting sprite pixels.
 		canvas.draw_rect(Rect2(at+Vector2(-4,3),Vector2(8,3)),Color("403d35"))

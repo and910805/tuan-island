@@ -6,7 +6,7 @@ extends SceneTree
 ## icons.png and probe_tureen.png (once, ×8, no size prefix). Same harness as
 ## test_table_warmer_scene.gd / test_tea_service_scene.gd.
 ##
-## Art is runtime-painted, no new PNGs: the page row icon = inventory_item_art.chowder_icon()
+## The page row uses the dedicated corn-chowder.png icon
 ## (32×32), the table tureen = community_art.draw_chowder (10×7 at CHOWDER_RECT, one kernel
 ## dot per portion left, max 4) drawn by draw_table's trailing `chowder` argument from
 ## world_view's table block.
@@ -616,6 +616,28 @@ func icon_image(item:String)->Image:
 	image.convert(Image.FORMAT_RGBA8)
 	return image
 
+func festival_flow()->void:
+	var previous:Dictionary=w.state.festival.duplicate(true)
+	w.state.festival.collected=app.Festival.GOAL # PRESET: relay completion is covered by test_ui.
+	w.state.festival.round=1
+	w.state.festival.finished=40.0
+	w.state.festival.best=40.0
+	set_bag({"corn_chowder":4})
+	await set_community({})
+	# Fixture for the full results list without writing extra profiles into the save.
+	for index in range(4):
+		app.session.snapshot.festival.contributors["preview-%d"%index]={"name":"接力旅人 %d"%(index+1),"count":3}
+	app._festival_menu()
+	await settle()
+	var chowder:=page_node("FestivalChowder") as Button
+	check(chowder!=null and not chowder.disabled,"Completed relay shows the chowder action (%s)"%tag)
+	await shot("festival_chowder")
+	var scroll:=page_node("ModalScroll") as ScrollContainer
+	if chowder!=null and scroll!=null:
+		check(scroll.get_global_rect().encloses(chowder.get_global_rect()),"Chowder action visible without scrolling (%s)"%tag)
+	await close_page()
+	w.state.festival=previous
+
 func icon_flow()->void:
 	var chowder:=icon_image("corn_chowder")
 	var soup:=icon_image("soup")
@@ -625,25 +647,18 @@ func icon_flow()->void:
 	check(chowder.get_size()==Vector2i(32,32),"玉米濃湯 icon is 32×32 (%s)"%str(chowder.get_size()))
 	for corner:Vector2i in [Vector2i(0,0),Vector2i(31,0),Vector2i(0,31),Vector2i(31,31)]:
 		check(chowder.get_pixel(corner.x,corner.y).a==0.0,"玉米濃湯 icon corner %s transparent"%str(corner))
-	# The icon is the 蘿蔔湯 PNG cell with its soup surface recoloured corn yellow
-	# (inventory_item_art.chowder_icon): same silhouette, a yellow surface, bowl unchanged.
 	var yellow_px:=0
-	var changed_px:=0
-	var alpha_same:=true
+	var blue_px:=0
 	for x in 32:
 		for y in 32:
 			var c:=chowder.get_pixel(x,y)
-			var base:Color=soup.get_pixel(x,y) if soup!=null else Color(0,0,0,0)
-			if not is_equal_approx(c.a,base.a):alpha_same=false
 			if c.a<0.9:continue
 			if c.h>=0.10 and c.h<=0.16 and c.s>=0.4 and c.v>=0.7:yellow_px+=1
-			if not c.is_equal_approx(base):changed_px+=1
-	print("NOTE corn_chowder icon: %d corn-yellow px, %d px differ from the soup icon"%[yellow_px,changed_px])
-	check(alpha_same,"玉米濃湯 icon keeps the soup bowl silhouette")
+			if c.h>=0.5 and c.h<=0.64 and c.s>=0.3:blue_px+=1
 	check(yellow_px>=30,"玉米濃湯 icon has a corn-yellow soup surface (%d px)"%yellow_px)
-	check(changed_px>=30 and changed_px<=400,"玉米濃湯 icon differs from the 蘿蔔湯 icon only on the soup surface (%d px)"%changed_px)
+	check(blue_px>=20,"玉米濃湯 icon matches the shared table's blue-banded bowl (%d px)"%blue_px)
 	var chowder_texture:Texture2D=Items.icon("corn_chowder")
-	check(chowder_texture!=null and str(chowder_texture.get_meta("source_png","")).get_extension()=="png","玉米濃湯 icon records its source PNG")
+	check(chowder_texture.resource_path=="res://assets/ui-inventory/corn-chowder.png","玉米濃湯 uses its dedicated PNG")
 	var ids:Array[Image]=[chowder,soup,salad]
 	var strip:=Image.create_empty(ids.size()*272+16,288,false,Image.FORMAT_RGBA8)
 	strip.fill(Color("f3e6c8"))
@@ -687,8 +702,9 @@ func run()->void:
 		tag="%dx%d"%[size.x,size.y]
 		await page_flow()
 		await world_flow()
+		await festival_flow()
 		print("NOTE size %s done at %.1f s"%[tag,(Time.get_ticks_msec()-started)/1000.0])
-	check(shots>=24,"11 screenshots per size plus icons and probe strip (%d)"%shots)
+	check(shots>=26,"12 screenshots per size plus icons and probe strip (%d)"%shots)
 	set_warmer(false)  # PRESET cleanup before the final save
 	set_tea(false)
 	w.state.community={"table":World.COMMUNITY.cell_key(TABLE)}  # PRESET

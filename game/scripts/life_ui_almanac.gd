@@ -56,6 +56,18 @@ static func collection_menu(app,initial_tab:=0) -> void:
 		if not claimed and amount >= target:
 			card.add_child(app.button("領取里程碑獎勵",
 				func(): app.session.perform("claim_milestone", Vector2i.ZERO, id); app._close_modal()))
+	if app.session.snapshot.get("resident_goals",{}).get("diandian",{}).get("1",{}).get("state")=="done":
+		var sticker_card:=Tasks.card(pages[1])
+		Tasks.line(app,sticker_card,"點點的菜園貼紙",18)
+		var strip:=HBoxContainer.new()
+		sticker_card.add_child(strip)
+		for kind:String in app.session.snapshot.get("own_crop_sketches",{}):
+			var sticker:=Tasks.card(strip)
+			var sticker_panel:=sticker.get_parent() as Control
+			sticker_panel.custom_minimum_size.x=116
+			Tasks.add_icon(sticker,sketch_icon(kind),40)
+			var caption:String=World.RESIDENT_GOALS.SKETCH_ANIMALS.get(kind,World.CROPS.get(kind,{}).get("name",kind))
+			Tasks.line(app,sticker,caption,14)
 	var keys := ["crops", "fish", "meals"]
 	var catalogs := [World.CROPS, World.FISH, World.RECIPES]
 	var observation:=World.Collections.angling_level(person)
@@ -91,6 +103,26 @@ static func collection_menu(app,initial_tab:=0) -> void:
 			if not discovery.is_empty():
 				Tasks.line(app,cell,"個人首次 "+discovery_location(discovery),13)
 	Tasks.line(app, body, "記錄親手採收、釣到與領取的料理。出售或使用後仍保留，舊背包不會自動算入。", 15)
+
+static func sketch_icon(kind:String) -> Texture2D:
+	if kind=="chicken":
+		var icon:=AtlasTexture.new()
+		icon.atlas=preload("res://assets/life-art/animals.png")
+		icon.region=Rect2(0,0,32,32)
+		return icon
+	if LivestockArt.has_animal(kind):return LivestockArt.texture(kind,"idle")
+	return Art.icon(kind)
+
+static func add_animal_sketch(app,parent:Container,id:String,cell:Vector2i) -> void:
+	var s:Dictionary=app.session.snapshot
+	if int(s.get("resident_bonds",{}).get("diandian",{}).get("stage",0))<1:return
+	var sketches:Dictionary=s.get("own_crop_sketches",{})
+	if sketches.size()>=World.RESIDENT_GOALS.SKETCH_TARGET or sketches.has(id):return
+	var sketch:Button=app.button("畫下%s"%World.RESIDENT_GOALS.SKETCH_ANIMALS[id],func():
+		app.session.perform(World.RESIDENT_GOALS.SKETCH_ACTION,cell,id)
+		app._close_modal())
+	sketch.name="AnimalSketch"
+	parent.add_child(sketch)
 
 static func discovery_location(discovery:Dictionary) -> String:
 	var place:String={"home":"風鈴渡口","lanyang":"宜蘭水圳","beimen":"北門海岸","jiaoxi":"礁溪・暖泉高地"}.get(discovery.region,discovery.region)
@@ -139,12 +171,17 @@ static func festival_menu(app) -> void:
 			func(): app.session.perform("festival_start", BOARD, round_id); app._close_modal())
 		start.disabled = wait > 0
 		card.add_child(start)
+	var finished:bool=not festival.active and int(festival.collected)==Festival.GOAL
+	if finished:
+		add_festival_food(app,body,snapshot)
+	var results:=card
+	if finished and not festival.contributors.is_empty():
+		results=Tasks.card(body)
+		Tasks.line(app,results,"這一場的接力夥伴",17)
 	for contribution in festival.contributors.values():
 		var count := int(contribution.count)
-		Tasks.line(app, card, "%s  ·  接住 %d 枚%s" % [contribution.name, count,
+		Tasks.line(app, results, "%s  ·  接住 %d 枚%s" % [contribution.name, count,
 			"" if festival.active else "  ·  鈴幣 +%d" % (20 + 2 * count)], 15)
-	if not festival.active and int(festival.collected)==Festival.GOAL:
-		add_festival_food(app,body,snapshot)
 	# T071 紀念品交換攤 entry shares the row of 「給大家的風鈴節」 (no new page height),
 	# right above the three activity entries.
 	var links := HBoxContainer.new()
@@ -239,6 +276,7 @@ static func add_festival_food(app,body:VBoxContainer,snapshot:Dictionary)->void:
 	Tasks.line(app,table_menu,"接力留餐",17)
 	add_festival_dish(app,table_menu,snapshot,person,table,near,"watermelon","FestivalWatermelon","領一片")
 	add_festival_dish(app,table_menu,snapshot,person,table,near,"hotpot","FestivalHotpot","領一碗")
+	add_festival_dish(app,table_menu,snapshot,person,table,near,"chowder","FestivalChowder","領一碗")
 
 static func add_festival_dish(app,body:VBoxContainer,snapshot:Dictionary,person:Dictionary,table:Vector2i,near:bool,dish:String,node_name:String,claim_text:String)->void:
 	var platter:Dictionary=snapshot.community.get(dish,{})
@@ -267,6 +305,7 @@ static func livestock_menu(app,id:String)->void:
 	var inventory:Dictionary=Tasks.player(app).get("inventory",{})
 	var body:VBoxContainer=app._open_modal(spec.name+"的飼料站")
 	app.modal.set_meta("life_modal_layout","livestock_card")
+	add_animal_sketch(app,body,id,spec.cell)
 	var card:=Tasks.card(body)
 	var row:=HBoxContainer.new()
 	row.add_theme_constant_override("separation",16)
@@ -343,11 +382,9 @@ static func livestock_menu(app,id:String)->void:
 static func animal_menu(app) -> void:
 	var body: VBoxContainer = app._open_modal("糯米雞的小小日常")
 	app.modal.set_meta("life_modal_layout", "animal_card")
+	add_animal_sketch(app,body,"chicken",World.CHICKEN_CELL)
 	var animal: Dictionary = app.session.snapshot.get("animal", {})
-	var ready := float(animal.get("egg_ready", -1))
-	var message := "肚子有一點餓，想吃一份飼料。"
-	if ready >= 0.0:
-		message = "有一顆雞蛋等著你！" if float(app.session.snapshot.time) >= ready else "吃飽後正在休息，很快就能收蛋。"
+	var message := World.chicken_status(animal,float(app.session.snapshot.time))
 	var card := Tasks.card(body)
 	Tasks.add_icon(card, Art.icon("egg"), 72)
 	Tasks.line(app, card, message, 20)
@@ -360,6 +397,13 @@ static func animal_menu(app) -> void:
 		var button: Button = app.button(entry[1], func(): app.session.perform(action, Vector2i(45, 34)); app._close_modal())
 		button.icon = Art.icon(entry[2])
 		actions.add_child(button)
+	if animal.has("basket_eggs"):
+		Tasks.material_progress(app, card, "egg", int(animal.basket_eggs), World.EGG_BASKET_CAPACITY)
+	else:
+		var install:Button=app.button("裝設收集籃",func():app.session.perform("install_egg_basket",World.CHICKEN_CELL);app._close_modal())
+		install.disabled=int(Tasks.player(app).get("inventory",{}).get("egg_basket",0))<1
+		card.add_child(install)
+		Tasks.line(app, card, "在工作台用木材 8、纖維 6 製作收集籃。",15)
 	Tasks.line(app, body, "沒餵食只會暫停產蛋，糯米雞不會餓死，也不會因離線討厭你。", 15)
 
 ## T055 order board. Reads the self-only `order_board` snapshot built by

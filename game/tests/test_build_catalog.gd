@@ -2,14 +2,14 @@ extends SceneTree
 
 const World = preload("res://scripts/world.gd")
 const TILE := Vector2i(38, 34)
-const MATERIALS := ["cotton_cloth","wool_cloth","supply_box_kit", "wood", "stone", "fiber", "sprinkler_kit","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit","forester_kit","conveyor_kit","gold_sample","waterworks_kit","mine_drill_kit","mill_kit","plank","copper_joint","glass","ochre_earth","veg_basket_rack_kit","relay_crate_stack_kit","carp_banner_kit","float_garland_kit","lantern_post_kit","flower_arch_kit","trio_keepsake_kit","water_share_plaque_kit","diversion_gate_kit","mine_lantern_kit","tea_ware_kit","salt_basket_kit","water_tower_kit","keepsake_aru_kit","keepsake_milu_kit","keepsake_bobo_kit","keepsake_chacha_kit","keepsake_achao_kit","keepsake_mianmian_kit","keepsake_xinghe_kit","keepsake_lingpopo_kit","keepsake_xiaoli_kit","keepsake_luoluo_kit","keepsake_diandian_kit","keepsake_nuannuan_kit"]
+const MATERIALS := ["rope","flower_pot","cotton_cloth","wool_cloth","supply_box_kit", "wood", "stone", "fiber", "sprinkler_kit","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit","forester_kit","conveyor_kit","gold_sample","waterworks_kit","mine_drill_kit","mill_kit","plank","copper_joint","glass","ochre_earth","veg_basket_rack_kit","relay_crate_stack_kit","carp_banner_kit","float_garland_kit","lantern_post_kit","flower_arch_kit","trio_keepsake_kit","water_share_plaque_kit","diversion_gate_kit","mine_lantern_kit","tea_ware_kit","salt_basket_kit","water_tower_kit","keepsake_aru_kit","keepsake_milu_kit","keepsake_bobo_kit","keepsake_chacha_kit","keepsake_achao_kit","keepsake_mianmian_kit","keepsake_xinghe_kit","keepsake_lingpopo_kit","keepsake_xiaoli_kit","keepsake_luoluo_kit","keepsake_diandian_kit","keepsake_nuannuan_kit"]
 # Expected placement layer and closed-state collision for each catalog entry.
 const PLACEMENT := {
-	"floor": ["ground", false], "path": ["ground", false], "roof": ["roofs", false], "greenhouse_roof": ["roofs", false], "greenhouse_rack": ["objects", true], "master_flower_bed": ["objects", true], "fish_display": ["objects", true], "supply_box": ["objects", true], "expedition_tent": ["objects", true], "author_sign": ["objects", true], "author_shelf": ["objects", true],
+	"floor": ["ground", false], "path": ["ground", false], "roof": ["roofs", false], "greenhouse_roof": ["roofs", false], "greenhouse_rack": ["objects", true], "master_flower_bed": ["objects", true], "fish_display": ["objects", true], "rope_rack": ["objects", true], "sketch_easel": ["objects", true], "supply_box": ["objects", true], "expedition_tent": ["objects", true], "author_sign": ["objects", true], "author_shelf": ["objects", true],
 	"wall": ["objects", true], "window": ["objects", true], "door": ["objects", true],
 	"chest": ["objects", true], "private_chest": ["objects", true], "bench": ["objects", true],
 	"bed": ["objects", true], "table": ["objects", true], "stove": ["objects", true],
-	"long_bench": ["objects", true], "planter": ["objects", true], "sofa": ["objects", true],
+	"flower_pot": ["objects", true], "jam_pot": ["objects", true], "long_bench": ["objects", true], "planter": ["objects", true], "sofa": ["objects", true],
 	"lamp": ["objects", false], "chair": ["objects", false], "sign": ["objects", false],
 	"sprinkler": ["objects", true], "medium_sprinkler": ["objects", true],
 	"water_pipe": ["objects", false], "water_tank": ["objects", true], "water_pump": ["objects", true],
@@ -84,6 +84,14 @@ func verify_entry(kind: String) -> void:
 		expect(not act(world,"build",kind).ok,"Supply box requires exploration six")
 		player.explored_regions={}
 		for region in World.REGIONS.ALL.slice(1,9):player.explored_regions[region]=true
+	if kind=="sketch_easel":
+		expect(not act(world,"build",kind).ok,"Easel is locked before the sketch quest")
+		player["bonds"]={"diandian":{"points":1,"talk_day":-1,"gift_day":-1}}
+		player["bond_goals"]={"diandian":{"1":""}}
+	if kind=="rope_rack":
+		expect(not act(world,"build",kind).ok,"A rack needs three ropes")
+		player.inventory.fiber=3*World.ROPE_FIBER_COST
+		for i in range(3):expect(act(world,"handcraft_rope").ok,"Handcraft the rope before placing its rack")
 	if kind=="fish_display":
 		player.fish_caught=154
 		expect(not act(world,"build",kind).ok,"Display requires angling level ten")
@@ -112,6 +120,7 @@ func verify_entry(kind: String) -> void:
 		# Labelled catalogue fixture (B6 open, Q07 hoist repaired); earned unlock is
 		# tested in test_mine_hoist_quest / test_mine_deep_journey.
 		world.state.mine_depths={"unlocked":6,"ready":{},"pumped":24,"hoist":true}
+	if kind=="jam_pot":world.state.picnic=true
 	if kind=="mill":
 		# Labelled catalogue fixture; earned unlock is tested separately.
 		world.state.picnic=true
@@ -121,7 +130,7 @@ func verify_entry(kind: String) -> void:
 		world.state.public_kitchen={"stove":"37,33","seats":["36,33","36,34"],"meals":{"soup":4,"bread":2,"salad":2},"opened":true}
 	player.stories = {"aru": 4, "milu": 4, "bobo": 3}
 	for material in MATERIALS:
-		player.inventory[material] = 100
+		if kind!="rope_rack" or material!="rope":player.inventory[material] = 100
 	var key: String = World.key(tile)
 	var center := Vector2(tile) + Vector2(0.5, 0.5)
 	expect(world.can_stand(center), kind + " starts on walkable ground")

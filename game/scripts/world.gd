@@ -91,7 +91,7 @@ const HOIST_SHORT_MSG := "修理材料不足。"
 const GLASS_FURNACE_LOCKED_MSG := "修好金瓜石的升降台後，波波會送來玻璃爐圖樣。"
 const UNDO_ACTION := "undo_build"
 const UNDO_ACTIONS := ["build","build_area","remove","move_object"]
-const UNDO_SOLID := ["ore_display", "wall", "window", "chest", "private_chest", "supply_box", "bench", "bed", "table", "stove","long_bench","sofa","planter","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot"]
+const UNDO_SOLID := ["ore_display", "wall", "window", "chest", "private_chest", "supply_box", "bench", "bed", "table", "stove","long_bench","sofa","planter","sketch_easel","rope_rack","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot"]
 ## Q05 bakery: the flour mill kit and the mill itself unlock only once the
 ## shared public kitchen has opened (state.public_kitchen.opened). Every route
 ## (plain/sourced craft, build, blueprint simulation, undo restore) uses this.
@@ -130,12 +130,17 @@ const SPAWN := Vector2(39.5, 33.5)
 const SEAWEED_CELL := Vector2i(54,53)
 const RICE_BALL_ENERGY := 20
 const ROPE_FIBER_COST := 5
+const SEAWEED_REGROW_SECONDS := 60.0
 const TREE_TIME := 180.0
 const COPPER_CELL := Vector2i(54,24)
 const SPRINKLER_INTERVAL := 8.0
 const SPRINKLER_CAPACITY := INDUSTRY.SPRINKLER_CAPACITIES.sprinkler
 const SPRINKLER_LIMIT := INDUSTRY.SPRINKLER_LIMIT
+const CHICKEN_CELL := Vector2i(45,34)
+const CHICKEN_EGG_SECONDS := 60.0
+const EGG_BASKET_CAPACITY := SAVE_SCHEMA.EGG_BASKET_CAPACITY
 const CRAFT := {
+	"egg_basket":{"name":"收集籃","ingredients":{"wood":8,"fiber":6},"yield":1},
 	"gold_sample":{"name":"金工收藏樣本","ingredients":{"gold_ore":3},"yield":1},
 	"reinforced_pick":{"name":"強化石鎬","ingredients":{"wood":6,"stone":4,"fiber":2},"yield":1},
 	"mine_drill_kit":{"name":"礦脈採掘機","ingredients":MINE_DRILL.COST,"yield":1},
@@ -233,6 +238,8 @@ const BUILD := {
 	"master_flower_bed":{"name":"豐收花圃","plank":4,"stone":2,"fiber":2},
 	"greenhouse_rack":{"name":"溫室花架","plank":4,"fiber":2},
 	"planter":{"name":"窗邊花箱","wood":8,"stone":3},
+	"sketch_easel":{"name":"點點的小畫架","wood":4,"fiber":1},
+	"rope_rack":{"name":"航海繩掛架","wood":6,"rope":3},
 	"flower_pot":{"name":"陶花盆","flower_pot":1},
 	"sign":{"name":"手刻歡迎牌","wood":5},
 	"sofa":{"name":"棉布小沙發","wood":18,"cotton_cloth":2},
@@ -313,11 +320,11 @@ const RECIPES := {"soup":{"name":"熱蘿蔔湯","ingredients":{"radish":2},"time
 	"tea_pudding":{"name":"茶香布丁","ingredients":{"tea_leaf":1,"milk":1,"egg":1},"time":120.0,"yield":3},
 	"star_rice_ball":{"name":"星點飯糰","ingredients":{"rice":2,"seaweed":1},"time":60.0,"yield":3},
 	"strawberry_toast":{"name":"草莓吐司","ingredients":{"bread":1,"strawberry_jam":1},"time":20.0,"yield":2}}
-const OTHER_SALES := {"tea_pudding":60,"corn_chowder":30,"egg":30,"soup":32,"bread":48,"salad":36,"baked_potato":36,"grilled_fish":26,"carrot_soup":50,"pumpkin_pie":80,"garden_cookie":36,"salt_grilled_fish":34,"strawberry_jam":49,"cucumber_salad":26,"trout_hotpot":60,"roasted_sweet_potato":41,"eggplant_rice":51,"mist_tea_brew":44,"watermelon_platter":38}
+const OTHER_SALES := {"milk":36,"wool":48,"tea_pudding":60,"corn_chowder":30,"egg":30,"soup":32,"bread":48,"salad":36,"baked_potato":36,"grilled_fish":26,"carrot_soup":50,"pumpkin_pie":80,"garden_cookie":36,"salt_grilled_fish":34,"strawberry_jam":49,"cucumber_salad":26,"trout_hotpot":60,"roasted_sweet_potato":41,"eggplant_rice":51,"mist_tea_brew":44,"watermelon_platter":38}
 ## Flower seeds, blue_dye and sugar are deliberately absent from CROPS prices and
 ## OTHER_SALES: they can never be sold or shipped (no seed-saving arbitrage).
 ## sea_salt is likewise never sellable, shippable or buyable (no automation pump).
-const NAMES := {"flower_pot":"陶花盆","rope":"繩索","strawberry_toast":"草莓吐司","seaweed":"海苔","star_rice_ball":"星點飯糰","tea_pudding":"茶香布丁","corn_chowder":"玉米濃湯","supply_box_kit":"便攜補給箱","moon_squid":"月光小魷","gold_shrimp":"金邊蝦","sardine":"藍背沙丁","flounder":"奶油比目魚","crystal_sand":"晶砂","ochre_earth":"赭土","vein_quartz":"脈石英","warm_stone":"暖岩片","glass":"溫室玻璃","tea_leaf":"新鮮茶葉","clay":"陶土","tea_jar":"陶罐","tea_returned_jar":"回收陶罐","tea_worn_jar":"磨損陶罐","tea_spent_jar":"待修陶罐","tea_light":"淺焙茶","tea_deep":"深焙茶","mine_drill_kit":"礦脈採掘機","waterworks_kit":"水力加工台","gold_ore":"含金礦料","gold_sample":"金工收藏樣本","wood":"木材", "stone":"石材", "fiber":"纖維", "radish":"蘿蔔", "lettuce":"萵苣", "wheat":"小麥", "radish_seed":"蘿蔔種子", "lettuce_seed":"萵苣種子", "wheat_seed":"小麥種子", "carp":"圓肚鯽魚", "minnow":"銀線溪魚", "redfish":"紅尾小鯉", "loach":"斑點泥鰍", "egg":"雞蛋", "feed":"飼料", "soup":"蘿蔔湯", "bread":"麵包", "sapling":"小樹苗","carrot":"胡蘿蔔","potato":"馬鈴薯","tomato":"番茄","carrot_seed":"胡蘿蔔種子","potato_seed":"馬鈴薯種子","tomato_seed":"番茄種子","salad":"菜園沙拉","baked_potato":"烤馬鈴薯","grilled_fish":"香煎鯽魚","carrot_soup":"胡蘿蔔濃湯","reinforced_pick":"強化石鎬","copper_ore":"銅礦","copper_joint":"銅接頭","sprinkler_kit":"小型灑水器","plank":"木板","resin":"樹脂","charcoal":"木炭","pipe_kit":"銅水管","tank_kit":"儲水桶","pump_kit":"河水泵","sawmill_kit":"鋸木台","kiln_kit":"炭窯","forester_kit":"林務工作站","conveyor_kit":"輸送帶","tiller":"手推耕田機","seeder":"手推播種機","harvester":"手推收割機","pumpkin":"南瓜","pumpkin_seed":"南瓜種子","flour":"麵粉","pumpkin_pie":"南瓜派","mill_kit":"麵粉磨坊","bluebell":"鈴蘭藍花","orange_blossom":"蜜橙花","chime_herb":"風鈴香草","bluebell_seed":"鈴蘭藍花種子","orange_blossom_seed":"蜜橙花種子","chime_herb_seed":"風鈴香草種子","blue_dye":"藍色染料","sugar":"糖","garden_cookie":"花園餅乾","sea_salt":"海鹽","salt_wheel_kit":"鹽田水車組","salt_rake_kit":"收鹽台組","salt_grilled_fish":"香煎溪魚","cauliflower":"花椰菜","cauliflower_seed":"花椰菜種子","sweet_corn":"甜玉米","sweet_corn_seed":"甜玉米種子","star_spot":"星斑魚","bamboo_ayu":"竹影香魚","glass_shrimp":"玻璃小蝦","snow_trout":"雪點鱒魚","strawberry":"草莓","strawberry_seed":"草莓種子","cucumber":"黃瓜","cucumber_seed":"黃瓜種子","strawberry_jam":"草莓果醬","cucumber_salad":"涼拌黃瓜","cabbage":"高麗菜","cabbage_seed":"高麗菜種子","sugar_beet":"甜菜","sugar_beet_seed":"甜菜種子","star_mushroom":"星夜菇","star_mushroom_seed":"星夜菇菌種","trout_hotpot":"雪點鱒魚火鍋","sweet_potato":"地瓜","sweet_potato_seed":"地瓜種子","eggplant":"茄子","eggplant_seed":"茄子種子","rice":"稻米","rice_seed":"稻種","roasted_sweet_potato":"烤地瓜","eggplant_rice":"茄子燴飯","watermelon":"西瓜","watermelon_seed":"西瓜種子","ginger":"暖泉薑","ginger_seed":"薑種","cotton":"棉球花","cotton_seed":"棉球花種子","mist_tea":"霧竹茶","mist_tea_seed":"霧竹茶種","mist_tea_brew":"霧竹茶飲","watermelon_platter":"夏日西瓜盤","milk":"鮮奶","wool":"羊毛","cotton_cloth":"布料","wool_cloth":"羊毛布","veg_basket_rack_kit":"菜籃小架","relay_crate_stack_kit":"接力菜箱堆","carp_banner_kit":"鯽魚布旗","float_garland_kit":"浮球串飾","lantern_post_kit":"紙燈籠柱","flower_arch_kit":"花草拱架","trio_keepsake_kit":"三活動紀念牌","water_share_plaque_kit":"分水木牌","diversion_gate_kit":"分流閘","water_tower_kit":"水塔","mine_lantern_kit":"礦燈","tea_ware_kit":"茶陶組","salt_basket_kit":"鹽籃","keepsake_aru_kit":"有點歪的第一塊板","keepsake_milu_kit":"試吃會的空碗","keepsake_bobo_kit":"排成小島的石頭","keepsake_chacha_kit":"換下來的舊竹片","keepsake_achao_kit":"鬆開的舊繩結","keepsake_mianmian_kit":"縫線有點歪的玩具","keepsake_xinghe_kit":"留了一格空白的花圃圖紙","keepsake_lingpopo_kit":"留著你的顏色的鈴","keepsake_xiaoli_kit":"招牌的試寫木片","keepsake_luoluo_kit":"寫給以後的信封","keepsake_diandian_kit":"畫著放鬆的手的速寫","keepsake_nuannuan_kit":"亮起來的門牌"}
+const NAMES := {"egg_basket":"收集籃","flower_pot":"陶花盆","rope":"繩索","strawberry_toast":"草莓吐司","seaweed":"海苔","star_rice_ball":"星點飯糰","tea_pudding":"茶香布丁","corn_chowder":"玉米濃湯","supply_box_kit":"便攜補給箱","moon_squid":"月光小魷","gold_shrimp":"金邊蝦","sardine":"藍背沙丁","flounder":"奶油比目魚","crystal_sand":"晶砂","ochre_earth":"赭土","vein_quartz":"脈石英","warm_stone":"暖岩片","glass":"溫室玻璃","tea_leaf":"新鮮茶葉","clay":"陶土","tea_jar":"陶罐","tea_returned_jar":"回收陶罐","tea_worn_jar":"磨損陶罐","tea_spent_jar":"待修陶罐","tea_light":"淺焙茶","tea_deep":"深焙茶","mine_drill_kit":"礦脈採掘機","waterworks_kit":"水力加工台","gold_ore":"含金礦料","gold_sample":"金工收藏樣本","wood":"木材", "stone":"石材", "fiber":"纖維", "radish":"蘿蔔", "lettuce":"萵苣", "wheat":"小麥", "radish_seed":"蘿蔔種子", "lettuce_seed":"萵苣種子", "wheat_seed":"小麥種子", "carp":"圓肚鯽魚", "minnow":"銀線溪魚", "redfish":"紅尾小鯉", "loach":"斑點泥鰍", "egg":"雞蛋", "feed":"飼料", "soup":"蘿蔔湯", "bread":"麵包", "sapling":"小樹苗","carrot":"胡蘿蔔","potato":"馬鈴薯","tomato":"番茄","carrot_seed":"胡蘿蔔種子","potato_seed":"馬鈴薯種子","tomato_seed":"番茄種子","salad":"菜園沙拉","baked_potato":"烤馬鈴薯","grilled_fish":"香煎鯽魚","carrot_soup":"胡蘿蔔濃湯","reinforced_pick":"強化石鎬","copper_ore":"銅礦","copper_joint":"銅接頭","sprinkler_kit":"小型灑水器","plank":"木板","resin":"樹脂","charcoal":"木炭","pipe_kit":"銅水管","tank_kit":"儲水桶","pump_kit":"河水泵","sawmill_kit":"鋸木台","kiln_kit":"炭窯","forester_kit":"林務工作站","conveyor_kit":"輸送帶","tiller":"手推耕田機","seeder":"手推播種機","harvester":"手推收割機","pumpkin":"南瓜","pumpkin_seed":"南瓜種子","flour":"麵粉","pumpkin_pie":"南瓜派","mill_kit":"麵粉磨坊","bluebell":"鈴蘭藍花","orange_blossom":"蜜橙花","chime_herb":"風鈴香草","bluebell_seed":"鈴蘭藍花種子","orange_blossom_seed":"蜜橙花種子","chime_herb_seed":"風鈴香草種子","blue_dye":"藍色染料","sugar":"糖","garden_cookie":"花園餅乾","sea_salt":"海鹽","salt_wheel_kit":"鹽田水車組","salt_rake_kit":"收鹽台組","salt_grilled_fish":"香煎溪魚","cauliflower":"花椰菜","cauliflower_seed":"花椰菜種子","sweet_corn":"甜玉米","sweet_corn_seed":"甜玉米種子","star_spot":"星斑魚","bamboo_ayu":"竹影香魚","glass_shrimp":"玻璃小蝦","snow_trout":"雪點鱒魚","strawberry":"草莓","strawberry_seed":"草莓種子","cucumber":"黃瓜","cucumber_seed":"黃瓜種子","strawberry_jam":"草莓果醬","cucumber_salad":"涼拌黃瓜","cabbage":"高麗菜","cabbage_seed":"高麗菜種子","sugar_beet":"甜菜","sugar_beet_seed":"甜菜種子","star_mushroom":"星夜菇","star_mushroom_seed":"星夜菇菌種","trout_hotpot":"雪點鱒魚火鍋","sweet_potato":"地瓜","sweet_potato_seed":"地瓜種子","eggplant":"茄子","eggplant_seed":"茄子種子","rice":"稻米","rice_seed":"稻種","roasted_sweet_potato":"烤地瓜","eggplant_rice":"茄子燴飯","watermelon":"西瓜","watermelon_seed":"西瓜種子","ginger":"暖泉薑","ginger_seed":"薑種","cotton":"棉球花","cotton_seed":"棉球花種子","mist_tea":"霧竹茶","mist_tea_seed":"霧竹茶種","mist_tea_brew":"霧竹茶飲","watermelon_platter":"夏日西瓜盤","milk":"鮮奶","wool":"羊毛","cotton_cloth":"布料","wool_cloth":"羊毛布","veg_basket_rack_kit":"菜籃小架","relay_crate_stack_kit":"接力菜箱堆","carp_banner_kit":"鯽魚布旗","float_garland_kit":"浮球串飾","lantern_post_kit":"紙燈籠柱","flower_arch_kit":"花草拱架","trio_keepsake_kit":"三活動紀念牌","water_share_plaque_kit":"分水木牌","diversion_gate_kit":"分流閘","water_tower_kit":"水塔","mine_lantern_kit":"礦燈","tea_ware_kit":"茶陶組","salt_basket_kit":"鹽籃","keepsake_aru_kit":"有點歪的第一塊板","keepsake_milu_kit":"試吃會的空碗","keepsake_bobo_kit":"排成小島的石頭","keepsake_chacha_kit":"換下來的舊竹片","keepsake_achao_kit":"鬆開的舊繩結","keepsake_mianmian_kit":"縫線有點歪的玩具","keepsake_xinghe_kit":"留了一格空白的花圃圖紙","keepsake_lingpopo_kit":"留著你的顏色的鈴","keepsake_xiaoli_kit":"招牌的試寫木片","keepsake_luoluo_kit":"寫給以後的信封","keepsake_diandian_kit":"畫著放鬆的手的速寫","keepsake_nuannuan_kit":"亮起來的門牌"}
 ## T071 紀念票兌換品（*_kit，= SOUVENIR.items()）刻意不在 CROPS／FISH／OTHER_SALES：
 ## 不能出貨、不能在攤位出售或上市集；trade_items() 也排除，不能和其他玩家交易。
 var state: Dictionary
@@ -659,6 +666,7 @@ func step(dt: float, active: bool) -> bool:
 	if HARVEST.step(state,active_tokens):market_changed=true # T071 豐收接力：離線放下、時間到結算
 	if FISH_MEET.step(state,active_tokens):market_changed=true # T071 河岸釣魚會：離線退出、時間到結算
 	if SHOWCASE.step(state,active_tokens):market_changed=true # T071 家園布置題：離線退出、時間到結算、冷卻後清空展示
+	var chicken_changed:=_store_chicken_egg()
 	var livestock_changed:=LIVESTOCK.step(state.livestock,float(state.time),state.objects,dt)
 	if LIVESTOCK.collect_into_equipment(state.livestock,float(state.time)):livestock_changed=true
 	var livestock_chests:=LIVESTOCK.collect_into_chests(self)
@@ -680,7 +688,7 @@ func step(dt: float, active: bool) -> bool:
 	# invalidation/expiry is persisted in the same save (or rolled back with it).
 	var undo_changed:=_undo_observe(_undo_used)
 	_undo_used = {}
-	if changed or freight_changed or auto_changed or tea_changed or salt_changed or undo_changed or livestock_changed or market_changed:
+	if changed or freight_changed or auto_changed or tea_changed or salt_changed or undo_changed or livestock_changed or market_changed or chicken_changed:
 		state.committed += 1
 		if not save():
 			_step_rollback(before,undo_ticks_before,STEP_FAIL_SAVE)
@@ -695,6 +703,24 @@ func _step_rollback(before: Dictionary, undo_ticks_before: Dictionary, code: Str
 	_undo_ticks_at = undo_ticks_before
 	_undo_used = {}
 	step_error = code
+
+func _store_chicken_egg() -> bool:
+	var animal:Dictionary=state.animal
+	var stored:=int(animal.get("basket_eggs",EGG_BASKET_CAPACITY))
+	var due:=float(animal.egg_ready)
+	if stored>=EGG_BASKET_CAPACITY or due<0.0 or due>float(state.time):return false
+	animal.basket_eggs=stored+1
+	animal.egg_ready=-1.0
+	return true
+
+static func chicken_status(animal:Dictionary,now:float) -> String:
+	var stored:=int(animal.get("basket_eggs",0))
+	if stored>=EGG_BASKET_CAPACITY:return "收集籃已滿，先收蛋再餵食。"
+	var due:=float(animal.get("egg_ready",-1))
+	if due>=0.0:
+		if now>=due:return "有一顆雞蛋等著你！"
+		return "糯米雞正在休息，約 %d 秒後下蛋。"%ceili(due-now)
+	return "糯米雞想吃一份飼料。"
 
 func pump_rate() -> int:
 	if _region == REGIONS.LANYANG and state.lanyang_life.repaired:
@@ -822,6 +848,13 @@ static func farming_level(person:Dictionary) -> int:
 
 ## T066 好感：居民所在的 [地區, 格子]。茶茶與星禾不在 Village.NPCS，站位沿用
 ## 茶園與水圳既有的互動格；介面與伺服器共用這一處判定。
+static func achao_route_cell(site:String) -> Vector2i:
+	match site:
+		"board":return Vector2i(40,29)
+		"ferry":return TRANSIT.POINTS[REGIONS.HOME].ferry.cell
+		"river":return FISH_MEET.SIGN
+	return Vector2i(-1,-1)
+
 static func bond_place(snapshot:Dictionary, resident:String) -> Array:
 	if resident=="chacha":return [TEA_CERAMICS.MAOKONG,TEA_CERAMICS.TEA_NPC]
 	if resident=="xinghe":return [REGIONS.LANYANG,LANYANG_LIFE.SERVICE]
@@ -832,6 +865,10 @@ static func bond_place(snapshot:Dictionary, resident:String) -> Array:
 	if resident=="lingpopo":return [REGIONS.HOME,RESIDENT_BOND.bell_cell(snapshot)]
 	if resident=="diandian":return [RESIDENT_BOND.GARDEN_REGION,RESIDENT_BOND.GARDEN_CELL]
 	return [Village.npc_region(resident),Village.resident_cell(snapshot,resident)]
+
+static func _record_crop_sale(player:Dictionary,item:String) -> void:
+	if CROPS.has(item) and not player.has(RESIDENT_GOALS.CROP_TRADE_KEY):
+		player[RESIDENT_GOALS.CROP_TRADE_KEY]=RESIDENT_GOALS.CROP_SOLD
 
 static func crop_grows_in_season(kind:String, region:String, tile:Vector2i, time:float) -> bool:
 	var seasons:Array=CROP_SEASONS.get(kind,[])
@@ -2063,7 +2100,9 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		return SOUVENIR.apply(state,token,action,p,extra,_region==REGIONS.HOME)
 	# T067 共餐桌保溫底座（暖岩片）：一次性加裝寫 state.table_warmer；保溫上桌一輪六份。
 	if action in TABLE_WARMER.ACTIONS:
-		return TABLE_WARMER.apply(state,token,action,p,extra,_region==REGIONS.HOME)
+		var result:=TABLE_WARMER.apply(state,token,action,p,extra,_region==REGIONS.HOME)
+		if result.ok and action==TABLE_WARMER.SERVE_ACTION:note_resident_participation(token,RESIDENT_GOALS.SHARED_MEAL_EVENT)
+		return result
 	# 第 40 章茶陶上桌：茶陶組借給共餐桌（state.tea_service），一份焙茶泡六杯，每人每壺一杯。
 	if action in TEA_SERVICE.ACTIONS:
 		return TEA_SERVICE.apply(state,token,action,p,extra,_region==REGIONS.HOME)
@@ -2102,13 +2141,45 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 	if _region == FLOWER_NURSERY.REGION and action in FLOWER_REJECTED:return fail(FLOWER_REJECT_MSG)
 	if _region == SALT_PAN.REGION and not _salt_allowed(action,p,extra):return fail(SALT_PAN.REJECT_MESSAGE)
 	if dist>(5.0 if action=="build_area" and crafting_level(player)>=BATCH_BUILD_LEVEL else 3.2): return fail("靠近一點，才能和它互動")
+	if action==RESIDENT_GOALS.ROUTE_ACTION:
+		if _region!=REGIONS.HOME or not RESIDENT_GOALS.ROUTE_SIGNS.has(extra) or p!=achao_route_cell(extra):
+			return fail("請走到渡口對應的路標。")
+		if RESIDENT_BOND.stage(player,"achao")<2 or not RESIDENT_BOND.present(state,"achao"):
+			return fail("先和阿潮熟悉，再替他記錄航線。")
+		var flag:int=RESIDENT_GOALS.ROUTE_SIGNS[extra].bit
+		var marks:=int(player.get(RESIDENT_GOALS.ROUTE_KEY,0))
+		if (marks&flag)!=0:return fail("這座路標的方向已經記下了。")
+		player[RESIDENT_GOALS.ROUTE_KEY]=marks|flag
+		return ok("記下了%s的方向。"%RESIDENT_GOALS.ROUTE_SIGNS[extra].name)
+	if action==RESIDENT_GOALS.SKETCH_ACTION:
+		if _region!=REGIONS.HOME:return fail("請在渡口觀察作物或動物。")
+		if RESIDENT_BOND.stage(player,"diandian")<1:return fail("先去星芽庭園和點點說聲你好。")
+		var kind:String=state.crops.get(k,{}).get("kind","")
+		var subject:String
+		if extra.is_empty():
+			if not CROPS.has(kind):return fail("這裡還沒有可記錄的作物。")
+			subject=CROPS[kind].name
+		else:
+			if not RESIDENT_GOALS.SKETCH_ANIMALS.has(extra):return fail("找不到這種動物。")
+			var animal_cell:Vector2i=CHICKEN_CELL if extra=="chicken" else LIVESTOCK.ANIMALS[extra].cell
+			if p!=animal_cell or (extra!="chicken" and not state.picnic):return fail("請到已開放的動物照料地點記錄。")
+			kind=extra
+			subject=RESIDENT_GOALS.SKETCH_ANIMALS[kind]
+		var sketches:Dictionary=player.get(RESIDENT_GOALS.SKETCH_KEY,{})
+		if sketches.has(kind):return fail("這種動物或作物已經畫進速寫了。")
+		if sketches.size()>=RESIDENT_GOALS.SKETCH_TARGET:return fail("三種都畫好了，去找點點吧。")
+		sketches[kind]=true
+		player[RESIDENT_GOALS.SKETCH_KEY]=sketches
+		return ok("畫下了%s（%d／%d）。"%[subject,sketches.size(),RESIDENT_GOALS.SKETCH_TARGET])
 	if action in COMMUNITY.ACTIONS:
 		if _region!=REGIONS.HOME or not state.picnic or p==COMMUNITY.NO_CELL or p!=COMMUNITY.table_cell(state) or not extra.is_empty():
 			return fail("請到風鈴渡口的共餐桌分食。")
 		var dish:=action.get_slice("_",1)
 		var item:String=COMMUNITY.DISHES[dish]
 		var serving:=COMMUNITY.share_dish(state,token,action,dish,NAMES[item])
-		if serving.ok and action.begins_with("claim_"):_record_discovery(player,"meals",item)
+		if serving.ok:
+			if action.begins_with("claim_"):_record_discovery(player,"meals",item)
+			else:note_resident_participation(token,RESIDENT_GOALS.SHARED_MEAL_EVENT)
 		return serving
 	if action in ["fund_donate","fund_bridge"]:
 		if _region!=REGIONS.HOME or p!=Vector2i(40,29):return fail("請到渡口公告板使用公共基金。")
@@ -2210,7 +2281,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		give(inv,"copper_ore",JINGUASHI.YIELD)
 		ready[k] = float(state.time) + JINGUASHI.COOLDOWN
 		return ok("取得合作礦場銅礦料 +%d。" % JINGUASHI.YIELD)
-	if _region != REGIONS.HOME and action in ["chapter_starter","ship","order","order_accept","order_cancel","buy","sell","picnic","donate","pet","feed","egg","festival_start","festival_collect","quarry","mine_copper"]:
+	if _region != REGIONS.HOME and action in ["chapter_starter","ship","order","order_accept","order_cancel","buy","sell","picnic","donate","pet","feed","egg","install_egg_basket","festival_start","festival_collect","quarry","mine_copper"]:
 		return fail("請回到風鈴渡口使用這項功能。")
 	if action == "chapter_starter":
 		if p != CHAPTER_ONE.STARTER_CELL or not state.chapter_one.shipped or not state.board:
@@ -2237,6 +2308,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			return sale
 		for item in sale.quantities:
 			inv[item] -= sale.quantities[item]
+			_record_crop_sale(player,item)
 		player.coins += sale.total
 		var already_shipped: bool=state.chapter_one.shipped
 		CHAPTER_ONE.record_shipment(state,token,sale.quantities)
@@ -2466,6 +2538,15 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		return RESIDENT_BOND.apply(player,inv,action,bond_parts,float(state.time),NAMES)
 	# T066「一起做的事」：好感到了那一階，在居民身邊完成設定集的行動；只寫本人的 player.bond_goals。
 	# 第三批：CLAIM_ACTION 在同一個站位補領紀念小物（extra＝"居民:階數"）。
+	if action==RESIDENT_GOALS.APRON_ACTION:
+		if _region!=REGIONS.HOME or p!=bond_place(state,"milu")[1] or not extra.is_empty():
+			return fail("請到米露身邊換圍裙。")
+		if not RESIDENT_GOALS.apron_unlocked(player):return fail("完成米露的共餐事件後可穿戴。")
+		if player.get(RESIDENT_GOALS.APRON_KEY,false):
+			player.erase(RESIDENT_GOALS.APRON_KEY)
+			return ok("已收起米露的圍裙。")
+		player[RESIDENT_GOALS.APRON_KEY]=true
+		return ok("已換上米露的圍裙。")
 	if action in RESIDENT_GOALS.ACTIONS:
 		var goal_parts:=extra.split(":")
 		var goal_resident:=str(goal_parts[0]) if goal_parts.size()>0 else ""
@@ -2525,7 +2606,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if float(state.seaweed_ready)>float(state.time):return fail("海苔還在長，稍後再來採集")
 		if int(inv.get("seaweed",0))>=1000000000:return fail("背包的海苔已達上限")
 		give(inv,"seaweed",1)
-		state.seaweed_ready=float(state.time)+60.0
+		state.seaweed_ready=float(state.time)+SEAWEED_REGROW_SECONDS
 		player.gathering_points=mini(1000000000,int(player.get("gathering_points",0))+1)
 		return ok("採到海苔 ×1，約 60 秒後可以再採集")
 	if action=="quarry" or (action=="pick" and _region==REGIONS.HOME and p==Vector2i(54,25)):
@@ -2615,22 +2696,40 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		player.cooked=int(player.get("cooked",0))+1
 		stove.erase("job")
 		return ok("完成了！%s +%d"%[recipe.name,quantity])
-	if action in ["pet","feed","egg"]:
-		if p!=Vector2i(45,34):return fail("請靠近糯米雞")
+	if action in ["pet","feed","egg","install_egg_basket"]:
+		if p!=CHICKEN_CELL:return fail("請靠近糯米雞")
+		var animal:Dictionary=state.animal
+		var stored:=int(animal.get("basket_eggs",0))
+		if action=="install_egg_basket":
+			if animal.has("basket_eggs"):return fail("雞圈已裝好收集籃")
+			if int(inv.get("egg_basket",0))<1:return fail("先在工作台做一個收集籃")
+			give(inv,"egg_basket",-1)
+			animal.basket_eggs=0
+			_store_chicken_egg()
+			return ok("已裝好雞圈收集籃，房間成員都能收蛋")
+		if action=="egg" and stored>0:
+			var amount:=mini(stored,1000000000-int(inv.get("egg",0)))
+			if amount<=0:return fail("背包中的雞蛋已達上限")
+			give(inv,"egg",amount)
+			animal.basket_eggs=stored-amount
+			return ok("從收集籃領取雞蛋 ×%d"%amount)
 		if action=="pet":
 			if float(state.time)-float(state.animal.last_pet)<30:return fail("糯米雞正開心地休息，過一會兒再摸摸牠")
 			state.animal.last_pet=state.time
 			state.animal.bond+=1
 			return ok("糯米雞靠過來蹭蹭你。親密度 +1")
 		if action=="feed":
+			if stored>=EGG_BASKET_CAPACITY:return fail("收集籃滿了，先收蛋再餵食")
 			if float(state.animal.egg_ready)>=0:return fail("糯米雞已吃飽了，等牠下蛋後再餵吧")
 			if int(inv.get("feed",0))<1:return fail("先用小石灶把小麥和纖維做成飼料")
 			inv.feed-=1
-			state.animal.egg_ready=float(state.time)+60.0
+			if not player.has(RESIDENT_GOALS.CHICKEN_FED_KEY):player[RESIDENT_GOALS.CHICKEN_FED_KEY]=float(state.time)
+			state.animal.egg_ready=float(state.time)+CHICKEN_EGG_SECONDS
 			state.animal.bond+=1
 			return ok("糯米雞吃飽了！約一分鐘後可以收蛋")
 		if float(state.animal.egg_ready)<0:return fail("還沒有雞蛋，先給牠一份飼料")
 		if float(state.time)<float(state.animal.egg_ready):return fail("糯米雞還在準備，剩下 %d 秒"%ceili(float(state.animal.egg_ready)-float(state.time)))
+		if int(inv.get("egg",0))>=1000000000:return fail("背包中的雞蛋已達上限")
 		give(inv,"egg",1)
 		state.animal.egg_ready=-1.0
 		return ok("收到了溫暖的雞蛋！雞蛋 +1")
@@ -2679,9 +2778,12 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			if not CROPS.has(extra):return fail("這項物品沒有販售種子")
 			if extra in FLOWER_NURSERY.FLOWERS and not FLOWER_NURSERY.home_seed_allowed(state,token,extra):return fail(FLOWER_HOME_SEED_MSG)
 			var price:int=CROPS[extra].seed_price
+			if int(inv.get(extra+"_seed",0))>=1000000000:return fail("背包中的種子已達上限")
 			if player.coins<price: return fail("鈴幣不足，可以先把收成帶來出售")
 			player.coins-=price
 			give(inv,extra+"_seed",1)
+			if int(player.get(RESIDENT_GOALS.CROP_TRADE_KEY,0))==RESIDENT_GOALS.CROP_SOLD and crop_grows_in_season(extra,REGIONS.HOME,p,float(state.time)):
+				player[RESIDENT_GOALS.CROP_TRADE_KEY]=RESIDENT_GOALS.SEED_BOUGHT
 			return ok("買到一包"+CROPS[extra].name+"種子")
 		var count:int=inv.get(extra,0)
 		if count<=0: return fail("背包裡沒有這種收成")
@@ -2689,6 +2791,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		# T093: 存檔檢查不接受超過上限的鈴幣（save_schema.whole），這裡和出貨箱一樣先擋。
 		if int(player.coins)>SHIPPING.MAX_COINS-count*sale_price:return fail(COIN_CAP_MSG)
 		player.coins+=count*sale_price
+		_record_crop_sale(player,extra)
 		inv[extra]=0
 		return ok("售出 %d 個，獲得 %d 鈴幣"%[count,count*sale_price])
 	if action in CHEST_MOVES:
@@ -2920,6 +3023,8 @@ func _build_piece(token: String, p: Vector2i, extra: String, charge: bool = true
 	var r:=resource(p)
 	if not BUILD.has(extra):return fail("尚未解鎖這個物件")
 	if extra in ["author_sign","author_shelf"] and crafting_level(player)<10:return fail("手作達到十級後解鎖工匠家具。")
+	if extra=="sketch_easel" and (_region!=REGIONS.HOME or not RESIDENT_GOALS.done(player,"diandian").has(1)):
+		return fail("完成點點的速寫事件後，可在渡口建造小畫架。")
 	if extra=="expedition_tent" and exploration_level(exploration_points(player))<EXPEDITION_TENT_LEVEL:return fail("探索達到十級後解鎖探險紀念帳篷。")
 	if extra=="supply_box" and exploration_level(exploration_points(player))<SUPPLY_BOX_LEVEL:return fail("探索達到六級後可放置便攜補給箱。")
 	if extra=="fish_display" and Collections.angling_level(player)<Collections.FISH_DISPLAY_LEVEL:return fail("漁獵觀察達到十級後，即可建造島岸魚譜展示櫃。")
@@ -2962,7 +3067,7 @@ func _build_piece(token: String, p: Vector2i, extra: String, charge: bool = true
 		for device in state.objects.values():
 			if device.type==extra and device.owner==token:owned+=1
 		if owned>=limit:return fail("已達此設備的每人放置上限")
-	if extra in ["ore_display","wall","window","door","chest","private_chest","supply_box","bench","bed","table","stove","long_bench","sofa","planter","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot"]:
+	if extra in ["ore_display","wall","window","door","chest","private_chest","supply_box","bench","bed","table","stove","long_bench","sofa","planter","sketch_easel","rope_rack","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot"]:
 		for active_token in regional_tokens():
 			var who:Dictionary=state.players[active_token]
 			if Vector2(who.x,who.y).distance_to(Vector2(p)+Vector2(0.5,0.5))<0.8:return fail("這裡有人，請留出空間")

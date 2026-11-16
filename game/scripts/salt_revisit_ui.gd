@@ -75,7 +75,7 @@ const DONE_LINE:="6 籃鹽都送上沿海公車了，辛苦大家！合作社留
 const JOURNAL_BUTTON:="翻閱鹽田手帳"
 ## 儲滷槽 (salt_brine.gd) info line in 阿曬's card, under the rain note (SaltBrineLine): the left
 ## card is shorter than the chest card, so the line does not make the page taller.
-const BRINE_LINE:="儲滷槽 %d／30 桶・下雨前把滷水抽進槽裡，雨停再放回鹽田（工寮東側）。"
+const BRINE_LINE:="儲滷槽 %d／%d 桶"
 
 # ------------------------------------------------------------ pure helpers --
 
@@ -168,7 +168,11 @@ static func journal_line(s:Dictionary) -> String:
 
 ## The 儲滷槽 line on this page ("" before the Beimen gates are repaired).
 static func brine_line(s:Dictionary) -> String:
-	return BRINE_LINE%Brine.level(s) if Brine.unlocked(s) else ""
+	if not Brine.unlocked(s):return ""
+	var level_text:=BRINE_LINE%[Brine.level(s),Brine.CAP]
+	if SR.rainy_today(s):return level_text+"・雨停再放滷"
+	if Weather.rains(Weather.day_index(s.get("time",0.0))+1.0,SR.REGION):return level_text+"・明日有雨"
+	return level_text
 
 static func _person(app) -> Dictionary:
 	return _person_of(app.session.snapshot,str(app.session.own_id))
@@ -206,6 +210,12 @@ static func open(app,origin:String="") -> void:
 	app.modal.set_meta("sr_origin",origin)
 	app.modal.set_meta("suppress_world_prompts",true)
 	body.add_theme_constant_override("separation",5)
+	var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	if scroll!=null:
+		# Use the shared modal's gaps for content space on this denser page.
+		var shell:=scroll.get_parent() as VBoxContainer
+		shell.add_theme_constant_override("separation",6)
+		body.minimum_size_changed.connect(app._layout_preview.call_deferred)
 	build(app,body,origin)
 	refresh(app,true)
 	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="Esc 回到島上"
@@ -349,7 +359,14 @@ static func build(app,body:VBoxContainer,origin:String) -> void:
 	_row(app,worker,"stock",Items.icon(SR.SALT_ITEM),STOCK_TEXT,func():_send_stock(app))
 	_wrapped(app,worker,"SrStockReason",13,WARN)
 	_wrapped(app,worker,"SrRainNote",13,RAIN_INK)
-	_wrapped(app,worker,"SaltBrineLine",13,MUTED)
+	var brine_row:=HBoxContainer.new()
+	brine_row.name="SrBrineRow"
+	brine_row.add_theme_constant_override("separation",6)
+	worker.add_child(brine_row)
+	_wrapped(app,brine_row,"SaltBrineLine",13,MUTED).vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	var brine_button:=_button(app,brine_row,"SrBrine","查看儲滷槽",func():
+		app.SaltBrineUI.open(app,func():open(app,origin)))
+	brine_button.tooltip_text="工寮東側：雨前收滷，雨停後可放回鹽田，讓下一批海鹽更快曬好。"
 	var chest:=_paper(cards,"SrPackCard")
 	(chest.get_parent() as Control).size_flags_stretch_ratio=1.25
 	_text(app,chest,"SrPackName",15)
@@ -506,6 +523,7 @@ static func refresh(app,force:=false) -> void:
 	# A rainy day: say plainly that packing goes on (「雨天轉做包裝」).
 	_put(app,"SrRainNote",RAIN_PACK_NOTE if rainy and not done and stock_line==SR.RAIN_STOCK else "")
 	_put(app,"SaltBrineLine",brine_line(s),MUTED)
+	_show(app,"SrBrineRow",Brine.unlocked(s) and not done)
 	# Co-op chest: pack.
 	_put(app,"SrPackName","合作社收鹽箱（%d,%d）"%[SR.CHEST.x,SR.CHEST.y],INK)
 	var order:Dictionary=progress.order
@@ -562,7 +580,7 @@ static func _shown(c:Control) -> bool:
 ## Rows of focusable buttons (visual order): notebook; stock ↔ kitchen; pickle; send; claim; back.
 static func focus_rows(app) -> Array:
 	var rows:Array=[]
-	for group:Array in [["SrNotebook"],["Sr_stock","Sr_kitchen"],["Sr_pickle"],["SrSend"],["SrClaim"],["SrBack"]]:
+	for group:Array in [["SrNotebook"],["Sr_stock","Sr_kitchen"],["Sr_pickle"],["SrSend"],["SrBrine"],["SrClaim"],["SrBack"]]:
 		var row:Array[Button]=[]
 		for id:String in group:
 			var b:=_node(app,id) as Button

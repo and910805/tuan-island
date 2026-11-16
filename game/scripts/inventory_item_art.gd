@@ -11,6 +11,7 @@ static var cache:Dictionary={}
 
 static func icon(id:String) -> Texture2D:
 	match id:
+		"egg_basket":return preload("res://scripts/salt_revisit_art.gd").empty_basket_texture()
 		"rope":return preload("res://assets/ui-inventory/rope.png")
 		"flower_pot":return preload("res://assets/ui-inventory/flower-pot.png")
 		"cotton_cloth","wool_cloth":return icon("fiber")
@@ -79,25 +80,8 @@ static func icon(id:String) -> Texture2D:
 	if id=="flounder":return preload("res://assets/bakery/flounder.png")
 	if id=="glass":return preload("res://assets/bakery/glass.png")
 	if id=="crystal_sand":return preload("res://assets/bakery/crystal-sand.png")
-	# Deep-mine finds (B6/B7, B9/B10): recolours of the clay / stone icons so they
-	# read as their own items in the bag (rust-red earth, milky quartz).
-	# Dedicated generated 32px art is still pending.
-	if id in ["ochre_earth","vein_quartz"]:
-		if cache.has(id):return cache[id]
-		var base:=icon("clay" if id=="ochre_earth" else "stone")
-		var image:Image=base.get_image() if base!=null else null
-		if image==null or image.is_empty():return base
-		if image.is_compressed() and image.decompress()!=OK:return base
-		image.convert(Image.FORMAT_RGBA8)
-		for y in image.get_height():
-			for x in image.get_width():
-				var c:=image.get_pixel(x,y)
-				if c.a<=0.0 or c.v<0.3:continue
-				if id=="ochre_earth":c=Color.from_hsv(0.02,minf(1.0,c.s*1.3+0.1),c.v*0.88,c.a)
-				else:c=Color.from_hsv(0.7,0.1+c.s*0.25,lerpf(c.v,1.0,0.5),c.a)
-				image.set_pixel(x,y,c)
-		cache[id]=ImageTexture.create_from_image(image)
-		return cache[id]
+	if id=="ochre_earth":return preload("res://assets/ui-inventory/ochre-earth.png")
+	if id=="vein_quartz":return preload("res://assets/ui-inventory/vein-quartz.png")
 	if id in ["tea_worn_jar","tea_spent_jar"]:
 		if cache.has(id):return cache[id]
 		var wear:=AtlasTexture.new()
@@ -162,27 +146,8 @@ static func icon(id:String) -> Texture2D:
 	cache[id]=result
 	return result
 
-## 玉米濃湯 corn_chowder：把蘿蔔湯圖格（items.png 的 soup）的奶白湯面改成玉米黃，碗與
-## 配料不變；meta "source_png" 指回原圖。專用繪製的 32px 圖仍待做。
-const CHOWDER_SOUP_HUE:=0.13
 static func chowder_icon() -> Texture2D:
-	if cache.has("corn_chowder"):return cache["corn_chowder"]
-	var base:=icon("soup")
-	var image:Image=base.get_image() if base!=null else null
-	if image==null or image.is_empty():return base
-	if image.is_compressed() and image.decompress()!=OK:return base
-	image.convert(Image.FORMAT_RGBA8)
-	# 湯面在圖格的 x 6–27、y 8–19；只改這個範圍裡偏暖、明亮、低到中等彩度的像素，
-	# 碗緣的高光與碗身的花紋不動。
-	for y in range(8,20):
-		for x in range(6,28):
-			var c:=image.get_pixel(x,y)
-			if c.a<=0.0 or c.v<0.7 or c.s<0.1 or c.s>0.6 or c.h<0.05 or c.h>0.2:continue
-			image.set_pixel(x,y,Color.from_hsv(CHOWDER_SOUP_HUE,clampf(c.s*1.6+0.3,0.0,0.85),minf(1.0,c.v*1.04),c.a))
-	var texture:=ImageTexture.create_from_image(image)
-	texture.set_meta("source_png",PATH)
-	cache["corn_chowder"]=texture
-	return texture
+	return preload("res://assets/ui-inventory/corn-chowder.png")
 
 ## T067 暖岩片 warm_stone: program-drawn 32px slab (warm amber top face, burnt-orange
 ## front edge, dark-brown outline, pale-gold glowing specks and two heat wisps above).

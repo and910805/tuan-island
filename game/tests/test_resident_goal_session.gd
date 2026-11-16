@@ -512,7 +512,7 @@ func scenario()->bool:
 	var fresh_festival:Dictionary=server.world.state.get("festival",{})
 	expect(int(fresh_festival.get("round",-1))==0 and fresh_festival.get("active",true)==false,"server festival record: no round played yet (%s)"%text(fresh_festival))
 	var mi:Dictionary=beta.goals().get("milu",{})
-	expect(text(mi)==text({"1":{"state":"locked","choice":""},"3":{"state":"locked","choice":"","keepsake":keep_row(KIND_M,false)}}),"beta's milu goals are locked; milu 3 carries its keepsake claimed=false (%s)"%text(mi))
+	expect(text(mi)==text({"1":{"state":"locked","choice":""},"3":{"state":"locked","choice":"","keepsake":keep_row(KIND_M,false)},"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}}),"beta's milu goals are locked; milu 3 carries its keepsake claimed=false (%s)"%text(mi))
 	expect(goal_row(alpha,"milu","3")==text({"state":"open","choice":"","keepsake":keep_row(KIND_M,false)}),"alpha's milu 3 is open (preset milu 14) and unclaimed (%s)"%goal_row(alpha,"milu","3"))
 	expect(server_keeps(ALPHA)=="null" and server_keeps(BETA)=="null","server: nobody has a bond_keepsakes key yet")
 	expect(canon(alpha.bag())==canon(ALPHA_BAG) and canon(beta.bag())==canon(BETA_BAG),"preset bags arrive unchanged in the own snapshots")
@@ -815,6 +815,18 @@ func scenario()->bool:
 	private_check(alpha,[beta,gamma],"case 8 alpha")
 	private_check(beta,[alpha,gamma],"case 8 beta")
 	expect(text(alpha.goals())==final_views[ALPHA] and text(beta.goals())==final_views[BETA],"gamma's arrival changes neither alpha's nor beta's view")
+	await teleport(alpha,alpha_milu_stand,"Apron wearer visits Milu")
+	await teleport(beta,alpha_milu_stand,"Apron guest visits Milu")
+	# Transport fixture: the earned quest and save path are covered by the core suite.
+	var wearer:Dictionary=server.world.state.players[ALPHA]
+	wearer.bonds.milu.points=24
+	wearer.bond_goals.milu["4"]=""
+	await refuse(beta,Goals.APRON_ACTION,MILU,"","完成米露的共餐事件後可穿戴。","Guest cannot equip the apron",[alpha])
+	var equipped:=await act(alpha,Goals.APRON_ACTION,MILU,"")
+	expect(equipped.replied and equipped.ok,"Alpha equips the apron over WebSocket")
+	var visible:=await wait_until(func():
+		return bool(beta.session.snapshot.get("players",{}).get(alpha.session.own_id,{}).get(Goals.APRON_KEY,false)),3.0)
+	expect(visible and not beta.me().get(Goals.APRON_KEY,false),"Beta sees Alpha's apron without equipping one")
 	await leave(gamma)
 	gamma=null
 	await leave(alpha)

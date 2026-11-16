@@ -39,7 +39,7 @@ const BUILD_NOTES := {
 	"mill":"公共廚房開張後解鎖。E 把小麥磨成麵粉，可排程或自動加工；輸送帶可送入小麥、帶出麵粉。"
 }
 const FOUNDATIONS := ["floor", "path", "wall", "door", "window", "roof", "greenhouse_roof"]
-const FURNITURE := ["bed", "lamp", "table", "chair", "long_bench", "sofa", "planter", "flower_pot", "greenhouse_rack", "master_flower_bed", "fish_display", "author_sign", "author_shelf", "expedition_tent", "sign", "ore_display"]
+const FURNITURE := ["bed", "lamp", "table", "chair", "long_bench", "sofa", "planter", "sketch_easel", "rope_rack", "flower_pot", "greenhouse_rack", "master_flower_bed", "fish_display", "author_sign", "author_shelf", "expedition_tent", "sign", "ore_display"]
 const ItemArt = preload("res://scripts/inventory_item_art.gd")
 const PixelTheme = preload("res://scripts/inventory_pixel_theme.gd")
 const BuildThumbnail = preload("res://scripts/pixel_build_thumbnail.gd")
@@ -171,6 +171,10 @@ func shop(app) -> void:
 	content.add_child(counter)
 	if Village.NPCS.has("xiaoli"):
 		counter.add_child(app.button("和小栗聊聊", func(): app._resident_menu("xiaoli")))
+	if app.session.snapshot.has("own_shop_history"):
+		var notebook:Button=app.button("翻開交易簿",trade_book.bind(app))
+		notebook.name="ShopTradeBook"
+		counter.add_child(notebook)
 	var catalog := catalog_shell(app, content, ["買種子", "出售"], ["radish_seed", "coins"])
 	app.modal.set_meta("shop_catalog", true)
 	var products := [World.CROPS.keys() + ["sapling"], World.CROPS.keys() + World.FISH.keys() + World.OTHER_SALES.keys()]
@@ -225,6 +229,65 @@ func shop(app) -> void:
 		offer.text = ("鈴幣不足" if offer.disabled else "買 1 份 · %d 鈴幣" % price) if buying else "出售全部 %d 件 · 共 %d 鈴幣" % [held, held * price]
 	)
 	select_entry(app, catalog, 0, "radish")
+
+func trade_book(app,history:bool=false) -> void:
+	var snapshot:Dictionary=app.session.snapshot
+	if not snapshot.has("own_shop_history"):return
+	var body:=begin(app,"小栗的交易簿")
+	app.modal.set_meta("shop_catalog",true)
+	var nav:=HBoxContainer.new()
+	body.add_child(nav)
+	var prices:Button=app.button("作物價目",trade_book.bind(app,false))
+	var recent:Button=app.button("我的交易",trade_book.bind(app,true))
+	prices.name="ShopTradePrices"
+	recent.name="ShopTradeHistory"
+	prices.disabled=not history
+	recent.disabled=history
+	nav.add_child(prices)
+	nav.add_child(recent)
+	nav.add_child(app.button("回到種子攤",app._shop))
+	var scroll:=ScrollContainer.new()
+	scroll.name="ShopTradeRows"
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.y=270
+	body.add_child(scroll)
+	var page:=VBoxContainer.new()
+	page.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	scroll.add_child(page)
+	if history:
+		var rows:Array=snapshot.own_shop_history
+		var heading:Label=app.label("最近 10 筆種子攤與出貨箱交易",16)
+		page.add_child(heading)
+		if rows.is_empty():page.add_child(app.label("交易簿目前沒有可顯示的紀錄。",15))
+		for entry:Dictionary in rows:
+			var description:=PackedStringArray()
+			for item:String in entry.items:
+				description.append("%s ×%d"%[World.NAMES.get(item,item),abs(int(entry.items[item]))])
+			var caption:=str({"buy":"購入","sell":"攤位售出","ship":"出貨"}.get(entry.action,""))
+			var row:=HBoxContainer.new()
+			page.add_child(row)
+			add_icon(row,item_icon(str(entry.items.keys()[0])) if not entry.items.is_empty() else item_icon("coins"))
+			var receipt:Label=app.label("第 %d 日 · %s\n%s"%[
+				int(World.WEATHER.day_index(entry.time))+1,caption,"、".join(description)],15)
+			receipt.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+			receipt.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			row.add_child(receipt)
+			var coins:Label=app.label("%+d 鈴幣"%entry.coins,17)
+			coins.add_theme_color_override("font_color",Color("48694a") if int(entry.coins)>=0 else Color("925230"))
+			row.add_child(coins)
+			page.add_child(HSeparator.new())
+		return
+	page.add_child(app.label("每份單價（鈴幣）",16))
+	for id:String in World.CROPS:
+		var crop:Dictionary=World.CROPS[id]
+		var row:=HBoxContainer.new()
+		page.add_child(row)
+		add_icon(row,item_icon(id))
+		var name_label:Label=app.label(crop.name,16)
+		name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		row.add_child(name_label)
+		var seed_price:="尚未進貨" if id in Flower.FLOWERS and stall_flowers_locked(snapshot) else "%d"%crop.seed_price
+		row.add_child(app.label("種子 %s　｜　收成售價 %d"%[seed_price,crop.price],15))
 
 ## Own chapter-3 record from the per-recipient snapshot (session own_view).
 static func crop_season_hint(id: String) -> String:

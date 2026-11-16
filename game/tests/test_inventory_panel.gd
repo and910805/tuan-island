@@ -2,6 +2,7 @@ extends SceneTree
 
 const InventoryPanel = preload("res://scripts/inventory_panel.gd")
 const World = preload("res://scripts/world.gd")
+const ItemArt = preload("res://scripts/inventory_item_art.gd")
 const EXISTING_IDS := ["tea_leaf","clay","tea_jar","tea_returned_jar","tea_worn_jar","tea_spent_jar","tea_light","tea_deep","mine_drill_kit","waterworks_kit","gold_ore","gold_sample","wood","stone","fiber","radish","lettuce","wheat","radish_seed","lettuce_seed","wheat_seed","carp","minnow","redfish","loach","egg","feed","soup","bread","sapling","carrot","potato","tomato","carrot_seed","potato_seed","tomato_seed","salad","baked_potato","grilled_fish","carrot_soup","reinforced_pick","copper_ore","copper_joint","sprinkler_kit","plank","resin","charcoal","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit","forester_kit","conveyor_kit","tiller","seeder","harvester","pumpkin","pumpkin_seed","flour","pumpkin_pie","mill_kit"]
 const FLOWER_IDS := ["bluebell","orange_blossom","chime_herb","bluebell_seed","orange_blossom_seed","chime_herb_seed","blue_dye","sugar","garden_cookie"]
 var checks := 0
@@ -27,6 +28,12 @@ func run() -> void:
 		expect(panel.slots.has(id),"existing inventory item preserved: "+id)
 	for id in FLOWER_IDS:
 		expect(panel.slots.has(id),"new flower inventory item present: "+id)
+	for spec in [["ochre_earth","ochre-earth","clay"],["vein_quartz","vein-quartz","stone"]]:
+		var icon:=ItemArt.icon(spec[0])
+		var original:=ItemArt.icon(spec[2])
+		expect(icon.resource_path.ends_with("/"+spec[1]+".png"),"Deep-mine material uses dedicated art: "+spec[0])
+		expect(icon.get_size()==Vector2(32,32) and icon.get_image().get_pixel(0,0).a==0.0,"Icon is 32px with a transparent background: "+spec[0])
+		expect(icon.get_image().get_data()!=original.get_image().get_data(),"Mine sprite is distinct from its old source: "+spec[0])
 	var tea_items := [
 		["tea_leaf", "新鮮茶葉", "烘焙台", 2],
 		["clay", "陶土", "工坊窯", 3],

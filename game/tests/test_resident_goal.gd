@@ -58,13 +58,19 @@ const PERMS:=["012","021","102","120","201","210"]
 const BAD_STEPS:=["","0","01","0123","001","011","000","013","300","0a1","a01","-01","01 "]
 const TWELVE:=["achao","aru","bobo","chacha","diandian","lingpopo","luoluo","mianmian","milu","nuannuan","xiaoli","xinghe"]
 const ALLOWED_FIELDS:=["title","task","items","options","steps","order","needs","quote","keepsake"]
-const ALL_GOALS:=["achao 1","aru 1","aru 2","bobo 1","bobo 2","bobo 4","chacha 2","chacha 3","diandian 2","lingpopo 2","lingpopo 3","lingpopo 4",
-	"luoluo 2","luoluo 3","luoluo 4","mianmian 1","mianmian 3","mianmian 4","milu 1","milu 3","nuannuan 1","nuannuan 2","nuannuan 4",
-	"xiaoli 2","xiaoli 3","xiaoli 4","xinghe 2","xinghe 3"]
-const WANT_NEEDS:={"aru 1":["own_bed"],"mianmian 4":["fair_weather"],"xinghe 3":["glass_crafted"],"lingpopo 4":["festival_done"],
+const ALL_GOALS:=["achao 1","achao 2","aru 1","aru 2","bobo 1","bobo 2","bobo 4","chacha 2","chacha 3","diandian 1","diandian 2","lingpopo 2","lingpopo 3","lingpopo 4",
+	"luoluo 2","luoluo 3","luoluo 4","mianmian 1","mianmian 3","mianmian 4","milu 1","milu 3","milu 4","nuannuan 1","nuannuan 2","nuannuan 4",
+	"xiaoli 1","xiaoli 2","xiaoli 3","xiaoli 4","xinghe 2","xinghe 3"]
+const WANT_NEEDS:={"achao 2":["route_marks"],"diandian 1":["crop_sketches"],"milu 4":["shared_meal"],"xiaoli 1":["crop_sold","seed_after_sale"],"mianmian 1":["chicken_fed"],"aru 1":["own_bed"],"mianmian 4":["fair_weather"],"xinghe 3":["glass_crafted"],"lingpopo 4":["festival_done"],
 	"xiaoli 3":["market_round"],"luoluo 2":["known_three"]}
 ## Literal copies of resident_goals.gd NEEDS (labels the player reads).
 const NEED_TEXT:={
+	"route_marks":"記下渡口的三處路標方向",
+	"crop_sketches":"記錄三種不同動物或作物的色彩",
+	"shared_meal":"親手上一輪共享料理",
+	"crop_sold":"在種子攤或出貨箱賣出一份作物",
+	"seed_after_sale":"賣出作物後，買一包當季種子",
+	"chicken_fed":"親手餵一次糯米雞，等牠靠近",
 	"own_bed":"家園裡有一張你放的小床",
 	"glass_crafted":"自己燒過一次溫室玻璃",
 	"market_round":"你的市集攤位結算過一輪",
@@ -116,10 +122,15 @@ func run()->void:
 	for resident:String in Goals.GOALS:
 		for stage:int in Goals.GOALS[resident]:
 			goal_flow(resident,stage)
-	expect(flows==28,"goal_flow ran for all 28 goals (%d)"%flows)
+	expect(flows==32,"goal_flow ran for all 32 goals (%d)"%flows)
 	test_world_rejections()
 	test_gates()
 	test_need_rules()
+	test_crop_sketches()
+	test_animal_sketches()
+	test_milu_shared_meal()
+	test_xiaoli_trade()
+	test_chicken_goal()
 	test_needs_through_world()
 	test_needs_once_and_save()
 	test_players_and_replay()
@@ -444,6 +455,22 @@ static func clear_beds(w,owner:String)->void:
 func set_need(w,token:String,need:String,met:bool)->void:
 	var p:Dictionary=pl(w,token)
 	match need:
+		"route_marks":
+			if met:p[Goals.ROUTE_KEY]=Goals.ROUTE_MASK
+			else:p.erase(Goals.ROUTE_KEY)
+		"crop_sketches":
+			if met:p[Goals.SKETCH_KEY]={"radish":true,"lettuce":true,"wheat":true}
+			else:p.erase(Goals.SKETCH_KEY)
+		"shared_meal":
+			if met:p.resident_participation={"shared_meal":true}
+			else:p.erase("resident_participation")
+		"crop_sold","seed_after_sale":
+			if met:p[Goals.CROP_TRADE_KEY]=Goals.SEED_BOUGHT
+			elif need=="seed_after_sale":p[Goals.CROP_TRADE_KEY]=Goals.CROP_SOLD
+			else:p.erase(Goals.CROP_TRADE_KEY)
+		"chicken_fed":
+			if met:p[Goals.CHICKEN_FED_KEY]=float(w.state.time)-Goals.CHICKEN_APPROACH_SECONDS
+			else:p.erase(Goals.CHICKEN_FED_KEY)
 		"own_bed":
 			clear_beds(w,token)
 			if met:put_object(w,token,"bed")
@@ -559,9 +586,9 @@ func test_catalog()->void:
 					sorted_order.sort()
 					if sorted_order!=[0,1,2]:perm_ok=false
 				expect(perm_ok,tag+": order is a permutation of 0..2 (%s)"%str(order))
-	expect(count==28 and Goals.total()==28,"28 goals in total (counted %d, total() %d)"%[count,Goals.total()])
+	expect(count==32 and Goals.total()==32,"32 goals in total (counted %d, total() %d)"%[count,Goals.total()])
 	tags.sort()
-	expect(tags==ALL_GOALS,"the 28 goals are exactly the batch 1 + batch 2 list (%s)"%str(tags))
+	expect(tags==ALL_GOALS,"the 32 goals match the published list (%s)"%str(tags))
 	expect(same(with_needs,WANT_NEEDS),"exactly aru 1, mianmian 4, xinghe 3, lingpopo 4, xiaoli 3, luoluo 2 carry needs (%s)"%str(with_needs))
 	expect(Goals.NEEDS==NEED_TEXT,"NEEDS has exactly the six ids with their labels (%s)"%str(Goals.NEEDS))
 	expect(Goals.KNOWN_NEEDED==3,"KNOWN_NEEDED is 3")
@@ -570,13 +597,13 @@ func test_catalog()->void:
 	expect(right_steps(Goals.goal("achao",1))=="210" and right_steps(Goals.goal("lingpopo",2))=="102","fixed orders: achao 210, lingpopo 102")
 	# Batch 2 costs.
 	expect(Goals.cost(Goals.goal("aru",1),"")=={"wood":10},"cost aru 1 = 10 wood")
-	expect(Goals.cost(Goals.goal("mianmian",1),"")=={"feed":1},"cost mianmian 1 = 1 feed")
+	expect(Goals.cost(Goals.goal("mianmian",1),"").is_empty(),"mianmian 1 uses actual feeding with no second charge")
 	expect(Goals.cost(Goals.goal("xinghe",3),"")=={"glass":2,"copper_joint":2},"cost xinghe 3 = 2 glass + 2 copper joints")
 	for option_id:String in ["none","chestnut","tomorrow"]:
 		expect(Goals.cost(Goals.goal("xiaoli",4),option_id)=={"plank":2},"cost xiaoli 4 %s = 2 planks"%option_id)
 	for costless:Array in [["bobo",4,"home"],["mianmian",4,""],["lingpopo",4,""],["xiaoli",3,""],["luoluo",2,""],["luoluo",4,"blank"],["nuannuan",4,"pool"]]:
 		expect(Goals.cost(Goals.goal(str(costless[0]),int(costless[1])),str(costless[2])).is_empty(),"%s %d costs nothing"%[str(costless[0]),int(costless[1])])
-	for bad:Array in [["tom",1],["aru",3],["aru",0],["aru",5],["milu",2],["milu",4],["luoluo",1],["xinghe",4],["achao",2],["diandian",4],["",1]]:
+	for bad:Array in [["tom",1],["aru",3],["aru",0],["aru",5],["milu",2],["luoluo",1],["xinghe",4],["diandian",4],["",1]]:
 		expect(not Goals.has_goal(str(bad[0]),int(bad[1])) and Goals.goal(str(bad[0]),int(bad[1])).is_empty(),"no goal for %s %d"%[str(bad[0]),int(bad[1])])
 	# sequence()
 	expect(Goals.sequence("012")==[0,1,2] and Goals.sequence("210")==[2,1,0] and Goals.sequence("102")==[1,0,2],"sequence parses permutations in order")
@@ -625,7 +652,7 @@ func test_catalog()->void:
 	expect(no_state_rows,"view(person) without state: every needs row has met=false")
 	# Batch 3: milu 3 carries a keepsake entry; done via a direct record (no bond_keepsakes) -> unclaimed.
 	var some:Dictionary=Goals.view({"bonds":{"milu":rec(14,-1,-1)},"bond_goals":{"milu":{"3":"soup"}}})
-	expect(some.get("milu",{})=={"1":{"state":"open","choice":""},"3":with_keepsake({"state":"done","choice":"soup"},"milu",3,false)},"view: milu 1 open, 3 done with its choice and an unclaimed keepsake (%s)"%str(some.get("milu")))
+	expect(some.get("milu",{})=={"1":{"state":"open","choice":""},"3":with_keepsake({"state":"done","choice":"soup"},"milu",3,false),"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}},"view: milu 1 open, 3 done with its choice and an unclaimed keepsake (%s)"%str(some.get("milu")))
 
 # --------------------------------------------------------- the 28 goal flows --
 
@@ -706,7 +733,9 @@ func goal_flow(resident:String,stage:int)->void:
 		var unmet_msg:=need_msg(want_label(need,pl(w,token)))
 		expect(Goals.need_label(need,w.state,token)==want_label(need,pl(w,token)),ntag+": need_label is the literal label")
 		full=view_at(w,token,resident,stage)
-		expect(full==with_keepsake(want_row(e,pl(w,token),"open",{need:false}),resident,stage,false),"%s: view row shows the need unmet (%s)"%[ntag,str(full)])
+		var unmet:Dictionary={need:false}
+		if need=="crop_sold":unmet["seed_after_sale"]=false
+		expect(full==with_keepsake(want_row(e,pl(w,token),"open",unmet),resident,stage,false),"%s: view row shows the need unmet (%s)"%[ntag,str(full)])
 		refuse(w,token,cell,good,unmet_msg,ntag+": unmet with stage, option, steps and items satisfied")
 		# Stage comes first.
 		set_points(w,token,resident,threshold-1)
@@ -1088,6 +1117,130 @@ func test_need_rules()->void:
 
 # ---------------------------------------------- needs through World.act --
 
+func test_animal_sketches()->void:
+	var w:=World.new()
+	w.save_path=temp_path("animal-sketches")
+	w.add_player(KIM,"畫家")
+	set_points(w,KIM,"diandian",1)
+	var cow:Vector2i=World.LIVESTOCK.ANIMALS.cow.cell
+	go(w,KIM,"home",cow)
+	expect(not w.act(KIM,"locked-cow",Goals.SKETCH_ACTION,cow,"cow").ok,"Pasture animal requires the opened pasture")
+	w.state.picnic=true
+	w.state.community={"table":World.COMMUNITY.choose_table(w.state)}
+	expect(not w.act(KIM,"wrong-tile",Goals.SKETCH_ACTION,cow,"chicken").ok,"An animal sketch must target the right animal")
+	expect(not w.act(KIM,"unknown-animal",Goals.SKETCH_ACTION,cow,"dog").ok,"Unknown animals cannot enter the journal")
+	for id:String in Goals.SKETCH_ANIMALS:
+		var at:Vector2i=World.CHICKEN_CELL if id=="chicken" else World.LIVESTOCK.ANIMALS[id].cell
+		go(w,KIM,"home",at)
+		var before:Dictionary=pl(w,KIM).inventory.duplicate(true)
+		expect(w.act(KIM,"sketch-"+id,Goals.SKETCH_ACTION,at,id).ok,"Observe "+id)
+		expect(not w.act(KIM,"repeat-"+id,Goals.SKETCH_ACTION,at,id).ok,"The same animal counts once")
+		expect(pl(w,KIM).inventory==before,"Observation does not spend feed or grant a product")
+	expect(w.save() and w.load_world(w.save_path),"The animal-only record reloads")
+	expect(Goals.need_met("crop_sketches",w.state,KIM),"Three animals meet the same goal")
+	expect(int(w.state.animal.bond)==0 and w.state.livestock.is_empty(),"Observation preserves animal care state")
+
+func test_crop_sketches()->void:
+	var w:=World.new()
+	w.save_path=temp_path("crop-sketches")
+	w.add_player(KIM,"畫家")
+	w.add_player(SAM,"農夫")
+	var target:=Vector2i(38,34)
+	go(w,KIM,"home",target)
+	expect(not w.act(KIM,"not-known",Goals.SKETCH_ACTION,target).ok,"Sketching is unlocked by meeting Diandian")
+	set_points(w,KIM,"diandian",1)
+	expect(not w.act(KIM,"empty-plant",Goals.SKETCH_ACTION,target).ok,"Bare ground does not count as a crop")
+	go(w,SAM,"home",target)
+	for kind:String in ["radish","lettuce","wheat"]:
+		expect(w.act(SAM,"till-"+kind,"hoe",target).ok,"The farmer tills a plot")
+		expect(w.act(SAM,"seed-"+kind,"seed",target,kind).ok,"The farmer plants "+kind)
+		expect(w.act(KIM,"draw-"+kind,Goals.SKETCH_ACTION,target).ok,"A neighbor can draw the living seedling")
+		expect(not w.act(KIM,"again-"+kind,Goals.SKETCH_ACTION,target).ok,"The same species cannot be counted twice")
+		expect(not pl(w,SAM).has(Goals.SKETCH_KEY),"Drawing does not grant the planter progress")
+		expect(w.state.crops[World.key(target)].kind==kind,"Drawing leaves the crop intact")
+		target+=Vector2i.RIGHT
+	expect(w.save() and w.load_world(w.save_path),"The three observations survive reload")
+	expect(Goals.need_met("crop_sketches",w.state,KIM),"Three different observations meet Diandian's goal")
+	var at:=cell_of(w,"diandian")
+	go(w,KIM,"star_garden",at)
+	expect(do_goal(w,KIM,at,"diandian:1::").ok,"Player can show the drawings to Diandian")
+
+func test_milu_shared_meal()->void:
+	var w:=World.new()
+	w.save_path=temp_path("shared-meal")
+	w.state.picnic=true
+	w.state.community={"table":World.COMMUNITY.choose_table(w.state)}
+	var table:=World.COMMUNITY.table_cell(w.state)
+	for token in [KIM,SAM]:
+		w.add_player(token,token)
+		set_points(w,token,"milu",24)
+		go(w,token,"home",table+Vector2i.DOWN)
+	set_item(w,KIM,"corn_chowder",3)
+	expect(not w.act(KIM,"short","serve_chowder",table).ok and not Goals.need_met("shared_meal",w.state,KIM),"Three servings cannot complete the milestone")
+	set_item(w,KIM,"corn_chowder",4)
+	expect(w.act(KIM,"serve","serve_chowder",table).ok and Goals.need_met("shared_meal",w.state,KIM),"Personally setting four bowls on the table counts")
+	expect(w.act(SAM,"claim","claim_chowder",table).ok and not Goals.need_met("shared_meal",w.state,SAM),"Someone who only claims a bowl gets no serving credit")
+	expect(w.load_world(w.save_path),"Meal participation survives a save and reload")
+	var at:=cell_of(w,"milu")
+	go(w,KIM,"home",at)
+	expect(do_goal(w,KIM,at,"milu:4::").ok and Goals.done(pl(w,KIM),"milu").has(4),"A single player can finish without other seats filled")
+	go(w,SAM,"home",at)
+	expect(not do_goal(w,SAM,at,"milu:4::").ok,"The guest cannot complete the host's goal")
+	expect(not w.act(SAM,"apron-locked",Goals.APRON_ACTION,at).ok,"The guest cannot equip the host's reward")
+	expect(w.act(KIM,"apron-equip",Goals.APRON_ACTION,at).ok and pl(w,KIM).get(Goals.APRON_KEY,false),"Finishing the goal unlocks an opt-in outfit")
+	expect(w.load_world(w.save_path) and pl(w,KIM).get(Goals.APRON_KEY,false),"Apron remains equipped after loading")
+	var damaged:Dictionary=w.state.duplicate(true)
+	damaged.players[SAM][Goals.APRON_KEY]=true
+	expect(not World.SAVE_SCHEMA.validate(damaged,World.CROPS,World.BUILD,World.RECIPES,World.SIZE,World.TREE_TIME),"Save rejects an equipped apron with no unlock")
+	expect(w.act(KIM,"apron-unequip",Goals.APRON_ACTION,at).ok and not pl(w,KIM).has(Goals.APRON_KEY),"Unequip the apron without losing its unlock")
+
+func test_xiaoli_trade()->void:
+	var w:=World.new()
+	w.save_path=temp_path("xiaoli-trade")
+	var stall:=Vector2i(43,29)
+	for token in [KIM,SAM]:
+		w.add_player(token,token)
+		set_points(w,token,"xiaoli",1)
+		go(w,token,"home",stall)
+		set_item(w,token,"radish",1)
+	expect(w.act(KIM,"early-seed","buy",stall,"radish").ok,"Buy a seed before selling")
+	expect(not Goals.need_met("seed_after_sale",w.state,KIM),"Early seed cannot satisfy the trade")
+	expect(w.act(KIM,"crop-sale","sell",stall,"radish").ok,"Sell a crop at Xiaoli's stall")
+	expect(Goals.need_met("crop_sold",w.state,KIM) and not Goals.need_met("seed_after_sale",w.state,KIM),"Sale unlocks only step one")
+	expect(w.act(KIM,"off-season","buy",stall,"tomato").ok,"The shop still sells out-of-season seeds")
+	expect(not Goals.need_met("seed_after_sale",w.state,KIM),"Out-of-season seed does not finish the event")
+	expect(w.load_world(w.save_path),"Reload the completed sale")
+	expect(w.act(KIM,"in-season","buy",stall,"radish").ok and Goals.need_met("seed_after_sale",w.state,KIM),"A seasonal seed after the sale completes step two")
+	expect(not Goals.need_met("crop_sold",w.state,SAM),"Other players have their own trade progress")
+	var ship:=World.SHIPPING.cell_for(w.state)
+	go(w,SAM,"home",ship)
+	expect(w.act(SAM,"box-sale","ship",ship,JSON.stringify([[["radish",1]],24])).ok and Goals.need_met("crop_sold",w.state,SAM),"Shipping a crop also counts")
+	var at:=cell_of(w,"xiaoli")
+	go(w,KIM,"home",at)
+	expect(do_goal(w,KIM,at,"xiaoli:1::").ok,"Xiaoli records the completed trade")
+
+func test_chicken_goal()->void:
+	var w:=World.new()
+	w.save_path=temp_path("hen")
+	w.state.picnic=true
+	for token in [KIM,SAM]:
+		w.add_player(token,token)
+		set_points(w,token,"mianmian",1)
+		go(w,token,"home",World.CHICKEN_CELL)
+	set_item(w,KIM,"feed",1)
+	expect(not w.act(SAM,"no-feed","feed",World.CHICKEN_CELL).ok,"The chicken refuses a player without feed")
+	expect(w.act(KIM,"real-feed","feed",World.CHICKEN_CELL).ok,"Feed the real chicken through World.act")
+	expect(not Goals.need_met("chicken_fed",w.state,KIM),"The chicken does not approach immediately")
+	var at:=cell_of(w,"mianmian")
+	go(w,KIM,"home",at)
+	expect(not do_goal(w,KIM,at,"mianmian:1::").ok,"Reporting too early leaves the event unfinished")
+	expect(w.step(Goals.CHICKEN_APPROACH_SECONDS,true),"Wait for the chicken to approach")
+	expect(w.save() and w.load_world(w.save_path),"Feeding and approach progress survive a reload")
+	expect(Goals.need_met("chicken_fed",w.state,KIM) and not Goals.need_met("chicken_fed",w.state,SAM),"Feeding only counts for the player who fed it")
+	go(w,KIM,"home",at)
+	expect(do_goal(w,KIM,at,"mianmian:1::").ok,"Report back to Mianmian without another bag of feed")
+	expect(int(pl(w,KIM).inventory.get("feed",0))==0,"The single feeding used only one bag")
+
 func test_needs_through_world()->void:
 	var w:=World.new()
 	w.state["picnic"]=true  # PRESET
@@ -1223,7 +1376,7 @@ func test_needs_once_and_save()->void:
 	p["y"]=home_y
 	expect(same(goals_of(w,KIM),want),"all eleven batch-2 goals recorded (%s)"%str(goals_of(w,KIM)))
 	var held:Dictionary=p.inventory
-	expect(int(held.get("wood",-1))==0 and int(held.get("glass",-1))==0 and int(held.get("copper_joint",-1))==0 and int(held.get("plank",-1))==0 and int(held.get("feed",-1))==0,"batch-2 costs paid exactly")
+	expect(int(held.get("wood",-1))==0 and int(held.get("glass",-1))==0 and int(held.get("copper_joint",-1))==0 and int(held.get("plank",-1))==0 and int(held.get("feed",-1))==1,"batch-2 costs paid exactly; no extra charge for feed")
 	# Batch 3 (granted through World.act above): aru 1, xiaoli 4 and luoluo 4 carry keepsakes.
 	var want_kits:Dictionary={"keepsake_aru_kit":1,"keepsake_xiaoli_kit":1,"keepsake_luoluo_kit":1}
 	var want_keepsakes:Dictionary={"keepsake_aru":true,"keepsake_xiaoli":true,"keepsake_luoluo":true}
@@ -1233,6 +1386,11 @@ func test_needs_once_and_save()->void:
 	clear_beds(w,KIM)
 	p["greenhouse_glass_crafted"]=false
 	p.erase("market")
+	p.erase(Goals.CHICKEN_FED_KEY)
+	p.erase(Goals.CROP_TRADE_KEY)
+	p.erase("resident_participation")
+	p.erase(Goals.SKETCH_KEY)
+	p.erase(Goals.ROUTE_KEY)
 	w.state["festival"]=festival_at(2,true)
 	var bonds:Dictionary=p.bonds
 	for other:String in KNOWN_OTHERS:bonds.erase(other)
@@ -1362,7 +1520,7 @@ func test_keepsake_catalog()->void:
 		var found:=Goals.keepsake_kind(str(parts[0]),int(parts[1]))
 		expect(found==str(KEEPSAKE_GOALS.get(tag,"")),"%s: keepsake_kind is '%s' (got '%s')"%[tag,str(KEEPSAKE_GOALS.get(tag,"")),found])
 		if not found.is_empty():with_kind.append(tag)
-	expect(with_kind.size()==12 and ALL_GOALS.size()-with_kind.size()==16,"12 goals carry a keepsake, 16 do not (%s)"%str(with_kind))
+	expect(with_kind.size()==12 and ALL_GOALS.size()-with_kind.size()==20,"12 goals carry a keepsake, 20 do not (%s)"%str(with_kind))
 	for bad:Array in [["aru",2],["tom",1],["",1],["aru",0],["milu",1],["xiaoli",3]]:
 		expect(Goals.keepsake_kind(str(bad[0]),int(bad[1])).is_empty(),"no keepsake for %s %d"%[str(bad[0]),int(bad[1])])
 	for bad:String in ["","keepsake_tom","keepsake_aru_kit","trio_keepsake","Keepsake_aru"]:
@@ -1785,7 +1943,7 @@ func test_session_snapshot()->void:
 	own=snap.get("resident_goals",{})
 	var m:Dictionary=own.get("milu",{})
 	var milu3_locked:=with_keepsake({"state":"locked","choice":""},"milu",3,false)
-	expect(own==Goals.view(pl(w,PRIVATE_A),ws,PRIVATE_A) and m=={"1":{"state":"open","choice":""},"3":milu3_locked},"stage 1: milu 1 open, milu 3 locked (%s)"%str(m))
+	expect(own==Goals.view(pl(w,PRIVATE_A),ws,PRIVATE_A) and m=={"1":{"state":"open","choice":""},"3":milu3_locked,"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}},"stage 1: milu 1 open, milu 3 locked (%s)"%str(m))
 	set_item(w,PRIVATE_A,"soup",1)
 	var r:=do_goal(w,PRIVATE_A,milu,"milu:1::")
 	expect(bool(r.get("ok",false)),"Session world: alpha completes milu 1 (got '%s')"%msg(r))
@@ -1793,7 +1951,7 @@ func test_session_snapshot()->void:
 	snap=session.snapshot
 	own=snap.get("resident_goals",{})
 	m=own.get("milu",{})
-	expect(own==Goals.view(pl(w,PRIVATE_A),ws,PRIVATE_A) and m=={"1":{"state":"done","choice":""},"3":milu3_locked},"done: milu 1 done, milu 3 still locked (%s)"%str(m))
+	expect(own==Goals.view(pl(w,PRIVATE_A),ws,PRIVATE_A) and m=={"1":{"state":"done","choice":""},"3":milu3_locked,"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}},"done: milu 1 done, milu 3 still locked (%s)"%str(m))
 	expect(pl(w,PRIVATE_A).has(Goals.RECORD_KEY),"publishing does not strip the live record")
 	var players:Dictionary=snap.get("players",{})
 	var clean:=true
@@ -1837,7 +1995,7 @@ func test_session_snapshot()->void:
 	session._send_snapshot(1)
 	snap=session.snapshot
 	own=snap.get("resident_goals",{})
-	expect(own==Goals.view(pl(w,PRIVATE_B),ws,PRIVATE_B) and own.get("milu",{})=={"1":{"state":"locked","choice":""},"3":milu3_locked},"beta's resident_goals is beta's own (milu locked)")
+	expect(own==Goals.view(pl(w,PRIVATE_B),ws,PRIVATE_B) and own.get("milu",{})=={"1":{"state":"locked","choice":""},"3":milu3_locked,"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}},"beta's resident_goals is beta's own (milu locked)")
 	expect(own!=Goals.view(pl(w,PRIVATE_A),ws,PRIVATE_A),"beta's resident_goals is not alpha's")
 	var beta_luoluo:Dictionary=own.get("luoluo",{})
 	expect(beta_luoluo.get("2",{})=={"state":"locked","choice":"","needs":[{"id":"known_three","label":str(NEED_TEXT["known_three"])+"（目前 0 位）","met":false}]},"beta's luoluo 2 row shows beta's own count, not alpha's (%s)"%str(beta_luoluo.get("2")))
@@ -1869,7 +2027,7 @@ func test_session_snapshot()->void:
 	session._send_snapshot(1)
 	snap=session.snapshot
 	own=snap.get("resident_goals",{})
-	expect(own.get("milu",{})=={"1":{"state":"locked","choice":""},"3":milu3_locked},"keepsake: beta's milu 3 stays locked and unclaimed")
+	expect(own.get("milu",{})=={"1":{"state":"locked","choice":""},"3":milu3_locked,"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}},"keepsake: beta's milu 3 stays locked and unclaimed")
 	expect(not JSON.stringify(snap).contains("\"%s\""%Goals.KEEPSAKE_KEY),"beta's whole snapshot never names bond_keepsakes")
 	session.world=null
 	session.queue_free()

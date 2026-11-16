@@ -52,6 +52,21 @@ func run() -> void:
 	await process_frame
 	check_bounds(main.modal)
 	main._close_modal()
+	# A real built rope rack opens Achao's private story pages through interact.
+	var rack_world=main.session.world
+	var rack_owner:Dictionary=rack_world.state.players[main.session.profile.token]
+	var rack_cell:=Vector2i(38,34)
+	rack_owner.inventory.rope=3
+	main.session.rates[1].clear()
+	main.session.perform("build",rack_cell,"rope_rack")
+	expect(main.session.snapshot.objects.get("38,34",{}).get("type")=="rope_rack","Rope rack is placed through Session")
+	main._interact()
+	await process_frame
+	expect(main.modal!=null and trade_book_contains("阿潮的關係事件"),"Using the rack opens Achao's event book")
+	main._close_modal()
+	main.session.perform("remove",rack_cell)
+	expect(not main.session.snapshot.objects.has("38,34"),"Rope rack can be dismantled")
+	main.session.rates[1].clear()
 	# Perform a complete short farming loop through the same Session used by UI.
 	main.session.perform("hoe",Vector2i(38,34))
 	main.session.perform("seed",Vector2i(38,34),"radish")
@@ -169,6 +184,7 @@ func run() -> void:
 	party_player.y=table.y+1.5
 	party_player.inventory["watermelon_platter"]=4
 	party_player.inventory["trout_hotpot"]=4
+	party_player.inventory["corn_chowder"]=3
 	main.session.rates[1].clear()
 	main.session._send_snapshot(1)
 	main._festival_menu()
@@ -189,6 +205,30 @@ func run() -> void:
 	expect(hotpot!=null and not hotpot.disabled,"Completed relay also offers hotpot serving")
 	if hotpot!=null:hotpot.pressed.emit()
 	expect(w.state.community.hotpot.portions==4 and w.state.community.watermelon.portions==3,"Relay shares two independent dishes with the dining table")
+	main._festival_menu()
+	await process_frame
+	var chowder:=main.modal.find_child("FestivalChowder",true,false) as Button
+	expect(chowder!=null and chowder.disabled,"Relay chowder requires four servings")
+	main._close_modal()
+	party_player.inventory.corn_chowder=4
+	main.session._send_snapshot(1)
+	main._festival_menu()
+	await process_frame
+	chowder=main.modal.find_child("FestivalChowder",true,false) as Button
+	expect(chowder!=null and not chowder.disabled and chowder.text=="上桌四份","Relay offers chowder with four servings")
+	if chowder!=null:chowder.pressed.emit()
+	expect(w.state.community.get("chowder",{}).get("portions",0)==4 and int(party_player.inventory.get("corn_chowder",0))==0,"Serving moves four portions to the shared table")
+	main._festival_menu()
+	await process_frame
+	chowder=main.modal.find_child("FestivalChowder",true,false) as Button
+	expect(chowder!=null and not chowder.disabled and chowder.text=="領一碗","Relay offers one bowl once served")
+	if chowder!=null:chowder.pressed.emit()
+	expect(w.state.community.get("chowder",{}).get("portions",0)==3 and int(party_player.inventory.get("corn_chowder",0))==1,"Claim grants exactly one serving")
+	main._festival_menu()
+	await process_frame
+	chowder=main.modal.find_child("FestivalChowder",true,false) as Button
+	expect(chowder!=null and chowder.disabled and chowder.text=="已領取","Relay prevents a second claim")
+	main._close_modal()
 	main._pause_menu()
 	await process_frame
 	check_bounds(main.modal)
@@ -231,6 +271,8 @@ func run() -> void:
 	check_bounds(main.modal)
 	expect(find_button(main.modal,"保存偏好 · 試聽" if main.village_art_preview else "儲存設定並試聽")!=null,"comfort panel exposes deliberate save and preview")
 	main._close_modal()
+	await check_milu_cookbook()
+	await check_trade_book()
 	var good_path:String=main.session.world.save_path
 	main.session.world.save_path="user://missing-ui-test-dir/sub/world.json"
 	main.session._register(123,"failed-new-registration","測試")
@@ -245,6 +287,107 @@ func run() -> void:
 	await create_timer(0.15).timeout
 	print("UI_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(0 if failures==0 else 1)
+func check_milu_cookbook() -> void:
+	var w=main.session.world
+	var token:String=main.session.profile.token
+	var player:Dictionary=w.state.players[token]
+	var at:Vector2i=World.bond_place(w.state,"milu")[1]
+	player.x=at.x+1.5
+	player.y=at.y+0.5
+	if not player.has("bonds"):player.bonds={}
+	player.bonds.milu={"points":24,"talk_day":-1,"gift_day":-1}
+	main.session._send_snapshot(1)
+	main._resident_menu("milu")
+	await process_frame
+	expect(main.modal.find_child("MiluCookbook",true,false)==null,"Milu's recipe book starts locked")
+	main._close_modal()
+	expect(w.act(token,"milu-book","resident_goal",at,"milu:4::").ok,"Earlier festival serving counts for Milu's event")
+	main.session._send_snapshot(1)
+	main._resident_menu("milu")
+	await process_frame
+	var entry:=main.modal.find_child("MiluCookbook",true,false) as Button
+	expect(entry!=null,"Milu offers her cookbook after her final goal")
+	if entry!=null:
+		entry.pressed.emit()
+		await process_frame
+		expect(trade_book_contains("玉米濃湯") and trade_book_contains("甜玉米 ×2"),"Cookbook shows current recipe ingredients")
+		await capture_trade_book("milu-cookbook")
+		check_bounds(main.modal)
+	main._close_modal()
+	main._resident_menu("milu")
+	await process_frame
+	var apron:=main.modal.find_child("MiluApron",true,false) as Button
+	expect(apron!=null and apron.text=="穿上米露的圍裙","Milu offers the apron after completion")
+	if apron!=null:
+		main.session.rates[1].clear()
+		apron.pressed.emit()
+		await process_frame
+		expect(main.session.snapshot.players[main.session.own_id].get(World.RESIDENT_GOALS.APRON_KEY,false),"Apron appears in the player snapshot")
+		await capture_trade_book("milu-apron")
+	main._close_modal()
+
+func check_trade_book() -> void:
+	var w=main.session.world
+	var player_token:String=main.session.profile.token
+	expect(not main.session.snapshot.has("own_shop_history"),"Trade book starts locked")
+	var stall:=Vector2i(43,29)
+	var player:Dictionary=w.state.players[player_token]
+	var neighbor:Dictionary=w.state.players["private-test-neighbor"]
+	for person in [player,neighbor]:
+		person.x=stall.x+0.5
+		person.y=stall.y+0.5
+		person.coins=500
+	player.inventory.radish=1
+	neighbor.inventory.pumpkin=1
+	if not player.has("bonds"):player.bonds={}
+	player.bonds.xiaoli={"points":1,"talk_day":-1,"gift_day":-1}
+	expect(w.act("private-test-neighbor","secret-sale","sell",stall,"pumpkin").ok,"Neighbor makes a separate transaction")
+	expect(w.act(player_token,"book-sell","sell",stall,"radish").ok,"Sale is journaled")
+	expect(w.act(player_token,"book-buy","buy",stall,"potato").ok,"Seed purchase is journaled")
+	var place:Vector2i=World.bond_place(w.state,"xiaoli")[1]
+	player.x=place.x+0.5
+	player.y=place.y+0.5
+	expect(w.act(player_token,"book-unlock","resident_goal",place,"xiaoli:1::").ok,"Reporting to Xiaoli unlocks the book")
+	main.session._send_snapshot(1)
+	await process_frame
+	var history:Array=main.session.snapshot.get("own_shop_history",[])
+	expect(history.size()==2,"Only own sales and purchases appear in the book")
+	if history.size()==2:
+		expect(history[0].action=="buy" and int(history[0].coins)==-25 and history[0].items=={"potato_seed":1},"Recent purchase shows the exact price and seed")
+		expect(history[1].action=="sell" and int(history[1].coins)==24 and history[1].items=={"radish":-1},"Older sale shows the exact proceeds and crop")
+	main._shop()
+	await process_frame
+	var entry:=main.modal.find_child("ShopTradeBook",true,false) as Button
+	expect(entry!=null,"The stall exposes the unlocked trade book")
+	if entry==null:
+		main._close_modal()
+		return
+	entry.pressed.emit()
+	await process_frame
+	expect(trade_book_contains("種子 12") and trade_book_contains("收成售價 24"),"Price page shows live catalog values")
+	await capture_trade_book("prices")
+	var history_tab:=main.modal.find_child("ShopTradeHistory",true,false) as Button
+	expect(history_tab!=null,"Price page links to transaction history")
+	if history_tab!=null:history_tab.pressed.emit()
+	await process_frame
+	expect(trade_book_contains("+24 鈴幣") and trade_book_contains("-25 鈴幣"),"History shows positive and negative money deltas")
+	expect(not trade_book_contains("南瓜"),"The neighbor's crop never appears")
+	await capture_trade_book("history")
+	check_bounds(main.modal)
+	main._close_modal()
+
+func capture_trade_book(section:String) -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--trade-book-capture=") and DisplayServer.get_name()!="headless":
+			await RenderingServer.frame_post_draw
+			var path:=arg.trim_prefix("--trade-book-capture=").path_join(section+".png")
+			expect(root.get_texture().get_image().save_png(path)==OK,"Capture the trade book "+section)
+
+func trade_book_contains(fragment:String) -> bool:
+	for node in main.modal.find_children("*","Label",true,false):
+		if node.text.contains(fragment):return true
+	return false
+
 func check_bounds(node:Node) -> void:
 	if node is CanvasItem and not node.is_visible_in_tree():
 		return

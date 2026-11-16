@@ -75,7 +75,7 @@ func check_guide_against_data() -> void:
 		var guide: Dictionary = AutomationUI.GUIDE.get(id, {})
 		var kind: String = guide.get("kind", "")
 		var text: String = AutomationUI.recipe_use(id, Keys.new())
-		expect(kind in ["place", "collection", "part", "key_tool", "tool", "salt_facility"], "%s has a known kind" % id)
+		expect(kind in ["place", "collection", "part", "key_tool", "tool", "salt_facility", "animal_facility"], "%s has a known kind" % id)
 		expect(AutomationUI.PORTABLE_TOOLS.has(id) == (kind == "tool"), "%s is portable equipment exactly when kind is tool" % id)
 		if kind != "tool":
 			for word in FALSE_EQUIPMENT:

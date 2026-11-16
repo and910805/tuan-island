@@ -1558,7 +1558,7 @@ func run()->void:
 	w=app.session.world;id=app.session.profile.token
 	w.state.time=float(w.state.time)+Village.DAY*2.0  # PRESET: two whole days later
 	w.state.picnic=true  # PRESET: 洛洛／鈴婆婆 present
-	check(Goals.total()==28,"Twenty-eight goals (%d)"%Goals.total())
+	check(Goals.total()==32,"Thirty-two goals (%d)"%Goals.total())
 	for size:Vector2i in SIZES:
 		root.size=size
 		tag="%dx%d"%[size.x,size.y]

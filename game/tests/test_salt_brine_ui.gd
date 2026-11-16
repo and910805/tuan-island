@@ -565,7 +565,7 @@ func revisit_flow(label:String)->void:
 	await enter_on("SaltRevisitEntry","revisit "+label)
 	check(layout_name()==RevisitUI.LAYOUT,"Entry opens the batch page (%s): %s"%[label,layout_name()])
 	if layout_name()!=RevisitUI.LAYOUT:return
-	check(label_text("SaltBrineLine")==RevisitUI.BRINE_LINE%3 and shown("SaltBrineLine"),"SaltBrineLine with the level (%s): %s"%[label,label_text("SaltBrineLine")])
+	check(label_text("SaltBrineLine").begins_with(RevisitUI.BRINE_LINE%[3,Brine.CAP]) and shown("SaltBrineLine"),"SaltBrineLine with the level (%s): %s"%[label,label_text("SaltBrineLine")])
 	layout_ok("revisit "+label,RevisitUI.LAYOUT)
 	await key(KEY_ESCAPE)
 
@@ -590,7 +590,7 @@ func pure_checks()->void:
 	var me:Dictionary={"x":Brine.TANK_STAND.x,"y":Brine.TANK_STAND.y}
 	check(UI.near(s,me) and not UI.near(s,{"x":FAR_SPOT.x,"y":FAR_SPOT.y}),"Near the tank at TANK_STAND, not at 阿曬")
 	check(UI.store_reason(s,me,"a")==Brine.NO_UNIT,"Rules reason before position")
-	check(RevisitUI.brine_line(s)==RevisitUI.BRINE_LINE%0,"Revisit line at level 0")
+	check(RevisitUI.brine_line(s).begins_with(RevisitUI.BRINE_LINE%[0,Brine.CAP]),"Revisit line at level 0")
 	s.salt_pan.repaired=false
 	check(RevisitUI.brine_line(s).is_empty(),"No revisit line before the gates")
 	s.region_id="home"

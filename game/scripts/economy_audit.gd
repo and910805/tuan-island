@@ -151,6 +151,7 @@ static func conversions() -> Array:
 	# --- 茶陶（tea_ceramics.gd，手抄）---
 	list.append(conv("tea:clay","tea",{"stone":2},{"clay":1}))
 	list.append(conv("tea:fire","tea",{"clay":2},{"tea_jar":1}))
+	list.append(conv("tea:flower_pot","tea",{"clay":Tea.POT_CLAY},{"flower_pot":1},[],Tea.POT_SECONDS>0.0))
 	list.append(conv("tea:repair","tea",{"clay":1,"tea_spent_jar":1},{"tea_jar":1}))
 	for style:String in ["light","deep"]:
 		var tea:String="tea_"+style
@@ -164,6 +165,7 @@ static func conversions() -> Array:
 	list.append(conv("flower_dye","flower",Flower.DYE.ingredients,{str(Flower.DYE.item):int(Flower.DYE["yield"])}))
 	# --- 其他不靠時間的轉換 ---
 	list.append(conv("lanyang_nursery","other",Lanyang.NURSERY_COST,{"sapling":int(Lanyang.NURSERY_YIELD)}))
+	list.append(conv("handcraft:rope","craft",{"fiber":World.ROPE_FIBER_COST},{"rope":1}))
 	list.append(conv("bobo_sorting","other",{"gold_ore":int(Bobo.INPUT)},{"gold_sample":int(Bobo.OUTPUT)}))
 	list.append(conv("waterworks","other",Waterworks.INPUTS,{"copper_joint":1},[built("waterworks")]))
 	# --- 礦層工程與升降台（解鎖）---
@@ -203,6 +205,7 @@ static func conversions() -> Array:
 	list.append(conv("tea:potter_gift","source",{},{"clay":2},[],true))
 	list.append(conv("salt_pan","source",{},{"sea_salt":int(Salt.YIELD)},[],true))
 	list.append(conv("flower_starter","source",{},Flower.STARTER,[],true))
+	list.append(conv("shore:seaweed","source",{},{"seaweed":1},[],World.SEAWEED_REGROW_SECONDS>0.0))
 	list.append(conv("mine_survey","source",{},{"gold_sample":1},[],true))
 	list.append(conv("starter_kit","source",ChapterOne.STARTER_COST,ChapterOne.STARTER_ITEMS,[],true))
 	# --- 任務、訂單、委託（一次性或每日一次）---
@@ -239,6 +242,8 @@ static func demands() -> Array:
 		list.append({"id":"dock_repair:%d"%index,"items":World.DOCK_REPAIRS[index]})
 	list.append({"id":"bridge_fund","items":World.FUND_MATERIAL_PRICES})
 	list.append({"id":"livestock_collector","items":Livestock.COLLECTOR_COST})
+	list.append({"id":"install_egg_basket","items":{"egg_basket":1}})
+	list.append({"id":"eat_rice_ball","items":{"star_rice_ball":1}})
 	list.append({"id":"table_warmer","items":TableWarmer.INSTALL_COST})
 	list.append({"id":"lanyang_repair","items":Lanyang.REPAIR_COST})
 	list.append({"id":"station_repair","items":StationLife.REPAIR_COST})

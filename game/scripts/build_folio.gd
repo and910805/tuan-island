@@ -42,6 +42,8 @@ const PLACEMENT_NOTES := {
 	"path":"沿常走的路鋪上石板。選擇後可拖曳成片鋪設。",
 	"chest":"把常用材料收在一起。共用箱可供島上夥伴存取。",
 	"private_chest":"放在自己的工作角落，收好私人用品。",
+	"rope_rack":"掛起阿潮的紀念繩結。靠近互動可翻閱他的關係事件。",
+	"sketch_easel":"把速寫放在家園。靠近互動可開啟自己的菜園圖鑑。",
 }
 
 ## Slot geometry: 32x48 thumbnails at integer scale 2 (64x96) sit entirely
@@ -98,6 +100,7 @@ static func unlocked(app, person: Dictionary, id: String) -> bool:
 	if id == "expedition_tent":result = World.exploration_level(int(person.get("exploration_points",0))) >= World.EXPEDITION_TENT_LEVEL
 	if id == "supply_box":result = World.exploration_level(int(person.get("exploration_points",0))) >= World.SUPPLY_BOX_LEVEL
 	if id in ["author_sign","author_shelf"]:result = World.crafting_level(person)>=10
+	if id=="sketch_easel":result=app.session.snapshot.get("resident_goals",{}).get("diandian",{}).get("1",{}).get("state")=="done"
 	if id == "fish_display":result = World.Collections.angling_level(person) >= World.Collections.FISH_DISPLAY_LEVEL
 	if id == "master_flower_bed":result = World.farming_level(person) >= World.MASTER_FARMING_LEVEL
 	if id == "greenhouse_rack":result = person.get("greenhouse_reported",false)
@@ -131,6 +134,7 @@ static func lock_text(app, id: String) -> Array:
 	if id == "expedition_tent":return ["探索達到十級後解鎖。", "探索十級解鎖"]
 	if id == "supply_box":return ["探索達到六級後解鎖。", "探索六級解鎖"]
 	if id in ["author_sign","author_shelf"]:return ["手作達到十級後解鎖。", "手作十級解鎖"]
+	if id=="sketch_easel":return ["回報點點的三張速寫後解鎖。","完成點點的速寫"]
 	if id == "fish_display":return ["漁獵觀察達到十級後解鎖。", "漁獵觀察十級解鎖"]
 	if id == "master_flower_bed":return ["農耕達到十級後解鎖。", "農耕十級解鎖"]
 	if id == "greenhouse_rack":return ["向宜蘭水圳的星禾回報跨季收成後解鎖。", "完成冬天也開花"]
@@ -177,6 +181,7 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	var outer := content.get_parent() as ScrollContainer
 	var shell := content.get_parent().get_parent()
 	if outer != null and shell is VBoxContainer:
+		shell.add_theme_constant_override("separation",6)
 		for child in shell.get_children():
 			if child is Label:
 				child.autowrap_mode = TextServer.AUTOWRAP_OFF

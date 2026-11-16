@@ -244,6 +244,20 @@ static func append(s: Dictionary, entry: Dictionary, pending: Array, now: float)
 ## (shared chests: any member; private boxes: the recorded owner only). Non-actor
 ## viewers only get their own `d` row (both rows for a trade they took part in)
 ## and only boxes they may open; rejections only to their own actor.
+## Player-facing shop history. Publish only the buyer/seller's own deltas.
+static func shop_history(s:Dictionary,token:String) -> Array:
+	var entries:Array=s.get(STATE_KEY,{}).get("entries",[])
+	var actor:=pid(token)
+	var result:Array=[]
+	for i in range(entries.size()-1,-1,-1):
+		var entry:Dictionary=entries[i]
+		if entry.by!=actor or entry.act not in ["buy","sell","ship"]:continue
+		var own:Dictionary=entry.d.get(actor,{})
+		if own.is_empty():continue
+		result.append({"action":entry.act,"time":entry.t,"coins":own.get("coins",0),"items":own.get("items",{}).duplicate()})
+		if result.size()==10:break
+	return result
+
 static func view(s: Dictionary, token: String, limit: int = 64) -> Array:
 	var out: Array = []
 	var root = s.get(STATE_KEY)

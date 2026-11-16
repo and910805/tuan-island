@@ -8,7 +8,7 @@ const CREAM:=Color("fff0cc")
 static func pixel(canvas:CanvasItem,at:Vector2,x:int,y:int,w:int,h:int,color:Color) -> void:
 	canvas.draw_rect(Rect2(at+Vector2(x,y),Vector2(w,h)),color)
 
-static func person(canvas:CanvasItem,at:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool) -> void:
+static func person(canvas:CanvasItem,at:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool,milu_apron:=false) -> void:
 	var foot:=at.round()
 	var side:=facing.x
 	var back:=facing==Vector2i.UP
@@ -43,6 +43,12 @@ static func person(canvas:CanvasItem,at:Vector2,shirt:Color,style:String,facing:
 		pixel(canvas,body,-5,-13,2,5,Color("5f7481"))
 		pixel(canvas,body,3,-13,2,5,Color("5f7481"))
 		pixel(canvas,body,-2,-8,4,2,CREAM)
+	if milu_apron and back:
+		pixel(canvas,body,-5,-7,10,2,Color("bf6656"))
+		pixel(canvas,body,-2,-6,4,2,CREAM)
+	elif milu_apron:
+		pixel(canvas,body,-4+side*2,-11,8,7,Color("bf6656"))
+		pixel(canvas,body,-2+side*2,-8,4,2,CREAM)
 	var head:=body+Vector2(side*2,0)
 	pixel(canvas,head,-8,-33,16,22,INK)
 	pixel(canvas,head,-11,-29,22,14,INK)

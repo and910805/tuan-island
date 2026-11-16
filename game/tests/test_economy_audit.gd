@@ -141,7 +141,7 @@ func test_model_shape(convs:Array) -> void:
 	expect(Tea.RETURN_ITEM.size()==3 and not Tea.RETURN_ITEM.has("tea_spent_jar"),"three jar grades can be packed; a spent jar cannot")
 	expect(Mines.COSTS.size()==Mines.MAX_DEPTH-1 and Mines.ORES.size()==Mines.MAX_DEPTH and Mines.YIELDS.size()==Mines.MAX_DEPTH,"mine tables cover 15 floors")
 	expect(Audit.best_sale("radish")==Market.price_for(int(World.CROPS.radish.price),"produce",0),"best sale of a crop is its themed market price")
-	expect(Audit.best_sale("wood")==2 and Audit.best_sale("sugar")==0 and Audit.best_sale("radish_seed")==0 and Audit.best_sale("milk")==0,"raw materials sell at the shipping price; sugar, seeds and milk do not sell")
+	expect(Audit.best_sale("wood")==2 and Audit.best_sale("sugar")==0 and Audit.best_sale("radish_seed")==0 and Audit.sale_table().get("milk")==36 and Audit.sale_table().get("wool")==48 and Audit.best_sale("milk")==47 and Audit.best_sale("wool")==63,"raw materials and livestock products have explicit prices; sugar and seeds do not sell")
 	for item:String in Audit.sale_table():
 		expect(Audit.best_sale(item)>=int(Audit.sale_table()[item]),"best sale of %s is at least the shipping price"%item)
 

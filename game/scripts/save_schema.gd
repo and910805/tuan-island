@@ -68,6 +68,7 @@ const ItemCatalog=preload("res://scripts/item_catalog.gd")
 ## public kitchen <23, material box id <22, processing queue <21, cooking queue
 ## <20, blueprint history <19, undo history <18, auto roofs <17).
 const VERSION:=26
+const EGG_BASKET_CAPACITY:=6
 const BLUEPRINT_HISTORY_VERSION:=19
 const COOKING_QUEUE_VERSION:=20
 const PROCESSING_QUEUE_VERSION:=21
@@ -832,9 +833,9 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 			if stage>IslandStoryRecap.DOCK_STAGES or (int(marker)>3 and stage<IslandStoryRecap.DOCK_STAGES):return false
 		if personal is Dictionary and personal.has("resident_participation"):
 			var participation = personal.resident_participation
-			if not participation is Dictionary or participation.size()>3:return false
+			if not participation is Dictionary or participation.size()>4:return false
 			for event in participation:
-				if event not in ["bridge","canal","shipment"] or participation[event]!=true:return false
+				if event not in ["bridge","canal","shipment","shared_meal"] or participation[event]!=true:return false
 		var p=s.players[token]
 		if not owner(token) or not p is Dictionary or not p.get("name") is String:return false
 		# T066 好感：可省略；存在時必須是已知居民的三個整數欄位。
@@ -842,11 +843,20 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		# T066「一起做的事」：可省略；存在時需為有行動的階、合法選項，且好感已到那一階。
 		if p.has("bond_goals") and not preload("res://scripts/resident_goals.gd").valid(p.bond_goals,p):return false
 		# T066 第三批紀念小物：可省略；存在時只能是已完成行動的紀念小物（值為 true）。
+		var route_key:=preload("res://scripts/resident_goals.gd").ROUTE_KEY
+		if p.has(route_key) and not whole(p[route_key],preload("res://scripts/resident_goals.gd").ROUTE_MASK):return false
+		var sketch_key:=preload("res://scripts/resident_goals.gd").SKETCH_KEY
+		if p.has(sketch_key) and not preload("res://scripts/resident_goals.gd").valid_sketches(p[sketch_key],crops):return false
+		var apron_key:=preload("res://scripts/resident_goals.gd").APRON_KEY
+		if p.has(apron_key) and (not p[apron_key] is bool or not p[apron_key] or not preload("res://scripts/resident_goals.gd").apron_unlocked(p)):return false
 		if p.has("bond_keepsakes") and not preload("res://scripts/resident_goals.gd").valid_keepsakes(p.bond_keepsakes,p):return false
 		if p.has("market") and not preload("res://scripts/market_stall.gd").valid(p.market,float(s.time),{}):return false # T071 市集攤位（可省略）
 		if p.has("greenhouse_reported"):
 			if not p.greenhouse_reported is bool:return false
 			if p.greenhouse_reported and (p.get("greenhouse_glass_crafted")!=true or not crops.has(p.get("greenhouse_cross_season_crop",""))):return false
+		if p.has(preload("res://scripts/resident_goals.gd").CHICKEN_FED_KEY) and not number(p[preload("res://scripts/resident_goals.gd").CHICKEN_FED_KEY],0,float(s.time)):return false
+		var trade_key:=preload("res://scripts/resident_goals.gd").CROP_TRADE_KEY
+		if p.has(trade_key) and (not whole(p[trade_key],preload("res://scripts/resident_goals.gd").SEED_BOUGHT) or int(p[trade_key])<1):return false
 		if p.has("greenhouse_glass_crafted") and not p.greenhouse_glass_crafted is bool:return false
 		if p.has("greenhouse_cross_season_crop") and (not p.greenhouse_cross_season_crop is String or not crops.has(p.greenhouse_cross_season_crop)):return false
 		if p.name.length()>12 or not number(p.get("x"),0,size.x) or not number(p.get("y"),0,size.y):return false
@@ -1076,6 +1086,7 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		var running:bool=int(animal.feed)>0 and int(animal.ready)<ranch.LIMIT
 		if (running and float(animal.next)<0.0) or (not running and float(animal.next)!=-1.0):return false
 	if not s.animal is Dictionary or not whole(s.animal.get("bond")):return false
+	if s.animal.has("basket_eggs") and not whole(s.animal.basket_eggs,EGG_BASKET_CAPACITY):return false
 	if not number(s.animal.get("egg_ready"),-1) or not number(s.animal.get("last_pet"),-30):return false
 	if not s.has("picnic"):s.picnic=false
 	if not s.picnic is bool:return false

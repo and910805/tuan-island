@@ -59,7 +59,12 @@ static func open(app) -> void:
 	var body:VBoxContainer=app._open_modal(TITLE)
 	app.modal.set_meta("life_modal_layout",LAYOUT)
 	app.modal.set_meta("community_body",body)
-	body.add_theme_constant_override("separation",8)
+	body.add_theme_constant_override("separation",5)
+	var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	if scroll!=null:
+		var shell:=scroll.get_parent() as VBoxContainer
+		shell.add_theme_constant_override("separation",5)
+		body.minimum_size_changed.connect(app._layout_preview.call_deferred)
 	build(app,body)
 	refresh(app)
 	app._layout_preview.call_deferred()

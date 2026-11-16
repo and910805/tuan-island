@@ -123,7 +123,7 @@ static func _style(app) -> void:
 	app.modal.add_theme_stylebox_override("panel",Pixel.frame_style())
 	app.modal.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 
-static func open(app) -> void:
+static func open(app,back_to_batch:Callable=Callable()) -> void:
 	var s:Dictionary=app.session.snapshot
 	if region_of(s)!=Brine.REGION:return
 	var body:VBoxContainer=app._open_modal(PAGE_TITLE)
@@ -135,6 +135,9 @@ static func open(app) -> void:
 	app.modal.set_meta("suppress_world_prompts",true)
 	body.add_theme_constant_override("separation",6)
 	build(app,body)
+	if back_to_batch.is_valid():
+		var back:=_button(app,body,"SbBackToBatch","回到鹽籃批次",back_to_batch)
+		back.size_flags_horizontal=Control.SIZE_SHRINK_END
 	refresh(app,true)
 	if is_instance_valid(app.modal_feedback):app.modal_feedback.text=KEY_HINT
 	app._layout_preview.call_deferred()
@@ -369,7 +372,7 @@ static func _shown(c:Control) -> bool:
 ## Rows of focusable buttons: the journal link (not ready); the four pan buttons in one row.
 static func focus_rows(app) -> Array:
 	var rows:Array=[]
-	for group:Array in [["SbNotebook"],ACTION_IDS]:
+	for group:Array in [["SbNotebook"],ACTION_IDS,["SbBackToBatch"]]:
 		var row:Array[Button]=[]
 		for id:String in group:
 			var b:=_node(app,id) as Button

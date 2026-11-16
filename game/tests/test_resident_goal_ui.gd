@@ -91,7 +91,7 @@ const WARN:=Color("9c4b32")
 ## Second (never connected) player for the privacy check.
 const OTHER:="goal-ui-other-traveller"
 ## Goals per resident after batch 2 (28 in total).
-const PER_RESIDENT:={"aru":2,"milu":2,"bobo":3,"chacha":2,"achao":1,"mianmian":3,"xinghe":2,"lingpopo":3,"xiaoli":3,"luoluo":3,"diandian":1,"nuannuan":3}
+const PER_RESIDENT:={"aru":2,"milu":3,"bobo":3,"chacha":2,"achao":2,"mianmian":3,"xinghe":2,"lingpopo":3,"xiaoli":4,"luoluo":3,"diandian":2,"nuannuan":3}
 ## Batch 3: the goal (resident -> stage) whose keepsake is a placeable 紀念小物 (12 total).
 const KEEPSAKE_GOALS:={"aru":1,"milu":3,"bobo":1,"chacha":2,"achao":1,"mianmian":3,"xinghe":2,"lingpopo":3,"xiaoli":4,"luoluo":4,"diandian":2,"nuannuan":1}
 const OLD_KEEPSAKE_TAIL:="（收在手帳裡，沒有其他用途）"
@@ -352,6 +352,22 @@ func set_market(on:bool)->void:
 ## PRESET for one need (fair_weather is moved with weather(); known_three with set_bonds()).
 func set_need(need:String,on:bool)->void:
 	match need:
+		"route_marks":
+			if on:person()[Goals.ROUTE_KEY]=Goals.ROUTE_MASK
+			else:person().erase(Goals.ROUTE_KEY)
+		"crop_sketches":
+			if on:person()[Goals.SKETCH_KEY]={"radish":true,"lettuce":true,"wheat":true}
+			else:person().erase(Goals.SKETCH_KEY)
+		"shared_meal":
+			if on:person().resident_participation={"shared_meal":true}
+			else:person().erase("resident_participation")
+		"crop_sold","seed_after_sale":
+			if on:person()[Goals.CROP_TRADE_KEY]=Goals.SEED_BOUGHT
+			elif need=="seed_after_sale":person()[Goals.CROP_TRADE_KEY]=Goals.CROP_SOLD
+			else:person().erase(Goals.CROP_TRADE_KEY)
+		"chicken_fed":
+			if on:person()[Goals.CHICKEN_FED_KEY]=maxf(0.0,float(w.state.time)-Goals.CHICKEN_APPROACH_SECONDS)
+			else:person().erase(Goals.CHICKEN_FED_KEY)
 		"own_bed":set_bed(on)
 		"glass_crafted":
 			var p:=person()
@@ -373,7 +389,8 @@ func weather(rainy:bool)->void:
 ## PRESET: every needs prerequisite met except `unmet` (bonds are left to the caller;
 ## set_bonds() at 好友 meets known_three).
 func set_needs(unmet:String="")->void:
-	for need:String in ["own_bed","glass_crafted","market_round","festival_done"]:set_need(need,need!=unmet)
+	for need:String in ["own_bed","glass_crafted","market_round","festival_done","chicken_fed","shared_meal","crop_sketches","route_marks"]:set_need(need,need!=unmet)
+	set_need(unmet if unmet in ["crop_sold","seed_after_sale"] else "seed_after_sale",unmet not in ["crop_sold","seed_after_sale"])
 	if unmet=="known_three":set_need("known_three",false)
 	await weather(unmet=="fair_weather")
 
@@ -1085,7 +1102,7 @@ func layout_sweep(label:String)->void:
 	set_bonds();set_done({});stock({})
 	await set_needs("")
 	await stand("aru",true)
-	check(all_goals().size()==28,"Sweep covers 28 goals (%s)"%label)
+	check(all_goals().size()==32,"Sweep covers 32 goals (%s)"%label)
 	for pair:Array in all_goals():
 		var resident:=str(pair[0])
 		var stage:=int(pair[1])
@@ -1152,6 +1169,8 @@ func needs_sweep(label:String)->void:
 		for need:String in entry.needs:
 			var tag:="need unmet %s %d %s %s"%[resident,stage,need,label]
 			set_bonds();set_done({});stock(Goals.cost(entry,""))
+			var dock_before:=int(w.state.get("dock_stage",0))
+			if resident=="achao":w.state.dock_stage=1
 			await set_needs(need)
 			await stand(resident)
 			await close()
@@ -1162,8 +1181,9 @@ func needs_sweep(label:String)->void:
 			need_line_is(need,false,tag)
 			needs_before_cost(tag)
 			reason_is(need_reason(need),tag)
+			if resident=="achao":w.state.dock_stage=dock_before
 			swept+=1
-	check(swept==6,"Six goals with needs swept unmet (%s): %d"%[label,swept])
+	check(swept==12,"Twelve prerequisites swept unmet (%s): %d"%[label,swept])
 	await close()
 	set_bonds()
 	await set_needs("")
@@ -1279,7 +1299,7 @@ func keepsake_catalog_checks()->void:
 		var value:=str(InventoryPanel.value_for(kit))
 		var want:="和%s一起做的事的紀念小物 · 不能出售或交易"%npc(resident)
 		check(value==want,"Inventory value text of %s reads %s: %s"%[kit,want,value])
-	check(with_keepsake==12 and all_goals().size()-with_keepsake==16,"12 goals with a 紀念小物, 16 without: %d"%with_keepsake)
+	check(with_keepsake==12 and all_goals().size()-with_keepsake==20,"12 goals with a 紀念小物, 20 without: %d"%with_keepsake)
 
 ## 點點 2 in star_garden: printed only (see header).
 func garden_note(label:String)->void:
@@ -1312,7 +1332,7 @@ func run()->void:
 	saved_market=person().get("market")
 	saved_glass=person().get("greenhouse_glass_crafted")
 	if saved_market is Dictionary:saved_market=(saved_market as Dictionary).duplicate(true)
-	check(Goals.total()==28,"Twenty-eight goals")
+	check(Goals.total()==32,"Thirty-two goals")
 	for resident:String in PER_RESIDENT:
 		check(Goals.GOALS.has(resident) and (Goals.GOALS[resident] as Dictionary).size()==int(PER_RESIDENT[resident]),"%s has %d goals"%[resident,int(PER_RESIDENT[resident])])
 	check(PER_RESIDENT.size()==Goals.GOALS.size(),"Every goal resident counted")
@@ -1322,7 +1342,7 @@ func run()->void:
 		if entry.has("needs"):
 			with_needs+=1
 			for need:String in entry.needs:check(Goals.NEEDS.has(need),"Need %s is known (%s %d)"%[need,str(pair[0]),int(pair[1])])
-	check(with_needs==6,"Six goals have needs: %d"%with_needs)
+	check(with_needs==11,"Eleven goals have needs: %d"%with_needs)
 	for item:String in goal_items():check(World.NAMES.has(item),"Item name exists: "+item)
 	keepsake_catalog_checks()
 	set_done({})  # PRESET: fresh save, nothing done or claimed

@@ -852,6 +852,9 @@ func _layout_preview() -> void:
 			"build_folio":
 				modal.size=Vector2(minf(920,bounds.x-40),minf(590,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
+			"hoist_letter":
+				modal.size=Vector2(minf(860,bounds.x-48),minf(592,bounds.y-40))
+				modal.position=(bounds-modal.size)/2
 			"blueprint_folio":
 				_fit_blueprint_folio(bounds)
 			"cooking_queue":
@@ -1010,7 +1013,11 @@ func _layout_preview() -> void:
 			"festival_locked":
 				modal.size=Vector2(minf(540,bounds.x-48),minf(330,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
-			"festival_card","animal_card":
+			"festival_card":
+				var has_food:=modal.find_child("FestivalChowder",true,false)!=null
+				modal.size=Vector2(minf(700 if has_food else 620,bounds.x-48),minf(590 if has_food else 480,bounds.y-32))
+				modal.position=(bounds-modal.size)/2
+			"animal_card":
 				modal.size=Vector2(minf(620,bounds.x-48),minf(480,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
 
@@ -1369,6 +1376,7 @@ func _harvest_pass()->void:
 
 func _fishmeet_menu()->void:
 	FishMeetUI.open(self)
+	LifeTasks.add_achao_route_marker(self,"river")
 
 func _fishmeet_tracking()->bool:
 	return FishMeetUI.tracking(session.snapshot)
@@ -2163,10 +2171,15 @@ func _interact() -> void:
 		if World.MINES.depth_of(region)>World.MINES.SHALLOW_DEPTH:points["mine_site:lift"]=Vector2(World.MINES.LIFT)+Vector2(0.5,0.5)
 		for site in World.MINES.NODES:points["extract:"+World.key(site)]=Vector2(site)+Vector2(0.5,0.5)
 	for k in s.objects:
-		if s.objects[k].type in ["chest","private_chest","supply_box","bench","bed","door","stove","sprinkler","medium_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket"]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in ["chest","private_chest","supply_box","bench","bed","door","stove","sprinkler","medium_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","sketch_easel","rope_rack","fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket"]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
 	if region!=World.FLOWER_NURSERY.REGION:
+		var sketches:Dictionary=s.get("own_crop_sketches",{})
+		var seek_sketches:bool=region==World.REGIONS.HOME and int(s.get("resident_bonds",{}).get("diandian",{}).get("stage",0))>=1 and sketches.size()<World.RESIDENT_GOALS.SKETCH_TARGET
 		for plot_key in s.crops:
-			if s.crops[plot_key].get("owner","")==session.own_id:
+			var own_plot:bool=s.crops[plot_key].get("owner","")==session.own_id
+			var kind:String=s.crops[plot_key].get("kind","")
+			var can_sketch:bool=seek_sketches and World.CROPS.has(kind) and not sketches.has(kind)
+			if own_plot or can_sketch:
 				points["plot:"+plot_key]=Vector2(World.cell(plot_key))+Vector2(0.5,0.5)
 	for key in points:
 		var distance:=pos.distance_to(points[key])
@@ -2175,7 +2188,22 @@ func _interact() -> void:
 		if closest.begins_with("plot:"):
 			var plot_key:=closest.trim_prefix("plot:")
 			var tile:=World.cell(plot_key)
-			var body:=_open_modal("農田採收權限")
+			var crop:Dictionary=s.crops[plot_key]
+			var own_plot:bool=crop.get("owner","")==session.own_id
+			var body:=_open_modal("農田")
+			if region==World.REGIONS.HOME and int(s.get("resident_bonds",{}).get("diandian",{}).get("stage",0))>=1 and World.CROPS.has(crop.kind):
+				var sketches:Dictionary=s.get("own_crop_sketches",{})
+				var observed:=sketches.has(crop.kind)
+				var done:=sketches.size()>=World.RESIDENT_GOALS.SKETCH_TARGET
+				var sketch:=button("已記錄這種作物" if observed else ("三種已畫好，回去找點點" if done else "記下%s的色彩"%World.CROPS[crop.kind].name),func():
+					session.perform(World.RESIDENT_GOALS.SKETCH_ACTION,tile)
+					_close_modal())
+				sketch.name="CropSketch"
+				sketch.disabled=observed or done
+				body.add_child(sketch)
+				body.add_child(label("點點的速寫  %d／%d"%[sketches.size(),World.RESIDENT_GOALS.SKETCH_TARGET],15))
+			if not own_plot:return
+			body.add_child(label("採收權限",18))
 			var access:String=s.crops[plot_key].get("harvest_access","island")
 			var selected_friend:String=s.crops[plot_key].get("harvest_friend","")
 			var status_text:String={"owner":"只限田主","island":"同島玩家皆可手動採收","friend":"田主與指定玩家"}.get(access,"")
@@ -2241,7 +2269,7 @@ func _interact() -> void:
 		if closest in World.RESIDENT_BOND.WALK_UP:_resident_bond_menu(closest);return
 		if closest=="market":MarketUI.open(self);return
 		if closest.begins_with("harvest:"):HarvestUI.interact(self,closest.trim_prefix("harvest:"));return
-		if closest==FishMeetUI.POINT:FishMeetUI.open(self);return
+		if closest==FishMeetUI.POINT:_fishmeet_menu();return
 		if closest==ShowcaseUI.POINT:ShowcaseUI.open(self);return
 		if closest==SouvenirUI.POINT:SouvenirUI.open(self);return
 		if closest==MemoryExhibitUI.POINT:MemoryExhibitUI.open(self);return
@@ -2257,6 +2285,8 @@ func _interact() -> void:
 		elif obj.type in ["author_sign","author_shelf"]:
 			var content:=_open_modal(World.BUILD[obj.type].name)
 			content.add_child(label("建造者 · "+str(obj.get("author","")),21))
+		elif obj.type=="sketch_easel":LifeAlmanac.collection_menu(self,1)
+		elif obj.type=="rope_rack":LifeTasks.bond_events(self,"achao")
 		elif obj.type=="fish_display":LifeAlmanac.collection_menu(self,2)
 		elif obj.type==World.INDUSTRY.GATE_KIND:GateUI.open(self,World.cell(closest))
 		elif obj.type==World.INDUSTRY.TOWER_KIND:TowerUI.open(self,World.cell(closest))
@@ -2420,6 +2450,11 @@ func _hoist_letter() -> void:
 	var body:=_open_modal("卡住的升降台")
 	modal.name="HoistLetter"
 	modal.set_meta("hoist_letter",true)
+	modal.set_meta("life_modal_layout","hoist_letter")
+	var scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
+	if scroll!=null:
+		var shell:=scroll.get_parent() as VBoxContainer
+		shell.add_theme_constant_override("separation",6)
 	var progress:VBoxContainer=LifeTasks.card(body)
 	progress.add_child(label("波波的來信",21))
 	var letter:=label("下坑口的升降台卡在半路了。鋼索還好好的，是幾個銅接頭鏽死，滑輪的墊木也磨光了。幫我湊齊材料，我就能讓籠子再動起來，大家不必一層層走下去。",16)
@@ -2551,6 +2586,7 @@ func _history_menu() -> void:
 
 func _travel_menu(station_id:String="") -> void:
 	TravelUI.open(self,station_id)
+	if station_id=="ferry":LifeTasks.add_achao_route_marker(self,"ferry")
 	_layout_preview.call_deferred()
 
 func _station_resident_menu(region:String) -> void:
@@ -2683,6 +2719,7 @@ func _shipping_menu() -> void:
 func _board() -> void:
 	if village_art_preview:
 		LifeTasks.board(self)
+		LifeTasks.add_achao_route_marker(self,"board")
 		_add_freight_board_link()
 		return
 	var col:=_open_modal("渡口的共同工程")
@@ -2738,6 +2775,10 @@ func _shop() -> void:
 		return
 	var col:=_open_modal("小栗的種子攤")
 	col.add_child(button("和小栗聊聊",func():_resident_menu("xiaoli")))
+	if session.snapshot.has("own_shop_history"):
+		var trade_book:=button("翻開交易簿",life_panels.trade_book.bind(self))
+		trade_book.name="ShopTradeBook"
+		col.add_child(trade_book)
 	_add_tea_counter_link(col)
 	FlowerUI.counter_link(self,col)
 	SaltUI.counter_link(self,col)
@@ -2849,6 +2890,7 @@ func _resident_menu(resident:String) -> void:
 	else:col.add_child(label("「"+Village.QUESTS[resident][3].line+"」",22))
 	var bond_actions:=HFlowContainer.new()
 	LifeTasks.add_bond_controls(self,col,bond_actions,resident)
+	if resident=="milu":LifeTasks.add_milu_apron_button(self,bond_actions)
 	col.add_child(bond_actions)
 	if not LifeTasks.bond_view(self,resident).is_empty():col.add_child(button("關係事件",LifeTasks.bond_events.bind(self,resident)))
 	col.add_child(button("打開故事手冊  {journal}",_journal))
@@ -2941,10 +2983,13 @@ func _festival_menu() -> void:
 func _animal_menu() -> void:
 	if village_art_preview:LifeAlmanac.animal_menu(self);return
 	var col:=_open_modal("糯米雞的小小日常")
+	LifeAlmanac.add_animal_sketch(self,col,"chicken",World.CHICKEN_CELL)
 	var animal:Dictionary=session.snapshot.get("animal",{})
-	var message:="肚子有一點餓，想吃一份飼料。"
-	if float(animal.get("egg_ready",-1))>=0:message="有一顆雞蛋等著你！" if float(session.snapshot.time)>=float(animal.egg_ready) else "吃飽後正在休息，很快就能收蛋。"
-	col.add_child(label(message,20))
+	col.add_child(label(World.chicken_status(animal,float(session.snapshot.time)),20))
+	if animal.has("basket_eggs"):
+		col.add_child(label("收集籃 · 雞蛋 %d / %d"%[animal.basket_eggs,World.EGG_BASKET_CAPACITY],17))
+	else:
+		col.add_child(button("裝設收集籃",func():session.perform("install_egg_basket",World.CHICKEN_CELL);_close_modal()))
 	col.add_child(label("親密度  %d\n餵食需要一份飼料；可用小麥 1、纖維 2 在小石灶做出四份。"%animal.get("bond",0),17))
 	col.add_child(button("摸摸糯米雞",func():session.perform("pet",Vector2i(45,34));_close_modal()))
 	col.add_child(button("餵一份飼料",func():session.perform("feed",Vector2i(45,34));_close_modal()))

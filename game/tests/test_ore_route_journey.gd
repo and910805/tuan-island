@@ -138,6 +138,8 @@ func or_first_cart() -> void:
 	or_deny(TOKEN,ORE.ACTION,load_cell,"push",ORE.NEED_LOAD,"push the empty cart",false,true)
 	or_deny(TOKEN,ORE.ACTION,load_cell,"unload",ORE.NEED_LOAD,"unload the empty cart",false,true)
 	or_check(not world.state.has(ORE.STATE_KEY),"refusals on the empty cart wrote no record")
+	var loading_walk:=walking
+	var loading_actions:=actions
 	var coins0:=int(person().coins)
 	var held:=or_nonzero(bag())
 	or_step(TOKEN,"load","cart 1")
@@ -172,7 +174,12 @@ func or_first_cart() -> void:
 	or_check(or_same(or_nonzero(bag()),held),"cart 1: inventory unchanged")
 	or_check(or_same(or_record(TOKEN),{"stage":0,"day":day,"count":1,"total":1}),"cart 1: record stage 0, day %d, count 1, total 1"%day)
 	or_check(ORE.count_today(world.state,TOKEN)==1,"cart 1: view count 1")
-	or_info.first_cart={"day":day,"coins":int(person().coins)}
+	var route_tiles:=walking-loading_walk
+	# The walk helper moves one tile using four quarter-tile physics inputs.
+	# This estimate excludes the walk to the platform and input/menu overhead.
+	print("ORE_INCOME cart=1 coins=%d route_tiles=%d movement_seconds=%.2f action_attempts=%d daily_cap=%d"%[
+		int(person().coins)-coins0,route_tiles,route_tiles/3.6,actions-loading_actions,ORE.DAILY])
+	or_info.first_cart={"day":day,"coins":int(person().coins),"route_tiles":route_tiles}
 
 ## 3. Cart 2 the same day with one gold_pan scoop interleaved; then DAILY_DONE.
 func or_second_cart() -> void:

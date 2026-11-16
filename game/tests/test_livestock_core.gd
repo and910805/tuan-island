@@ -53,6 +53,7 @@ func _initialize() -> void:
 	test_pen_construction()
 	test_multiple_animals(day)
 	test_world_and_atomic_save(day)
+	test_ranch_income()
 	finish()
 
 func test_bond_bonus(day:float)->void:
@@ -316,3 +317,44 @@ func test_world_and_atomic_save(day: float) -> void:
 	file.close()
 	probe = World.new()
 	expect(not probe.load_world(corrupt), "A fed, non-full animal without a timer is rejected on load")
+
+## Timed production and actual sales, fixed batch of four feed, without bond bonuses.
+## The stove and ingredients are seeded; travel, station setup and gathering are outside the timing window.
+func test_ranch_income() -> void:
+	for spec:Array in [["egg","",World.CHICKEN_CELL,World.CHICKEN_EGG_SECONDS,30],["milk","cow",L.ANIMALS.cow.cell,L.DAY,36],["wool","sheep",L.ANIMALS.sheep.cell,2.0*L.DAY,48]]:
+		var item:String=spec[0]
+		var animal:String=spec[1]
+		var site:Vector2i=spec[2]
+		var interval:float=spec[3]
+		var price:int=spec[4]
+		var world:=World.new()
+		var token:="ranch-income"
+		world.add_player(token,"牧場試算")
+		world.state.picnic=true
+		var actor:Dictionary=world.state.players[token]
+		actor.x=site.x+0.5
+		actor.y=site.y+0.5
+		actor.inventory.wheat=1
+		actor.inventory.fiber=2
+		var stove:=site+Vector2i.UP
+		world.state.objects[World.key(stove)]={"owner":token,"type":"stove","items":{}}
+		expect(world.act(token,"feed-cook","cook",stove,"feed").ok,item+" begins with one feed recipe")
+		expect(world.step(float(World.RECIPES.feed.time),true),item+" feed cooks")
+		expect(world.act(token,"feed-take","claim_cook",stove).ok and int(actor.inventory.get("feed",0))==4,item+" gets exactly four feed")
+		var started:=float(world.state.time)
+		for i in range(4):
+			var feed_action:="feed" if animal.is_empty() else "livestock_feed"
+			var collect_action:="egg" if animal.is_empty() else "livestock_collect"
+			expect(world.act(token,"feed-%d"%i,feed_action,site,animal).ok,"Feed "+item)
+			expect(world.step(interval,true),item+" reaches production deadline")
+			expect(world.act(token,"collect-%d"%i,collect_action,site,animal).ok,"Collect "+item)
+		expect(int(actor.inventory.get(item,0))==4 and int(actor.inventory.get("feed",-1))==0,item+" converts four feed into four products")
+		var elapsed:=float(world.state.time)-started
+		var coins:=int(actor.coins)
+		var stall:=Vector2i(43,29)
+		actor.x=stall.x+0.5
+		actor.y=stall.y+0.5
+		expect(world.act(token,"sell","sell",stall,item).ok,item+" can be sold at Xiaoli's stall")
+		var earned:=int(actor.coins)-coins
+		expect(elapsed==4.0*interval and earned==4*price,item+" pays the listed price after the expected production time")
+		print("RANCH_INCOME item=%s produced=4 world_seconds=%.0f gross=%d wheat_opportunity_cost=%d fiber_used=2"%[item,elapsed,earned,World.CROPS.wheat.price])
