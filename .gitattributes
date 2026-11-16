@@ -1,0 +1,3 @@
+deploy/zeabur-server/*.sh text eol=lf
+deploy/zeabur-server/Dockerfile text eol=lf
+deploy/zeabur-server/*.md text eol=lf
