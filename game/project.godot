@@ -5,7 +5,7 @@ config/name="糰糰島 原型"
 run/main_scene="res://main.tscn"
 run/flush_stdout_on_print=true
 config/update_url="https://github.com/and910805/tuan-island/releases"
-config/update_manifest_url=""
+config/update_manifest_url="https://raw.githubusercontent.com/and910805/tuan-island/update-feed/windows-manifest.json"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]

@@ -2,7 +2,7 @@
 
 開發版 Windows 安裝包在 `release.json` 使用 `version` 與 `build`。例如主畫面的 `0.50-dev r11` 在簽署更新清單中對應 `0.50.11-dev`，舊版可用原本的數字版號比較辨識新版。發布同一系列時請遞增 `build`，最低版號若要指定 r10 則用 `0.50.10-dev`。多人協定由其獨立欄位決定。
 
-多人協定以 `release.json` 為準；未發布開發批次 r21 為 48（公開 r20 仍為 47），世界伺服器與 Windows 客戶端須一致。此開發版使用世界存檔格式 26。升級前請停止世界寫入，另存世界主檔、備份檔、名冊與身分資料庫。若要回退舊版，須使用升級前的完整備份。
+多人協定以 `release.json` 為準；本批 r22 與 r21 均為 48（r20為47），世界伺服器與 Windows 客戶端須使用相容協定。此開發版使用世界存檔格式 26。升級前請停止世界寫入，另存世界主檔、備份檔、名冊與身分資料庫。若要回退舊版，須使用升級前的完整備份。
 
 八人登入、分區移動、耕種、捐修閘門與跨區轉乘已有本機驗證紀錄。Zeabur 已公告將於 2026 年 12 月 31 日結束營運，雲端發行改以騰訊雲為目標。公開 Windows 客戶端、WSS 登入及重連、持久磁碟重啟後的存檔仍須在目標主機驗收。[Zeabur 遷移時程](https://zeabur.com/en-US/blogs/migration-refunds-and-security-claims)
 
@@ -137,6 +137,10 @@ python work/access/network_identity_docker_restart_050.py --directory --relocate
 以上目錄及輸出檔請使用絕對路徑。安裝預設放在目前使用者的 `%LOCALAPPDATA%\TuanIsland`，並建立開始功能表捷徑和 Windows 的解除安裝項目。解除安裝移除安裝包內的遊戲檔案及捷徑，保留遊戲存檔與下載的更新版本。
 
 ## Windows 版本清單
+
+r22起內含發行公鑰，正式清單位於 `https://raw.githubusercontent.com/and910805/tuan-island/update-feed/windows-manifest.json`，由發行者簽署後發布至獨立update-feed分支。清單中的ZIP使用固定版本Release網址；只有驗簽成功且版本較新，才提供下載、核對EXE／DLL及切換。發行私鑰保存在專案之外，不得放進原始碼或安裝包。
+
+r21及更早公開包沒有配置這個公鑰與來源，需先手動安裝一次r22。r22之後才會在有新發行版時由遊戲提示更新；來源暫時無法連線不影響原單機功能。發行者先上傳並核對版本ZIP，再更新簽章清單，避免指向尚不存在的封包。
 
 從已完成的 Windows 發行 ZIP 產生更新清單。版本讀自匯出時的 `game/release.json`。最低支援版本、下載頁及 ZIP 的直接網址由發行者指定。
 

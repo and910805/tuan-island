@@ -2089,3 +2089,6 @@ T076 r20 GitHub公開下載：原公開版仍文字／農田修正版，本輪�
 
 ### 2026-11-18 T076／T010 Windows與Linux r21可試玩包
 整合牛短程照料跟隨、釣魚等待／漁獲擺動、林業落架及單一提示位置。真正Windows release EXE→獨立Linux Docker實際原牛卡照料48畫格，背包相機不變、位移>8種、無雙提示。雙客戶端對正式Linux12項（真18秒到期／冷卻／同時照料／實際移動／無raw token），重建容器同卷4項及磁碟名冊保留兩原玩家與last_pet／bond。相同承載檔隔離安裝、捷徑r21、r13舊世界副本入島、來源hash不變、解除安裝留存檔通過；原生提示57、版本39通過。Windows安裝檔97,851,912 bytes；LinuxZIP88,404,323 bytes，CRC／實測ELFhash／白名單驗證無QA世界或房間碼。修QA短身份、離線玩家快照誤判及無畫面截圖啟動，未放寬正式門檻。證據work/release-r21，報告docs/playtest/playtest-2026-11-18-release-r21.md；outputs/TuanIslandSetup-0.50-dev-r21.exe與TuanIslandServer-0.50-dev-r21-linux-x64.zip。build21／protocol48，公開r20仍47；本輪未公開上傳、雲端切換或啟用正式更新清單。非跨機／公開WSS或真人全流程，完整規劃未結案。
+
+### 2026-11-18 T076 r21 GitHub公開下載
+已將上一回合實測的原Windows安裝檔97,851,912 bytes與Linux ZIP88,404,323 bytes公開為prerelease v0.50-dev-r21；兩檔遠端SHA256／大小與本機一致，匿名HEAD均200。另附更新說明、驗證摘要及checksums JSON。tag指向e03bc261ee944c793eff7253a94db015d63c476b，來源release/r21-20261118，2380個game檔案受控同步、40路徑變更含累積進度與報告；基本秘密格式無命中、無舊檔刪除，移除純EOF噪音；預設mainer與雲端未切換。來源runtime腳本早於實測匯出，複製逐檔核對。Release https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r21 。證據work/release-r21/github-publication-verified.json及.log，報告docs/playtest/playtest-2026-11-18-github-r21.md，產物manifest public_uploaded=true／cloud_deployed=false。可分享Windows連結單機玩；多人需48同版伺服器。未啟用正式簽署自動更新、遠端資料備份遷移或雲端部署；完整目標仍未完成。
