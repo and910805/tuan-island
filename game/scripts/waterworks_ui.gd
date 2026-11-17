@@ -29,6 +29,25 @@ static func open(app,cell:Vector2i)->void:
 	if is_instance_valid(app.modal_shade):app.modal_shade.color.a=0.22
 	refresh(app)
 
+static func focus_primary(app)->bool:
+	if not is_instance_valid(app.modal) or not app.modal.has_meta("waterworks_body"):return false
+	var cell:Vector2i=app.modal.get_meta("waterworks_cell")
+	var device:Dictionary=app.session.snapshot.get("objects",{}).get(World.key(cell),{})
+	var inputs:Dictionary=device.get("input",{})
+	var actions:=PackedStringArray(["WorksCollect"])
+	for item:String in Works.INPUTS:
+		if int(inputs.get(item,0))<int(Works.INPUTS[item]):
+			actions.append("WorksFeed_"+item+"_1")
+	actions.append("WorksToggle")
+	for id:String in actions:
+		var action:=app.modal.find_child(id,true,false) as Button
+		if not is_instance_valid(action) or action.disabled or not action.is_visible_in_tree():continue
+		action.grab_focus()
+		var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+		if scroll!=null:scroll.ensure_control_visible(action)
+		break
+	return true
+
 static func refresh(app)->void:
 	if not is_instance_valid(app.modal) or not app.modal.has_meta("waterworks_body"):return
 	var s:Dictionary=app.session.snapshot
@@ -99,8 +118,17 @@ static func refresh(app)->void:
 	var water:=HBoxContainer.new();water.add_theme_constant_override("separation",10);body.add_child(water)
 	water.add_child(Shell.picture(Items.icon("tank_kit"),32))
 	Helpers.text(app,water,"機內水量 %d / %d"%[int(device.water),Works.CAPACITY],16).name="WorksWater"
-	var pipe_text:="連接 %d 桶 · 桶中 %d 份水"%[int(network.connected_tanks),int(network.water)] if int(network.connected_tanks)>0 else "用水管連到自己的儲水桶"
-	Helpers.text(app,water,pipe_text,14).name="WorksNetwork"
+	var sources:=PackedStringArray()
+	if int(network.connected_tanks)>0:
+		sources.append("水桶 %d · 蓄水 %d"%[int(network.connected_tanks),int(network.water)])
+	if int(network.towers)>0:
+		sources.append("水塔 %d · 蓄水 %d"%[int(network.towers),int(network.tower_water)])
+	if sources.is_empty():sources.append("接上自己的儲水桶或水塔")
+	var note:=World.INDUSTRY.supply_note(network)
+	if not note.is_empty():sources.append(note)
+	var supply:=Helpers.text(app,water,"\n".join(sources),14)
+	supply.name="WorksNetwork"
+	supply.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	Helpers.action(app,water,"WorksDrain","排空機內水",func():app.session.perform("waterworks_drain",cell),permitted and not device.enabled and not device.has("job") and int(device.water)>0)
 	Helpers.text(app,body,"兩條進料帶分別送木材與銅礦，一條出料帶送銅接頭；留一側接水管。",14)
 	var context:="這是另一位島民的加工台。" if not owner else ("靠近加工台才能操作。" if not near else "停用後會完成目前批次；清空原料、成品及水，才可搬移或拆除。")

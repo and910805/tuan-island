@@ -3,14 +3,22 @@ const PATH:="res://assets/transit/atlas.png"
 const GROUND=preload("res://assets/village-preview/terrain.png")
 const Transit=preload("res://scripts/transit.gd")
 const CAVERN=preload("res://assets/mine/cavern.png")
+const VOYAGE_ART=preload("res://assets/transit/achao-voyage.png")
 const NAMES:={"toucheng":"宜蘭・頭城車站","ruifang":"新北・瑞芳轉乘廣場","jiufen":"新北・九份山城"}
 const INDICES:={"toucheng":0,"station":0,"ruifang":1,"jiufen":2,"train":3,"bus":4,"lantern":5}
 static var atlas:Texture2D
 static var icons:Dictionary={}
 
 static func icon(kind:String)->Texture2D:
-	if not INDICES.has(kind):return null
 	if icons.has(kind):return icons[kind]
+	if kind in ["ferry","cooperative_boat"]:
+		var boat:=AtlasTexture.new()
+		boat.atlas=VOYAGE_ART
+		boat.region=Rect2(48 if kind=="cooperative_boat" else 0,0,48,48)
+		boat.filter_clip=true
+		icons[kind]=boat
+		return boat
+	if not INDICES.has(kind):return null
 	if atlas==null and ResourceLoader.exists(PATH):atlas=load(PATH)
 	if atlas==null:return null
 	var index:int=INDICES[kind]

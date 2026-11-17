@@ -18,6 +18,7 @@ extends SceneTree
 ## Exit 0 = pass, 1 = check failures, 2 = setup problem (no --out-dir / fixture).
 const World=preload("res://scripts/world.gd")
 const Transit=preload("res://scripts/transit.gd")
+const TransitArt=preload("res://scripts/transit_art.gd")
 const Bamboo=preload("res://scripts/bamboo_grove.gd")
 const Springs=preload("res://scripts/warm_springs.gd")
 const ACTOR:="dock-render-PRIVATE-TOKEN"
@@ -305,6 +306,11 @@ func exercise(size:Vector2i)->void:
 	await settle()
 	sync()
 	check(int(game.state.get("dock_stage",0))==2 and Transit.boat_open(game.state),"%s second delivery opens the boat"%t)
+	check(game.water(Vector2i(app.view.DOCKED_BOAT.floor())),"%s moored boat is over water"%t)
+	check(is_finite(app.view.dock_launch_started),"%s completion starts the dock animation"%t)
+	var launch_started:float=app.view.dock_launch_started
+	sync()
+	check(app.view.dock_launch_started==launch_started,"%s repeat snapshot does not restart the animation"%t)
 	check(bag("plank")==0 and bag("fiber")==0 and bag("copper_joint")==0 and bag("stone")==0,"%s boat debits exact materials"%t)
 	check(await open_dock(),"%s dock project after completion"%t)
 	check(has_label(app.modal,"碼頭與小船都修好了") and button_at(app.modal,"交付這期工程材料")==null,"%s completed copy, no submit"%t)
@@ -313,6 +319,10 @@ func exercise(size:Vector2i)->void:
 
 	# ---- ferry: 合作小船 caption, boat destinations, real departure
 	app._close_modal()
+	preload("res://scripts/travel_ui.gd").dismiss_arrival(app)
+	stand(Vector2(54.5,33.5))
+	app.toast.hide()
+	await shoot("07-cooperative-boat")
 	stand(Vector2(Transit.points("home").ferry.cell)+Vector2(0.5,0.5))
 	await settle()
 	check(ferry_titles().has("合作小船"),"%s ferry caption 合作小船 %s"%[t,ferry_titles()])
@@ -328,6 +338,8 @@ func exercise(size:Vector2i)->void:
 	await settle()
 	check(str(app.modal.get_meta("travel_selected",""))==destination if is_instance_valid(app.modal) else false,"%s selecting %s updates the ticket"%[t,destination])
 	check(has_label(app.modal,"合作小船"),"%s ticket shows 合作小船 mode"%t)
+	var ticket_art:=app.modal.find_child("TravelTicketArt",true,false) as TextureRect
+	check(ticket_art!=null and ticket_art.texture==TransitArt.icon("cooperative_boat"),"%s ticket uses the cooperative hull"%t)
 	var depart:Button=null
 	if is_instance_valid(app.modal):depart=app.modal.find_child("TravelDepart",true,false) as Button
 	check(depart!=null and not depart.disabled and fully_visible(depart),"%s depart enabled at the ferry"%t)
@@ -339,6 +351,8 @@ func exercise(size:Vector2i)->void:
 	await settle()
 	check(game.player_region(ACTOR)==destination,"%s boat departure reaches %s (at %s)"%[t,destination,game.player_region(ACTOR)])
 	check(app.view.region_id()==destination,"%s view follows to %s"%[t,destination])
+	var arrival_art:=app.hud.find_child("ArrivalArt",true,false) as TextureRect
+	check(arrival_art!=null and arrival_art.texture==TransitArt.icon("cooperative_boat"),"%s arrival repeats the ticket hull"%t)
 	var walkable:=false
 	if game.player_region(ACTOR)==destination:
 		game.switch_region(destination)

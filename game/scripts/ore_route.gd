@@ -157,6 +157,14 @@ static func next_step(snapshot:Dictionary,token:String="") -> String:
 static func cart_cell(at_stage:int) -> Vector2i:
 	return STOPS[clampi(at_stage,1,LAST)-1]
 
+static func preferred_interaction(snapshot:Dictionary,position:Vector2,closest:String,points:Dictionary) -> String:
+	var at:=stage(snapshot)
+	if at<=0 or not closest.begins_with("mine:"):return closest
+	var center:=Vector2(cart_cell(at))+Vector2(0.5,0.5)
+	var mineral:Vector2=points[closest]
+	if center.distance_squared_to(mineral)<=1.0 and position.distance_squared_to(center)<=REACH*REACH:return ACTION
+	return closest
+
 static func pushes_left(at_stage:int) -> int:
 	var at:=clampi(at_stage,0,LAST)
 	return PUSHES if at==0 else LAST-at

@@ -121,6 +121,11 @@ func _initialize()->void:
 	r=look(projected,61.0)
 	expect(r.status.working and r.status.ready==1,"ready projection never hides the next active job")
 	expect(r.sample.motion and r.sample.badges[0].kind=="manual_ready","work motion plus manual ready cue")
+	var mixed:=projected.duplicate(true)
+	mixed.processing.active.kind="feed"
+	var mixed_status:=Feedback.classify(mixed,61.0)
+	expect(mixed_status.working and mixed_status.active_kind=="feed" and mixed_status.ready_kind=="flour","Mixed queue shows running feed and ready flour")
+	expect(Feedback.caption(mixed_status).contains("加工中") and Feedback.caption(mixed_status).contains("1 批待領"),"Mixed queue caption shows both states")
 	# Overdue active not yet advanced by World: finished work, not animated.
 	r=look(running,61.0)
 	expect(not r.status.working and r.status.ready==1 and r.status.queued==1,"due active counts as ready, no motion")

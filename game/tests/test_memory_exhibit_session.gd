@@ -135,6 +135,7 @@ func seed_world(path:String)->bool:
 		if not seed_act(w,ALPHA,"memory_gate",Memory.SERVICE,"b:%d"%pair[1]):return false
 		if not seed_act(w,ALPHA,"memory_flow",Memory.SERVICE):return false
 	if not seed_act(w,ALPHA,"memory_plaque",Memory.SERVICE):return false
+	w.state.history_memory.players[ALPHA].erase("completed_day")  # Legacy record for the day-one fixture.
 	stand(w,ALPHA,Revisit.GATE_CELL)
 	if not seed_act(w,ALPHA,Revisit.GATE_ACTION,Revisit.GATE_CELL,"a:3"):return false
 	if not seed_act(w,ALPHA,Revisit.GATE_ACTION,Revisit.GATE_CELL,"b:2"):return false
@@ -233,11 +234,12 @@ func act(c:Client,action:String,p:Vector2i,extra:String="")->Dictionary:
 	var reply:Array=c.notices[before]
 	return {"replied":true,"ok":bool(reply[1]),"message":str(reply[0]),"sequence":sequence}
 
-## Walk with real movement input until the received y drops to `target_y`.
-func walk_up(c:Client,target_y:float)->bool:
+## Walk with real input along a cardinal direction until crossing a coordinate.
+func walk_to_line(c:Client,direction:Vector2,target:float)->bool:
+	var axis:="x" if direction.x!=0.0 else "y"
 	var arrived:=await wait_until(func():
-		c.session.input_direction(Vector2.UP)
-		return float(c.me().get("y",99.0))<=target_y,8.0)
+		c.session.input_direction(direction)
+		return float(c.me().get(axis,99.0))<=target,8.0)
 	for i in 6:
 		c.session.input_direction(Vector2.ZERO)
 		await process_frame
@@ -406,7 +408,8 @@ func scenario()->bool:
 	expect(Exhibit.unread_count(g)==1 and Exhibit.exhibits(g)[0].unread==true and Exhibit.personal_hint(g)==Exhibit.HINT_NOT_READY,"case 8 gamma: lanyang on display and unread, catch-up hint")
 	private_check(gamma,[alpha,beta],"case 8")
 	await refuse(gamma,Exhibit.VIEW_ACTION,STAND,"lanyang",Exhibit.TOO_FAR,"case 8 gamma at the spawn is too far",[alpha,beta])
-	expect(await walk_up(gamma,29.6),"case 8 gamma walks to the stand (y=%s)"%str(gamma.me().get("y")))
+	expect(await walk_to_line(gamma,Vector2.LEFT,float(STAND.x)+0.7),"case 8 gamma walks west from the ferry")
+	expect(await walk_to_line(gamma,Vector2.UP,float(STAND.y)+3.4),"case 8 gamma walks north to the stand")
 	await succeed(gamma,Exhibit.VIEW_ACTION,STAND,"lanyang","case 8 gamma views the plaque",[alpha,beta])
 	await wait_until(func():return own_is(gamma,["lanyang"],false,false),3.0)
 	expect(own_is(gamma,["lanyang"],false,false) and Exhibit.unread_count(gamma.session.snapshot)==0,"case 8 gamma marked seen")

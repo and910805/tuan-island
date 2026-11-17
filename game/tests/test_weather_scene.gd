@@ -35,6 +35,15 @@ func rain_render_checks()->void:
 	var cave_a:=await rain_pixels(view,false,0.1)
 	var cave_b:=await rain_pixels(view,false,0.6)
 	expect(cave_a==cave_b,"native cave has no moving rainfall")
+	for case in [[18.0,"home"],[48.0,"jiaoxi"]]:
+		view.data.time=float(case[0])*Weather.DAY_SECONDS
+		view.data.region_id=case[1]
+		var drift_a:=await rain_pixels(view,false,0.2)
+		var drift_b:=await rain_pixels(view,false,1.6)
+		var still_a:=await rain_pixels(view,true,0.2)
+		var still_b:=await rain_pixels(view,true,1.6)
+		expect(drift_a!=drift_b,"native breeze/snow moves the rendered pixels for "+case[1])
+		expect(still_a==still_b,"native reduced motion keeps breeze/snow static for "+case[1])
 	surface.queue_free();await settle()
 func weather_snapshot()->void:
 	app.session._send_snapshot(1)
@@ -82,4 +91,25 @@ func shot(name:String)->void:
 	expect(root.get_visible_rect().encloses(app.status_label.get_global_rect()),"weather HUD fits minimum viewport")
 	root.size=Vector2i(1280,800)
 	app.view.reduced_motion=false
+	var original_time:float=world.state.time
+	var actor:Dictionary=world.state.players[HOST]
+	var original_position:=Vector2(float(actor.x),float(actor.y))
+	var original_region:String=actor.region
+	world.state.time=18.0*Weather.DAY_SECONDS+600.0
+	await weather_snapshot()
+	expect(app.status_label.text.contains("微風"),"the live HUD names the breeze")
+	await weather_frame("weather-breeze",false,1.6)
+	world.state.time=48.0*Weather.DAY_SECONDS+600.0
+	actor.region="jiaoxi"
+	actor.x=28.5
+	actor.y=24.5
+	await weather_snapshot()
+	expect(app.status_label.text.contains("細雪"),"the live HUD names fine snow in Jiaoxi")
+	await create_timer(2.0).timeout
+	await weather_frame("weather-snow",false,1.6)
+	world.state.time=original_time
+	actor.region=original_region
+	actor.x=original_position.x
+	actor.y=original_position.y
+	await weather_snapshot()
 	await settle()

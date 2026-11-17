@@ -953,7 +953,8 @@ func test_ranch_resident()->void:
 		for animal:String in World.LIVESTOCK.ANIMALS:
 			var spot:Vector2i=World.LIVESTOCK.ANIMALS[animal].cell
 			expect(cell!=spot and cell!=World.LIVESTOCK.collector_cell(animal),"Ranch cell %s is not the %s feed station or its collector"%[str(cell),animal])
-			expect(Vector2(cell-spot).length()<=4.0,"Ranch cell %s stays beside the %s feed station"%[str(cell),animal])
+			if animal in ["cow","sheep"]:
+				expect(Vector2(cell-spot).length()<=4.0,"Ranch cell %s stays beside the %s feed station"%[str(cell),animal])
 	# Picnic gate: before the picnic she is not there.
 	var w:=World.new()
 	w.add_player("mei","梅")

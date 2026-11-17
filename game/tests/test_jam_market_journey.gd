@@ -17,11 +17,34 @@ func after_chapter()->void:
 	bk_run("queue_cook",stove,"sugar")
 	bk_step(float(World.RECIPES.sugar.time),"cook beet sugar")
 	bk_run("claim_cook",stove)
-	bk_gather("stone",8,["rock"])
-	bk_gather("wood",1,["tree"])
-	bk_step(maxf(0.0,float(world.state.copper.ready)-float(world.state.time)),"restock copper")
-	bk_run("mine_copper",World.COPPER_CELL)
-	bk_craft("copper_joint",1)
+	# The market regression starts at the end of the bakery route. Prefund
+	# clay from the separate Yingge route, then manufacture the copper here.
+	bag()["clay"]=10
+	bk_gather("stone",33,["rock"])
+	bk_gather("wood",8,["tree"])
+	while held("copper_ore")<9 and not failed:
+		bk_step(maxf(0.0,float(world.state.copper.ready)-float(world.state.time)),"restock copper")
+		bk_run("mine_copper",World.COPPER_CELL)
+	var occupied:=bk_reserved()
+	var furnace:=hoe_cell(occupied)
+	while furnace.x>=0 and not World.INDUSTRY.SMELTER_CELLS.all(func(offset):return free_cell(furnace+offset)):
+		occupied[furnace]=true
+		furnace=hoe_cell(occupied)
+	expect(furnace.x>=0,"open area for a small smelter")
+	if failed:return
+	bk_run("build",furnace,"small_smelter")
+	bk_craft("kiln_kit",1)
+	var kiln:=hoe_cell(bk_reserved())
+	expect(kiln.x>=0,"open tile for the charcoal kiln")
+	if failed:return
+	bk_run("build",kiln,"charcoal_kiln")
+	bk_run("queue_processing",kiln,"charcoal")
+	bk_step(16.0,"make fuel for both copper batches")
+	bk_run("claim_processing",kiln)
+	for batch in range(2):bk_run("queue_processing",furnace,"copper_ingot")
+	bk_step(90.0,"smelt the four copper ingots")
+	for batch in range(2):bk_run("claim_processing",furnace)
+	expect(held("copper_ingot")==4,"copper comes from the rebuilt equipment chain")
 	var site:=hoe_cell(bk_reserved())
 	expect(site.x>=0,"open tile for a jam pot")
 	if failed:return

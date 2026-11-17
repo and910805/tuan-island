@@ -263,6 +263,8 @@ func run()->void:
 		check(control("FlowerSeedRow_"+kind)!=null,"Seed row "+kind)
 		icon_ok("seed",kind)
 	check(text_of("FlowerSeedHint")=="出貨前每種至少留 1 包","Seed footer hint")
+	check("成花 4／需 2" in text_of("FlowerSeedCount_bluebell"),"Seed table shows owned and required blooms")
+	check("需 1" in text_of("FlowerSeedCount_chime_herb"),"Seed table shows the herb's different cost")
 	check(text_of("FlowerSave_bluebell")=="留 1 包（%d 秒）"%int(Flower.SAVE_SECONDS),"Save button label uses SAVE_SECONDS")
 	disabled_with("FlowerSave_orange_blossom","先在田尾育苗床採收過")
 	await fit("seed")
@@ -493,7 +495,8 @@ func run()->void:
 	# Inventory descriptions.
 	for id in Flower.NAMES:check(not InventoryPanel.use_for(id).is_empty(),"Inventory description "+id)
 	for id in ["bluebell_seed","orange_blossom_seed","chime_herb_seed","blue_dye","sugar"]:
-		check("不能出售" in InventoryPanel.use_for(id) and "不能出售" in InventoryPanel.value_for(id),"Not sellable label "+id)
+		check("不能出售" in InventoryPanel.value_for(id),"Not sellable label "+id)
+	check("染工作服" in InventoryPanel.use_for("blue_dye"),"Blue dye describes its outfit use")
 	check("麵粉、糖、風鈴香草" in InventoryPanel.use_for("garden_cookie") and not "設計選擇" in InventoryPanel.use_for("garden_cookie"),"Garden cookie describes usable ingredients")
 	check("目前全年可種" in InventoryPanel.use_for("bluebell_seed"),"Seed description explains current planting rules")
 	check(InventoryPanel.value_for("garden_cookie")=="出售價　%d 鈴幣"%Flower.COOKIE_PRICE,"Garden cookie sell price")

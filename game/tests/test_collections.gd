@@ -46,7 +46,10 @@ func _initialize() -> void:
 	w = World.new()
 	expect(w.load_world(save), "legacy world migrated")
 	var alice: Dictionary = w.state.players.alice
-	expect(alice.collection == {"crops": {}, "fish": {}, "meals": {}, "claimed": {}}, "legacy counters and inventory do not count as discoveries")
+	expect(alice.collection == {"crops": {}, "fish": {}, "meals": {}, "shore": {}, "claimed": {}}, "legacy counters and inventory do not count as discoveries")
+	var old_book:={"collection":{"crops":{"radish":true},"fish":{},"meals":{},"claimed":{}}}
+	expect(World.Collections.validate(old_book,World.CROPS,World.RECIPES) and old_book.collection.shore.is_empty()
+		and old_book.collection.crops.radish,"An older collection gains the coastal page and keeps its entries")
 	expect(not claim("garden_sampler").ok, "early milestone denied")
 	expect(not claim("forged").ok, "unknown milestone denied")
 
@@ -114,7 +117,7 @@ func _initialize() -> void:
 		expect(act("claim_cook", STOVE).ok, "claim finished " + recipe)
 	expect(alice.collection.meals == {"soup": true, "bread": true, "grilled_fish": true}, "only claimed meals count")
 	expect(claim("kitchen_sampler").ok and alice.coins == coins_before + 240 and alice.inventory.carrot_seed == 2, "third milestone pays kitchen reward")
-	expect(w.state.players.bob.collection == {"crops": {}, "fish": {}, "meals": {}, "claimed": {}}, "all discoveries are player-specific")
+	expect(w.state.players.bob.collection == {"crops": {}, "fish": {}, "meals": {}, "shore": {}, "claimed": {}}, "all discoveries are player-specific")
 	expect(act("cook", STOVE, "grilled_fish").ok, "Alice starts a shared stove order")
 	w.step(16.0, true)
 	expect(act("claim_cook", STOVE, "", "bob").ok, "Bob collects the shared order")

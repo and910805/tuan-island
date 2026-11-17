@@ -5,6 +5,7 @@ extends SceneTree
 ## untouched on denial), so the module cannot silently drift from world.gd.
 const World=preload("res://scripts/world.gd")
 const Perm=preload("res://scripts/plot_permissions.gd")
+const Membership=preload("res://scripts/world_membership.gd")
 var checks:=0
 var failures:=0
 var seq:=0
@@ -38,8 +39,111 @@ func _initialize() -> void:
 	public_areas()
 	floors()
 	regional_sowing()
+	ferry_access()
+	public_build_grants()
+	personal_floor_access()
+	furniture_removal_access()
 	print("PLOT_PERMISSIONS_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(1 if failures>0 or checks==0 else 0)
+
+func furniture_removal_access() -> void:
+	w=World.new()
+	w.add_player("owner","Owner")
+	w.add_player("guest","Guest")
+	for visitor in w.state.players.values():
+		visitor.x=39.5
+		visitor.y=26.5
+	var target:=Vector2i(40,24)
+	var tile:=World.key(target)
+	var path:=OS.get_environment("TEMP").path_join("guest-removal-"+Membership.new_character()+".json")
+	w.save_path=path
+	expect(act("owner","build",target,"chair").ok,"Owner places a chair")
+	expect(not act("guest","furniture_remove_access",target,"island").ok,"Visitor cannot change removal policy")
+	expect(act("guest","remove",target).message==Perm.MSG_FOREIGN_OBJECT,"Furniture removal defaults to owner only")
+	expect(act("owner","furniture_remove_access",target,"island").ok,"Owner grants removal")
+	expect(act("guest","move_object",target,"41,24").message==Perm.MSG_FOREIGN_MOVE,"Removal grant does not permit relocation")
+	expect(act("owner","furniture_remove_access",target,"owner").ok and not act("guest","remove",target).ok,"Owner can revoke grant")
+	expect(act("owner","furniture_remove_access",target,"island").ok and w.load_world(path) and w.state.objects[tile].guest_remove,"Removal grant survives reload")
+	var before:Dictionary=w.state.duplicate(true)
+	w.save_path=path.path_join("missing").path_join("world.json")
+	expect(not act("guest","remove",target).ok and w.state==before,"Failed save rolls back removal and owner's refund")
+	w.save_path=path
+	w.active_tokens.erase("owner")
+	expect(act("guest","remove",target).ok and not w.state.objects.has(tile),"Visitor removes shared furniture with owner offline")
+	expect(w.state.players.owner.inventory.wood==12 and w.state.players.guest.inventory.wood==12,"Refund credits the owner, visitor receives nothing")
+	expect(not w.undo_summary("guest").available,"Visitor cannot reverse another resident's refund")
+	expect(not act("guest","remove",target).ok and w.load_world(path) and w.state.players.owner.inventory.wood==12,"Retry cannot pay twice and refund survives reload")
+	w.state.players.owner.inventory.wood=100
+	expect(act("owner","build",target,"private_chest").ok and not act("owner","furniture_remove_access",target,"island").ok,"Private chests cannot be shared for demolition")
+	for file in [path,path+".bak"]:
+		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)
+
+func personal_floor_access() -> void:
+	w=World.new()
+	w.add_player("owner","Owner")
+	w.add_player("guest","Guest")
+	var site:=Vector2i(40,24)
+	var outside:=site+Vector2i.LEFT
+	var tile:=World.key(site)
+	for visitor in w.state.players.values():
+		visitor.x=39.5
+		visitor.y=26.5
+		visitor.inventory.wood=100
+	w.save_path=OS.get_environment("TEMP").path_join("personal-floor-"+Membership.new_character()+".json")
+	expect(act("owner","build",site,"floor").ok,"Owner lays a personalized floor")
+	expect(not act("guest","floor_placement_access",site,"island").ok,"Guest cannot edit placement permission")
+	expect(act("guest","build",outside,"chair").ok,"Guest builds a chair beside the floor")
+	expect(act("owner","floor_placement_access",site,"owner").ok,"Owner locks the floor")
+	var plan:={"version":1,"name":"Chair","width":1,"height":1,"pieces":[{"kind":"chair","x":0,"y":0}]}
+	var before:Dictionary=w.state.players.guest.inventory.duplicate()
+	expect(act("guest","build",site,"chair").message==Perm.MSG_PRIVATE_FLOOR,"Locked floor rejects manual furniture")
+	expect(act("guest","move_object",outside,tile).message==Perm.MSG_PRIVATE_FLOOR,"Locked floor rejects incoming move")
+	expect(not w.quote_blueprint("guest",plan,site).ok and w.state.players.guest.inventory==before,"Locked floor rejects blueprint and leaves materials")
+	expect(w.load_world(w.save_path) and w.state.ground[tile].placement_access=="owner","Lock survives world reload")
+	expect(act("owner","floor_placement_access",site,"island").ok,"Owner opens shared placement")
+	expect(w.quote_blueprint("guest",plan,site).ok,"Shared floor permits a normally valid blueprint")
+	expect(act("guest","move_object",outside,tile).ok,"Guest can move own chair onto shared floor")
+	expect(act("guest","remove",site).ok and w.state.ground.has(tile),"Removing guest furniture leaves owner floor")
+	expect(act("owner","floor_placement_access",site,"legacy").ok and not w.state.ground[tile].has("placement_access"),"Restore original compatibility behavior")
+	expect(not w.quote_blueprint("guest",plan,site).ok and act("guest","build",site,"chair").ok,"Default remains manual-only for guests")
+	for path in [w.save_path,w.save_path+".bak"]:
+		if FileAccess.file_exists(path):DirAccess.remove_absolute(path)
+
+func public_build_grants() -> void:
+	w=World.new()
+	w.add_player("builder","Builder")
+	var user:Dictionary=w.state.players.builder
+	user.x=39.5
+	user.y=26.5
+	user.inventory.wood=100
+	user.inventory.fiber=40
+	var path:=OS.get_environment("TEMP").path_join("public-plot-"+Membership.new_character()+".json")
+	var roster:=Membership.new()
+	expect(roster.initialize(path,"Test Island","owner","Owner","room-owner"),"Authenticated roster created")
+	expect(roster.link_legacy("owner","worker","Builder","builder"),"Member matches in-world character")
+	var target:=Membership.management_id("builder")
+	w.public_build_access=roster.can_build_public
+	var site:=World.PUBLIC_BUILD_PLOT.position
+	var outside:=site+Vector2i.LEFT
+	var short_plan:={"version":1,"name":"Chair","width":1,"height":1,"pieces":[{"kind":"chair","x":0,"y":0}]}
+	var denied:=World.PUBLIC_BUILD_DENIED
+	expect(act("builder","build",site,"chair").message==denied,"Unapproved placement denied")
+	expect(act("builder","build_area",outside,"floor|40|24").message==denied and w.state.ground.is_empty(),"Batch cannot cross into unapproved plot")
+	expect(act("builder","build",outside,World.INDUSTRY.SMELTER).message==denied,"Multi-cell object footprint cannot cross into unapproved plot")
+	var quote:Dictionary=w.quote_blueprint("builder",short_plan,site)
+	expect(not quote.ok and quote.problems.any(func(problem):return problem.reason==denied),"Blueprint simulation enforces public access")
+	expect(not roster.set_public_builder("worker",target,true),"Member cannot self-grant")
+	expect(roster.link_legacy("owner","manager","Manager","plot-manager")
+		and roster.set_admin("owner",Membership.management_id("plot-manager"),true),"Appoint public works manager")
+	expect(roster.set_public_builder("manager",target,true) and roster.open(path),"Manager grant survives roster reload")
+	expect(w.quote_blueprint("builder",short_plan,site).ok,"Approved blueprint quote passes")
+	expect(act("builder","build",site,"chair").ok,"Approved member can build")
+	expect(roster.set_public_builder("owner",target,false),"Authority revokes permission")
+	var adjoining:=site+Vector2i.RIGHT
+	expect(act("builder","move_object",site,"%d,%d"%[adjoining.x,adjoining.y]).message==denied,"Revoked member cannot move furniture into another public cell")
+	expect(act("builder","remove",site).ok,"Original builder can clear previous furniture after revocation")
+	expect(roster.read("owner").management_history.map(func(row):return row.action)==["admin_grant","public_build_grant","public_build_revoke"],"Both changes appear in owner audit")
+	DirAccess.remove_absolute(path)
 
 ## Module copies of World constants must not drift.
 func mirrors() -> void:
@@ -56,8 +160,20 @@ func harvest_and_plot() -> void:
 	# place: greenhouse only on own plot (world.gd:2322, before material checks).
 	expect(Perm.can_place(w,"alice",plot,"greenhouse_roof").ok,"owner may roof own plot with glass")
 	parity(Perm.can_place(w,"bob",plot,"greenhouse_roof"),"bob","build",plot,"greenhouse_roof","guest greenhouse on owner's plot")
+	expect(not act("bob","plot_sow_access",plot,"owner").ok,"Guest cannot change another player's sowing access")
+	expect(act("alice","plot_sow_access",plot,"owner").ok,"Owner can lock manual sowing")
+	expect(Perm.can_place(w,"alice",plot,"seed:radish").ok,"Owner may still sow on the locked field")
+	parity(Perm.can_place(w,"bob",plot,"seed:radish"),"bob","seed",plot,"radish","locked plot refuses guest sowing")
+	expect(Perm.can_harvest(w,"bob",w.state.crops[k]).ok,"Sowing lock does not change harvest access")
+	expect(act("alice","plot_sow_access",plot,"island").ok and not w.state.crops[k].has("owner_sow"),"Owner can restore the legacy sharing setting")
 	# place(seed): legacy home sowing is open to any member (world.gd:2148).
 	parity(Perm.can_place(w,"bob",plot,"seed:radish"),"bob","seed",plot,"radish","guest sows owner's empty home plot")
+	expect(not act("bob","plot_water_access",plot,"owner").ok,"Guest cannot change watering access")
+	expect(act("alice","plot_water_access",plot,"owner").ok and not w.state.crops[k].has("owner_sow"),"Owner locks only manual watering")
+	parity(Perm.can_water(w,"bob",w.state.crops[k]),"bob","water",plot,"","guest cannot water the locked plot")
+	expect(act("alice","water",plot).ok and w.state.crops[k].wet,"Owner can still water the crop")
+	expect(act("alice","plot_water_access",plot,"island").ok and not w.state.crops[k].has("owner_water"),"Owner restores shared watering")
+	parity(Perm.can_water(w,"bob",w.state.crops[k]),"bob","water",plot,"","guest can water again after reopening")
 	# harvest: helper semantics incl. legacy defaults (policy stays in World).
 	var crop:Dictionary=w.state.crops[k]
 	crop.growth=float(World.CROPS.radish.time)
@@ -122,6 +238,47 @@ func public_areas() -> void:
 	expect(Perm.public_area(w,legacy),"fixture: (40,31) is public")
 	parity(Perm.can_dismantle(w,"bob",legacy),"bob","remove",legacy,"","guest removes owner's piece on public tile")
 	parity(Perm.can_dismantle(w,"alice",legacy),"alice","remove",legacy,"","owner removes own piece on public tile")
+
+func ferry_access() -> void:
+	w=World.new()
+	w.add_player("alice","阿米")
+	w.add_player("bob","小豆",World.WANGAN_COAST.FERRY_LANDING)
+	var lane:Rect2i=World.WANGAN_COAST.FERRY_ACCESS
+	for x in range(lane.position.x,lane.end.x):
+		var tile:=Vector2i(x,lane.position.y)
+		expect(w.protected(tile) and w.can_stand(Vector2(tile)+Vector2(0.5,0.5)),"Ferry access is protected and walkable at "+str(tile))
+		var builder:String="alice" if x%2==0 else "bob"
+		var player:Dictionary=w.state.players[builder]
+		player.x=x+0.5
+		player.y=31.5
+		player.inventory.wood=40
+		var before:Dictionary=w.state.duplicate(true)
+		expect(not act(builder,"build",tile,"wall").ok and w.state==before,"No member can wall off ferry access at "+str(tile))
+	var target:=Vector2i(50,30)
+	var blueprint:={"version":1,"name":"渡口測試牆","width":1,"height":1,"pieces":[{"kind":"wall","x":0,"y":0}]}
+	w.state.players.alice.x=50.5
+	w.state.players.alice.y=31.5
+	var quote:Dictionary=w.quote_blueprint("alice",blueprint,target)
+	expect(not quote.ok and quote.get("problems",[]).any(func(problem):return problem.reason==Perm.MSG_PUBLIC),"Blueprint preview rejects walls because the ferry lane is public")
+	var legacy:=Vector2i(49,30)
+	w.state.objects[World.key(legacy)]={"type":"chest","owner":"alice","items":{}}
+	w.state.players.bob.x=48.5
+	w.state.players.bob.y=31.5
+	expect(act("bob","remove",legacy).message==Perm.MSG_FOREIGN_OBJECT,"A neighboring player cannot dismantle an older owner's chest")
+	expect(act("alice","remove",legacy).ok and w.protected(legacy),"Owner can clear an older object and the lane stays protected")
+	var movable:=Vector2i(49,31)
+	w.state.objects[World.key(movable)]={"type":"chest","owner":"alice","items":{}}
+	var before_move:Dictionary=w.state.duplicate(true)
+	expect(not act("alice","move_object",movable,World.key(legacy)).ok and w.state==before_move,
+		"Moving furniture onto the lane is refused without moving the source")
+	var old_plot:=Vector2i(50,30)
+	w.state.crops[World.key(old_plot)]={"kind":"radish","growth":90.0,"wet":false,"remaining":1,"owner":"alice"}
+	expect(act("alice","water",old_plot).ok and act("alice","harvest",old_plot).ok,"An older crop can finish its current cycle on the lane")
+	expect(not act("alice","seed",old_plot,"radish").ok and act("alice","remove",old_plot).ok,"The old plot can be cleared without reopening the lane to planting")
+	w.state.players.bob.x=World.WANGAN_COAST.FERRY_LANDING.x
+	w.state.players.bob.y=World.WANGAN_COAST.FERRY_LANDING.y
+	for step in 32:w.move_player("bob",Vector2.LEFT,0.25/3.6)
+	expect(w.state.players.bob.x==44.5,"New arrival can walk from the landing to the public square")
 
 func floors() -> void:
 	var roof_cell:=Vector2i(40,34)

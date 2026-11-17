@@ -28,6 +28,7 @@ func _initialize() -> void:
 	check(w.step(2,true) and w.step(2,true) and objects["40,35"].input_wood==2,"entire chain conserves two wood")
 	objects["40,35"].input_wood=32
 	objects["40,34"].items.wood=1
+	check(World.LOGISTICS.delivery_block(objects["40,34"],objects["40,35"],objects["40,35"])=="前方進料槽已滿","Full processor explains backpressure")
 	check(w.step(2,true) and objects["40,34"].items.wood==1,"backpressure retains item")
 	belt("44,33",1,{"wood":1})
 	belt("45,33",2)

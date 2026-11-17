@@ -48,7 +48,7 @@ static func label(region: String) -> String:
 static func land(p: Vector2i, region: String = LANYANG) -> bool:
 	if region==StarGarden.REGION:return StarGarden.LAND.has_point(p) and not StarGarden.POOL.has_point(p)
 	if region==Bamboo.REGION:return Bamboo.LAND.has_point(p) and not Bamboo.water(p)
-	if region==Springs.REGION:return Springs.LAND.has_point(p) and Springs.spot(p).is_empty()
+	if region==Springs.REGION:return Springs.INN_ROOM.has_point(p) or (Springs.LAND.has_point(p) and Springs.spot(p).is_empty())
 	if region == TIANWEI:return FlowerNursery.land(p)
 	if region == BEIMEN:return SaltPan.land(p)
 	if region in Transit.TEA_STOPS:
@@ -72,6 +72,7 @@ static func water(p: Vector2i, region: String = LANYANG) -> bool:
 	return not land(p,region) or (p.x in [33,34] and p.y not in [28,29,30])
 
 static func protected(p: Vector2i, region: String = LANYANG) -> bool:
+	if region==Springs.REGION:return not Springs.BENCH_CLEARING.has_point(p)
 	if region==Bamboo.REGION:return not Bamboo.TEA_BEDS.has_point(p)
 	if region in ANGLING_RESERVES:return true
 	if region == TIANWEI:return FlowerNursery.protected(p)

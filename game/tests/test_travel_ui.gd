@@ -1,5 +1,6 @@
 extends SceneTree
 const World=preload("res://scripts/world.gd")
+const Travel=preload("res://scripts/travel_ui.gd")
 var checks:=0
 var failures:=0
 func _initialize()->void:run.call_deferred()
@@ -46,9 +47,22 @@ func run()->void:
 			var depart:Button=app.modal.find_child("TravelDepart",true,false)
 			check(Rect2(Vector2.ZERO,Vector2(extent)).encloses(app.modal.get_global_rect()),"Travel fits "+str(extent))
 			check(visible(depart) and not depart.disabled,"Departure visible and available "+region)
-			app._map_menu()
+			if region=="home":
+				var toucheng:=app.modal.find_child("SelectRoute_toucheng",true,false) as Button
+				toucheng.pressed.emit()
+			var selected:String=app.modal.get_meta("travel_selected")
+			var station:String=app.modal.get_meta("travel_station")
+			var local:=app.modal.find_child("TravelLocalMap",true,false) as Button
+			local.pressed.emit()
 			for i in range(3):await process_frame
 			check(is_instance_valid(app.map_view) and app.map_view.data.region_id==region,"Local map uses current region")
+			var back:=app.modal.find_child("LocalMapTravel",true,false) as Button
+			check(back.text=="返回旅途車票","The local map opened from a ticket offers a return")
+			back.pressed.emit()
+			check(app.modal.get_meta("travel_selected")==selected and app.modal.get_meta("travel_station")==station,
+				"Returning keeps the original destination and station")
+	check(Travel.note("bamboo_grove","maokong").contains("茶園步道") and Travel.note("star_garden","tianwei").contains("庭園步道口"),"Return tickets describe the walking route from the actual reserve")
+	check(Travel.note("jiaoxi","toucheng").contains("回程站牌"),"Warm springs return starts at the local stop")
 	app._close_modal()
 	app.queue_free()
 	await process_frame

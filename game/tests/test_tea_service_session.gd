@@ -505,6 +505,8 @@ func scenario()->bool:
 	await settle([alpha,beta,gamma])
 	expect(tea_row(gamma.tea())==want_row(false,false,"light",4,brew_day),"case 9 gamma sees the set and an unsipped 4-cup round (%s)"%tea_row(gamma.tea()))
 	private_check(gamma,[alpha,beta],"case 9")
+	await refuse(gamma,TS.SIP_ACTION,TABLE,"","再靠近共餐桌一點。","case 9 ferry spawn is out of reach",[alpha,beta])
+	if not expect(await preload("res://tests/community_session_walk.gd").from_ferry(self,gamma.session,A_SPOT),"case 9 late joiner walks to the table over WebSocket"):return false
 	await refuse(gamma,TS.PLACE_ACTION,TABLE,"",TS.ALREADY,"case 9 gamma cannot place a second set",[alpha,beta])
 	await refuse(gamma,TS.TAKE_ACTION,TABLE,"",TS.NOT_LENDER,"case 9 gamma cannot take alpha's set",[alpha,beta])
 	await succeed(gamma,TS.SIP_ACTION,TABLE,"","case 9 gamma sips",[alpha,beta])

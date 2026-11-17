@@ -527,11 +527,12 @@ func expect_card(c:Client,want:Array,label:String)->bool:
 	var got:=text(card(c))
 	return expect(got==text(want),"%s: %s's journal market card is exactly %s (got %s)"%[label,c.label,text(want),got])
 
-## Guests are derived client-side: no guest key at the snapshot top level and own_market has exactly MARKET.view's keys.
+## Market visitors are derived client-side. Guest-room progression is unrelated to the market.
 func expect_no_guest_keys(c:Client,label:String)->void:
 	var extra:Array=[]
 	for k in c.session.snapshot.keys():
 		var key:=str(k).to_lower()
+		if key in ["own_guest_room","own_guest_cloth"]:continue
 		if key.contains("guest") or key.contains("visitor") or key.contains("customer"):extra.append(str(k))
 	expect(extra.is_empty(),"%s: %s's snapshot has no guest/visitor/customer top-level key (found %s)"%[label,c.label,str(extra)])
 	var mk:Array=c.market().keys().map(func(k):return str(k))

@@ -27,7 +27,6 @@ const INK:=Color("3d422d")
 const MUTED:=Color("7a6f58")
 const WARN:=Color("9c4b32")
 const GOOD:=Color("3e664b")
-const AWAY:="請走到台車旁（%d,%d）再操作。"
 const KEY_HINT:="Enter 確認・Esc 回到島上"
 const COUNT_TEXT:="今天 %d／%d 車・累計 %d 車"
 const CAPTION_LOAD:="裝一車礦料"
@@ -56,8 +55,10 @@ static func near(s:Dictionary,person:Dictionary) -> bool:
 	return Vector2(float(person.get("x",0.0)),float(person.get("y",0.0))).distance_to(Vector2(cell)+Vector2(0.5,0.5))<=Route.REACH
 
 static func away_text(stage:int) -> String:
-	var cell:Vector2i=Route.cart_cell(stage)
-	return AWAY%[cell.x,cell.y]
+	var index:=_cart_index(stage)
+	var stop:=_stop_name(index)
+	if index>0 and index<STOP_COUNT-1:stop+=" 號停靠點"
+	return "請沿軌道到%s找台車。"%stop
 
 ## Why the action cannot be done ("" = it can): the rules first, then where to stand.
 static func action_reason(s:Dictionary,person:Dictionary) -> String:
@@ -241,6 +242,7 @@ static func build(app,body:VBoxContainer) -> void:
 	_wrapped(app,body,"OrBlurb",13,MUTED).text=Route.BLURB
 	_wrapped(app,body,"OrHow",13,MUTED).text=Route.HOW
 	_wrapped(app,body,"OrDisclaimer",13,MUTED).text=Route.DISCLAIMER
+	_button(app,body,"OrHistory","讀地方記憶",func():preload("res://scripts/history_ui.gd").open(app,"jinguashi",Vector2i(-1,-1),func():open(app)))
 
 # ------------------------------------------------------------------ actions --
 

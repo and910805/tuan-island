@@ -453,6 +453,24 @@ func world_flow()->void:
 	save_crop(four,"crop_chowder4")
 	tureen_clear("chowder4 "+tag)
 	compare(plain,four,"plain→chowder4 "+tag)
+	var steam_box:=pixel_box(cell_rect(Rect2(21,-7,10,10)))
+	var previous_elapsed:float=app.view.elapsed
+	var was_processing:bool=app.view.is_processing()
+	app.view.set_process(false)
+	app.view.reduced_motion=false
+	app.view.elapsed=0.0
+	app.view.queue_redraw()
+	var hot:Image=await shot("world_chowder_steam")
+	app.view.elapsed=0.7
+	app.view.queue_redraw()
+	var later:Image=await grab()
+	check(changed_pixels(hot,later,steam_box)>0,"Chowder steam moves above the tureen (%s)"%tag)
+	app.view.reduced_motion=true
+	app.view.queue_redraw()
+	var still:Image=await grab()
+	check(changed_pixels(four,still,steam_box)==0,"Reduced motion keeps the area above the tureen still (%s)"%tag)
+	app.view.elapsed=previous_elapsed
+	app.view.set_process(was_processing)
 	# Chowder only, 1 portion: three kernel dots fewer.
 	await set_community({"chowder":meal(1)})
 	var one:Image=await grab()
@@ -616,6 +634,31 @@ func icon_image(item:String)->Image:
 	image.convert(Image.FORMAT_RGBA8)
 	return image
 
+func shared_serve_flow(dish:String,item:String)->void:
+	await set_community({})
+	await stand(VIEW_SPOT)
+	set_bag({item:4})
+	var was_processing:bool=app.view.is_processing()
+	app.view.set_process(false)
+	var started:float=app.view.elapsed
+	app.view.reduced_motion=false
+	app.session.perform("serve_"+dish,TABLE)
+	await settle()
+	app.view.elapsed=started+0.55
+	var event:Dictionary=app.view.community_feedback.sample_shared(app.view.elapsed,false)
+	check(event.keys()==[item],"Actual serve produces one %s presentation (%s)"%[dish,tag])
+	app.view.queue_redraw()
+	var animated:Image=await shot("world_%s_served"%dish)
+	app.view.photograph_mode=true
+	app.view.queue_redraw()
+	var still:Image=await grab()
+	var cue_box:=pixel_box(cell_rect(Rect2(-12,-34,58,20)))
+	check(changed_pixels(animated,still,cue_box)>0,"Serving cue visibly changes pixels above the table (%s)"%tag)
+	app.view.photograph_mode=false
+	check(app.view.community_feedback.sample_shared(app.view.elapsed,true).is_empty(),"Reduced motion suppresses the serving cue (%s)"%tag)
+	check(app.view.community_feedback.sample_shared(started+2.0,false).is_empty(),"Serving cue expires (%s)"%tag)
+	app.view.set_process(was_processing)
+
 func festival_flow()->void:
 	var previous:Dictionary=w.state.festival.duplicate(true)
 	w.state.festival.collected=app.Festival.GOAL # PRESET: relay completion is covered by test_ui.
@@ -639,6 +682,14 @@ func festival_flow()->void:
 	w.state.festival=previous
 
 func icon_flow()->void:
+	var distinct:Dictionary={}
+	for id in ["trout_hotpot","watermelon_platter","corn_chowder","soup","salad"]:
+		var icon:=icon_image(id)
+		check(icon!=null and icon.get_size()==Vector2i(32,32),"32px icon for "+id)
+		if icon==null:continue
+		var key:=icon.get_data().hex_encode().sha256_text()
+		check(not distinct.has(key),"Dedicated icon distinct from earlier dishes: "+id)
+		distinct[key]=true
 	var chowder:=icon_image("corn_chowder")
 	var soup:=icon_image("soup")
 	var salad:=icon_image("salad")
@@ -702,6 +753,8 @@ func run()->void:
 		tag="%dx%d"%[size.x,size.y]
 		await page_flow()
 		await world_flow()
+		for dish:String in World.COMMUNITY.DISHES:
+			await shared_serve_flow(dish,World.COMMUNITY.DISHES[dish])
 		await festival_flow()
 		print("NOTE size %s done at %.1f s"%[tag,(Time.get_ticks_msec()-started)/1000.0])
 	check(shots>=26,"12 screenshots per size plus icons and probe strip (%d)"%shots)

@@ -10,6 +10,7 @@ extends RefCounted
 ## Wire: plain recipe ID = legacy backpack-only action (never reaches here).
 ## Sourced extra = recipe|box_cell|box_id32|digest16 (<= WIRE_MAX ASCII bytes).
 
+const Industry := preload("res://scripts/industry.gd")
 const MATERIAL_SUPPLY := preload("res://scripts/material_supply.gd")
 const CONSTRUCTION_HISTORY := preload("res://scripts/construction_history.gd")
 
@@ -17,10 +18,10 @@ const PREPARE_ACTION := "prepare_material_box"
 const ACTIONS := ["craft", "cook", "queue_cook", "start_processing", "queue_processing"]
 const CANONICAL := {"craft":"craft", "cook":"queue_cook", "queue_cook":"queue_cook",
 	"start_processing":"queue_processing", "queue_processing":"queue_processing"}
-const STATION_FOR := {"craft":["bench"], "queue_cook":["stove"], "queue_processing":["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "jam_pot"]}
-const STATIONS := ["bench", "stove", "sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "jam_pot"]
+const STATION_FOR := {"craft":["bench"], "queue_cook":["stove"], "queue_processing":["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]}
+const STATIONS := ["bench", "stove", "sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]
 ## Processing stations are owner-only; bench and stove are shared by members.
-const OWNER_ONLY := ["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "jam_pot"]
+const OWNER_ONLY := ["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]
 const BOXES := ["chest", "private_chest"]
 const ID_LENGTH := 32
 const DIGEST_LENGTH := 16
@@ -29,6 +30,9 @@ const WIRE_MAX := 96
 const RECIPE_MAX := 64
 ## Deterministic y-then-x order of the four cardinal neighbours.
 const NEIGHBOURS := [Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]
+
+const SQUARE_NEIGHBOURS := [Vector2i(0,-1),Vector2i(1,-1),Vector2i(-1,0),Vector2i(2,0),
+	Vector2i(-1,1),Vector2i(2,1),Vector2i(0,2),Vector2i(1,2)]
 
 const MSG_WIRE := "材料來源資料無效，請重新選擇"
 const MSG_STATION := "請靠近可使用的工作台、石灶或自己的加工設備"
@@ -50,8 +54,9 @@ const MSG_ID := "無法建立箱子編號，請稍後再試"
 ## Returns [{cell, type, id}] in y/x order; id "" when not yet prepared.
 static func candidates(objects: Dictionary, actor: String, station_cell: Vector2i) -> Array:
 	var out: Array = []
-	if not _station_usable(objects.get(_key(station_cell)), actor):return out
-	for offset: Vector2i in NEIGHBOURS:
+	var station=objects.get(_key(station_cell))
+	if not _station_usable(station,actor):return out
+	for offset: Vector2i in _source_offsets(station):
 		var k := _key(station_cell + offset)
 		var box: Variant = objects.get(k)
 		if not _box_usable(box, actor):continue
@@ -216,6 +221,13 @@ static func _is_lower_hex(value: Variant, length: int) -> bool:
 	return true
 
 
+static func _source_offsets(station:Dictionary) -> Array:
+	if station.get("type")==Industry.DYE_TABLE:
+		if Industry.is_vertical(station):
+			return [Vector2i.UP,Vector2i.LEFT,Vector2i.RIGHT,Vector2i(-1,1),Vector2i.ONE,Vector2i(0,2)]
+		return [Vector2i.UP,Vector2i(1,-1),Vector2i.LEFT,Vector2i(2,0),Vector2i.DOWN,Vector2i.ONE]
+	return SQUARE_NEIGHBOURS if Industry.square_part(station)==0 else NEIGHBOURS
+
 static func _station_usable(station: Variant, actor: String) -> bool:
 	if not station is Dictionary:return false
 	var kind := str(station.get("type", ""))
@@ -238,7 +250,7 @@ static func _access(objects: Dictionary, token: String, p: Vector2i, station: Va
 	var parsed: Dictionary = CONSTRUCTION_HISTORY.parse_tile(box_key)
 	if not parsed.ok:return _fail(MSG_WIRE)
 	var offset: Vector2i = (parsed.cell as Vector2i) - p
-	if not NEIGHBOURS.has(offset):return _fail(MSG_ADJACENT)
+	if not _source_offsets(station).has(offset):return _fail(MSG_ADJACENT)
 	var box: Variant = objects.get(box_key)
 	if not box is Dictionary or str(box.get("type", "")) not in BOXES:return _fail(MSG_NO_BOX)
 	if box.type == "private_chest" and box.get("owner") != token:return _fail(MSG_PRIVATE)

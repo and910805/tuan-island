@@ -4,7 +4,7 @@ extends RefCounted
 ## authoritative weather.gd (at(), DAY_SECONDS, is_indoor). No IO, no wall clock,
 ## no random, no stored fields, never mutates the snapshot.
 ##
-## The sky forecast always uses the outdoor ("home") cycle. Inside a mine the
+## Outside mines the forecast uses the current region. Inside a mine the
 ## current weather is reported as 洞內 and the forecast is labelled 地表預報 so
 ## it never implies that rain reaches cave plots.
 
@@ -41,8 +41,10 @@ static func here(snapshot:Dictionary) -> Dictionary:
 static func days(snapshot:Dictionary) -> Array:
 	var result:=[]
 	var today:=Weather.day_index(_time(snapshot))
+	var sky_region:=SKY_REGION if is_indoor(snapshot) else _region(snapshot)
 	for offset in DAYS:
-		var info:Dictionary=Weather.at((today+float(offset))*Weather.DAY_SECONDS+Weather.DAY_SECONDS*0.5,SKY_REGION) if offset>0 else Weather.at(_time(snapshot),SKY_REGION)
+		var time:=(today+float(offset))*Weather.DAY_SECONDS+Weather.DAY_SECONDS*0.5 if offset>0 else _time(snapshot)
+		var info:=Weather.at(time,sky_region)
 		result.append({"offset":offset,"name":DAY_NAMES[offset],"day":int(today)+1+offset,"id":str(info.id),"label":str(info.label),"raining":bool(info.raining)})
 	return result
 
@@ -64,6 +66,8 @@ static func tooltip(snapshot:Dictionary) -> String:
 	lines.append("澆水小提醒")
 	if is_indoor(snapshot):lines.append("・"+CAVE_RULE)
 	for rule in RULES:lines.append("・"+rule)
+	if _region(snapshot) in Weather.BREEZE_REGIONS:lines.append("・微風時採集雜草可多得 2 份纖維。")
+	if _region(snapshot)=="jiaoxi":lines.append("・細雪天仍需替農田澆水。")
 	return "\n".join(lines)
 
 ## Short single-line guidance for the selected water tool. Always mentions the

@@ -26,8 +26,11 @@ static func belt_texture(direction:int,frame:int) -> Texture2D:
 		belt_textures[key]=ImageTexture.create_from_image(image)
 	return belt_textures[key]
 
-static func draw_belt(canvas:CanvasItem,at:Vector2,obj:Dictionary,time:float,reduced_motion:bool) -> void:
+static func draw_belt(canvas:CanvasItem,at:Vector2,obj:Dictionary,time:float,reduced_motion:bool,blocked:=false) -> void:
 	if not load_atlas():return
 	var direction:=posmod(int(obj.get("dir",1)),4)
-	var frame:=posmod(floori(time*6.0),3) if obj.get("enabled",false) and not reduced_motion else 0
+	var frame:=posmod(floori(time*6.0),3) if obj.get("enabled",false) and not reduced_motion and not blocked else 0
 	canvas.draw_texture(belt_texture(direction,frame),at)
+	if blocked:
+		canvas.draw_rect(Rect2(at+Vector2(24,3),Vector2(5,5)),Color("5b382a"))
+		canvas.draw_rect(Rect2(at+Vector2(25,4),Vector2(3,3)),Color("f5aa58"))

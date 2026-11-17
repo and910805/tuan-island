@@ -606,6 +606,18 @@ func full_pan(count_before:int,total_before:int)->void:
 func panel_flow()->void:
 	reset()
 	await open_panel("first")
+	await press("GpHistory")
+	check(is_instance_valid(app.modal) and app.modal.get_meta("history_mode","")=="jinguashi","The panning site opens the historical page (%s)"%tag)
+	var locked_note:=control("MineHistoryPanning") as Label
+	check(locked_note!=null and "完成一盤淘洗" in locked_note.text,"The memory starts with a fieldwork clue (%s)"%tag)
+	var source_links:Array=app.modal.find_children("*","LinkButton",true,false)
+	check(source_links.size()==2 and source_links[0].uri.begins_with("https://www.gep.ntpc.gov.tw/")
+		and source_links[1].uri.begins_with("https://tcmb.culture.tw/"),"The history page links the museum and cultural archive (%s)"%tag)
+	var history_scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	check(history_scroll!=null and history_scroll.get_v_scroll_bar().max_value<=history_scroll.get_v_scroll_bar().page+1.0,
+		"The historical notes and credits fit the whole page (%s)"%tag)
+	await shot("jinguashi_history")
+	await press("JinguashiHistoryBack")
 	panel_state("empty",0,0,0,"")
 	await panel_shot("panel_empty",0)
 	# Scoop -> gravel.
@@ -629,6 +641,13 @@ func panel_flow()->void:
 	panel_state("first pan done",0,1,1,"")
 	check(int(bag().get(Gold.ITEM,0))==1,"Server bag +1 gold_ore after the first pan (%s): %d"%[tag,int(bag().get(Gold.ITEM,0))])
 	check(snap_ore()==1,"Snapshot inventory +1 gold_ore after the first pan (%s): %d"%[tag,snap_ore()])
+	await press("GpHistory")
+	var panning_note:=control("MineHistoryPanning") as Label
+	var hauling_note:=control("MineHistoryHauling") as Label
+	check(panning_note!=null and "1894 年" in panning_note.text and hauling_note!=null and "沿軌道" in hauling_note.text,
+		"Finishing the pan unlocks the river entry only (%s)"%tag)
+	await shot("jinguashi_history_panned")
+	await press("JinguashiHistoryBack")
 	# Away while the panel is open.
 	await stand(FAR_SPOT,FAR_AIM)
 	check(UI.is_open(app),"Panel stays open when I walk away (%s)"%tag)
@@ -645,6 +664,15 @@ func panel_flow()->void:
 	check(Gold.step_block(app.session.snapshot,"scoop",bag())==Gold.DAILY_DONE,"Client rules agree: scoop blocked by DAILY_DONE (%s)"%tag)
 	check(int(bag().get(Gold.ITEM,0))==Gold.DAILY and snap_ore()==Gold.DAILY,"Three pans -> 3 gold_ore (%s): %d / %d"%[tag,int(bag().get(Gold.ITEM,0)),snap_ore()])
 	await panel_shot("panel_daily_done",0)
+	app._close_modal()
+	await settle()
+	person().region="home"  # PRESET: reopen the journal from another region.
+	await refresh()
+	preload("res://scripts/history_ui.gd").open(app)
+	await settle()
+	await press("JinguashiHistoryJournal")
+	var saved_note:=control("MineHistoryPanning") as Label
+	check(saved_note!=null and "1894 年" in saved_note.text,"The earned history is readable from the home journal (%s)"%tag)
 	app._close_modal()
 	await settle()
 
@@ -677,7 +705,7 @@ func run()->void:
 		await size_flow()
 		print("NOTE size %s done at %.1f s"%[tag,(Time.get_ticks_msec()-started)/1000.0])
 	check(panel_shots==12,"6 panel screenshots per size (%d)"%panel_shots)
-	check(shots==18,"9 screenshots per size (%d)"%shots)
+	check(shots==22,"11 screenshots per size (%d)"%shots)
 	w.state.erase(Gold.STATE_KEY)  # PRESET cleanup before the final save
 	app.session.shutdown();await create_timer(0.3).timeout
 	app.queue_free();await process_frame;await process_frame

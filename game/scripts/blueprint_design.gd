@@ -29,8 +29,10 @@ const MAX_OWNER_LEN := 64
 const MAX_RECIPE_KEYS := 64
 const DIR_COUNT := 4
 const LAYERS: Array[String] = ["ground", "objects", "roofs"]
-const GROUND_KINDS: Array[String] = ["floor", "path"]
+const GROUND_KINDS: Array[String] = ["floor", "path", "spring_pebble_path"]
 const ROOF_KINDS: Array[String] = ["roof","greenhouse_roof"]
+const Industry=preload("res://scripts/industry.gd")
+const DOUBLE_BENCHES=preload("res://scripts/resident_goals.gd").DOUBLE_BENCHES
 const CONVEYOR := "conveyor"
 const TOP_KEYS: Array[String] = ["version", "name", "width", "height", "pieces"]
 const PIECE_KEYS: Array[String] = ["kind", "x", "y", "settings", "style"]
@@ -123,8 +125,30 @@ static func capture(snapshot: Variant, owner: Variant, area: Variant, name: Vari
 							return _fail("範圍內有損壞的建物資料 (%s)" % cell_key)
 						omitted += 1
 						continue
+				var square_part:=Industry.square_part(obj)
+				var is_square:=kind in Industry.FIXED_SQUARE_STATIONS or (kind in Industry.EXPANDABLE_STATIONS and obj.has(Industry.square_part_field(kind)))
+				if is_square:
+					if square_part<0 or square_part>=Industry.SQUARE_CELLS.size():return _fail("設備占地資料有誤。")
+					var anchor:Vector2i=Vector2i(x,y)-Industry.SQUARE_CELLS[square_part]
+					if not area.encloses(Rect2i(anchor,Vector2i(2,2))):return _fail("請把設備的四格都框進藍圖。")
+					if square_part>0:continue
+				if kind in Industry.ORIENTABLE_FOOTPRINTS:
+					var offsets:=Industry.station_cells(kind,Industry.is_vertical(obj))
+					if square_part<0 or square_part>=offsets.size():return _fail("家具占地資料有誤。")
+					var origin:=Vector2i(x,y)-Vector2i(offsets[square_part])
+					for offset:Vector2i in offsets:
+						if not area.has_point(origin+offset):return _fail("請把家具的完整占地框進藍圖。")
+					if square_part>0:continue
+				if kind in DOUBLE_BENCHES:
+					var offset:=Vector2i.DOWN if obj.get("bench_vertical",false) else Vector2i.RIGHT
+					if obj.get("bench_end",false):
+						if not area.has_point(Vector2i(x,y)-offset):return _fail("請把長椅的兩格都框進藍圖。")
+						continue
+					if not area.has_point(Vector2i(x,y)+offset):return _fail("請把長椅的兩格都框進藍圖。")
 				var piece: Dictionary = {"kind": kind, "x": x - x0, "y": y - y0}
 				if obj.has("style"):piece.style=obj.style
+				if kind in Industry.EXPANDABLE_STATIONS and is_square:piece.settings={"wide":true}
+				if (kind in DOUBLE_BENCHES and obj.get("bench_vertical",false)) or (kind in Industry.ORIENTABLE_FOOTPRINTS and Industry.is_vertical(obj)):piece.settings={"vertical":true}
 				if kind == CONVEYOR:
 					var dir: int = _as_int(obj.get("dir"), 0, DIR_COUNT - 1)
 					if dir == BAD_INT:
@@ -162,19 +186,28 @@ static func rotate(raw: Variant, quarter_turns: Variant, recipes: Variant, item_
 		var piece: Dictionary = item
 		var px: int = int(piece.x)
 		var py: int = int(piece.y)
+		var square:=is_square_piece(piece)
+		var end:=Vector2i(px,py)+(Vector2i.ONE if square else bench_offset(piece))
+		if piece.kind==Industry.FOOT_BATH:
+			end=Vector2i(px,py)+Vector2i(Industry.station_cells(piece.kind,piece.get("settings",{}).get("vertical",false)).back())
 		var w: int = width
 		var h: int = height
 		for _turn: int in quarter_turns:
 			var nx: int = h - 1 - py
 			var ny: int = px
+			end=Vector2i(h-1-end.y,end.x)
 			px = nx
 			py = ny
 			var t: int = w
 			w = h
 			h = t
-		var out: Dictionary = {"kind": String(piece.kind), "x": px, "y": py}
+		var is_bench:bool=piece.kind in (DOUBLE_BENCHES+Industry.ORIENTABLE_FOOTPRINTS)
+		var vertical:=absi(end.y-py)>absi(end.x-px) if piece.kind==Industry.FOOT_BATH else is_bench and end.y!=py
+		var out: Dictionary = {"kind": String(piece.kind), "x": mini(px,end.x) if is_bench or square else px, "y": mini(py,end.y) if is_bench or square else py}
 		if piece.has("style"):out.style=piece.style
-		if piece.has("settings"):
+		if vertical:out.settings={"vertical":true}
+		if piece.kind in Industry.EXPANDABLE_STATIONS and square:out.settings={"wide":true}
+		if piece.kind==CONVEYOR and piece.has("settings"):
 			var settings: Dictionary = piece.settings
 			out["settings"] = {"dir": (int(settings.dir) + quarter_turns) % DIR_COUNT, "filter": String(settings.filter)}
 		pieces.append(out)
@@ -276,12 +309,28 @@ static func _normalize(raw: Variant, recipes: Variant, item_names: Variant) -> D
 		if slots[index] != null:
 			return _bad("同一格同一層只能有一個建物 (%d,%d)" % [px, py])
 		slots[index] = out
+	var extra_cells:Dictionary={}
+	for slot:Variant in slots:
+		if slot==null or (slot.kind not in (DOUBLE_BENCHES+Industry.ORIENTABLE_FOOTPRINTS) and not is_square_piece(slot)):continue
+		var offsets:Array=[bench_offset(slot)] if slot.kind in DOUBLE_BENCHES else Industry.station_cells(slot.kind,slot.get("settings",{}).get("vertical",false)).slice(1)
+		for offset:Vector2i in offsets:
+			var end:=Vector2i(int(slot.x),int(slot.y))+offset
+			if end.x>=width or end.y>=height:return _bad("家具的整個占地都需要在藍圖範圍內")
+			var index:=_layer_index(slot.kind)*cells+end.y*width+end.x
+			if slots[index]!=null or extra_cells.has(index):return _bad("多格家具不能和同層建物重疊")
+			extra_cells[index]=true
 	var pieces: Array = []
 	for slot: Variant in slots:
 		if slot != null:
 			pieces.append(slot)
 	var blueprint: Dictionary = {"version": VERSION, "name": String(clean_name.value), "width": width, "height": height, "pieces": pieces}
 	return {"ok": true, "reason": "", "blueprint": blueprint}
+
+static func is_square_piece(piece:Dictionary) -> bool:
+	return piece.kind in Industry.FIXED_SQUARE_STATIONS or (piece.kind in Industry.EXPANDABLE_STATIONS and piece.get("settings",{}).get("wide",false))
+
+static func bench_offset(piece:Dictionary) -> Vector2i:
+	return Vector2i.DOWN if piece.get("settings",{}).get("vertical",false) else Vector2i.RIGHT
 
 static func _piece(entry: Variant, width: int, height: int, recipe_map: Dictionary, names_map: Dictionary) -> Dictionary:
 	if not (entry is Dictionary):
@@ -311,9 +360,18 @@ static func _piece(entry: Variant, width: int, height: int, recipe_map: Dictiona
 		if not style is String or style.length()>16 or BUILD_STYLES.entry(style+"."+kind).is_empty():
 			return _bad("藍圖片段的建築風格無效")
 		out.style=style
-	if values.has("settings"):
+	if kind in (DOUBLE_BENCHES+Industry.ORIENTABLE_FOOTPRINTS) and values.has("settings"):
+		var seat=values.settings
+		if not seat is Dictionary or seat.size()!=1 or not seat.get("vertical") is bool:return _bad("雙格家具的方向設定無效")
+		if seat.vertical:out.settings={"vertical":true}
+	elif kind in Industry.EXPANDABLE_STATIONS and values.has("settings"):
+		var footprint=values.settings
+		if not footprint is Dictionary or footprint.size()!=1 or typeof(footprint.get("wide"))!=TYPE_BOOL or not footprint.wide:
+			return _bad("加工設備的占地設定無效")
+		out.settings={"wide":true}
+	elif values.has("settings"):
 		if kind != CONVEYOR:
-			return _bad("只有輸送帶可以附帶設定")
+			return _bad("只有輸送帶、雙格長椅與多格加工設備可以附帶設定")
 		var settings_value: Variant = values["settings"]
 		if not (settings_value is Dictionary):
 			return _bad("輸送帶設定格式有誤")

@@ -56,7 +56,7 @@ const PROGRESS:="CookingProgress"
 const RECIPE_PREFIX:="CookingRecipe_"
 const CANCEL_PREFIX:="CookingCancel_"
 # Explicit fixture stock, not normal-play balances.
-const STOCK:={"bread":40,"strawberry_jam":40,"minnow":40,"sea_salt":40,"radish":40,"wheat":40,"fiber":40,"lettuce":40,"tomato":40,"potato":40,"carp":40,"carrot":40,"pumpkin":40,"flour":40,"sugar":40,"chime_herb":40,"egg":40,"strawberry":40,"cucumber":40,"sugar_beet":40,"snow_trout":40,"cabbage":40,"star_mushroom":40,"sweet_potato":40,"rice":40,"eggplant":40,"mist_tea":40,"watermelon":40,"sweet_corn":40,"milk":40,"tea_leaf":40,"seaweed":40}
+const STOCK:={"bread":40,"strawberry_jam":40,"minnow":40,"sea_salt":40,"radish":40,"wheat":40,"fiber":40,"lettuce":40,"tomato":40,"potato":40,"carp":40,"carrot":40,"pumpkin":40,"flour":40,"sugar":40,"chime_herb":40,"egg":40,"strawberry":40,"cucumber":40,"sugar_beet":40,"snow_trout":40,"cabbage":40,"star_mushroom":40,"sweet_potato":40,"rice":40,"eggplant":40,"mist_tea":40,"watermelon":40,"sweet_corn":40,"milk":40,"tea_leaf":40,"seaweed":40,"ginger":40,"sardine":40}
 
 var checks:=0
 var failures:=0
@@ -368,7 +368,22 @@ func pace() -> void:
 	rate_marks.append(Time.get_ticks_msec())
 
 ## Presses a real UI button through its signal (programmatic, not manual play).
-func press(node_name:String,label:String,performs:bool=true) -> bool:
+func tap_pad(id:JoyButton)->void:
+	for down in [true,false]:
+		var event:=InputEventJoypadButton.new()
+		event.button_index=id
+		event.pressed=down
+		root.push_input(event)
+	await settle()
+
+func heard_stove(kind:String)->bool:
+	var deadline:=Time.get_ticks_msec()+800
+	while Time.get_ticks_msec()<deadline:
+		if app.sound.player.playing and app.sound.player.stream==app.sound.sounds[kind]:return true
+		await process_frame
+	return false
+
+func press(node_name:String,label:String,performs:bool=true,with_pad:=false) -> bool:
 	var b:=ctl(node_name) as BaseButton
 	expect(shown(b),"%s: control '%s' present and visible"%[label,node_name])
 	if not shown(b):return false
@@ -378,7 +393,13 @@ func press(node_name:String,label:String,performs:bool=true) -> bool:
 	expect(not b.disabled,"%s: control '%s' enabled"%[label,node_name])
 	if b.disabled:return false
 	if performs:await pace()
-	b.pressed.emit()
+	if with_pad:
+		b.release_focus()
+		var initial:=int(app.session.counter)
+		await tap_pad(JOY_BUTTON_X)
+		expect(root.gui_get_focus_owner()==b and int(app.session.counter)==initial,"%s: X only focuses the intended action"%label)
+		await tap_pad(JOY_BUTTON_A)
+	else:b.pressed.emit()
 	await settle()
 	return true
 
@@ -576,6 +597,16 @@ func run() -> void:
 	await settle(6)
 	expect(app.playing and not app.menu.visible and app.hud.visible,"entered through Session.connected_world -> Main._entered")
 	expect(session.own_id==T.sha256_text().left(16),"Main session holds the public own_id")
+	await pose(near(S))
+	app._interact()
+	await settle()
+	expect(ui()!=null and ctl(RECIPE_PREFIX+World.RESIDENT_GOALS.SEAFOOD_RICE)==null,"Unlearned seafood rice stays out of the stove list")
+	app._close_modal()
+	# Sailing and reporting are exercised in the separate 阿潮 journey.
+	var tester:Dictionary=w.state.players[T]
+	tester.bonds={"achao":{"points":14,"talk_day":-1,"gift_day":-1}}
+	tester[World.RESIDENT_GOALS.RECORD_KEY]={"achao":{"3":""}}
+	session._send_snapshot(1)
 	if await flow_open():
 		await flow_empty_error()
 		await flow_legacy()
@@ -717,7 +748,9 @@ func flow_enqueue_cancel() -> void:
 	if not await open_at(S,"enqueue"):return
 	var inv0:=bag()
 	await select("soup","enqueue soup")
-	if not await press(ENQUEUE,"enqueue soup"):return
+	if DisplayServer.get_name()!="headless":app.sound.stop_cues()
+	if not await press(ENQUEUE,"enqueue soup",true,true):return
+	if DisplayServer.get_name()!="headless":expect(await heard_stove("stove_start"),"Confirmed enqueue plays the stove start cue")
 	var q:=queue_of(S)
 	expect(total(q)==1 and str(q.active.get("kind",""))=="soup" and str(q.active.get("owner",""))==T,"first enqueue starts soup")
 	soup_id=str(q.active.get("id",""))
@@ -782,10 +815,31 @@ func flow_ready_claim() -> void:
 		expect(shown(c) and not c.disabled,"%s: claim available"%l)
 		expect(not usable_cancels().has(soup_id) and not usable_cancels().has(salad_id),"%s: ready food is not cancellable"%l)
 	await shoot("ready",ready_check)
+	if qa:
+		app.modal.hide()
+		if is_instance_valid(app.modal_shade):app.modal_shade.hide()
+		await settle()
+		await RenderingServer.frame_post_draw
+		var view=app.view
+		var drawn:=Rect2(Vector2.ZERO,Vector2(root.size)/view.view_zoom())
+		var stove_bounds:=preload("res://scripts/cooking_feedback.gd").display_bounds(view.screen(Vector2(S)).round())
+		var placement:Dictionary={}
+		for entry:Dictionary in view.world_label_placements(drawn):
+			if entry.id==World.key(S):
+				placement=entry
+				break
+		expect(not placement.is_empty() and not placement.rect.intersects(stove_bounds),"Ready prompt leaves the stove and plate visible")
+		var frame:=root.get_texture().get_image()
+		expect(frame.save_png(qa_dir.path_join("stove-ready-world.png"))==OK,"Saved the ready dish beside the working stove")
+		app.modal.show()
+		if is_instance_valid(app.modal_shade):app.modal_shade.show()
+		await settle()
 	var inv0:=bag()
 	var cooked0:=cooked()
 	var soup_yield:=int(q.ready[0]["yield"])
-	if not await press(CLAIM,"claim"):return
+	if DisplayServer.get_name()!="headless":app.sound.stop_cues()
+	if not await press(CLAIM,"claim",true,true):return
+	if DisplayServer.get_name()!="headless":expect(await heard_stove("stove_claim"),"Confirmed claim plays the separate stove cue")
 	q=queue_of(S)
 	expect(ids_of(q.ready)==[salad_id],"one claim took exactly the oldest ready job")
 	expect(bag()==shifted(inv0,{"soup":soup_yield},1),"claim added soup x%d only"%soup_yield)

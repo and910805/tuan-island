@@ -26,6 +26,16 @@ const World=preload("res://scripts/world.gd")
 const F=preload("res://scripts/flower_nursery.gd")
 const Tea=preload("res://scripts/tea_ceramics.gd")
 const WEATHER=preload("res://scripts/weather.gd")
+const Session=preload("res://scripts/session.gd")
+
+class ProjectSession extends Session:
+	var last_message := ""
+	var last_success := false
+	func _send_notice(_id:int,message:String,success:bool) -> void:
+		last_message=message
+		last_success=success
+	func _send_snapshot(_id:int) -> void:
+		pass
 
 const TOKEN_A:="flower-journey-a"
 const TOKEN_B:="flower-journey-b"
@@ -146,6 +156,7 @@ func complete_outlying_commissions() -> void:
 	act("pick",World.JINGUASHI.NODES[1])
 	travel(World.REGIONS.exit_cell("jinguashi"),"home")
 	for joint in range(joint_count):act("craft",bench,"copper_joint")
+	check_managed_dock(board)
 	act("dock_repair",board,"0")
 	act("dock_repair",board,"1")
 	for id:String in World.OUTLYING_COMMISSIONS.ids():
@@ -164,6 +175,49 @@ func complete_outlying_commissions() -> void:
 		expect(World.OUTLYING_COMMISSIONS.done(world.state,tok,id),"Earned commission preserved after restart: "+id)
 		expect(not World.OUTLYING_COMMISSIONS.done(world.state,TOKEN_B,id),"A later player's commissions stay independent: "+id)
 	verify_ranch_collector()
+
+func check_managed_dock(board:Vector2i) -> void:
+	if failed:return
+	var fixture:=World.new()
+	fixture.state=world.state.duplicate(true)
+	fixture.save_path=world.save_path+".managed-dock"
+	var server:=ProjectSession.new()
+	server.world=fixture
+	server.accepting=true
+	var roster:=Session.Membership.new()
+	server.membership=roster
+	var roster_path:=fixture.save_path+".members"
+	expect(roster.initialize(roster_path,"Test Island","owner","Owner"),"Initialize authenticated project roster")
+	expect(roster.link_legacy("owner","member","Member",tok),"Map earned worker to ordinary member")
+	expect(roster.link_legacy("owner","manager","Manager","dock-test-admin"),"Map manager to a separate character")
+	expect(roster.set_admin("owner",roster.management_id("dock-test-admin"),true),"Grant construction launch permission")
+	fixture.add_player("dock-test-admin","Manager")
+	fixture.state.players["dock-test-admin"].x=40.5
+	fixture.state.players["dock-test-admin"].y=30.5
+	server.peers={2:tok,3:"dock-test-admin"}
+	server.identities={2:{"account_id":"member","expires":Time.get_unix_time_from_system()+60},
+		3:{"account_id":"manager","expires":Time.get_unix_time_from_system()+60}}
+	server.sequences={2:0,3:0}
+	server.rates={2:[],3:[]}
+	var before:Dictionary=fixture.state.players[tok].inventory.duplicate()
+	server._action(2,1,"dock_project_start",board,"")
+	expect(not server.last_success and not fixture.state.has("dock_project_started"),"Member cannot launch authenticated dock project")
+	server._action(2,2,"dock_repair",board,"0")
+	expect(not server.last_success and fixture.state.players[tok].inventory==before,"Member materials stay intact while waiting for approval")
+	server._action(3,1,"dock_project_start",board,"")
+	expect(server.last_success and fixture.state.get("dock_project_started",false),"Manager starts dock project at the board")
+	expect(fixture.load_world(fixture.save_path) and fixture.state.get("dock_project_started",false),"Dock launch survives reload")
+	fixture.state.players[tok].x=39.5
+	fixture.state.players[tok].y=30.5
+	server._action(2,3,"dock_repair",board,"0")
+	expect(server.last_success and int(fixture.state.get("dock_stage",0))==1,"Ordinary member supplies first stage after launch: "+server.last_message)
+	server._action(2,4,"festival_story_open",board,"")
+	expect(not server.last_success and server.last_message.contains("管理員"),"Member cannot announce festival opening")
+	server._action(3,2,"festival_story_open",board,"")
+	expect(not server.last_success and server.last_message.contains("小船"),"Manager must still satisfy festival prerequisites")
+	server.free()
+	for path in [fixture.save_path,fixture.save_path+".bak",roster_path]:
+		if FileAccess.file_exists(path):DirAccess.remove_absolute(path)
 
 func verify_ranch_collector() -> void:
 	var cow:Vector2i=World.LIVESTOCK.ANIMALS.cow.cell
@@ -312,7 +366,7 @@ func flower_a() -> void:
 	save_seed("bluebell")
 	refuse("flower_ship",F.MARKET,"",F.UNSAVED_MESSAGE)
 	act("flower_save",F.SEED_TABLE,"orange_blossom")
-	led("orange_blossom",-1)
+	led("orange_blossom",-F.save_flower_cost("orange_blossom"))
 	refuse("flower_save_take",F.SEED_TABLE,"","留種台上沒有完成的工作。")
 	# Mid-journey save + reload while the saving job is running.
 	expect(reload("saving-in-progress"),"reload while saving is pending")
@@ -474,7 +528,7 @@ func harvest(c:Vector2i) -> void:
 
 func save_seed(kind:String) -> void:
 	act("flower_save",F.SEED_TABLE,kind)
-	led(kind,-1)
+	led(kind,-F.save_flower_cost(kind))
 	refuse("flower_save_take",F.SEED_TABLE,"","留種台上沒有完成的工作。")
 	expect(world.step(F.SAVE_SECONDS,true),"seed-saving wait")
 	act("flower_save_take",F.SEED_TABLE)
@@ -611,6 +665,8 @@ func visit_warm_springs() -> void:
 
 func visit_bamboo_grove() -> void:
 	var grove:=World.REGIONS.Bamboo.REGION
+	var map_site:=preload("res://scripts/island_map.gd").reserve_landmark(grove)
+	expect(World.REGIONS.Bamboo.TEA_BEDS.has_point(map_site.cell) and map_site.item=="mist_tea","Brook map places tea at the real growing beds")
 	var station:Vector2i=World.TRANSIT.points(Tea.MAOKONG).transfer.cell
 	var brew:="mist_tea_brew"
 	if tok==TOKEN_A:
@@ -651,6 +707,8 @@ func visit_bamboo_grove() -> void:
 		travel(FERRY,Tea.MAOKONG)
 
 func visit_star_garden() -> void:
+	var map_site:=preload("res://scripts/island_map.gd").reserve_landmark(World.REGIONS.StarGarden.REGION)
+	expect(map_site.cell==World.RESIDENT_BOND.GARDEN_CELL and World.land(map_site.cell,"star_garden"),"Garden map places Diandian on the actual bank")
 	expect(travel_has("tianwei",F.TRANSFER,"star_garden"),"Earned public garden opens the trail")
 	travel(F.TRANSFER,"star_garden")
 	var pool:Vector2i=World.REGIONS.StarGarden.POOL.position
@@ -715,7 +773,7 @@ func find_resource(kind:String) -> Vector2i:
 				if world.resource(tile)==kind and not world.protected(tile) and not route(tile).is_empty():return tile
 	return Vector2i(-1,-1)
 
-func route(target:Vector2i,reach:float=2.0) -> Array:
+func route(target:Vector2i,reach:float=2.0,allow_tile:=Callable()) -> Array:
 	var local_world:=World.new()
 	local_world.state=world.region_snapshot(world.player_region(tok))
 	local_world._region=world.player_region(tok)
@@ -726,7 +784,7 @@ func route(target:Vector2i,reach:float=2.0) -> Array:
 	while index<queue.size():
 		var tile:Vector2i=queue[index]
 		index+=1
-		if tile!=target and Vector2(tile-target).length()<=reach:
+		if tile!=target and Vector2(tile-target).length()<=reach and (not allow_tile.is_valid() or allow_tile.call(tile)):
 			var path:=[tile]
 			while tile!=start:
 				tile=previous[tile]

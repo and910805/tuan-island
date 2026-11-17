@@ -36,9 +36,9 @@ func run() -> void:
 					var center:=Vector2(point)+Vector2(0.5,0.5)
 					expect(view.to_cell(view.screen(center)*zoom)==point,"Cell center round-trips at either zoom")
 	viewport.free()
-	for inside in [Vector2i(25,19),Vector2i(60,19),Vector2i(25,56),Vector2i(60,56)]:
+	for inside in [Vector2i(25,19),Vector2i(60,19),Vector2i(25,62),Vector2i(60,62)]:
 		expect(Preview.contains(inside),"Preview includes all four corner cells")
-	for outside in [Vector2i(24,19),Vector2i(61,19),Vector2i(25,18),Vector2i(25,57)]:
+	for outside in [Vector2i(24,19),Vector2i(61,19),Vector2i(25,18),Vector2i(25,63)]:
 		expect(not Preview.contains(outside),"Preview excludes neighboring cells")
 
 	var world:=World.new()
@@ -61,7 +61,7 @@ func run() -> void:
 			queue.append(candidate)
 	for entry in [Vector2(38.5,30.5),Vector2(40.5,30.5),Vector2(43.5,30.5),Vector2(44.5,30.5),Vector2(56.5,30.5)]:
 		expect(reached.has(Vector2i(entry*4.0)),"Illustrated lane reaches the interaction approach at %s"%entry)
-	expect(not World.land(Vector2i(51,55)) and world.water(Vector2i(51,55)),"Coastal prop is anchored in existing water")
+	expect(not World.land(Vector2i(51,59)) and world.water(Vector2i(51,59)),"Coastal prop is anchored in existing water")
 	for x in [49,50]:
 		for y in range(51,55):
 			expect(World.land(Vector2i(x,y)) and not world.water(Vector2i(x,y)),"Landing boards stay on existing dry land")

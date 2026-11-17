@@ -6,7 +6,7 @@ const Mines = preload("res://scripts/mine_depths.gd")
 const DAY := 1440.0
 ## Agreed contract: one-based day 1..7 then repeats.
 const EXPECTED := ["sunny","cloudy","rainy","sunny","sunny","rainy","cloudy"]
-const LABEL := {"sunny":"晴天","cloudy":"多雲","rainy":"小雨"}
+const LABEL := {"sunny":"晴天","cloudy":"多雲","rainy":"小雨","windy":"微風"}
 const BIG := 1.0e9
 var checks := 0
 var failures := 0
@@ -30,12 +30,15 @@ func fresh_world() -> Object:
 
 func _initialize() -> void:
 	test_calendar()
+	test_regional_weather()
 	test_advance_plot()
 	test_season_growth()
 	test_world_rain_and_roofs()
 	test_world_caves_and_regions()
 	test_world_sprinklers()
 	test_medium_sprinkler()
+	test_daily_medium_sprinkler()
+	test_large_sprinkler()
 	test_rain_does_not_mark_unused_sprinkler()
 	test_world_persistence_and_rollback()
 	test_world_segmentation()
@@ -49,7 +52,7 @@ func test_calendar() -> void:
 	expect(first.keys().size() == 4 and first.id is String and first.label is String and first.raining is bool and first.day is int, "contract fields and types")
 	for d in range(21):
 		var info: Dictionary = Weather.at(d * DAY + 700.0)
-		var want: String = EXPECTED[d % 7]
+		var want: String = "windy" if d==18 else EXPECTED[d % 7]
 		expect(info.id == want and info.label == LABEL[want] and info.raining == (want == "rainy") and info.day == d + 1, "cycle day %d is %s" % [d + 1, want])
 	expect(Weather.at(DAY - 0.001).day == 1 and Weather.at(DAY - 0.001).id == "sunny", "last instant of day 1")
 	expect(Weather.at(DAY).day == 2 and Weather.at(DAY).id == "cloudy", "midnight belongs to the new day")
@@ -73,6 +76,33 @@ func test_calendar() -> void:
 	var far: Dictionary = Weather.at(1.0e6 * 7.0 * DAY + 2.0 * DAY)
 	expect(far.id == "rainy" and far.raining and far.day == 7000003, "cycle arithmetic far in the future")
 	expect(Weather.at(12345.0, "home") == Weather.at(12345.0, "home"), "deterministic")
+
+func test_regional_weather() -> void:
+	expect(Weather.at(18.0*DAY,"bamboo_grove").id=="windy" and Weather.at(18.0*DAY,"beimen").id=="sunny","Breeze is local to the selected regions")
+	expect(Weather.at(48.0*DAY,"jiaoxi").id=="snowy" and Weather.at(48.0*DAY,"home").id=="cloudy","Jiaoxi receives fine snow on a dry winter day")
+	expect(Weather.at(48.0*DAY,"mine_1").id=="indoor" and Weather.at(34.0*DAY,"jiaoxi").id=="cloudy","Snow stays outside and in winter")
+	var winter_plot:=Weather.advance_plot(false,true,0.0,120.0,48.0*DAY,20.0)
+	expect(not Weather.rains(48.0,"jiaoxi") and not winter_plot.wet and winter_plot.growth==0.0,"Fine snow does not substitute for watering")
+	for day in [0.0,18.0]:
+		var world=World.new()
+		world.state.time=day*DAY
+		world.add_player("grass-tester","甲")
+		var cell:=Vector2i(-1,-1)
+		for y in range(33,45):
+			for x in range(33,53):
+				var candidate:=Vector2i(x,y)
+				if world.resource(candidate)=="grass" and not world.protected(candidate) and not world.water(candidate):
+					cell=candidate
+					break
+			if cell.x>=0:break
+		expect(cell.x>=0,"The real map has an accessible gathering tile")
+		if cell.x<0:continue
+		var person:Dictionary=world.state.players["grass-tester"]
+		person.x=float(cell.x)+0.5
+		person.y=float(cell.y)+0.5
+		var before:int=person.inventory.fiber
+		var result:Dictionary=world.act("grass-tester","grass-weather","axe",cell)
+		expect(result.ok and int(world.state.players["grass-tester"].inventory.fiber)-before==(6 if day==18.0 else 4),"Hand-gathered grass gains exactly two fiber on the breeze day")
 
 func test_season_growth() -> void:
 	expect(Weather.season_on_day(13.0) == "spring" and Weather.season_on_day(14.0) == "summer" and Weather.season_on_day(56.0) == "spring", "Seasons turn after fourteen days and wrap")
@@ -239,6 +269,55 @@ func test_medium_sprinkler() -> void:
 	expect(w.state.crops["43,35"].wet and not w.state.crops["41,33"].wet,"Waters own diagonal crops and skips another owner's crops")
 	expect(device.water==17 and w.state.objects["42,36"].water==0,"Draws 24 tank units and consumes exactly seven")
 	expect(w.state.objects[device_key].network_water==17,"Tracks remaining network water")
+
+func test_daily_medium_sprinkler() -> void:
+	var w=fresh_world()
+	var center:=Vector2i(42,34)
+	var key:=World.key(center)
+	var device:={"type":"medium_sprinkler","owner":"a","items":{},"water":24,"enabled":true,
+		"next_water":0.0,"last_water":-1.0,"sprinkler_daily":true}
+	w.state.objects[key]=device
+	w.step(1.0,true)
+	expect(device.next_water==0.0,"A day with no crop leaves the sprinkler able to water")
+	for offset in World.INDUSTRY.sprinkler_offsets(device.type):
+		if offset!=Vector2i.RIGHT:plot(w.state.crops,World.key(center+offset),"radish",false)
+	w.state.objects["43,34"]={"type":"door","owner":"a","items":{},"open":false}
+	w.step(1.0,true)
+	expect(device.water==19 and device.next_water==DAY,"Waters five accessible plots, saving the next midnight")
+	expect(not w.state.crops["43,33"].wet and not w.state.crops["43,35"].wet,"Closed door keeps both corners dry")
+	w.state.objects["43,34"].open=true
+	w.step(10.0,true)
+	expect(device.water==19 and not w.state.crops["43,35"].wet,"Opening the door does not allow a second run that day")
+	w.state.time=DAY-1.0
+	w.step(2.0,true)
+	expect(device.water==12 and device.next_water==DAY*2.0,"Water runs again after midnight")
+	expect(w.state.crops["43,33"].wet and w.state.crops["43,35"].wet,"Open door allows both corner plots")
+
+func test_large_sprinkler() -> void:
+	var w=fresh_world()
+	var center:=Vector2i(42,34)
+	var key:=World.key(center)
+	var device:={"type":"large_sprinkler","owner":"a","items":{},"water":0,"enabled":true,
+		"next_water":0.0,"last_water":-1.0,"sprinkler_daily":true}
+	w.state.objects[key]=device
+	var offsets:=World.INDUSTRY.sprinkler_offsets("large_sprinkler")
+	expect(offsets.size()==24,"Large sprinkler covers a five by five square minus the center")
+	for offset in offsets:
+		plot(w.state.crops,World.key(center+offset),"radish",false)
+	w.state.objects["42,35"]={"type":"water_pipe","owner":"a","items":{}}
+	w.state.objects["42,36"]={"type":"water_tank","owner":"a","items":{},"water":48}
+	w.step(1.0,true)
+	expect(device.water==24 and device.network_water==24 and device.next_water==DAY,"Pipe feeds the large device, which spends exactly 24 water")
+	for offset in offsets:expect(w.state.crops[World.key(center+offset)].wet,"Large sprinkler wets "+str(offset))
+	w.state.objects["43,34"]={"type":"wall","owner":"a","items":{}}
+	w.state.objects["41,34"]={"type":"door","owner":"a","items":{},"open":true}
+	expect(not w._sprinkler_reaches(center,Vector2i(2,0)),"Wall stops the outer cardinal ray")
+	expect(not w._sprinkler_reaches(center,Vector2i(2,1)),"Wall stops the offset outer ray")
+	expect(not w._sprinkler_reaches(center,Vector2i(2,2)),"Wall touching the trace corner blocks diagonal watering")
+	expect(w._sprinkler_reaches(center,Vector2i(1,2)),"Unblocked narrow ray still waters")
+	expect(w._sprinkler_reaches(center,Vector2i(-2,0)),"Open door passes the ray")
+	w.state.objects["41,34"].open=false
+	expect(not w._sprinkler_reaches(center,Vector2i(-2,0)),"Closing the door blocks the far tile")
 
 func test_rain_does_not_mark_unused_sprinkler() -> void:
 	var w=fresh_world()

@@ -227,7 +227,7 @@ var beta:Client
 var gamma:Client
 
 func scenario()->bool:
-	expect(Session.PROTOCOL==45,"multiplayer protocol version unchanged")
+	expect(Session.PROTOCOL==47,"tool events use the current chicken-care protocol")
 	expect(seed_fixture(),"SEEDED FIXTURE written to TEMP and accepted by SaveSchema.validate")
 	if save_path.is_empty() or not FileAccess.file_exists(save_path):return false
 	var port:=start_server()
@@ -243,10 +243,26 @@ func scenario()->bool:
 	expect(server.multiplayer.is_server() and not alpha.session.multiplayer.is_server() and not beta.session.multiplayer.is_server(),"one server, remote clients")
 	expect(alpha.session.world==null and beta.session.world==null and gamma.session.world==null,"client Sessions hold no World (snapshots only)")
 	expect(alpha.region()=="home" and beta.region()=="home" and gamma.region()==SURFACE,"alpha/beta at home, gamma on the jinguashi surface")
+	var disallowed_rest:=await act(alpha,"night_rest",Vector2i.ZERO)
+	expect(disallowed_rest.replied and not disallowed_rest.ok,"A remote peer cannot advance a multiplayer island unilaterally")
 	print("TOOL_ACTION_SESSION_LABEL machine=single process=single transport=%s loopback=127.0.0.1:%d clients=3(alpha,beta home; gamma jinguashi)"%["websocket" if ws else "UNEXPECTED",port])
 	await settle(live())
 	var a_id:String=alpha.session.own_id
 	var b_id:String=beta.session.own_id
+
+	var marked:=await act(alpha,"map_signal",PLOT,"wood")
+	var shared:Array=beta.session.snapshot.get("map_signals",[])
+	expect(marked.ok and shared.size()==1 and shared[0].cell==PLOT and shared[0].kind=="wood","A nearby marker travels over WebSocket to another resident")
+	expect(gamma.session.snapshot.get("map_signals",[]).is_empty(),"Players in a different region receive no marker")
+	var far_away:=await act(alpha,"map_signal",Vector2i(60,30),"build")
+	expect(not far_away.ok and beta.session.snapshot.map_signals[0].kind=="wood","A distant request cannot replace the active marker")
+	var second:=await act(beta,"map_signal",PLOT,"build")
+	var cancelled:=await act(alpha,"map_signal",Vector2i.ZERO,"cancel")
+	var remaining:Array=beta.session.snapshot.get("map_signals",[])
+	expect(second.ok and cancelled.ok and remaining.size()==1 and remaining[0].kind=="build","Cancelling one player's mark leaves the other player's mark intact")
+	var marker:Dictionary=server.map_signals.values()[0]
+	expect(server.map_signal_view("home",int(marker.until)-1)[0].remaining==1
+		and server.map_signal_view("home",int(marker.until)).is_empty(),"The mark expires at its 30-second deadline")
 
 	# 1. alpha's confirmed hoe animates once on alpha and on beta; gamma gets nothing.
 	var hoe:=await act(alpha,"hoe",PLOT)
@@ -294,9 +310,14 @@ func scenario()->bool:
 	frozen_ms=Time.get_ticks_msec()
 	var seed_ok:=await act(beta,"water",PLOT)
 	expect(seed_ok.ok,"beta acts while alpha is offline")
+	var note_sent:=await act(beta,"news_note",Vector2i.ZERO,"等你回來收成。")
+	expect(note_sent.ok,"beta posts a durable note while alpha is offline")
 	var away_n:=newest_n()
 	alpha=await join("alpha2",ALPHA,port)
 	expect(joined(alpha),"alpha rejoined")
+	expect(bool(alpha.session.snapshot.island_news.returning) and int(alpha.session.snapshot.island_news.notes_unread)==1,"Reconnect projects the unread offline note for the returning resident")
+	var acknowledged:=await act(alpha,"news_notes_read",Vector2i.ZERO,str(alpha.session.snapshot.island_news.note_revision))
+	expect(acknowledged.ok and int(alpha.session.snapshot.island_news.notes_unread)==0 and int(beta.session.snapshot.island_news.notes_unread)==1,"Acknowledging the note updates only the reader")
 	await pause(0.3)
 	await settle(live())
 	expect(alpha.first_events.has(away_n),"rejoined alpha's first snapshot still lists the earlier event (window kept open)")
@@ -327,7 +348,83 @@ func scenario()->bool:
 		expect(c.leaked.is_empty(),"%s never received a raw token in tool_actions: %s"%[c.label,c.leaked])
 		expect(c.payload_keys_ok,"%s only received {actor,n,tool,x,y} events"%c.label)
 	expect(gamma.received.is_empty() and gamma.started.is_empty(),"other-region client never received or animated a tool event")
+	var tree:=PLOT+Vector2i.DOWN
+	var tree_key:=World.key(tree)
+	server.world.state.forest[tree_key]={"growth":World.TREE_TIME,"mature":true,"owner":ALPHA}
+	var results:Dictionary={}
+	alpha.session.action_completed.connect(func(sequence:int,action:String,result:Dictionary):
+		if action=="axe":results[sequence]=result
+	)
+	for hit in 3:
+		var sequence:int=alpha.session.perform("axe",tree)
+		var arrived:=await wait_until(func():return results.has(sequence),4.0)
+		expect(arrived and results[sequence].ok and results[sequence].get("gather_continue",false)==(hit<2),
+			"The correlated WebSocket response permits the next swing only before the final hit")
+	expect(not server.world.state.forest.has(tree_key),"The last hit removes the authoritative tree")
+	await verify_night_vote(port)
 	return true
+
+func verify_night_vote(port:int) -> void:
+	server.set_physics_process(false)
+	server.world.state.time=350.0
+	server.world.state.players[GAMMA].region="mine_1"
+	for id in server.peers:server._send_snapshot(id)
+	var unsafe:=await act(alpha,"night_vote",Vector2i.ZERO,"open")
+	expect(not unsafe.ok and server.night_vote.is_empty() and server.world.state.time==350.0,"An online player in a mine prevents opening a ballot")
+	server.world.state.players[GAMMA].region=SURFACE
+	for id in server.peers:server._send_snapshot(id)
+	await settle(live())
+	var trade:=World.TRADE.open("test-open",ALPHA,GAMMA,Time.get_unix_time_from_system())
+	server.world.trade_offers["test-open"]=trade.offer
+	var trading:=await act(alpha,"night_vote",Vector2i.ZERO,"open")
+	expect(not trading.ok and server.night_vote.is_empty(),"An active exchange blocks the ballot")
+	server.world.trade_offers.clear()
+	alpha.session.perform("night_vote",Vector2i.ZERO,"open")
+	var visible:=await wait_until(func():return int(gamma.session.snapshot.get("night_vote",{}).get("id",0))>0,5.0)
+	expect(visible and bool(alpha.session.snapshot.night_vote.mine)
+		and int(gamma.session.snapshot.night_vote.yes)==1 and server.world.state.time==350.0,"The first vote stays pending and is visible across regions")
+	if not visible:return
+	var first_id:int=gamma.session.snapshot.night_vote.id
+	var decline:=await act(gamma,"night_vote",Vector2i.ZERO,"no:%d"%first_id)
+	expect(decline.replied and server.night_vote.is_empty() and server.world.state.time==350.0,"One decline closes the ballot without skipping")
+	alpha.session.perform("night_vote",Vector2i.ZERO,"open")
+	var reopened:=await wait_until(func():return int(gamma.session.snapshot.night_vote.id)>first_id,5.0)
+	expect(reopened,"A new ballot has a fresh identifier")
+	if not reopened:return
+	var second_id:int=gamma.session.snapshot.night_vote.id
+	var stale:=await act(gamma,"night_vote",Vector2i.ZERO,"yes:%d"%first_id)
+	expect(not stale.ok and server.night_vote.yes.size()==1 and server.world.state.time==350.0,"An older vote cannot approve a new ballot")
+	var new_peer:=await join("beta2",BETA,port)
+	expect(joined(new_peer) and server.night_vote.is_empty(),"A new arrival cancels the ballot and requires a fresh vote")
+	alpha.session.perform("night_vote",Vector2i.ZERO,"open")
+	var three_online:=await wait_until(func():
+		var vote:Dictionary=new_peer.session.snapshot.get("night_vote",{})
+		return int(vote.get("total",0))==3 and int(vote.get("id",0))>second_id
+	,5.0)
+	expect(three_online,"The new ballot includes all three online players")
+	await leave(new_peer)
+	clients.erase(new_peer)
+	await wait_until(func():return not server.peers.values().has(BETA),5.0)
+	expect(server.night_vote.is_empty() and server.world.state.time==350.0,"Leaving never turns a partial vote into a unanimous one")
+	alpha.session.perform("night_vote",Vector2i.ZERO,"open")
+	var timed:=await wait_until(func():return int(gamma.session.snapshot.night_vote.id)>second_id,5.0)
+	expect(timed,"A fresh ballot opens after the membership change")
+	if not timed:return
+	server.night_vote.until=Time.get_ticks_msec()-1
+	server._physics_process(0.0)
+	await wait_until(func():return int(gamma.session.snapshot.night_vote.id)==0,5.0)
+	expect(server.night_vote.is_empty() and server.world.state.time==350.0,"An expired ballot leaves time alone")
+	alpha.session.perform("night_vote",Vector2i.ZERO,"open")
+	var final_open:=await wait_until(func():return int(gamma.session.snapshot.night_vote.id)>second_id,5.0)
+	expect(final_open,"The last ballot opens for the remaining players")
+	if not final_open:return
+	var final_id:int=gamma.session.snapshot.night_vote.id
+	var before:int=server.world.state.committed
+	var finished:=await act(gamma,"night_vote",Vector2i.ZERO,"yes:%d"%final_id)
+	expect(finished.ok and server.night_vote.is_empty() and server.world.state.time==360.0
+		and float(alpha.session.snapshot.time)==360.0 and float(gamma.session.snapshot.time)==360.0,"Both regions advance together only on unanimous consent")
+	var repeated:=await act(gamma,"night_vote",Vector2i.ZERO,"yes:%d"%final_id)
+	expect(not repeated.ok and int(server.world.state.committed)==before+1,"A late duplicate cannot settle or save the night again")
 
 func teardown()->void:
 	for c in clients.duplicate():await leave(c)

@@ -228,10 +228,10 @@ func cooked(w,token:String) -> int:
 func close(a:float,b:float) -> bool:
 	return absf(a-b)<=TOL
 
-func seeded_picks() -> Array:
+func seeded_picks(person:Dictionary) -> Array:
 	var rng:=RandomNumberGenerator.new()
 	rng.seed=SEED
-	var kinds:Array=World.RECIPES.keys()
+	var kinds:Array=World.RECIPES.keys().filter(func(kind:String):return World.has_recipe(person,kind))
 	kinds.sort()
 	var picks:=[]
 	for i in Queue.CAPACITY:picks.append(str(kinds[rng.randi_range(0,kinds.size()-1)]))
@@ -243,9 +243,17 @@ func seeded_picks() -> Array:
 func ten_job_world(tag:String) -> Dictionary:
 	var w=new_world()
 	var s:=place_stove(w)
-	var picks:=seeded_picks()
+	var person:Dictionary=w.state.players[A]
+	var picks:=seeded_picks(person)
 	var ids:=[]
 	var spent:={}
+	var required:Dictionary={}
+	for kind:String in picks:
+		var ingredients:Dictionary=World.RECIPES[kind].ingredients
+		for item:String in ingredients:
+			required[item]=int(required.get(item,0))+int(ingredients[item])
+	for item:String in required:
+		person.inventory[item]=maxi(int(person.inventory.get(item,0)),int(required[item]))
 	var inv0:=inv(w,A)
 	for i in picks.size():
 		var kind:String=picks[i]

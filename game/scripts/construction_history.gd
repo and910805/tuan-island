@@ -1,4 +1,6 @@
 extends RefCounted
+
+const Industry=preload("res://scripts/industry.gd")
 ## T034 server-only construction history: dependency watches, fingerprints and
 ## strict persisted-shape validation for `state.construction`.
 ##
@@ -348,7 +350,10 @@ static func validate(s: Dictionary, size: Vector2i, build: Dictionary, regions: 
 	if not last is Dictionary or last.size() > MAX_ENTRIES:return false
 	var players = s.get("players")
 	if not players is Dictionary:return false
-	var materials := {}
+	# Alternate placement recipes and older machines can refund materials
+	# which do not appear in the current construction catalog.
+	var materials := {"sprinkler_kit":true,"ochre_earth":true}
+	for kit: String in Industry.SPRINKLER_KITS.values():materials[kit]=true
 	for kind in build:
 		for item in build[kind]:
 			if item != "name":materials[item] = true
@@ -400,9 +405,9 @@ static func _entry_valid(entry, token: String, serial: int, size: Vector2i, buil
 				if e == null:continue
 				var kind = e.get("type")
 				if not build.has(kind) or not players.has(e.get("owner")):return false
-				if layer == "ground" and kind not in ["floor","path"]:return false
+				if layer == "ground" and kind not in ["floor","path","spring_pebble_path"]:return false
 				if layer == "roofs" and kind not in ["roof","greenhouse_roof"]:return false
-				if layer == "objects" and kind in ["floor","path","roof","greenhouse_roof"]:return false
+				if layer == "objects" and kind in ["floor","path","spring_pebble_path","roof","greenhouse_roof"]:return false
 	if full < 1:return false
 	for owner in record.inventory_deltas:
 		if not players.has(owner):return false

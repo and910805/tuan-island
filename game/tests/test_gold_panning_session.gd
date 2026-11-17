@@ -419,6 +419,10 @@ func scenario()->bool:
 		var want_a:String=str(s[3]) if who==alpha else str(s[4])
 		await wait_until(func():return own_text(alpha)==want_a and own_text(beta)==want_b,3.0)
 		expect(own_text(alpha)==want_a and own_text(beta)==want_b,"case 6 step %d: alpha %s / beta %s (got %s / %s)"%[i,want_a,want_b,own_text(alpha),own_text(beta)])
+		var a_notes:Dictionary=alpha.session.snapshot.get("history_memory",{}).get("mine_fieldwork",{})
+		var b_notes:Dictionary=beta.session.snapshot.get("history_memory",{}).get("mine_fieldwork",{})
+		expect(a_notes.get("panned",false) and b_notes.get("panned",false)==(str(s[1])=="pick"),
+			"Each player's history page follows their own finished pan at step %d"%i)
 	await refuse(beta,"swirl",GP.SITE,GP.NEED_SCOOP,"case 6 beta swirls an empty pan while alpha's pan is at stage 3",[alpha])
 	await refuse(alpha,"pick",GP.SITE,GP.NOT_YET,"case 6 alpha picks at stage 3",[beta])
 	expect(alpha.ore()==1 and beta.ore()==1,"case 6 one gold_ore each (alpha %d, beta %d)"%[alpha.ore(),beta.ore()])
@@ -430,6 +434,7 @@ func scenario()->bool:
 	await settle([alpha,beta,gamma])
 	expect(region_of(gamma)=="home","case 7 gamma is at home (%s)"%region_of(gamma))
 	expect(not gamma.session.snapshot.has(GP.OWN_KEY),"case 7 gamma's snapshot has no own_gold_panning key")
+	expect(not gamma.session.snapshot.get("history_memory",{}).has("mine_fieldwork"),"A late arrival never receives other players' history flags")
 	private_check(gamma,false,"case 7")
 	await refuse(gamma,"scoop",GP.SITE,GP.WRONG_REGION,"case 7 gamma (at home) scoops",[alpha,beta])
 	await refuse(gamma,"pick",GP.SITE,GP.WRONG_REGION,"case 7 gamma (at home) picks",[alpha,beta])
@@ -473,6 +478,8 @@ func scenario()->bool:
 	await wait_until(func():return alpha.own() is Dictionary and beta.own() is Dictionary,3.0)
 	expect(marks_of([alpha,beta])==before8,"case 8 restart: own views and bags equal the pre-restart snapshots (%s vs %s)"%[str(marks_of([alpha,beta])),str(before8)])
 	for c:Client in [alpha,beta]:private_check(c,true,"case 8")
+	expect(alpha.session.snapshot.get("history_memory",{}).get("mine_fieldwork",{}).get("panned",false),
+		"The earned page is reconstructed after the server reloads its save")
 
 	# 9. Daily limit over the wire: alpha finishes pans 2 and 3; the fourth scoop is refused.
 	await succeed(alpha,"swirl",GP.SWIRL_OK%1,"case 9 alpha resumes: swirl 2",[beta])
@@ -493,6 +500,11 @@ func scenario()->bool:
 	expect(own_text(beta)==view(0,1,1) and beta.ore()==1,"case 9 beta untouched by alpha's pans (%s, ore %d)"%[own_text(beta),beta.ore()])
 	expect(GP.step_block(beta.session.snapshot,"scoop",beta.bag())=="","case 9 beta may still scoop (her own count is 1)")
 	for c:Client in [alpha,beta]:private_check(c,true,"case 9")
+	server.world.state.players[ALPHA].region="home"  # PRESET: verify the home snapshot.
+	await settle([alpha,beta])
+	expect(region_of(alpha)=="home" and not alpha.session.snapshot.has(GP.OWN_KEY)
+		and alpha.session.snapshot.get("history_memory",{}).get("mine_fieldwork",{}).get("panned",false),
+		"The home snapshot keeps the unlocked entry without active panning state")
 	await leave(alpha)
 	await leave(beta)
 	alpha=null

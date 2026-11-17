@@ -295,6 +295,64 @@ func check_mouse() -> void:
 	expect(modal_open(), "disabled click keeps the chest panel open")
 	await close_chest()
 
+func check_private_deposit() -> void:
+	var key:=World.key(CELL)
+	world.state.objects[key]={"type":"private_chest","owner":TOKEN,"items":{"wood":4}}
+	await open_chest()
+	var toggle:=chest_button("ChestGuestDeposit")
+	expect(toggle!=null and toggle.text=="允許同島玩家存入","Owner can allow guest deposits")
+	ready_to_act()
+	if toggle:toggle.pressed.emit()
+	expect(box().get("guest_deposit",false),"Owner control saves the deposit permission")
+	world.add_player("guest","訪客")
+	var guest:Dictionary=world.state.players.guest
+	guest.x=39.5
+	guest.y=33.5
+	guest.inventory.wood=2
+	app.session.peers[1]="guest"
+	app.session._send_snapshot(1)
+	var redacted:Dictionary=app.session.snapshot.objects[key]
+	expect(redacted.locked and redacted.guest_deposit and redacted.items.is_empty() and not redacted.has("box_id"),
+		"Guest sees the deposit permission without contents or source identity")
+	await open_chest()
+	expect(chest_button("ChestGuestDeposit")==null,"Guest cannot edit the setting")
+	expect(not chest_button("ChestDepositAll").disabled and chest_button("ChestWithdrawAll").disabled,"Only the deposit control is available")
+	ready_to_act()
+	chest_button("ChestDepositAll").pressed.emit()
+	expect(int(guest.inventory.wood)==0 and stored("wood")==6,"Guest can deposit through the actual UI")
+	app.session.peers[1]=TOKEN
+	app.session.peers[2]="guest"
+	app.session._send_snapshot(1)
+	await open_chest()
+	var picker:=chest_button("ChestGuestWithdraw")
+	expect(picker!=null,"Private chest owner has a visitor withdrawal picker")
+	if picker==null:return
+	picker.pressed.emit()
+	var choices:Array=app.modal.find_children("*","Button",true,false)
+	var guests:=choices.filter(func(control):return control.text=="開放給 訪客")
+	expect(guests.size()==1,"Owner can choose a named visitor")
+	if guests.is_empty():return
+	ready_to_act()
+	guests[0].pressed.emit()
+	expect(box().get("withdraw_guest")=="guest","Picker sends the grant to the game session")
+	app.session.peers.erase(2)
+	expect(world.act(TOKEN,"close-deposit-test","box_deposit_access",CELL,"owner").ok,"Owner closes deposits independently")
+	world.add_player("bystander","旁人")
+	app.session.peers[1]="bystander"
+	app.session._send_snapshot(1)
+	var bystander:Dictionary=app.session.snapshot.objects[key]
+	expect(bystander.items.is_empty() and not bystander.has("withdraw_guest") and not bystander.has("guest_withdraw"),
+		"Uninvited peers receive neither contents nor the guest identity")
+	app.session.peers[1]="guest"
+	world.state.players.guest.inventory.wood=1
+	app.session._send_snapshot(1)
+	await open_chest()
+	expect(chest_button("ChestGuestWithdraw")==null,"Guest does not receive withdrawal settings")
+	expect(chest_button("ChestDepositAll").disabled and not chest_button("ChestWithdrawAll").disabled,"Named guest has withdrawal only")
+	ready_to_act()
+	chest_button("ChestWithdrawAll").pressed.emit()
+	expect(int(world.state.players.guest.inventory.wood)==7 and stored("wood")==0,"Authorized guest retrieves wood using actual UI")
+
 func run() -> void:
 	create_timer(180.0).timeout.connect(func():
 		if not finished:
@@ -328,6 +386,7 @@ func run() -> void:
 	await check_press_half()
 	await check_keyboard()
 	await check_mouse()
+	await check_private_deposit()
 	app.life_panels.updates.clear()
 	app.queue_free()
 	await process_frame

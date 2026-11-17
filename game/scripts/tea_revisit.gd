@@ -97,6 +97,11 @@ const JAR_REGION:="yingge"
 const FILL_REGION:="maokong"
 const POTTER:=Vector2i(20,20)    # = TeaCeramics.POTTER 鶯歌陶師的工作桌
 const PACKER:=Vector2i(26,20)    # = TeaCeramics.PACKER 貓空包裝台（擋路）
+const HOUSE_SITE:=Vector2i(20,22)
+const HOUSE_KEY:="maokong_tea_display"
+const HOUSE_DISPLAY:="tea_house_display"
+const HOUSE_RECLAIM:="tea_house_reclaim"
+const HOUSE_ACTIONS:=[HOUSE_DISPLAY,HOUSE_RECLAIM]
 const JAR_ACTION:="tea_revisit_jar"
 const FILL_ACTION:="tea_revisit_fill"
 const SEND_ACTION:="tea_revisit_send"
@@ -146,8 +151,8 @@ const TOO_FAR:="再靠近一點。"
 const BAD_EXTRA:="請重新操作茶罐大單。"
 const ALREADY_DONE:="茶罐大單已經寄出了。"
 const BAD_JAR:="請選一只回收陶罐或磨損陶罐。"
-const NEW_JAR:="陶罐（新燒的或修好的）還沒送過貨，不算回收空罐；這張單只收送貨回來的回收陶罐或磨損陶罐。"
-const SPENT_JAR:="待修陶罐已經裝不了茶，這張單不收；請改交回收陶罐或磨損陶罐。"
+const NEW_JAR:="新罐或修好的罐還沒送過貨。請交回收罐或磨損罐。"
+const SPENT_JAR:="待修罐已裝不了茶。請交回收罐或磨損罐。"
 const JARS_FULL:="大單要的 6 只空罐已經收齊了。"
 const NO_JAR:="你的背包裡沒有%s。"
 const JAR_OK:="陶師檢查過這只%s，收進大單的空罐箱。（已收 %d／6 只）"
@@ -512,3 +517,30 @@ static func artifacts_valid(s:Dictionary) -> bool:
 			var person:Variant=players[token]
 			if person is Dictionary and person.get("inventory") is Dictionary and int(person.inventory.get(TEAWARE_ITEM,0))!=0:return false
 	return true
+
+static func house_open(s:Dictionary) -> bool:
+	return completed(s) and (s.get("festival_story_open",false)==true or s.get("festival_story",{}).get("opened",false)==true)
+
+static func house_valid(s:Dictionary) -> bool:
+	if not s.has(HOUSE_KEY):return true
+	var display:Variant=s[HOUSE_KEY]
+	return s.get("festival_story_open",false)==true and completed(s) and display is Dictionary \
+		and display.get("lender") is String and s.players.has(display.lender)
+
+static func house_action(s:Dictionary,token:String,action:String,cell:Vector2i,extra:String,region:String) -> Dictionary:
+	if region!=FILL_REGION or cell!=HOUSE_SITE or not extra.is_empty():return _fail("請到貓空茶屋的展示桌旁。")
+	if not house_open(s):return _fail("風鈴節開幕並完成茶罐大單後，就能布置茶屋。")
+	var display:Dictionary=s.get(HOUSE_KEY,{})
+	var inventory:Dictionary=s.players[token].inventory
+	var held:=int(inventory.get(TEAWARE_ITEM,0))
+	if action==HOUSE_DISPLAY:
+		if not display.is_empty():return {"ok":false,"message":"桌上已經展出一組茶陶。"}
+		if held<1:return {"ok":false,"message":"帶一組茶陶組來，就可以借給茶屋展出。"}
+		inventory[TEAWARE_ITEM]=held-1
+		s[HOUSE_KEY]={"lender":token}
+		return {"ok":true,"message":"茶陶組已擺上茶屋展示桌，來客現在都看得到了。"}
+	if display.get("lender","")!=token:return {"ok":false,"message":"出借茶陶組的島民可以收回。"}
+	if held>=MAX_ITEM:return {"ok":false,"message":"背包的茶陶組已達上限。"}
+	inventory[TEAWARE_ITEM]=held+1
+	s.erase(HOUSE_KEY)
+	return {"ok":true,"message":"茶陶組已收回背包。"}

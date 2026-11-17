@@ -78,6 +78,7 @@ var KILN:=Vector2i(-1,-1)
 var FOREIGN:=Vector2i(-1,-1)
 var FLOUR_MILL:=Vector2i(-1,-1)
 var JAM_POT:=Vector2i(-1,-1)
+var SEED_MAKER:=Vector2i(-1,-1)
 var legacy_job:={}
 var rate_marks:=[]
 var ids:=[]
@@ -255,7 +256,7 @@ func setup_world() -> bool:
 	for candidate in World.SHIPPING.CANDIDATES:avoid.append(candidate)
 	for candidate in World.COMMUNITY.CANDIDATES:avoid.append(candidate)
 	var sites:=[]
-	for i in 6:
+	for i in 7:
 		var s:=find_site(w0,avoid)
 		if s.x<0:return false
 		sites.append(s)
@@ -268,6 +269,10 @@ func setup_world() -> bool:
 	w0.state.objects[World.key(JAM_POT)]={"type":"jam_pot","owner":T,"items":{}}
 	w0.state.players[T].inventory["strawberry"]=3
 	w0.state.players[T].inventory["sugar"]=1
+	SEED_MAKER=sites[6]
+	w0.state.objects[World.key(SEED_MAKER)]={"type":"seed_maker","owner":T,"items":{},"joinery_seed_maker":true}
+	w0.state.players[T].inventory["radish"]=1
+	w0.state.players[T].inventory["charcoal"]=1
 	var shape:={"items":{},"input_wood":0,"auto_enabled":false}
 	for entry in [[MILL,"sawmill",T],[AUTO,"sawmill",T],[KILN,"charcoal_kiln",T],[FOREIGN,"charcoal_kiln",B]]:
 		var obj:Dictionary=shape.duplicate(true)
@@ -349,7 +354,7 @@ func reachable(c:Control,label:String) -> bool:
 	return ok
 
 ## Presses a real UI button through its signal (programmatic, not manual play).
-func press(node_name:String,label:String,performs:bool=true) -> bool:
+func press(node_name:String,label:String,performs:bool=true,shortcut:=false) -> bool:
 	var b:=ctl(node_name) as BaseButton
 	expect(shown(b),"%s: control '%s' present and visible"%[label,node_name])
 	if not shown(b):return false
@@ -359,9 +364,21 @@ func press(node_name:String,label:String,performs:bool=true) -> bool:
 	expect(not b.disabled,"%s: control '%s' enabled"%[label,node_name])
 	if b.disabled:return false
 	if performs:await pace()
-	b.pressed.emit()
+	if shortcut:
+		await tap_joy(JOY_BUTTON_X)
+		expect(root.gui_get_focus_owner()==b,"%s: X focuses the expected action"%label)
+		await tap_joy(JOY_BUTTON_A)
+	else:b.pressed.emit()
 	await settle()
 	return true
+
+func tap_joy(button:JoyButton)->void:
+	for pressed in [true,false]:
+		var event:=InputEventJoypadButton.new()
+		event.button_index=button
+		event.pressed=pressed
+		root.push_input(event)
+	await process_frame
 
 ## Switches tab; must not send any world action. A visible but disabled tab
 ## button is accepted as "already the current tab".
@@ -522,6 +539,8 @@ func run() -> void:
 		await flow_keys()
 		await flow_corn_feed()
 		await flow_jam_pot()
+		await flow_seed_maker()
+		await flow_kiln_output()
 	await finish()
 
 # ------------------------------------------------------------------ flows --
@@ -536,8 +555,13 @@ func flow_corn_feed() -> void:
 	var fiber:=held("fiber")
 	if not await press(ENQUEUE,"queue corn feed"):return
 	expect(held("sweet_corn")==0 and held("fiber")==fiber-2,"mill UI charges one corn and two fiber")
+	var mill_feedback:=preload("res://scripts/mill_feedback.gd")
+	var grinding:=mill_feedback.classify(dev(FLOUR_MILL),float(w.state.time))
+	expect(grinding.working and grinding.active_kind=="feed","Corn feed uses the world mill animation")
 	expect(unusable(CLAIM),"mill UI prevents early claim")
 	await advance(60.0,"finish corn feed")
+	var finished:=mill_feedback.classify(dev(FLOUR_MILL),float(w.state.time))
+	expect(not finished.working and finished.ready_kind=="feed" and mill_feedback.sample(finished,0.0,true).badges[0].item=="feed","Finished feed uses the feed badge")
 	if not await press(CLAIM,"claim corn feed"):return
 	expect(held("feed")==before+4 and unusable(CLAIM),"mill UI grants four feed once")
 
@@ -549,9 +573,54 @@ func flow_jam_pot() -> void:
 	if not await press(ENQUEUE,"queue strawberry jam"):return
 	expect(held("strawberry")==0 and held("sugar")==0,"jam pot charges three strawberries and one sugar")
 	expect(unusable(CLAIM),"jam pot prevents early claim")
+	var cancels:=usable_cancels()
+	expect(cancels.size()==1,"jam pot offers cancellation for a running batch")
+	if cancels.size()!=1:return
+	if not await press(str((cancels.values()[0] as Node).name),"cancel strawberry jam"):return
+	expect(held("strawberry")==3 and held("sugar")==1,"jam pot refunds the exact batch ingredients")
+	if not await press(ENQUEUE,"requeue strawberry jam"):return
 	await advance(180.0,"finish strawberry jam")
 	if not await press(CLAIM,"claim strawberry jam"):return
 	expect(held("strawberry_jam")==2 and unusable(CLAIM),"jam pot grants two jars once")
+
+func flow_seed_maker() -> void:
+	if not await open_at(SEED_MAKER,"seed maker",false):return
+	var grid:=ctl("ProcessingRecipes")
+	expect(grid!=null and grid.get_child_count()==21,"Seed maker lists the 21 available seed recipes")
+	expect(ctl("ProcessingRecipe_bluebell_seed")==null and ctl("ProcessingRecipe_chime_herb_seed")==null,
+		"Nursery recipes are absent from the seed maker")
+	await shoot("seed-maker",func(label):
+		expect(usable(ENQUEUE),"%s: radish can be queued"%label)
+		var shelf:=ctl("ProcessingRecipeScroll") as ScrollContainer
+		var card:=ctl("ProcessingRecipeCard")
+		var crop:=ctl("ProcessingMaterial_radish")
+		var fuel:=ctl("ProcessingMaterial_charcoal")
+		expect(shown(card) and shown(crop) and shown(fuel),"%s: current recipe and materials are visible"%label)
+		if shelf==null or not shown(card) or not shown(crop) or not shown(fuel):return
+		var bounds:=shelf.get_global_rect()
+		var first_seed:=ctl("ProcessingRecipe_radish_seed")
+		expect(card.get_global_rect().end.y<bounds.position.y and fuel.get_global_rect().end.y<=bounds.position.y,
+			"%s: both costs remain above the scrolled seed shelf"%label)
+		expect(bounds.encloses(first_seed.get_global_rect()),"%s: at least one recipe row fits"%label)
+		var enqueue_bounds:=ctl(ENQUEUE).get_global_rect()
+		expect(ui().get_global_rect().encloses(enqueue_bounds),"%s: queue button stays inside the panel"%label)
+		expect(not enqueue_bounds.intersects(ctl(STATUS).get_global_rect()),"%s: queue button never overlaps status feedback"%label))
+	var last_seed:=grid.get_child(grid.get_child_count()-1) as Button
+	last_seed.grab_focus()
+	await settle(6)
+	var shelf:=ctl("ProcessingRecipeScroll") as ScrollContainer
+	expect(shelf.get_global_rect().encloses(last_seed.get_global_rect()),"Keyboard focus scrolls the last seed fully into view")
+	last_seed.pressed.emit()
+	await settle(3)
+	expect(not usable(ENQUEUE),"Selecting an unaffordable seed updates the fixed recipe details")
+	(ctl("ProcessingRecipe_radish_seed") as Button).pressed.emit()
+	await settle(3)
+	var seeds:=held("radish_seed")
+	if not await press(ENQUEUE,"queue radish seed"):return
+	expect(held("radish")==0 and held("charcoal")==0,"Seed maker charges the mature crop and fuel")
+	await advance(60.0,"finish radish seed")
+	if not await press(CLAIM,"claim radish seed"):return
+	expect(held("radish_seed")==seeds+1,"Claim one seed")
 
 func flow_open() -> bool:
 	await pose(near(MILL))
@@ -595,7 +664,7 @@ func flow_enqueue_cancel() -> void:
 	if not await open_at(MILL,"enqueue"):return
 	var wood0:=held("wood")
 	for i in 3:
-		if not await press(ENQUEUE,"enqueue %d"%i):return
+		if not await press(ENQUEUE,"enqueue %d"%i,true,i==0):return
 	var p:=q(MILL)
 	ids=all_ids(p)
 	expect(ids.size()==3 and str(p.active.get("owner",""))==T,"three jobs queued through the UI")
@@ -629,20 +698,75 @@ func flow_ready_claim() -> void:
 	expect(usable(CLAIM),"claim enabled from Session.changed without Main refresh")
 	await settle()
 	expect(ids_of(q(MILL).ready)==[ids[0]],"first job ready")
+	var processing_ui:=preload("res://scripts/processing_queue_ui.gd")
+	expect(processing_ui.world_status(dev(MILL),float(w.state.time))==" · 加工中 · 1 批待領","World hint shows ready and working batches together")
+	var art:=preload("res://scripts/industry_art.gd")
+	var snapshot_mill:Dictionary=app.session.snapshot.objects[World.key(MILL)]
+	var now:=float(app.session.snapshot.time)
+	expect(float(snapshot_mill.get("job",{}).get("ready",INF))<=now,"Legacy display projection points to the completed batch")
+	expect(art.processing_active(snapshot_mill,now),"Station animation instead uses the real active batch")
+	expect(art.finished_output(snapshot_mill,"sawmill",now)=="plank","Ready manual batch displays planks")
+	expect(art.finished_output({"items":{"charcoal":2}},"charcoal_kiln",now)=="charcoal","Stored automatic output displays charcoal")
+	expect(not art.processing_active(snapshot_mill,float(snapshot_mill.processing.active.finish)),"Animation stops at the active job finish time")
 	var ready_check:=func(l):
 		await check_layout(l,manual_names()+[CLAIM])
 		expect(usable(CLAIM),"%s: claim available"%l)
 		expect(not usable_cancels().has(ids[0]),"%s: ready job not cancellable"%l)
 	await shoot("ready",ready_check)
+	if qa:
+		app.modal.hide()
+		if is_instance_valid(app.modal_shade):app.modal_shade.hide()
+		await settle()
+		await RenderingServer.frame_post_draw
+		var frame:=root.get_texture().get_image()
+		expect(frame.save_png(qa_dir.path_join("sawmill-output-world.png"))==OK,"Saved the plank tray beside the working mill")
+		app.modal.show()
+		if is_instance_valid(app.modal_shade):app.modal_shade.show()
+		await settle()
 	var plank0:=held("plank")
 	var prog0:=progress()
-	if not await press(CLAIM,"claim"):return
+	if not await press(CLAIM,"claim",true,true):return
 	expect(held("plank")==plank0+2 and ready_n(q(MILL))==0,"claim added exactly 2 planks once")
 	expect(progress()==prog0,"claim never touches cooked counter / collections")
 	expect(unusable(CLAIM),"claim disabled when nothing is ready")
+	expect(processing_ui.world_status(dev(MILL),float(w.state.time))==" · 加工中","World hint clears the claimed batch while work continues")
+	expect(art.finished_output(dev(MILL),"sawmill",float(w.state.time)).is_empty(),"Collecting the last ready batch clears the output icon")
 
 func ready_n(p:Dictionary) -> int:
 	return 0 if p.is_empty() else (p.ready as Array).size()
+
+func flow_kiln_output()->void:
+	if not await open_at(KILN,"kiln output"):return
+	await set_wood(8)
+	if not await press(ENQUEUE,"queue charcoal first batch"):return
+	if not await press(ENQUEUE,"queue charcoal second batch"):return
+	var time_left:=float(q(KILN).active.finish)-float(w.state.time)
+	await advance(time_left+0.25,"finish the first charcoal batch")
+	var expected:=" · 加工中 · 1 批待領"
+	var art:=preload("res://scripts/industry_art.gd")
+	var ui_script:=preload("res://scripts/processing_queue_ui.gd")
+	var snapshot:Dictionary=app.session.snapshot.objects[World.key(KILN)]
+	var now:=float(app.session.snapshot.time)
+	expect(art.processing_active(snapshot,now) and art.finished_output(snapshot,"charcoal_kiln",now)=="charcoal","Kiln shows heat and finished charcoal together")
+	expect(ui_script.world_status(snapshot,now)==expected,"Kiln prompt says working and one batch ready")
+	if qa:
+		app.modal.hide()
+		if is_instance_valid(app.modal_shade):app.modal_shade.hide()
+		var person:Dictionary=w.state.players[T]
+		var return_position:=Vector2(person.x,person.y)
+		await pose(Vector2(KILN)+Vector2(-0.5,0.8))
+		await create_timer(0.2).timeout
+		await RenderingServer.frame_post_draw
+		var frame:=root.get_texture().get_image()
+		expect(frame.save_png(qa_dir.path_join("charcoal-kiln-output.png"))==OK,"Saved the ready charcoal beside the working kiln")
+		await pose(return_position)
+		app.modal.show()
+		if is_instance_valid(app.modal_shade):app.modal_shade.show()
+		await settle()
+	var before:=held("charcoal")
+	if not await press(CLAIM,"claim first charcoal batch",true,true):return
+	expect(held("charcoal")==before+2 and ready_n(q(KILN))==0,"Claim takes exactly two charcoal and clears the ready slot")
+	expect(art.processing_active(dev(KILN),now) and art.finished_output(dev(KILN),"charcoal_kiln",now).is_empty(),"Kiln keeps working after the ready icon clears")
 
 func flow_full() -> void:
 	var need:=Queue.CAPACITY-all_ids(q(MILL)).size()
@@ -674,7 +798,7 @@ func flow_auto() -> void:
 	if not await open_at(AUTO,"auto"):return
 	if not await tab(AUTO_TAB,"auto tab"):return
 	var wood0:=held("wood")
-	if not await press(FEED,"feed"):return
+	if not await press(FEED,"feed",true,true):return
 	expect(int(dev(AUTO).get("input_wood",0))==4 and held("wood")==wood0-4,"feed moved 4 wood into the input buffer")
 	if not await press(TOGGLE,"enable auto"):return
 	expect(dev(AUTO).get("auto_enabled",false)==true,"automatic mode enabled through the UI")
@@ -690,7 +814,7 @@ func flow_auto() -> void:
 		expect(usable(COLLECT) and usable(TOGGLE),"%s: collect and toggle available to the owner"%l)
 	await shoot("auto",auto_check)
 	var plank0:=held("plank")
-	if await press(COLLECT,"collect"):
+	if await press(COLLECT,"collect",true,true):
 		expect(held("plank")==plank0+2 and int(dev(AUTO).items.get("plank",0))==0,"collect moved 2 planks to the backpack")
 	if await press(TOGGLE,"disable auto"):
 		expect(dev(AUTO).get("auto_enabled",true)==false,"automatic mode disabled again")

@@ -342,6 +342,7 @@ func choose_picks()->void:
 			var list:Array=by_category.get(category,[])
 			if index<list.size() and picks.size()<5:picks.append(list[index])
 		index+=1
+	if not picks.is_empty():picks[0]="quality_radish"
 	note("picked items: %s"%str(picks))
 	check(picks.size()==5,"Five sellable items available for the fixture")
 

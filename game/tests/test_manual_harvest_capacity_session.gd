@@ -20,10 +20,11 @@ extends SceneTree
 ##   live : (8) server alpha inventory.wheat = 999999998 (makes room for exactly one yield-2
 ##          harvest; stands in for selling/using wheat).                         -> 1 live preset
 ##   total: 8 presets.
-## Nothing else is written: both harvests are sent by alpha's client over the network.
+## A separate contention phase resets alpha's stack and restores one ripe
+## shared crop per round. Both clients race and replay their sequences.
 ## NOT covered: multiple processes, TLS, latency/loss, crash durability (normal shutdown only),
 ## the player.harvests >= 1e9 refusal branch (would need a 9th preset; rule-level test only),
-## friend/island harvest_access, greenhouse plots.
+## friend harvest_access, greenhouse plots.
 ## API notes: refusals ARE delivered to the requester (Session._action -> _send_notice ->
 ## receive_notice RPC -> Session.notice(message, false)); foreign players' inventories are
 ## erased from each recipient's snapshot in Session._send_snapshot. No harness gap found.
@@ -382,7 +383,7 @@ func scenario()->bool:
 	expect(server.multiplayer.multiplayer_peer is WebSocketMultiplayerPeer and alpha.session.multiplayer.multiplayer_peer is WebSocketMultiplayerPeer,"server and clients use WebSocketMultiplayerPeer")
 	expect(alpha.session.world==null and beta.session.world==null,"client Sessions hold no World")
 	await settle([alpha,beta])
-	print("%s_LABEL machine=single process=single transport=websocket loopback=127.0.0.1:%d clients=2 fixture=SEEDED presets=7 seed + 1 live shutdown=normal-only"%[TAG,port])
+	print("%s_LABEL machine=single process=single transport=websocket loopback=127.0.0.1:%d clients=2 fixture=SEEDED capacity_presets=8 contention_presets=101 shutdown=normal-only"%[TAG,port])
 
 	var ab:Array=[alpha,beta]
 	var alpha_public:=ALPHA.sha256_text().left(16)
@@ -432,6 +433,11 @@ func scenario()->bool:
 	expect(await wait_until(func():return wheat(alpha)==CAP,3.0),"case 3 alpha's snapshot wheat == 1000000000 (got %d)"%wheat(alpha))
 	expect(not beta.other(alpha_public).is_empty() and not beta.other(alpha_public).has("inventory"),"case 3 beta still does not see alpha's inventory")
 
+	expect(disk_wheat(read_disk(),ALPHA)==CAP,"capacity award persisted before contention fixture reset")
+	if not await harvest_contention():return false
+	var final_alpha:=srv_wheat(ALPHA)
+	var final_beta:=srv_wheat(BETA)
+
 	# 4. Normal shutdown, then the on-disk save.
 	await leave(alpha)
 	await leave(beta)
@@ -443,8 +449,41 @@ func scenario()->bool:
 	var disk=read_disk()
 	if not expect(disk is Dictionary,"case 4 save parses"):return false
 	expect(disk_valid(disk),"case 4 saved world passes SaveSchema")
-	expect(disk_wheat(disk,ALPHA)==CAP,"case 4 save: alpha wheat == 1000000000 (got %d)"%disk_wheat(disk,ALPHA))
+	expect(disk_wheat(disk,ALPHA)==final_alpha and disk_wheat(disk,BETA)==final_beta,"case 4 save holds both final wheat totals")
 	expect(disk_row(disk_crop(disk,k1))==last_row and last_row==empty_row,"case 4 save: plot cleared as on the server (disk %s, server %s)"%[disk_row(disk_crop(disk,k1)),last_row])
+	return true
+
+func harvest_contention()->bool:
+	var rounds:=100
+	var ripe:=srv_crop(k1).duplicate(true)
+	ripe.merge({"kind":"wheat","growth":float(World.CROPS.wheat.time),"remaining":1,"harvest_access":"island"},true)
+	preset(srv_player(ALPHA).inventory,"wheat",0)
+	var initial_total:=srv_wheat(ALPHA)+srv_wheat(BETA)
+	var wins:=[0,0]
+	for index in rounds:
+		preset(server.world.state.crops,k1,ripe.duplicate(true))
+		var before:=[srv_wheat(ALPHA),srv_wheat(BETA)]
+		var marks:=[alpha.notices.size(),beta.notices.size()]
+		var first:=alpha if index%2==0 else beta
+		var second:=beta if first==alpha else alpha
+		for client in [first,second]:
+			var sequence:int=client.session.perform("harvest",plot)
+			var snapshot:Dictionary=client.session.snapshot
+			client.session.request_action.rpc_id(1,sequence,"harvest",plot,"",str(snapshot.region_id),int(client.me().get("travel_epoch",0)))
+		if not expect(await wait_until(func():return alpha.notices.size()>marks[0] and beta.notices.size()>marks[1],3.0),"round %d both peers receive an answer"%index):return false
+		var alpha_won:bool=alpha.notices[marks[0]][1]
+		var beta_won:bool=beta.notices[marks[1]][1]
+		expect(alpha_won!=beta_won,"round %d exactly one winner"%index)
+		wins[0]+=int(alpha_won)
+		wins[1]+=int(beta_won)
+		expect(srv_wheat(ALPHA)==before[0]+2*int(alpha_won) and srv_wheat(BETA)==before[1]+2*int(beta_won),"round %d one exact harvest payout"%index)
+		expect(srv_crop(k1).get("kind","missing")=="","round %d plot spent"%index)
+		# Keep below the rolling rate cap and let exact-sequence replays arrive.
+		await pause(0.105)
+		expect(alpha.notices.size()==marks[0]+1 and beta.notices.size()==marks[1]+1,"round %d duplicate sequences never reach harvest handling"%index)
+	expect(wins[0]+wins[1]==rounds and srv_wheat(ALPHA)+srv_wheat(BETA)==initial_total+2*rounds,"100 ripe plants pay exactly 200 wheat")
+	expect(await wait_until(func():return wheat(alpha)==srv_wheat(ALPHA) and wheat(beta)==srv_wheat(BETA) and alpha.crop(k1).get("kind","missing")=="" and beta.crop(k1).get("kind","missing")=="",3.0),"both clients see their final wheat totals and the same spent plot")
+	print("%s contention_rounds=%d wins=%s"%[TAG,rounds,wins])
 	return true
 
 func teardown()->void:

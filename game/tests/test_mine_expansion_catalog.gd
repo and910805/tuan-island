@@ -207,7 +207,7 @@ func check_resources() -> void:
 	expect(World.NAMES.get("ochre_earth")=="赭土" and World.NAMES.get("vein_quartz")=="脈石英","new minerals are named in World.NAMES")
 	# T067 warm_stone 暖岩片 integrated too (B12/B13 finds, table_warmer.gd): nothing stays proposed.
 	expect(Catalog.PROPOSED_ITEMS.is_empty() and World.NAMES.get("warm_stone")=="暖岩片","warm_stone integrated; no proposed items remain")
-	var expected_finds:={6:["stone","ochre_earth"],7:["copper_ore","ochre_earth"],9:["crystal_sand","vein_quartz"],10:["crystal_sand","vein_quartz"],12:["stone","warm_stone"],13:["gold_ore","warm_stone"]}
+	var expected_finds:={6:["stone","ochre_earth","iron_ore"],7:["copper_ore","ochre_earth"],9:["crystal_sand","vein_quartz"],10:["crystal_sand","vein_quartz"],12:["stone","warm_stone"],13:["gold_ore","warm_stone"]}
 	for depth in expected_finds:
 		expect(Catalog.DEPTHS[depth].finds==expected_finds[depth] and Catalog.DEPTHS[depth].proposed.is_empty(),"B%d finds carry the new mineral"%depth)
 		expect(Mines.finds(depth)==expected_finds[depth],"mine_depths.finds(B%d) reads the catalog"%depth)

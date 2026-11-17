@@ -22,7 +22,7 @@ class MachinePreview extends TextureRect:
 
 static func open(app,cell:Vector2i)->void:
 	var body:VBoxContainer=app._open_modal("採掘工作牌")
-	body.add_theme_constant_override("separation",8)
+	body.add_theme_constant_override("separation",6)
 	app.modal.set_meta("life_modal_layout","mine_drill")
 	app.modal.set_meta("mine_drill_body",body)
 	app.modal.set_meta("mine_drill_cell",cell)
@@ -66,12 +66,12 @@ static func refresh(app)->void:
 	preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	preview.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST;header.add_child(preview)
 	var info:=VBoxContainer.new();info.size_flags_horizontal=Control.SIZE_EXPAND_FILL;header.add_child(info)
-	var status:=Helpers.text(app,info,"",18);status.name="DrillStatus";status.custom_minimum_size.y=54
+	var status:=Helpers.text(app,info,"",18);status.name="DrillStatus";status.custom_minimum_size.y=64
 	var gauge:=ProgressBar.new();gauge.name="DrillProgress";gauge.show_percentage=false;gauge.custom_minimum_size.y=16;info.add_child(gauge)
 	Helpers.text(app,info,"機頭朝%s · 對準礦脈"%FACING[int(device.dir)],14)
 	var fuel_panel:=PanelContainer.new();fuel_panel.add_theme_stylebox_override("panel",Pixel.paper_style());body.add_child(fuel_panel)
 	var fuel_row:=HBoxContainer.new();fuel_row.add_theme_constant_override("separation",12);fuel_panel.add_child(fuel_row)
-	fuel_row.add_child(Shell.picture(Items.icon("charcoal"),64))
+	fuel_row.add_child(Shell.picture(Items.icon("charcoal"),52))
 	var fuel_info:=VBoxContainer.new();fuel_info.size_flags_horizontal=Control.SIZE_EXPAND_FILL;fuel_row.add_child(fuel_info)
 	Helpers.text(app,fuel_info,"木炭 %d / %d · 背包 %d"%[int(device.fuel),Drill.FUEL_CAP,int(bag.get("charcoal",0))],16).name="DrillFuel"
 	var fuel_actions:=HBoxContainer.new();fuel_info.add_child(fuel_actions)
@@ -81,7 +81,7 @@ static func refresh(app)->void:
 	Helpers.action(app,fuel_actions,"DrillUnload","取回",func():app.session.perform("mine_drill_unload_fuel",cell),permitted and int(device.fuel)>0 and int(bag.get("charcoal",0))<=1000000000-int(device.fuel))
 	var output_panel:=PanelContainer.new();output_panel.add_theme_stylebox_override("panel",Pixel.paper_style());body.add_child(output_panel)
 	var output_row:=HBoxContainer.new();output_row.add_theme_constant_override("separation",12);output_panel.add_child(output_row)
-	output_row.add_child(Shell.picture(Items.icon(item),64))
+	output_row.add_child(Shell.picture(Items.icon(item),52))
 	var output_info:=VBoxContainer.new();output_info.size_flags_horizontal=Control.SIZE_EXPAND_FILL;output_row.add_child(output_info)
 	var count:=int(device.items.get(item,0))
 	Helpers.text(app,output_info,"%s %d / %d"%[World.NAMES[item],count,Drill.OUTPUT_CAP],17).name="DrillOutput"
@@ -90,7 +90,7 @@ static func refresh(app)->void:
 	var toggle:=Helpers.action(app,body,"DrillToggle","停用下一批" if device.enabled else "啟用採掘",func():app.session.perform("mine_drill_toggle",cell),permitted)
 	toggle.custom_minimum_size.y=42
 	Helpers.text(app,body,"每批 %d 秒 · 1 木炭 → %d %s"%[int(Drill.DURATION),int(product.quantity),World.NAMES[item]],14)
-	Helpers.text(app,body,"木炭與礦料可接輸送帶。\n另兩處礦點仍可手採。",14).name="DrillHint"
+	Helpers.text(app,body,"木炭與礦料可接輸送帶，另兩處礦點仍可手採。",14).name="DrillHint"
 	var context:="這是其他島民的設備。" if not owner else ("靠近設備才能操作。" if not near else "停用並取完燃料、礦料後，才可搬移或拆除。")
 	if is_instance_valid(app.modal_feedback) and app.modal.get_meta("mine_drill_context","")!=context:
 		app.modal.set_meta("mine_drill_context",context);app.modal_feedback.text=context

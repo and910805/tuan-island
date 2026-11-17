@@ -63,7 +63,7 @@ const ROUTINE_ACTIONS := ["build","build_area","seed","seed_area","plant_tree","
 ## Actions whose REJECTIONS are journaled (committed entries never depend on
 ## this list; they come from the diff).
 const ECONOMY_ACTIONS := ["trade_open","trade_edit","trade_confirm","trade_cancel",
-	"deposit","withdraw","deposit_half","withdraw_half","deposit_all","withdraw_all","buy","sell","donate"]
+	"deposit","withdraw","deposit_half","withdraw_half","deposit_all","withdraw_all","buy","sell","donate","assemble"]
 
 static func fresh() -> Dictionary:
 	return {"seq":0,"dropped":0,"entries":[],"rejected":[]}

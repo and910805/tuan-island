@@ -22,8 +22,17 @@ def main():
     rotate.add_argument("--output-file", required=True)
     disable = sub.add_parser("account-disable")
     disable.add_argument("--account-id", required=True)
+    monitor = sub.add_parser("world-status")
+    monitor.add_argument("--world-id")
+    monitor.add_argument("--alerts-only", action="store_true")
     args = parser.parse_args()
     store = IdentityStore(args.database)
+    if args.operation == "world-status":
+        worlds = store.operator_worlds(args.world_id)
+        if args.world_id and not worlds:
+            parser.error("unknown world ID")
+        print(json.dumps([world for world in worlds if not args.alerts_only or world["alert"]], ensure_ascii=False))
+        return
     if args.operation == "account-disable":
         store.disable_account(args.account_id)
         print("ACCOUNT_DISABLED")

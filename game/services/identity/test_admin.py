@@ -45,6 +45,19 @@ class AdminTests(unittest.TestCase):
         with self.assertRaises(Denied):
             store.login(account["account_id"], account["credential"])
 
+    def test_world_status_filters_only_alerts_or_one_world(self):
+        store = IdentityStore(self.database)
+        key = store.provision_world("healthy")
+        store.provision_world("missing")
+        store.report_world_storage(key, {"world_id": "healthy", "state": "running", "last_saved": int(store.clock())})
+        result = self.call("world-status", "--alerts-only")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual([row["world_id"] for row in json.loads(result.stdout)], ["missing"])
+        selected = self.call("world-status", "--world-id", "healthy")
+        self.assertEqual(selected.returncode, 0)
+        self.assertIsNone(json.loads(selected.stdout)[0]["alert"])
+        self.assertNotIn(key, selected.stdout)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

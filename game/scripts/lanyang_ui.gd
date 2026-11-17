@@ -62,6 +62,7 @@ static func refresh(app)->void:
 	var line:="米露說，你們讓渡口又開飯了。這條圳也等著大家一起照顧。先把三處枯枝清開，再補好閘門吧。"
 	if life.get("repaired",false):line="水走順了，苗才站得穩。留一棵樹苗給下一輪吧，我陪你把它育成三棵，讓林場一直有新芽。"
 	elif life.get("cleared",{}).size()==3:line="水路清出來了！再補好這道木閘，就能讓田裡和育苗盤都有穩定的水。"
+	if mode=="canal" and World.LANYANG_REVISIT.claimed_own(s):line="最近我巡田，田尾也聽得到水聲了。你帶回去的木牌，可以擺在家園分流閘旁。"
 	if mode=="clear":line="把卡住的枯枝挪開，讓水往田裡走吧。還有 %d 處水口等著我們。"%(3-life.get("cleared",{}).size())
 	var quote:Label=words(app,"星禾　「"+line+"」")
 	quote.size_flags_horizontal=Control.SIZE_EXPAND_FILL

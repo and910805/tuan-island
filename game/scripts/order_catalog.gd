@@ -119,6 +119,10 @@ const SOURCES := {
 	],
 	"wood": [{"via":"chop", "requires":[], "inputs":{}}],
 	"stone": [{"via":"quarry", "requires":["board"], "inputs":{}}],
+	"gold_shrimp":[{"via":"star_tidepool","requires":["star_shore"],"inputs":{}}],
+	"seaweed":[{"via":"south_shore","requires":[],"inputs":{}}],
+	"crystal_sand":[{"via":"star_shore","requires":["star_shore"],"inputs":{}}],
+	"seashell":[{"via":"low_tide","requires":[],"inputs":{}}],
 }
 
 
@@ -196,6 +200,7 @@ static func context_from_layers(state: Dictionary, roofs: Variant, crops: Varian
 	station_list.sort()
 	var context:=make_context(int(WEATHER.day_index(state.get("time", 0.0))), state.get("board", false) == true,
 		own_greenhouse(roofs, crops, token), station_list, crop_seasons)
+	context.star_shore=state.get("wangan_star_walk",false)
 	var bag:Dictionary=state.get("players",{}).get(token,{}).get("inventory",{})
 	context.stock={
 		"jam_batch":int(bag.get("strawberry_jam",0))>=2,
@@ -244,12 +249,15 @@ static func missing_sources(order: Dictionary, ctx: Dictionary) -> Array:
 static func is_eligible(order: Dictionary, ctx: Dictionary) -> bool:
 	return not order.is_empty() and missing_sources(order, ctx).is_empty()
 
+static func matches_board(order:Dictionary,ctx:Dictionary)->bool:
+	return order.get("channel","village")==ctx.get("channel","village")
+
 
 ## All orders whose materials are obtainable under ctx, in catalog order.
 static func eligible(ctx: Dictionary) -> Array:
 	var out: Array = []
 	for order: Variant in VILLAGE.ORDERS:
-		if order is Dictionary and is_eligible(order, ctx):out.append((order as Dictionary).duplicate(true))
+		if order is Dictionary and matches_board(order,ctx) and is_eligible(order, ctx):out.append((order as Dictionary).duplicate(true))
 	return out
 
 
@@ -325,7 +333,8 @@ static func board_view(book: Variant, now: float, ctx: Dictionary) -> Array:
 	var extra_ids: Array = (b.active as Dictionary).keys()
 	extra_ids.sort()
 	for id: Variant in extra_ids:
-		if not listed.has(id):rows.append(_row(find(id), b, now))
+		var order:=find(id)
+		if not listed.has(id) and matches_board(order,ctx):rows.append(_row(order,b,now))
 	return rows
 
 
@@ -340,7 +349,7 @@ static func snapshot(book: Variant, now: float, ctx: Dictionary) -> Dictionary:
 	for row: Dictionary in board_view(book, now, ctx):rows[str(row.id)] = row
 	var out: Array = []
 	for order: Variant in VILLAGE.ORDERS:
-		if not order is Dictionary:continue
+		if not order is Dictionary or not matches_board(order,ctx):continue
 		var id := str(order.get("id", ""))
 		var row: Dictionary = rows.get(id, {})
 		if row.is_empty():
@@ -348,8 +357,9 @@ static func snapshot(book: Variant, now: float, ctx: Dictionary) -> Dictionary:
 			row.status = "done" if _done_today(book, now, id) else "unavailable"
 			row.missing = missing_sources(order, ctx)
 		out.append(row)
+	var expired:Array=expire_book(book,now).expired
 	return {"day":day_of(now), "deadline_days":DEADLINE_DAYS, "rows":out,
-		"expired":expire_book(book, now).expired}
+		"expired":expired.filter(func(id):return matches_board(find(id),ctx))}
 
 
 static func _done_today(book: Variant, now: float, id: String) -> bool:
@@ -433,6 +443,7 @@ static func _reachable(item: String, ctx: Dictionary, visiting: Dictionary, dept
 
 static func _tag(tag: String, ctx: Dictionary) -> bool:
 	if tag == "board":return ctx.get("board", false) == true
+	if tag == "star_shore":return ctx.get("star_shore",false)==true
 	if tag == "shop":return ctx.get("shop", false) == true
 	if tag.begins_with("stock:"):return ctx.get("stock",{}).get(tag.substr(6),false)==true
 	if tag.begins_with("station:"):

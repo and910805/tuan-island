@@ -38,6 +38,8 @@ static func apply(base:Theme) -> Theme:
 	var hover:=theme.get_stylebox("hover","Button")
 	var pressed:=theme.get_stylebox("pressed","Button")
 	var disabled:=Pixel.texture_style("normal",3,8)
+	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
+		disabled.set_content_margin(side,normal.get_margin(side))
 	disabled.modulate_color=Color("d8caae")
 	var focus:=theme.get_stylebox("focus","Button")
 	theme.set_stylebox("disabled","Button",disabled)

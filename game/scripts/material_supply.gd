@@ -11,7 +11,7 @@ extends RefCounted
 ##   cost:     {item: count >= 1}, non-empty, at most COST_ENTRIES_MAX entries
 ##   backpack: {item: count >= 0}
 ##   chest:    {item: count >= 0}
-##   Keys must be non-empty Strings of at most ITEM_KEY_MAX characters; counts
+##   Keys must be non-empty Strings or StringNames of at most ITEM_KEY_MAX characters; counts
 ##   must be whole finite int/float values within 0..ITEM_CAP (bool, String
 ##   and other variants are rejected). JSON whole floats (2.0) normalise to int.
 ##   Backpack and chest are validated separately: their combined stock may
@@ -125,14 +125,14 @@ static func _parse(raw: Variant, minimum: int) -> Variant:
 	for key: Variant in source:
 		if not _item_key(key) or not _is_count(source[key], minimum):
 			return null
-		out[key] = int(source[key])
+		out[str(key)] = int(source[key])
 	return out
 
 
 static func _item_key(value: Variant) -> bool:
-	if not value is String:
+	if not (value is String or value is StringName):
 		return false
-	var text: String = value
+	var text := str(value)
 	return not text.is_empty() and text.length() <= ITEM_KEY_MAX
 
 

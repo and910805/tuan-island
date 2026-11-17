@@ -5,6 +5,7 @@ const Opening=preload("res://scripts/wangan_opening.gd")
 const ChapterOne=preload("res://scripts/chapter_one.gd")
 const Art=preload("res://scripts/life_ui_theme.gd")
 const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
+const ArrivalScene=preload("res://scripts/wangan_arrival_scene.gd")
 const CARD:="WanganArrival"
 const CARD_WIDTH:=520.0
 const ROPE:=Color("c9a46a")
@@ -58,6 +59,10 @@ static func show_arrival(app) -> void:
 	var arrival:Label=app.label(Opening.ARRIVAL,15)
 	arrival.name="ArrivalBoat"
 	body.add_child(arrival)
+	var illustration:=ArrivalScene.new()
+	illustration.name="ArrivalIllustration"
+	illustration.motion=app.sound!=null and not app.sound.reduced_motion
+	body.add_child(illustration)
 	var quote_row:=HBoxContainer.new()
 	quote_row.add_theme_constant_override("separation",10)
 	body.add_child(quote_row)
@@ -81,7 +86,7 @@ static func show_arrival(app) -> void:
 	var footer:=HBoxContainer.new()
 	footer.add_theme_constant_override("separation",8)
 	body.add_child(footer)
-	var hint:Label=app.label(close_hint(app),13)
+	var hint:Label=app.label(close_hint(app),15)
 	hint.name="ArrivalHint"
 	hint.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	footer.add_child(hint)
@@ -126,10 +131,13 @@ static func layout(app,bounds:Vector2) -> void:
 	var node:=card(app)
 	if node==null:return
 	var side:=260.0 if app.village_art_preview else 310.0
-	var width:=clampf(bounds.x-2.0*side,320.0,CARD_WIDTH)
+	var right:=bounds.x-side
+	if app.village_art_preview and is_instance_valid(app.preview_top):
+		right=minf(right,app.preview_top.position.x-12.0)
+	var width:=clampf(right-side,320.0,CARD_WIDTH)
 	node.custom_minimum_size=Vector2(width,0)
 	node.size=Vector2(width,0)
-	node.position=Vector2(floorf((bounds.x-width)/2.0),18.0 if app.village_art_preview else 100.0)
+	node.position=Vector2(floorf((side+right-node.size.x)/2.0),18.0 if app.village_art_preview else 100.0)
 	var hint:=node.find_child("ArrivalHint",true,false) as Label
 	if hint:hint.text=close_hint(app)
 
@@ -141,11 +149,28 @@ static func refresh(app) -> void:
 
 # ---------- 左上角指引 ----------
 
+static func personal_step(app)->Dictionary:
+	var snapshot:Dictionary=app.session.snapshot
+	var player:Dictionary=snapshot.get("players",{}).get(app.session.own_id,{})
+	if not snapshot.get("chapter_one",{}).get("shipped",false) or not player.get(ChapterOne.PERSONAL_START,false):return {}
+	return ChapterOne.first_crop_step(snapshot,app.session.own_id)
+
+static func show_personal_help(app)->void:
+	var step:=personal_step(app)
+	if step.is_empty():return
+	var body:VBoxContainer=app._open_modal("島民第一課")
+	app.modal.set_meta("life_modal_layout","keepsake_paper")
+	body.add_child(app.label(tracker_text(app,step),17))
+	var steps:Label=app.label("用 {hoe} 鋤地、{seed} 播種、{water} 澆水，成熟後用 {harvest} 採收。帶著自己採收過的作物到村裡的出貨箱，靠近按 {interact}。",16)
+	steps.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(steps)
+
 static func tracker_text(app,step:Dictionary) -> String:
 	var text:=str(step.get("text",""))
 	match str(step.get("id","")):
 		"find":return "%s\n%s\n%s 移動"%[Opening.HEADING,text,app.movement_hint()]
 		"till":return "%s\n%s\n%s 鋤頭 · 點草地"%[Opening.HEADING,text,app.binding_label("hoe")]
+		"buy_seed":return "%s\n%s\n靠近種子攤按 %s"%[Opening.HEADING,text,app.binding_label("interact")]
 		"sow":return "%s\n%s\n%s 播種 · %s 換種子"%[Opening.HEADING,text,app.binding_label("seed"),app.binding_label("seeds")]
 		"water":return "%s\n%s\n%s 澆水 · 點那一格"%[Opening.HEADING,text,app.binding_label("water")]
 		"wait":return "%s\n%s\n成熟前可以先逛逛"%[Opening.HEADING,text]
@@ -157,8 +182,35 @@ static func tracker_text(app,step:Dictionary) -> String:
 
 ## Corner stakes, a twine rope and the 「小栗留的田」 tag, drawn on the ground
 ## layer (before props and people, after crops), static in every motion mode.
-static func draw_plot(view,s:Dictionary,owner:String) -> void:
-	if not Opening.marker_shown(s,owner):return
+static func draw_plot(view,s:Dictionary,owner:String,step:Dictionary) -> Rect2:
+	if step.is_empty():return Rect2()
+	if Opening.plot_usable(s,owner):draw_plot_fence(view,s)
+	if step.get("id","")=="buy_seed":return Rect2()
+	return draw_step_cue(view,step)
+
+static func draw_step_cue(view,step:Dictionary) -> Rect2:
+	if view.photograph_mode or view.hide_interaction_prompt:return Rect2()
+	var target:=step_target(step)
+	if target==ChapterOne.NO_PLOT_CELL:return Rect2()
+	var at:Vector2=view.screen(Vector2(target)).round()
+	var bounds:=Rect2(at,Vector2(32,32))
+	if step.get("id","") in ["buy_seed","works","starter_kit","tea_intro"]:
+		bounds=Rect2(at+Vector2(-8,-21),Vector2(48,54))
+	var inner:=bounds.grow(-3.0)
+	# Four short corner marks leave the crop and the tool cursor readable.
+	for start:Vector2 in [inner.position,Vector2(inner.end.x,inner.position.y),Vector2(inner.position.x,inner.end.y),inner.end]:
+		var direction:Vector2=(inner.get_center()-start).sign()
+		for offset in [Vector2(direction.x*6,0),Vector2(0,direction.y*6)]:
+			view.draw_line(start+Vector2.ONE,start+Vector2.ONE+offset,STAKE_OUTLINE,2.0)
+			view.draw_line(start,start+offset,Color("fff0ad"),2.0)
+	return bounds
+
+static func step_target(step:Dictionary) -> Vector2i:
+	if step.get("id","") in ["find","till","buy_seed","sow","water","harvest","ship","works","starter_kit","tea_intro"]:
+		return step.get("cell",ChapterOne.NO_PLOT_CELL)
+	return ChapterOne.NO_PLOT_CELL
+
+static func draw_plot_fence(view,s:Dictionary) -> void:
 	var cells:=Opening.plot_rect()
 	for cell in ChapterOne.starter_plot_free(s):
 		var at:Vector2=view.screen(Vector2(cell))

@@ -59,12 +59,19 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(self.store.list_worlds(self.guest_session)["worlds"], [])
         self.assertEqual(self.store.list_worlds(self.owner_session)["worlds"][0]["role"], "owner")
 
+    def test_world_card_reports_adventure_mode(self):
+        self.snapshot["revision"] += 1
+        self.snapshot["mode"] = "冒險"
+        self.publish()
+        self.assertEqual(self.store.list_worlds(self.owner_session)["worlds"][0]["mode"], "冒險")
+
     def test_redacted_card_and_distinct_counts(self):
         self.snapshot["revision"] += 1
-        self.snapshot["members"].append(self.member(self.guest))
+        self.snapshot["members"].append(self.member(self.guest, "admin"))
         self.publish()
         card = self.store.list_worlds(self.guest_session)["worlds"][0]
         self.assertEqual((card["online"], card["members_count"]), (1, 2))
+        self.assertEqual((card["role"], card["members"][1]["role"]), ("admin", "admin"))
         self.assertEqual([m["online"] for m in card["members"]], [True, False])
         encoded = json.dumps(card)
         for secret in (self.owner["account_id"], self.guest["account_id"], self.code, self.snapshot["invite"]["digest"], self.key):
@@ -217,6 +224,7 @@ class DirectoryTests(unittest.TestCase):
 
     def test_schema_two_migrates_directory_without_losing_account(self):
         with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute("DROP TABLE world_storage")
             db.execute("DROP TABLE directory_members")
             db.execute("DROP TABLE directory")
             db.execute("PRAGMA user_version=2")
@@ -224,6 +232,37 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(self.store.list_worlds(self.owner_session)["worlds"], [])
         self.publish()
         self.assertEqual(len(self.store.list_worlds(self.owner_session)["worlds"]), 1)
+
+    def test_schema_three_migrates_without_losing_world_directory(self):
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute("DROP TABLE world_storage")
+            db.execute("PRAGMA user_version=3")
+        migrated = IdentityStore(self.path, lambda: self.now)
+        self.assertEqual(migrated.list_worlds(self.owner_session)["worlds"][0]["world_id"], self.world)
+        self.assertEqual(migrated.operator_worlds(self.world)[0]["alert"], "no_report")
+
+    def test_world_storage_reports_are_private_and_independent(self):
+        other = "other-world"
+        other_key = self.store.provision_world(other)
+        report = {"world_id": self.world, "state": "save_failed", "last_saved": int(self.now)}
+        with TestClient(self.app, base_url="https://identity.test") as client:
+            route = "/v1/world-storage"
+            auth = lambda token: {"Authorization": "Bearer " + token}
+            self.assertEqual(client.post(route, headers=auth(self.owner_session), json=report).status_code, 401)
+            self.assertEqual(client.post(route, headers=auth(other_key), json=report).status_code, 401)
+            self.assertEqual(client.post(route, headers=auth(self.key), json={**report, "last_saved": True}).status_code, 400)
+            self.assertEqual(client.post(route, headers=auth(self.key), json=report).status_code, 200)
+            self.assertEqual(self.store.operator_worlds(self.world)[0]["alert"], "save_failed")
+            self.assertEqual(self.store.operator_worlds(other)[0]["alert"], "no_report")
+            card = client.post("/v1/worlds", headers=auth(self.owner_session), json={}).json()["worlds"][0]
+            self.assertNotIn("last_saved", card)
+            self.assertNotIn("alert", card)
+            self.now += 35
+            self.assertEqual(self.store.operator_worlds(self.world)[0]["alert"], "unreachable")
+            self.assertEqual(client.post(route, headers=auth(self.key), json={**report, "state": "running"}).status_code, 200)
+            self.assertEqual(self.store.operator_worlds(self.world)[0]["alert"], "save_unverified")
+            self.assertEqual(client.post(route, headers=auth(self.key), json={**report, "state": "running", "last_saved": int(self.now)}).status_code, 200)
+            self.assertIsNone(self.store.operator_worlds(self.world)[0]["alert"])
 
     def test_real_api_shapes_error_codes_and_authority(self):
         with TestClient(self.app, base_url="https://identity.test") as client:

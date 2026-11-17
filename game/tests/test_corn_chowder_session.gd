@@ -524,9 +524,10 @@ func scenario()->bool:
 	if not expect(joined(gamma),"case 8 late joiner gamma joins"):return false
 	await settle([alpha,beta,gamma])
 	var gpos:=Vector2(float(gamma.me().get("x",-99.0)),float(gamma.me().get("y",-99.0)))
-	expect(gpos.distance_to(centre)<=REACH,"case 8 gamma spawned within reach of the table (%s)"%str(gpos))
+	expect(gpos.distance_to(centre)>REACH,"case 8 gamma arrives at the ferry before walking to the table")
 	expect(client_row(gamma.meal("chowder"))==want_client(3,false),"case 8 gamma sees 3 portions, unclaimed (%s)"%client_row(gamma.meal("chowder")))
 	private_check(gamma,[alpha,beta],"case 8")
+	if not expect(await preload("res://tests/community_session_walk.gd").from_ferry(self,gamma.session,A_SPOT),"case 8 gamma walks to the table"):return false
 	await succeed(gamma,"claim_chowder",TABLE,msg_claimed("chowder"),"case 8 gamma claims chowder",[alpha,beta])
 	await wait_until(func():return sees([alpha,beta,gamma],"chowder",2),3.0)
 	expect(client_row(gamma.meal("chowder"))==want_client(2,true) and client_row(alpha.meal("chowder"))==want_client(2,false) and client_row(beta.meal("chowder"))==want_client(2,true),"case 8 everyone sees 2 left with their own flags")
@@ -539,6 +540,7 @@ func scenario()->bool:
 	if not expect(joined(delta),"case 8 late joiner delta joins"):return false
 	await settle([alpha,beta,gamma,delta])
 	expect(client_row(delta.meal("chowder"))==want_client(1,false),"case 8 delta sees the last portion (%s)"%client_row(delta.meal("chowder")))
+	if not expect(await preload("res://tests/community_session_walk.gd").from_ferry(self,delta.session,A_SPOT),"case 8 delta walks to the table"):return false
 	await succeed(delta,"claim_chowder",TABLE,msg_claimed("chowder"),"case 8 delta claims the last portion",[alpha,beta,gamma])
 	await wait_until(func():return sees([alpha,beta,gamma,delta],"chowder",0),3.0)
 	for c:Client in [alpha,beta,gamma,delta]:

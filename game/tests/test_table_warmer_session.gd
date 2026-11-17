@@ -373,6 +373,7 @@ func scenario()->bool:
 	await settle([alpha,beta,gamma])
 	expect(text(gamma.warmer())==text({"installed":true}) and gamma.hotpot().get("claimed_own")==false and int(gamma.hotpot().get("portions",-1))==4,"case 8 gamma sees the base and an unclaimed 4/6 round")
 	private_check(gamma,[alpha,beta],"case 8")
+	if not expect(await preload("res://tests/community_session_walk.gd").from_ferry(self,gamma.session,A_SPOT),"case 8 late joiner walks to the table over WebSocket"):return false
 	await refuse(gamma,Warmer.INSTALL_ACTION,TABLE,"",Warmer.ALREADY,"case 8 gamma cannot install again",[alpha,beta])
 	await leave(gamma)
 	gamma=null

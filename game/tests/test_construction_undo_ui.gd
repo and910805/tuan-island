@@ -84,12 +84,15 @@ func layout(tag:String,expect_strip:bool)->void:
 		check(c!=null and c.is_visible_in_tree(),tag+": "+name+" visible")
 		if c:check(view.encloses(c.get_global_rect()) and bounds.grow(1).encloses(c.get_global_rect()),tag+": "+name+" inside menu and viewport")
 	var entry:=node("UndoConstruction")
-	if entry:check(entry.size.y<=48 and entry.size.x<=200,tag+": entry stays compact %s"%entry.size)
+	if entry:check(entry.size.y<=52 and entry.size.x<=200,tag+": entry stays compact %s"%entry.size)
 	var bar:=node("UndoConfirmBar")
 	if bar and expect_strip:check(bar.size.y<=96,tag+": confirm strip compact %s"%bar.size)
 	if app.village_art_preview and entry:
 		check(entry.get_parent()==node("HouseCheck").get_parent(),tag+": entry lives in the existing catalog tab bar")
-		check(node("UndoStatus").get_parent()==entry.get_parent(),tag+": status beside entry")
+		var status:=node("UndoStatus") as Label
+		check(status.get_parent()==node("BuildStyles") and status.global_position.y>=entry.get_global_rect().end.y,
+			tag+": status has its own row below the entry")
+		check(status.get_visible_line_count()==status.get_line_count(),tag+": full undo status is visible")
 
 func open_menu()->void:
 	app._build_menu()
@@ -128,6 +131,9 @@ func stub_suite(tag:String)->void:
 	check(entry.disabled and status.text.contains(UndoUI.TEXT_REGION),tag+": other region disables")
 	set_snapshot(record("rec-a","放置木牆",30.0,false,"施工後這裡已有其他變動，無法復原"))
 	check(entry.disabled and status.text.contains("已有其他變動"),tag+": server reason shown: "+status.text)
+	if app.village_art_preview:
+		await settle()
+		check(status.get_visible_line_count()==status.get_line_count(),tag+": unavailable reason fits its row")
 	# --- open confirmation inside the same menu; Cancel => nothing -----------
 	set_snapshot(record("rec-a","放置木牆",30.0))
 	press("UndoConstruction")
@@ -258,6 +264,23 @@ func run()->void:
 			app.playing=false
 			stub.free()
 			await drop_app()
+	root.content_scale_mode=scale_mode
+	root.size=Vector2i(1024,640)
+	await make_app(true)
+	var real_session=app.session
+	stub=StubSession.new()
+	stub.own_id=ME
+	app.session=stub
+	app.playing=true
+	app.menu.hide()
+	app.hud.show()
+	app.sound.preferred_text_scale=3
+	app._apply_font_scale_tree()
+	await stub_suite("preview-1024x640-extra-large")
+	app.session=real_session
+	app.playing=false
+	stub.free()
+	await drop_app()
 	await real_suite()
 	print("CONSTRUCTION_UNDO_UI_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(1 if failures else 0)

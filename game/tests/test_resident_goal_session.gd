@@ -22,7 +22,7 @@ extends SceneTree
 ## lingpopo 4 is locked for beta), nobody has
 ## a milu record; positions: alpha just beside lingpopo's cell, beta just beside
 ## milu's cell (both cells from World.bond_place on a probe save loaded like the
-## server's); exact bags alpha {copper_joint 3, glass 3, soup 2, radish 1}, beta
+## server's); exact bags alpha {copper_ingot 5, glass 3, soup 2, radish 1}, beta
 ## {soup 1, copper_joint 2, glass 2}. No bond_goals are ever preset.
 ## REAL ACTIONS over the network: every resident_goal request and refusal, the
 ## raw same-sequence resend, disconnect/rejoin, shutdown and restart.
@@ -71,7 +71,7 @@ const BETA:="goal-session-beta-token-3e7c"
 const GAMMA:="goal-session-gamma-token-b604"
 const START_TIME:=2.0*1440.0+300.0
 const HALF:=Vector2(0.5,0.5)
-const ALPHA_BAG:={"copper_joint":3,"glass":3,"soup":2,"radish":1}
+const ALPHA_BAG:={"copper_ingot":5,"glass":3,"soup":2,"radish":1}
 const BETA_BAG:={"soup":1,"copper_joint":2,"glass":2}
 ## PRESET (DIRECT WRITE 1): milu 14 (信任) for alpha only exists so the batch-3
 ## "old save" milu 3 record written in case 5d passes SaveSchema (stage reached).
@@ -490,8 +490,10 @@ func scenario()->bool:
 	var KIND_M:="keepsake_milu"
 	var kit_l:=Goals.keepsake_item(KIND_L)
 	var kit_m:=Goals.keepsake_item(KIND_M)
+	var memorial:=Goals.FESTIVAL_BELL_REWARD
+	var kit_memorial:=Goals.keepsake_item(memorial)
 	expect(Goals.keepsake_kind("lingpopo",3)==KIND_L and Goals.keepsake_kind("milu",3)==KIND_M and kit_l=="keepsake_lingpopo_kit" and kit_m=="keepsake_milu_kit","lingpopo 3 and milu 3 carry the keepsakes keepsake_lingpopo / keepsake_milu")
-	expect(Goals.keepsake_kind("lingpopo",2).is_empty() and Goals.keepsake_kind("lingpopo",4).is_empty(),"lingpopo 2 and 4 carry no keepsake")
+	expect(Goals.keepsake_kind("lingpopo",2).is_empty() and Goals.keepsake_kind("lingpopo",4)==memorial,"Only the final festival event carries the memorial keepsake")
 
 	# 1. Fresh, private views.
 	for c:Client in [alpha,beta]:
@@ -507,12 +509,12 @@ func scenario()->bool:
 	var lp:Dictionary=alpha.goals().get("lingpopo",{})
 	var festival_row:={"id":"festival_done","label":str(Goals.NEEDS.festival_done),"met":false}
 	expect(str(Goals.NEEDS.festival_done)=="島上完成過一次風鈴接力","festival_done label text")
-	expect(text(lp)==text({"2":{"state":"open","choice":""},"3":{"state":"open","choice":"","keepsake":keep_row(KIND_L,false)},"4":{"state":"open","choice":"","needs":[festival_row]}}),"alpha's lingpopo 2, 3 and 4 are open; 3 carries its keepsake claimed=false; 4 carries needs festival_done met=false (%s)"%text(lp))
-	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[festival_row]}),"beta's lingpopo 4 is locked and carries its own needs row met=false (%s)"%goal_row(beta,"lingpopo","4"))
+	expect(text(lp)==text({"1":{"state":"open","choice":"","needs":[{"id":"bell_inspected","label":"查看風鈴樹與裂開的小鈴","met":false}]},"2":{"state":"open","choice":""},"3":{"state":"open","choice":"","keepsake":keep_row(KIND_L,false)},"4":{"state":"open","choice":"","needs":[festival_row],"keepsake":keep_row(memorial,false)}}),"alpha's four lingpopo events are open; 3 carries its keepsake claimed=false; 4 carries needs festival_done met=false (%s)"%text(lp))
+	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[festival_row],"keepsake":keep_row(memorial,false)}),"beta's lingpopo 4 is locked and carries its own needs row met=false (%s)"%goal_row(beta,"lingpopo","4"))
 	var fresh_festival:Dictionary=server.world.state.get("festival",{})
 	expect(int(fresh_festival.get("round",-1))==0 and fresh_festival.get("active",true)==false,"server festival record: no round played yet (%s)"%text(fresh_festival))
 	var mi:Dictionary=beta.goals().get("milu",{})
-	expect(text(mi)==text({"1":{"state":"locked","choice":""},"3":{"state":"locked","choice":"","keepsake":keep_row(KIND_M,false)},"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}}),"beta's milu goals are locked; milu 3 carries its keepsake claimed=false (%s)"%text(mi))
+	expect(text(mi)==text({"1":{"state":"locked","choice":""},"2":{"state":"locked","choice":"","needs":[{"id":"recipe_pages","label":"找齊三片食譜紙角","met":false}]},"3":{"state":"locked","choice":"","keepsake":keep_row(KIND_M,false)},"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}}),"beta's milu goals are locked; milu 3 carries its keepsake claimed=false (%s)"%text(mi))
 	expect(goal_row(alpha,"milu","3")==text({"state":"open","choice":"","keepsake":keep_row(KIND_M,false)}),"alpha's milu 3 is open (preset milu 14) and unclaimed (%s)"%goal_row(alpha,"milu","3"))
 	expect(server_keeps(ALPHA)=="null" and server_keeps(BETA)=="null","server: nobody has a bond_keepsakes key yet")
 	expect(canon(alpha.bag())==canon(ALPHA_BAG) and canon(beta.bag())==canon(BETA_BAG),"preset bags arrive unchanged in the own snapshots")
@@ -542,7 +544,7 @@ func scenario()->bool:
 	expect(r.ok and r.message==success_msg("lingpopo",3),"case 3 alpha delivers lingpopo 3 with soup (%s)"%r.message)
 	await settle([alpha,beta])
 	var paid:Dictionary=Goals.cost(Goals.goal("lingpopo",3),"soup")
-	expect(text(paid)==text({"copper_joint":2,"glass":2,"soup":1}),"lingpopo 3 soup costs copper_joint 2, glass 2, soup 1")
+	expect(text(paid)==text({"copper_ingot":4,"glass":2,"soup":1}),"lingpopo 3 soup costs copper_ingot 4, glass 2, soup 1")
 	# Batch 3: lingpopo 3 is a keepsake goal — exactly the cost leaves and exactly one kit arrives.
 	expect(canon(alpha.bag())==plus(plus(bag_a,paid,-1),{kit_l:1}),"case 3 exactly the cost left alpha's bag and exactly one %s arrived (%s)"%[kit_l,text(canon(alpha.bag()))])
 	expect(int(canon(alpha.bag()).get(kit_l,0))==1,"case 3 alpha holds exactly 1 %s"%kit_l)
@@ -586,7 +588,7 @@ func scenario()->bool:
 	# 5b. Batch-2 prerequisite (needs festival_done) on alpha's lingpopo 4.
 	var need_text:=str(Goals.NEEDS.festival_done)
 	expect(int(server.world.state.festival.round)==0,"case 5b no festival round yet on the server")
-	expect(goal_row(alpha,"lingpopo","4")==text({"state":"open","choice":"","needs":[{"id":"festival_done","label":need_text,"met":false}]}),"case 5b alpha's own snapshot: lingpopo 4 open, needs festival_done met=false (%s)"%goal_row(alpha,"lingpopo","4"))
+	expect(goal_row(alpha,"lingpopo","4")==text({"state":"open","choice":"","needs":[{"id":"festival_done","label":need_text,"met":false}],"keepsake":keep_row(memorial,false)}),"case 5b alpha's own snapshot: lingpopo 4 open, needs festival_done met=false (%s)"%goal_row(alpha,"lingpopo","4"))
 	await refuse(alpha,Goals.ACTION,BELL,"lingpopo:4::","還不能一起做這件事：要先「%s」。"%need_text,"case 5b alpha tries lingpopo 4 before any festival round",[beta])
 	expect(server_goals(ALPHA)==text(alpha_record),"case 5b the refused prerequisite goal wrote nothing on the server")
 	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 5b alpha after the prerequisite refusal",alpha_keeps)
@@ -600,8 +602,8 @@ func scenario()->bool:
 	expect(met_seen,"case 5b alpha's next snapshot shows festival_done met=true (%s)"%goal_row(alpha,"lingpopo","4"))
 	await settle([alpha,beta])
 	var met_row:={"id":"festival_done","label":need_text,"met":true}
-	expect(goal_row(alpha,"lingpopo","4")==text({"state":"open","choice":"","needs":[met_row]}),"case 5b alpha's lingpopo 4 still open, needs met=true")
-	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[met_row]}),"case 5b beta's own lingpopo 4: locked (beta is 信任) with met=true (festival_done is island-wide) (%s)"%goal_row(beta,"lingpopo","4"))
+	expect(goal_row(alpha,"lingpopo","4")==text({"state":"open","choice":"","needs":[met_row],"keepsake":keep_row(memorial,false)}),"case 5b alpha's lingpopo 4 still open, needs met=true")
+	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[met_row],"keepsake":keep_row(memorial,false)}),"case 5b beta's own lingpopo 4: locked (beta is 信任) with met=true (festival_done is island-wide) (%s)"%goal_row(beta,"lingpopo","4"))
 	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 5b alpha after the festival round",alpha_keeps)
 	expect_view(beta,BETA_BONDS,null,"case 5b beta after the festival round")
 	bag_a=canon(alpha.bag())
@@ -610,13 +612,15 @@ func scenario()->bool:
 	expect(r.ok and r.message==success_msg("lingpopo",4),"case 5b alpha completes lingpopo 4 once the festival round exists (%s)"%r.message)
 	await settle([alpha,beta])
 	alpha_record={"lingpopo":{"2":"","3":"soup","4":""}}
+	alpha_keeps[memorial]=true
 	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 5b alpha after lingpopo 4",alpha_keeps)
-	expect(goal_row(alpha,"lingpopo","4")==text({"state":"done","choice":""}),"case 5b alpha's lingpopo 4 done and carries no needs row (%s)"%goal_row(alpha,"lingpopo","4"))
+	expect(goal_row(alpha,"lingpopo","4")==text({"state":"done","choice":"","keepsake":keep_row(memorial,true)}),"case 5b alpha's lingpopo 4 done and carries no needs row (%s)"%goal_row(alpha,"lingpopo","4"))
 	expect(server_goals(ALPHA)==text(alpha_record),"case 5b server holds alpha's record %s (got %s)"%[text(alpha_record),server_goals(ALPHA)])
-	expect(canon(alpha.bag())==bag_a,"case 5b lingpopo 4 costs nothing")
+	expect(canon(alpha.bag())==plus(bag_a,{kit_memorial:1}),"case 5b only adds the memorial bell")
+	bag_a=canon(alpha.bag())
 	expect(canon(beta.bag())==bag_b and server_goals(BETA)=="null","case 5b beta's bag and server record unaffected")
 	expect_view(beta,BETA_BONDS,null,"case 5b beta unaffected by alpha's lingpopo 4")
-	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[met_row]}),"case 5b beta's lingpopo 4 reflects beta's own state (locked, own needs row)")
+	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[met_row],"keepsake":keep_row(memorial,false)}),"case 5b beta's lingpopo 4 reflects beta's own state (locked, own needs row)")
 	var beta_dump:=JSON.stringify(beta.session.snapshot)
 	expect(beta_dump.count("\"festival_done\"")==1,"case 5b beta's whole snapshot holds exactly one festival_done needs row (its own; alpha's rows never arrive)")
 	expect(JSON.stringify(alpha.session.snapshot).count("\"festival_done\"")==0,"case 5b alpha's snapshot holds no festival_done row once done")
@@ -676,7 +680,7 @@ func scenario()->bool:
 	await settle([alpha,beta])
 	expect(old_seen,"case 5d alpha's own summary: preset milu 3 done, keepsake claimed=false (%s)"%goal_row(alpha,"milu","3"))
 	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 5d alpha after the old-save preset",alpha_keeps)
-	expect(server_goals(ALPHA)==text(alpha_record) and server_keeps(ALPHA)==text(alpha_keeps),"case 5d server: milu 3 done, bond_keepsakes still only lingpopo")
+	expect(server_goals(ALPHA)==text(alpha_record) and server_keeps(ALPHA)==text(alpha_keeps),"case 5d server: milu 3 done, bond_keepsakes still only Lingpopo’s two keepsakes")
 	expect(goal_row(beta,"milu","3")==text({"state":"locked","choice":"","keepsake":keep_row(KIND_M,false)}),"case 5d beta's own milu 3 is locked and unclaimed (%s)"%goal_row(beta,"milu","3"))
 	# Away from milu: the generic reach gate refuses; nothing changes on either end.
 	expect(alpha.pos().distance_to(Vector2(MILU)+HALF)>3.2,"case 5d alpha stands out of reach of milu (%s)"%str(alpha.pos()))
@@ -692,7 +696,7 @@ func scenario()->bool:
 	expect(r.ok and r.message==claim_msg("milu",KIND_M),"case 5d alpha claims the milu keepsake next to milu (%s)"%r.message)
 	await settle([alpha,beta])
 	expect(canon(alpha.bag())==plus(bag_a,{kit_m:1}) and int(canon(alpha.bag()).get(kit_m,0))==1,"case 5d exactly one %s arrived and nothing else changed (%s)"%[kit_m,text(canon(alpha.bag()))])
-	alpha_keeps={KIND_L:true,KIND_M:true}
+	alpha_keeps[KIND_M]=true
 	expect(goal_row(alpha,"milu","3")==text({"state":"done","choice":"soup","keepsake":keep_row(KIND_M,true)}),"case 5d alpha's own milu 3 keepsake claimed=true (%s)"%goal_row(alpha,"milu","3"))
 	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 5d alpha after the claim",alpha_keeps)
 	expect(server_goals(ALPHA)==text(alpha_record) and server_keeps(ALPHA)==text(alpha_keeps),"case 5d server holds alpha's bond_keepsakes %s (got %s)"%[text(alpha_keeps),server_keeps(ALPHA)])
@@ -729,7 +733,7 @@ func scenario()->bool:
 	await settle([alpha,beta])
 	expect(text(alpha.goals())==view_a,"alpha's whole resident_goals is intact after rejoin")
 	expect(canon(alpha.bag())==bag_a,"alpha's bag intact after rejoin")
-	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 6 alpha after rejoin (lingpopo 2, 3, 4 and preset milu 3 done; both keepsakes claimed)",alpha_keeps)
+	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 6 alpha after rejoin (lingpopo 2, 3, 4 and preset milu 3 done; all three keepsakes claimed)",alpha_keeps)
 	private_check(alpha,[beta],"case 6 alpha after rejoin")
 	private_check(beta,[alpha],"case 6 beta after alpha's rejoin")
 
@@ -738,7 +742,7 @@ func scenario()->bool:
 	var final_views:={ALPHA:text(alpha.goals()),BETA:text(beta.goals())}
 	var final_bags:={ALPHA:canon(alpha.bag()),BETA:canon(beta.bag())}
 	# Alpha: lingpopo 3 cost paid, lingpopo kit granted then placed, milu kit claimed.
-	expect(final_bags[ALPHA]==canon({"copper_joint":1,"glass":1,"soup":1,"radish":1,kit_m:1}) and final_bags[BETA]==canon(BETA_BAG),"final bags: alpha %s, beta %s"%[text(final_bags[ALPHA]),text(final_bags[BETA])])
+	expect(final_bags[ALPHA]==canon({"copper_ingot":1,"glass":1,"soup":1,"radish":1,kit_m:1,kit_memorial:1}) and final_bags[BETA]==canon(BETA_BAG),"final bags: alpha %s, beta %s"%[text(final_bags[ALPHA]),text(final_bags[BETA])])
 	await leave(alpha)
 	await leave(beta)
 	expect(await stop_server(),"server Session shuts down with a final save")
@@ -781,8 +785,8 @@ func scenario()->bool:
 	expect(server_goals(ALPHA)==text(alpha_record) and server_goals(BETA)=="null","restarted server holds alpha's record and none for beta")
 	await refuse(alpha,Goals.ACTION,BELL,"lingpopo:2::102",done_msg("lingpopo",2),"case 8 alpha's lingpopo 2 is still done after restart",[beta])
 	await refuse(alpha,Goals.ACTION,BELL,"lingpopo:4::",done_msg("lingpopo",4),"case 8 alpha's prerequisite goal lingpopo 4 is still done after restart",[beta])
-	expect(goal_row(alpha,"lingpopo","4")==text({"state":"done","choice":""}),"case 8 alpha's lingpopo 4 done after restart (%s)"%goal_row(alpha,"lingpopo","4"))
-	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[{"id":"festival_done","label":str(Goals.NEEDS.festival_done),"met":true}]}),"case 8 beta's lingpopo 4 still locked with met=true after restart (festival round saved)")
+	expect(goal_row(alpha,"lingpopo","4")==text({"state":"done","choice":"","keepsake":keep_row(memorial,true)}),"case 8 alpha's lingpopo 4 done after restart (%s)"%goal_row(alpha,"lingpopo","4"))
+	expect(goal_row(beta,"lingpopo","4")==text({"state":"locked","choice":"","needs":[{"id":"festival_done","label":str(Goals.NEEDS.festival_done),"met":true}],"keepsake":keep_row(memorial,false)}),"case 8 beta's lingpopo 4 still locked with met=true after restart (festival round saved)")
 	expect_view(alpha,ALPHA_BONDS,alpha_record,"case 8 alpha after restart",alpha_keeps)
 	expect_view(beta,BETA_BONDS,null,"case 8 beta after restart")
 	# Batch 3 after restart: kits, claimed flags (from bond_keepsakes) and the placed object.

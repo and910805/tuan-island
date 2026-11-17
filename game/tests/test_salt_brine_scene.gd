@@ -54,6 +54,7 @@ const Weather=preload("res://scripts/weather.gd")
 const WanganUI=preload("res://scripts/wangan_opening_ui.gd")
 const BrineUI=preload("res://scripts/salt_brine_ui.gd")
 const RevisitUI=preload("res://scripts/salt_revisit_ui.gd")
+const IslandMap=preload("res://scripts/island_map.gd")
 const SR=preload("res://scripts/salt_revisit.gd")
 ## Camera aim for the 阿曬 page shot (the batch page is opened from her page).
 const WORKER_AIM:=Vector2(45.0,17.5)
@@ -375,10 +376,10 @@ func level_flow()->void:
 		strip.blit_rect(images[states[i]],clip,Vector2i(i*(box.size.x+4),0))
 	strip.resize(strip.get_width()*4,strip.get_height()*4,Image.INTERPOLATE_NEAREST)
 	save_image(strip,"tank_strip")
-	# Motion on vs reduced motion: identical (the tank has no animation).
+	# An idle tank looks the same with or without reduced motion.
 	app.view.reduced_motion=false
 	app.view.set_process(true)
-	await create_timer(0.4).timeout
+	await create_timer(Art.TRANSFER_SECONDS+0.1).timeout
 	app.view.set_process(false)
 	await refresh(TANK_AIM)
 	var moving:Image=await shot("full_motion")
@@ -613,6 +614,49 @@ func reason_line_is(side:String,expected:String,label:String)->void:
 	var got:=label_text("SbReason_"+side)
 	check(got==expected and (expected.is_empty() or shown("SbReason_"+side)),"%s reason 「%s」 (%s %s): 「%s」"%[side,expected.replace("\n"," / "),label,tag,got.replace("\n"," / ")])
 
+func check_batch_guide(expected:Vector2i,verb:String)->void:
+	var snapshot:Dictionary=app.session.snapshot.duplicate(true)
+	var own_id:String=app.session.own_id
+	snapshot.salt_pan.own.phase="complete"
+	snapshot.players[own_id].inventory.erase(SR.SALT_ITEM)
+	var guide:=RevisitUI.navigation(snapshot,own_id)
+	check(guide.get("cell")==expected and verb in str(guide.get("action","")),"Batch guide points to %s (%s)"%[verb,tag])
+	var landmarks:=IslandMap.salt_landmarks(snapshot,own_id)
+	check(landmarks.get("target")==expected and verb in str(landmarks.get("note","")),"Local map uses the same preparation step (%s)"%tag)
+
+func transfer_frame(control_name:String,expected_delta:int,label:String)->void:
+	var before:=Brine.level(app.view.data)
+	button(control_name).pressed.emit()
+	await settle()
+	var started:float=app.view.brine_transfer_started
+	check(Brine.level(app.view.data)==before+expected_delta and app.view.brine_transfer_delta==expected_delta and is_finite(started),
+		"The real transfer starts visual feedback in the right direction (%s %s)"%[label,tag])
+	if not is_finite(started):return
+	await close_page()
+	await stand(VIEW_SPOT,TANK_AIM)
+	app.view.elapsed=started+0.22
+	app.view.reduced_motion=false
+	app.view.queue_redraw()
+	var flowing:=await shot(label)
+	app.view.reduced_motion=true
+	app.view.queue_redraw()
+	var quiet:=await grab()
+	app.view.brine_transfer_started=-INF
+	app.view.queue_redraw()
+	var quiet_baseline:=await grab()
+	check(box_difference(quiet,quiet_baseline,tank_box())==0.0,"Reduced motion omits the transfer pixels (%s %s)"%[label,tag])
+	app.view.reduced_motion=false
+	app.view.queue_redraw()
+	var baseline:=await grab()
+	check(box_difference(flowing,baseline,tank_box())>0.0,"Transfer changes native tank pixels (%s %s)"%[label,tag])
+	app.view.elapsed=started+Art.TRANSFER_SECONDS+0.01
+	app.view.queue_redraw()
+	var baseline_after:=await grab()
+	app.view.brine_transfer_started=started
+	app.view.queue_redraw()
+	var settled:=await grab()
+	check(box_difference(settled,baseline_after,tank_box())==0.0,"Transfer ends at the static waterline (%s %s)"%[label,tag])
+
 func page_flow()->Dictionary:
 	var heights:={}
 	w.state.time=day_time  # PRESET (the sunny dry day)
@@ -642,8 +686,10 @@ func page_flow()->Dictionary:
 	reason_line_is("a","","ready")
 	reason_line_is("b",Brine.PAN_EMPTY,"ready")
 	check(not shown("SbRain"),"No rain line on the dry day (%s)"%tag)
+	check_batch_guide(Brine.TANK,"放滷")
 	await page_shot("page_ready",BrineUI.LAYOUT)
 	heights["ready"]=float(modal_box().size.y)
+	await transfer_frame("Sb_pour_a",-3,"pour_feedback")
 	# 3. A rainy Beimen day, west storable, tank 8: pour refused with the rain reason.
 	w.state.time=rain_time  # PRESET (a rainy Beimen day)
 	set_level(8)
@@ -656,8 +702,10 @@ func page_flow()->Dictionary:
 	button_is("Sb_store_a",true,"收滷 3 桶","rain")
 	button_is("Sb_pour_a",false,Brine.RAIN_POUR,"rain")
 	reason_line_is("a","放滷："+Brine.RAIN_POUR,"rain")
+	check_batch_guide(Brine.TANK,"收存")
 	await page_shot("page_rain",BrineUI.LAYOUT)
 	heights["rain"]=float(modal_box().size.y)
+	await transfer_frame("Sb_store_a",3,"store_feedback")
 	# 4. Tank full, west brine almost crystallised, east salt: two reason lines (tallest).
 	w.state.time=day_time  # PRESET
 	set_level(30)
@@ -671,6 +719,7 @@ func page_flow()->Dictionary:
 	button_is("Sb_store_b",false,Brine.PAN_SALT,"full")
 	reason_line_is("a","收滷："+Brine.TANK_FULL+"\n放滷："+Brine.PAN_RICH,"full")
 	reason_line_is("b",Brine.PAN_SALT,"full")
+	check_batch_guide(Salt.pan_rect(1).get_center(),"收鹽")
 	await page_shot("page_full",BrineUI.LAYOUT)
 	heights["full"]=float(modal_box().size.y)
 	# 5. 阿曬's page -> 鹽籃批次 with SaltBrineLine at level 12.
@@ -688,7 +737,7 @@ func page_flow()->Dictionary:
 		await refresh(WORKER_AIM)
 	check(layout_name()==RevisitUI.LAYOUT,"Entry opens the batch page (%s): %s"%[tag,layout_name()])
 	if layout_name()==RevisitUI.LAYOUT:
-		var want:String=RevisitUI.BRINE_LINE%12
+		var want:String=RevisitUI.BRINE_LINE%[12,Brine.CAP]
 		check(shown("SaltBrineLine") and label_text("SaltBrineLine")==want,"SaltBrineLine with level 12 (%s): %s"%[tag,label_text("SaltBrineLine")])
 		check(label_text("SaltBrineLine").begins_with("儲滷槽 12／30 桶"),"SaltBrineLine reads 12／30 (%s)"%tag)
 		await page_shot("revisit_brine_line",RevisitUI.LAYOUT)
@@ -727,7 +776,7 @@ func run()->void:
 	pure_checks()
 	for d in range(1,60):
 		var t:=float(d)*Weather.DAY_SECONDS+30.0
-		if Weather.outdoor_id(float(d))=="sunny" and not Weather.rains(float(d),Salt.REGION) and not Salt.raining(t):
+		if Weather.outdoor_id(float(d))=="sunny" and not Weather.rains(float(d+1),Salt.REGION) and not Salt.raining(t):
 			day_time=t
 			break
 	check(day_time>0.0,"Calendar has a sunny, dry Beimen day")

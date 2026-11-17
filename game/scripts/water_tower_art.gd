@@ -157,11 +157,11 @@ static func _tower(img:Image,level:int,enabled:bool) -> void:
 
 ## World / thumbnail: copper pipe joined like a water pipe on the ground tile (mask bits
 ## up/right/down/left), then the tower above it. Static in every motion mode.
-static func draw_tower(canvas:CanvasItem,at:Vector2,obj:Dictionary,mask:int=10) -> void:
+static func draw_tower(canvas:CanvasItem,at:Vector2,obj:Dictionary,mask:int=10,tint:=Color.WHITE) -> void:
 	if mask!=0:
 		var pipe:=IndustryArt.pipe_texture(mask&15)
-		if pipe!=null:canvas.draw_texture(pipe,at)
-	canvas.draw_texture(texture_for(obj),at+Vector2(0,-16))
+		if pipe!=null:canvas.draw_texture(pipe,at,tint)
+	canvas.draw_texture(texture_for(obj),at+Vector2(0,-16),tint)
 
 # -------------------------------------------------------------------- icon --
 

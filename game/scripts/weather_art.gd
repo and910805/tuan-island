@@ -10,6 +10,8 @@ const TILE:=32.0
 const MAX_DROPS:=40
 ## Cap for static puddle marks when reduced motion is on.
 const MAX_STATIC_MARKS:=24
+const SNOW_FLAKES:=34
+const WIND_FLECKS:=15
 ## One static mark per this many outdoor cells (deterministic by cell hash).
 const STATIC_EVERY:=13
 ## Fraction of each drop cycle spent falling; the rest is a small landing ripple.
@@ -43,6 +45,7 @@ static func rains(info:Dictionary) -> bool:
 static func tint(info:Dictionary) -> Color:
 	if rains(info):return Color(0.26,0.34,0.46,0.08)
 	if weather_id(info)=="cloudy":return Color(0.32,0.38,0.46,0.05)
+	if weather_id(info)=="snowy":return Color(0.66,0.77,0.85,0.10)
 	return Color(0,0,0,0)
 
 static func mix(a:int,b:int) -> int:
@@ -85,6 +88,21 @@ static func static_mark(cell:Vector2i) -> Vector2:
 static func draw_streak(canvas:CanvasItem,head:Vector2) -> void:
 	canvas.draw_rect(Rect2(head,Vector2(1,3)),DROP_COLOR)
 	canvas.draw_rect(Rect2(head+Vector2(-1,-3),Vector2(1,3)),Color(DROP_COLOR,DROP_COLOR.a*0.6))
+
+static func drift(index:int,elapsed:float,camera:Vector2,view_size:Vector2,snow:bool) -> Vector3:
+	var sample:=drop(index,elapsed*(0.19 if snow else 0.30),camera,view_size)
+	var spread:=Vector2(22,55) if snow else Vector2(74,11)
+	var at:=(Vector2(sample.x,sample.y)+(sample.z-0.5)*spread).round()
+	return Vector3(at.x,at.y,sin(PI*sample.z))
+
+static func draw_drift(canvas:CanvasItem,at:Vector2,intensity:float,snow:bool) -> void:
+	if snow:
+		var snow_color:=Color(0.92,0.97,1.0,0.85*intensity)
+		canvas.draw_rect(Rect2(at+Vector2(-2,0),Vector2(5,1)),snow_color)
+		canvas.draw_rect(Rect2(at+Vector2(0,-2),Vector2(1,5)),snow_color)
+		return
+	canvas.draw_rect(Rect2(at,Vector2(3,2)),Color(0.83,0.79,0.43,0.68*intensity))
+	canvas.draw_rect(Rect2(at+Vector2(3,-1),Vector2(2,1)),Color(0.91,0.87,0.52,0.70*intensity))
 
 static func draw_ripple(canvas:CanvasItem,at:Vector2,strength:float) -> void:
 	if strength<=0.0:return

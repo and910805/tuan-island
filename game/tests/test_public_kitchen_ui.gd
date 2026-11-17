@@ -54,6 +54,13 @@ func press(id:String)->void:
 	expect(visible_rect(b),id+" reachable without clipping")
 	b.pressed.emit()
 	await settle()
+func tap_pad(button:JoyButton)->void:
+	for down in [true,false]:
+		var event:=InputEventJoypadButton.new()
+		event.button_index=button
+		event.pressed=down
+		root.push_input(event)
+	await settle()
 func attach(token:String)->void:
 	app._close_modal()
 	app.session.profile={"token":token}
@@ -134,10 +141,17 @@ func run()->void:
 	expect(world.state.public_kitchen.meals=={"soup":2,"bread":1,"salad":0} and not world.state.public_kitchen.opened,"first member partial contribution")
 	await attach(GUEST)
 	UI.open(app);await settle()
-	await press("KitchenContribute")
+	var contribute:=control("KitchenContribute") as Button
+	contribute.release_focus()
+	var before_shortcut:int=app.session.counter
+	await tap_pad(JOY_BUTTON_X)
+	expect(root.gui_get_focus_owner()==contribute and app.session.counter==before_shortcut,"X focuses the donation without sending it")
+	await tap_pad(JOY_BUTTON_A)
 	expect(world.state.public_kitchen.opened,"second member finishes opening meal")
 	await shot("open","KitchenCook")
-	await press("KitchenCook")
+	await tap_pad(JOY_BUTTON_X)
+	expect(root.gui_get_focus_owner()==control("KitchenCook"),"X focuses cooking when the kitchen no longer accepts donations")
+	await tap_pad(JOY_BUTTON_A)
 	expect(app.modal.name=="CookingQueueUI","public stove opens existing cooker")
 	app._close_modal()
 	var reopened:=World.new()

@@ -75,21 +75,24 @@ func check_guide_against_data() -> void:
 		var guide: Dictionary = AutomationUI.GUIDE.get(id, {})
 		var kind: String = guide.get("kind", "")
 		var text: String = AutomationUI.recipe_use(id, Keys.new())
-		expect(kind in ["place", "collection", "part", "key_tool", "tool", "salt_facility", "animal_facility"], "%s has a known kind" % id)
+		expect(kind in ["place", "alternate_place", "collection", "part", "key_tool", "tool", "salt_facility", "animal_facility"], "%s has a known kind" % id)
 		expect(AutomationUI.PORTABLE_TOOLS.has(id) == (kind == "tool"), "%s is portable equipment exactly when kind is tool" % id)
 		if kind != "tool":
 			for word in FALSE_EQUIPMENT:
 				expect(not text.contains(word), "%s does not claim '%s'" % [id, word])
-		if kind in ["place", "collection"]:
+		if kind in ["place", "alternate_place", "collection"]:
 			var build: String = guide.get("build", "")
 			expect(World.BUILD.has(build), "%s points at a real build item %s" % [id, build])
 			var cost := build_cost(build)
+			if kind=="alternate_place":
+				cost=World.build_recipe(build,{id:1}).duplicate()
+				cost.erase("name")
 			expect(cost.has(id), "%s is really consumed by build %s" % [id, build])
 			var tab: String = guide.get("tab", "")
 			var page: int = BuildFolio.category(build, LifePanels.FOUNDATIONS, LifePanels.FURNITURE)
 			expect(BuildFolio.TABS[page] == tab, "%s build tab %s matches folio %s" % [id, tab, BuildFolio.TABS[page]])
 			expect(text.contains("「%s」" % tab), "%s guidance names the build tab" % id)
-			if kind == "place":
+			if kind in ["place","alternate_place"]:
 				expect(cost == {id: 1}, "%s kit places 1:1 as %s" % [id, build])
 				expect(World.BUILD[build].name == World.CRAFT[id].name, "%s build name matches recipe" % id)
 				expect(id in LifePanels.BUILD_MATERIALS, "%s count is shown in the build folio" % id)

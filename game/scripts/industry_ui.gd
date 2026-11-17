@@ -27,7 +27,7 @@ func device(app, cell: Vector2i) -> void:
 	var key := World.key(cell)
 	var obj: Dictionary = app.session.snapshot.get("objects", {}).get(key, {})
 	var kind: String = obj.get("type", "")
-	if kind in World.LOGISTICS.PROCESSORS or kind in ["seed_maker","loom","glass_furnace","jam_pot"]:
+	if kind in World.LOGISTICS.PROCESSORS or kind in World.INDUSTRY.MANUAL_STATIONS:
 		# T036: manual queue + automatic buffer workbench owns its own layout,
 		# Session signals and refresh; this RefCounted keeps no reference to it.
 		update_view = Callable()
@@ -46,15 +46,78 @@ func device(app, cell: Vector2i) -> void:
 		modal.set_meta("life_modal_layout", "logistics_processor")
 		processing(app, paper, cell, World.LOGISTICS.output_item(kind), kind)
 	else:
-		Tasks.add_icon(paper, ItemArt.icon(KITS[kind]), 64)
 		water_device(app, paper, cell, kind)
 	refresh(app)
 
+func dye_menu(app,cell:Vector2i) -> void:
+	var body:VBoxContainer=app._open_modal("家具換色")
+	modal=app.modal
+	modal.theme=PixelTheme.make(app.hud.theme)
+	modal.add_theme_stylebox_override("panel",PixelTheme.frame_style())
+	modal.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	var back:Button=app.button("回染料配方",func():device(app,cell))
+	back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+	body.add_child(back)
+	Tasks.line(app,body,"替染色桌四格內自己的床、桌、椅或沙發上色，每次用一份染料。",16)
+	var rows:=VBoxContainer.new()
+	body.add_child(rows)
+	var snapshot:Dictionary=app.session.snapshot
+	var keys:=World.nearby_dye_furniture(snapshot.get("objects",{}),app.session.own_id,cell)
+	if keys.is_empty():Tasks.line(app,body,"附近還沒有可以換色的家具。",16)
+	var bindings:Array=[]
+	for key in keys:
+		var card:=Tasks.card(rows)
+		var title:Label=app.label("",17)
+		card.add_child(title)
+		var buttons:=HBoxContainer.new()
+		buttons.add_theme_constant_override("separation",8)
+		card.add_child(buttons)
+		var choices:Dictionary={}
+		for pigment in ["blue_dye","orange_dye",""]:
+			var caption:String=World.INDUSTRY.FURNITURE_DYES.get(pigment,"恢復原色")
+			var button:Button=app.button(caption,func():app.session.perform("dye_furniture",cell,key+"|"+pigment))
+			button.name="DyeFurniture_%s_%s"%[key.replace(",","_"),pigment if not pigment.is_empty() else "natural"]
+			if not pigment.is_empty():
+				button.icon=ItemArt.icon(pigment)
+				button.expand_icon=true
+				button.add_theme_constant_override("icon_max_width",24)
+			buttons.add_child(button)
+			choices[pigment]=button
+		bindings.append({"key":key,"title":title,"choices":choices})
+	update_view=func(current:Dictionary,person:Dictionary):
+		var objects:Dictionary=current.get("objects",{})
+		var available:=World.nearby_dye_furniture(objects,app.session.own_id,cell)
+		var bag:Dictionary=person.get("inventory",{})
+		var table:Dictionary=objects.get(World.key(cell),{})
+		var owns_table:bool=table.get("type")==World.INDUSTRY.DYE_TABLE and table.get("owner")==app.session.own_id
+		for row in bindings:
+			var obj:Dictionary=objects.get(row.key,{})
+			var dye:String=obj.get("dye","")
+			var name:String=World.BUILD.get(obj.get("type",""),{}).get("name","家具已搬走")
+			var offset:=World.cell(row.key)-cell
+			var hint:=PackedStringArray()
+			if offset.x!=0:hint.append("%s %d 格"%["東" if offset.x>0 else "西",absi(offset.x)])
+			if offset.y!=0:hint.append("%s %d 格"%["南" if offset.y>0 else "北",absi(offset.y)])
+			row.title.text="%s · %s · %s"%[name,"、".join(hint),World.INDUSTRY.FURNITURE_DYES.get(dye,"原色")]
+			for pigment in row.choices:
+				var button:Button=row.choices[pigment]
+				var held:=int(bag.get(pigment,0))
+				if not pigment.is_empty():button.text="%s · %d 份"%[World.INDUSTRY.FURNITURE_DYES[pigment],held]
+				button.disabled=not owns_table or row.key not in available or pigment==dye or (not pigment.is_empty() and held<1)
+	refresh(app)
+
 func water_device(app, paper: VBoxContainer, cell: Vector2i, kind: String) -> void:
+	var overview:=HBoxContainer.new()
+	overview.add_theme_constant_override("separation",12)
+	paper.add_child(overview)
+	Tasks.add_icon(overview,ItemArt.icon(KITS[kind]),64)
 	var heading: Label = app.label("", 20)
 	heading.autowrap_mode = TextServer.AUTOWRAP_OFF
-	paper.add_child(heading)
+	heading.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	heading.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	overview.add_child(heading)
 	var status: Label = app.label("", 16)
+	status.name="WaterDeviceStatus"
 	status.custom_minimum_size.x = 300
 	paper.add_child(status)
 	var gauge := ProgressBar.new()
@@ -66,6 +129,8 @@ func water_device(app, paper: VBoxContainer, cell: Vector2i, kind: String) -> vo
 	if kind == "water_tank":action = "refill_tank"
 	if kind == "water_pump":action = "toggle_pump"
 	var operation: Button = app.button("", func(): app.session.perform(action, cell))
+	operation.name="WaterDeviceOperation"
+	operation.size_flags_horizontal=Control.SIZE_SHRINK_END
 	paper.add_child(operation)
 	operation.visible = not action.is_empty()
 	var key := World.key(cell)
@@ -92,7 +157,7 @@ func water_device(app, paper: VBoxContainer, cell: Vector2i, kind: String) -> vo
 		elif kind == "water_pump":
 			var enabled: bool = obj.get("enabled", false)
 			status.text = "%s。需在河岸兩格內啟用，每 %d 秒可向連通水桶送 %d 格水。" % [
-				"已啟用" if enabled else "已停止", World.INDUSTRY.INTERVAL, World.INDUSTRY.PUMP_RATE]
+				"已啟用" if enabled else "已停止", World.INDUSTRY.INTERVAL,World.pump_rate_for(str(snapshot.get("region_id","home")),snapshot)]
 			operation.text = "停止抽水" if enabled else "啟用河水泵"
 			if tanks == 0:
 				status.text += "\n未接通儲水桶，暫停供水。"

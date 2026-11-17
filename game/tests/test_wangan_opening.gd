@@ -165,7 +165,7 @@ func plot_checks()->void:
 			seen[next]=true
 			queue.append(next)
 	for cell in Chapter.STARTER_PLOT:check(seen.has(cell),"Plot cell %s reachable on foot from SPAWN"%str(cell))
-	check(Chapter.FIRST_CROP_STEPS==["find","till","sow","water","wait","harvest","ship"],"Step ids are exactly find..ship")
+	check(Chapter.FIRST_CROP_STEPS==["find","till","buy_seed","sow","water","wait","harvest","ship"],"Step ids include the seed shop detour")
 	check(Opening.OPENING_LINE=="小栗在渡口旁留了一塊地給你。先種一株蘿蔔，收成後帶到出貨箱。","Opening line is the design book's line verbatim")
 
 # ------------------------------------------------------------ full sequence --
@@ -317,7 +317,9 @@ func old_saves()->void:
 	no_seeds.crops["46,27"]={"kind":"","growth":0.0,"wet":false,"owner":t}
 	for item in no_seeds.players[t].inventory.keys():
 		if str(item).ends_with("_seed"):no_seeds.players[t].inventory.erase(item)
-	check(step_of(no_seeds,t).get("id","")=="sow" and str(step_of(no_seeds,t).text).contains("買種子"),"Soil but no seeds: sow via buying seeds")
+	var restock:=step_of(no_seeds,t)
+	check(restock.get("id","")=="buy_seed" and restock.get("cell")==World.Village.resident_cell(no_seeds,"xiaoli"),
+		"Soil but no seeds points to Xiaoli's shop")
 	check(base==world.state,"Old-save probes never touched the world state")
 
 func run()->void:
@@ -336,6 +338,19 @@ func run()->void:
 	w=session.world
 	a=session.profile.token
 	check(w.state.players.has(a) and session.own_id==public_id(a),"Host player joined with a public id")
+	var landing:=World.WANGAN_COAST.FERRY_LANDING
+	check(Vector2(w.state.players[a].x,w.state.players[a].y)==landing,"A fresh session starts on the ferry dock")
+	check(w.protected(Vector2i(landing)),"The empty ferry landing is reserved for future arrivals")
+	var probe:=World.new()
+	probe.add_player("returning","回島")
+	probe.state.players.returning.x=40.5
+	probe.state.players.returning.y=33.5
+	probe.add_player("returning","回島",landing)
+	check(Vector2(probe.state.players.returning.x,probe.state.players.returning.y)==Vector2(40.5,33.5),"An existing walkable position is preserved on registration")
+	probe.state.objects[World.key(Vector2i(landing))]={"type":"wall","owner":"returning","items":{}}
+	probe.add_player("late-arrival","新島民",landing)
+	var alternate:=Vector2(probe.state.players["late-arrival"].x,probe.state.players["late-arrival"].y)
+	check(alternate!=landing and alternate.distance_to(landing)<=Opening.ARRIVAL_REACH and probe.can_stand(alternate),"A pre-existing object redirects new arrivals to a legal nearby cell")
 	plot_checks()
 	sequence()
 	elsewhere()

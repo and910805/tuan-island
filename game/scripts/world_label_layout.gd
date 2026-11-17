@@ -60,7 +60,7 @@ static func candidates(preferred:Rect2,anchor:Vector2,blockers:Array[Rect2]) -> 
 ## anchor (earliest wins ties, so an unobstructed label never moves). If no spot
 ## is clear the label is still returned at the least-overlapping spot: vital
 ## prompts are never dropped.
-static func place(preferred:Rect2,anchor:Vector2,blockers:Array[Rect2],area:Rect2) -> Dictionary:
+static func place(preferred:Rect2,anchor:Vector2,blockers:Array[Rect2],area:Rect2,keep_centered:=false) -> Dictionary:
 	var best:=Rect2()
 	var best_overlap:=INF
 	var best_distance:=INF
@@ -68,6 +68,7 @@ static func place(preferred:Rect2,anchor:Vector2,blockers:Array[Rect2],area:Rect
 		var box:=clamp_into(Rect2(corner,preferred.size),area)
 		var cost:=overlap(box,blockers)
 		var distance:=distance_to_rect(anchor,box)
+		if keep_centered:distance+=absf(box.get_center().x-anchor.x)
 		if cost<best_overlap or (cost==best_overlap and distance<best_distance):
 			best=box
 			best_overlap=cost

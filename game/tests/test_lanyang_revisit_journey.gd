@@ -144,6 +144,13 @@ func revisit_leg() -> void:
 	check(world.player_region(TOKEN)=="lanyang","revisit starts in Lanyang after the plaque")
 	check(LR.unlocked(s) and LR.player_ready(s,TOKEN),"revisit unlocked: canal repaired, plaque set, own memory completed")
 	check(not s.has(LR.STATE_KEY),"no revisit record before the first gate setting")
+	check(LR.waiting_for_return(s,TOKEN),"The first day of practice invites a later return")
+	deny(LR.GATE_ACTION,LR.GATE_CELL,"a:1",LR.RETURN_TOMORROW,"the practice day cannot start the dry-day round")
+	deny(LR.CHECK_ACTION,LR.FIELD_CELLS.upstream,"",LR.RETURN_TOMORROW,"the practice day cannot mark fields")
+	var reopened:=World.new()
+	check(reopened.load_world(world.save_path) and LR.waiting_for_return(reopened.state,TOKEN),"Reopening the save on the same day preserves the invitation")
+	wait_until(next_midnight()+1.0,60.0)
+	check(not LR.waiting_for_return(world.state,TOKEN),"Crossing midnight opens the window for a dry-day return")
 	var rain_days:=0
 	while LR.raining(world.state) and not failed and rain_days<4:
 		deny(LR.GATE_ACTION,LR.GATE_CELL,"a:1",LR.RAINY,"gate on rainy day %d"%LR.today(world.state))
@@ -274,7 +281,7 @@ func network_leg() -> void:
 	var builds:=[[S2,"sprinkler"],[PIPE_B,"water_pipe"],[GATE,IND.GATE_KIND],[S1,"sprinkler"],[PIPE_A,"water_pipe"],[TANK,"water_tank"],[PUMP,"water_pump"]]
 	for row in builds:
 		var before:=bag().duplicate(true)
-		var kit:String=World.BUILD[row[1]].keys().filter(func(x):return x!="name")[0]
+		var kit:String=World.build_recipe(row[1],before).keys().filter(func(x):return x!="name")[0]
 		act("build",row[0],row[1])
 		expect_bag(before,{kit:-1},"build %s debits one %s"%[row[1],kit])
 	if failed:return
@@ -496,10 +503,15 @@ func plant(cell:Vector2i) -> void:
 			kind=option
 			break
 	if kind=="":
+		for option in ["radish","lettuce","potato"]:
+			if World.crop_grows_in_season(option,"home",cell,now()):
+				kind=option
+				break
+		if not check(not kind.is_empty(),"The shop has a seed for the current growing season"):return
 		var coins:=int(person().coins)
-		act("buy",SHOP,"radish")
-		check(int(person().coins)==coins-int(World.CROPS.radish.seed_price),"bought a radish seed for %d"%int(World.CROPS.radish.seed_price))
-		kind="radish"
+		act("buy",SHOP,kind)
+		var price:=int(World.CROPS[kind].seed_price)
+		check(int(person().coins)==coins-price,"bought a %s seed for %d"%[kind,price])
 	var before:=bag().duplicate(true)
 	act("seed",cell,kind)
 	expect_bag(before,{kind+"_seed":-1},"seed %s at %s"%[kind,str(cell)])

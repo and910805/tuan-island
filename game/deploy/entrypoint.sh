@@ -26,7 +26,7 @@ else
 fi
 mkdir -p /data
 chown island:island /data
-for saved in /data/world.json /data/world.json.bak /data/world.json.tmp /data/world.json.rejected-* /data/members.json \
+for saved in /data/world.json /data/world.json.bak /data/world.json.bak.staged /data/world.json.tmp /data/world.json.rejected-* /data/members.json \
     /data/world.json.writer-lock /data/members.json.writer-lock /data/members.json.admission-wal \
     /data/members.json.admission-retention.json \
     /data/world.json.admission-previous-* /data/world.json.bak.admission-previous-* /data/members.json.admission-previous-*; do

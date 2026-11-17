@@ -221,6 +221,8 @@ func sr_fell_tree(label:String) -> void:
 func sr_day_one() -> void:
 	travel(FERRY,SR.REGION)
 	if failed:return
+	sr_wait_for_batch_weather()
+	if failed:return
 	var s:=world.state
 	sr_check(Vector2(person().x,person().y)==SR.STOP_STAND,"arrived at the 北門 stop (%.1f,%.1f)"%[float(person().x),float(person().y)])
 	sr_check(SR.weather_today(s)=="sunny","day %d in 北門 is sunny (got %s)"%[SR.today(s),SR.weather_today(s)])
@@ -463,7 +465,8 @@ func sr_exhibit() -> void:
 		if str(pk.kind)=="kitchen":kitchen+=1
 		else:pickle+=1
 		if pk.rain==true:rain+=1
-	sr_check(sunny==4 and cloudy==2 and kitchen==2 and pickle==4 and rain==4,"action log: lots sunny %d cloudy %d, baskets kitchen %d pickle %d, rainy packs %d"%[sunny,cloudy,kitchen,pickle,rain])
+	var expected_order:Dictionary=SR_ORDER_TABLE[str(rv.season)]
+	sr_check(sunny==4 and cloudy==2 and kitchen==int(expected_order.kitchen) and pickle==int(expected_order.pickle) and rain==4,"action log: lots sunny %d cloudy %d, baskets kitchen %d pickle %d, rainy packs %d"%[sunny,cloudy,kitchen,pickle,rain])
 	var recap:=ME.recap_for(s,"beimen")
 	var season:=str(rv.season)
 	var season_label:=str(WEATHER.SEASON_LABELS[season])+"季"
@@ -632,6 +635,20 @@ func sr_flood_empty() -> void:
 
 func sr_next_day() -> void:
 	wait(next_midnight()+1.0-now())
+
+func sr_wait_for_batch_weather() -> void:
+	var wanted:=["sunny","cloudy","rainy","sunny"]
+	var today:=WEATHER.day_index(now())
+	for offset in WEATHER.CYCLE.size():
+		var start:=today+offset
+		var sequence:Array[String]=[]
+		for day in wanted.size():
+			sequence.append(WEATHER.at((start+day)*WEATHER.DAY_SECONDS,SR.REGION).id)
+		if sequence!=wanted:continue
+		if offset>0:wait(start*WEATHER.DAY_SECONDS+1.0-now())
+		sr_check(SR.weather_today(world.state)==wanted[0],"waited for the next four-day salt work window")
+		return
+	sr_check(false,"calendar has no sunny, cloudy, rainy, sunny work window")
 
 func sr_stock() -> void:
 	if failed:return

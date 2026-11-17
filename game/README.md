@@ -1,8 +1,20 @@
 # 糰糰島 Windows 多人像素生活遊戲
 
-Godot 4.7.2 原生遊戲原型。固定 2D 視角，以採集、六種作物、建造、種子攤、共同修橋與持久存檔驗證核心循環。
+Godot 4.7.2 原生2D像素生活模擬遊戲開發版，包含耕作、建造、島民故事及供水／林業加工等逐步解鎖的玩法。
 
-目前開發版本為 0.16，封測多人協定 14；下列早期版本的協定號是歷史紀錄。世界存檔格式仍為 1。
+目前公開試玩包為 **0.50-dev r20**，多人協定 **47**、世界存檔格式 **26**。客戶端及世界伺服器需同版；版本資料以[release.json](release.json)為準。
+
+- [Windows安裝包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r20/TuanIslandSetup-0.50-dev-r20.exe)
+- [Linux世界伺服器包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r20/TuanIslandServer-0.50-dev-r20-linux-x64.zip)
+- [r20更新說明與驗證範圍](https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r20)
+
+選「住進自己的小島」可單機遊玩，不需要IP。r20加入小羊躲雨及糯米雞短暫抱抱，保留既有存檔及生產規則。Windows EXE與本機獨立Linux世界程序已有連線、照料互斥及重啟驗證；公開雲端WSS、完整真人旅程及整體規劃仍在開發驗收中。
+
+版本更新網址尚未配置為公開簽署清單，現階段請從上方Release下載安裝包。部署及持久資料設定見[部署說明](deploy/README.md)。
+
+## 早期開發紀錄
+
+以下保留從0.16開始的歷史筆記；其中協定、存檔格式、內容數量及早期更新清單範例不是現行部署設定。
 
 ## 已有內容
 

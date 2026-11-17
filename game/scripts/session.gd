@@ -5,6 +5,7 @@ const Membership = preload("res://scripts/world_membership.gd")
 const AdmissionStore = preload("res://scripts/admission_store.gd")
 const WriteGuard = preload("res://scripts/world_write_guard.gd")
 const BlueprintProtocol = preload("res://scripts/blueprint_protocol.gd")
+const SnapshotWire = preload("res://scripts/snapshot_wire.gd")
 ## 45: chapter 4 Beimen cooperative salt pans (save 26): beimen region, sea_salt,
 ## salt machine kits, salt_grilled_fish; salt_* actions through request_action
 ## (gate/rake/install/uninstall/auto_cfg/order/box_take correlated; extras use the
@@ -26,7 +27,10 @@ const BlueprintProtocol = preload("res://scripts/blueprint_protocol.gd")
 ## in every snapshot. 40: explicit chest + backpack material sourcing (save 22):
 ## prepare_material_box and sourced extras on SOURCE_ACTIONS. 39: sawmill/
 ## charcoal_kiln `processing` queues (save 21). 38: stove cooking queues.
-const PROTOCOL := 45
+## 47: chicken cuddle/release; optional owner marker is hashed in public snapshots.
+## 46: sheep grooming action and optional last_care marker; older clients must update.
+const PROTOCOL := 47
+const VERSION_MISMATCH_NOTICE := "遊戲版本過舊或不相容，請更新遊戲後再加入。"
 const ROOM_CAPACITY := Membership.LIMIT
 const CONNECTION_CAPACITY := ROOM_CAPACITY + 4
 const KITCHEN_REGISTER := "kitchen_register"
@@ -34,8 +38,10 @@ const KITCHEN_CONTRIBUTE := "kitchen_contribute"
 ## Actions whose result is returned to the requester with its exact sequence via
 ## action_completed (a festival/world notice is never an acknowledgement).
 const CORRELATED_ACTIONS := ["ship", "undo_build", "cook", "queue_cook", "claim_cook", "cancel_cook", "cancel_queued_cook",
+	"axe", "pick", "night_vote", "till_area", "seed_area", "harvest_area",
 	"start_processing", "queue_processing", "claim_processing", "cancel_processing", "cancel_processing_job",
 	"feed_processing", "unload_processing_input", "toggle_auto_processing", "collect_processing_output",
+	"assemble", "pet", "feed", "egg", "chicken_hug", "chicken_release", "livestock_pet", "livestock_brush", "livestock_feed", "livestock_collect", "collector_collect",
 	"craft", "prepare_material_box", KITCHEN_REGISTER, KITCHEN_CONTRIBUTE, "flower_ship", "flower_give",
 	"salt_gate_give", "salt_rake", "salt_install", "salt_uninstall", "salt_auto_cfg", "salt_order", "salt_box_take"]
 ## Existing actions that may carry a sourced extra `recipe|box_cell|box_id|digest16`.
@@ -70,10 +76,18 @@ signal connected_world
 signal disconnected_world
 var world = null
 var peers:Dictionary={}
+var returning_peers:Dictionary={}
+var solo_rest_enabled:=false
+const NIGHT_VOTE_TTL_MS:=30000
+var night_vote:Dictionary={}
+var night_vote_serial:=0
 var directions:Dictionary={}
 var sequences:Dictionary={}
 var rates:Dictionary={}
 const EMOTES := {"hello":"你好！","thanks":"謝謝！","help":"來幫忙！"}
+const MAP_SIGNALS := {"wood":"需要木材","meet":"來這裡","build":"這裡要蓋房"}
+const MAP_SIGNAL_MS := 30000
+var map_signals:Dictionary={}
 var emote_sent_at:Dictionary={}
 signal emote_received(actor:String,region:String,caption:String)
 signal chat_received(region:String,sender:String,message:String)
@@ -91,9 +105,15 @@ var counter:=0
 var broadcast_clock:=0.0
 var save_clock:=0.0
 var accepting:=true
+var storage_paused:=false
+var storage_report_state:=""
+var storage_report_delay:=0.0
+var storage_report_request:HTTPRequest
+var local_paused:=false
 var headless:=false
 var session_nonce:=""
 var last_movement:Dictionary={}
+var controller_holds:Dictionary={}
 var shutting_down:=false
 var membership: Membership
 var identity_url := ""
@@ -109,7 +129,6 @@ var client_invite := ""
 var authenticated_client := false
 var identity_clock := 0.0
 var directory_address := ""
-var directory_mode := "生活"
 var directory_dirty := false
 var directory_request: HTTPRequest
 var directory_clock := 0.0
@@ -143,7 +162,6 @@ func configure_directory(address: String, world_name: String, mode: String = "�
 	if not membership.set_world_name(world_name):
 		return ERR_CANT_CREATE
 	directory_address = address
-	directory_mode = mode
 	return OK
 
 static func loopback_url(url: String, scheme: String) -> bool:
@@ -230,8 +248,9 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--profile="):profile.token=arg.trim_prefix("--profile=")
 
-func host(port:int, nickname:String, save_file:String, key_value:String="", bind_ip:String="127.0.0.1", dedicated:bool=false, transport:String="enet") -> Error:
+func host(port:int, nickname:String, save_file:String, key_value:String="", bind_ip:String="127.0.0.1", dedicated:bool=false, transport:String="enet", solo:bool=false, world_mode:String="") -> Error:
 	if shutting_down or world != null or save_file.is_empty():return ERR_INVALID_PARAMETER
+	if world_mode not in ["","life","adventure"]:return ERR_INVALID_PARAMETER
 	if transport not in ["enet","websocket"]:return ERR_INVALID_PARAMETER
 	if membership != null and (not dedicated or transport != "websocket"):return ERR_INVALID_PARAMETER
 	if membership != null and ProjectSettings.globalize_path(membership.path).simplify_path() == ProjectSettings.globalize_path(save_file).simplify_path():return ERR_INVALID_PARAMETER
@@ -256,7 +275,15 @@ func host(port:int, nickname:String, save_file:String, key_value:String="", bind
 		world=null
 		if membership == null:write_guard.release()
 		return ERR_FILE_CORRUPT
+	var new_save:bool=not world.recovered_from_backup and not FileAccess.file_exists(save_file)
+	if new_save and world_mode=="adventure":world.state.world_mode="adventure"
+	if not new_save and not world_mode.is_empty() and world.state.get("world_mode","life")!=world_mode:
+		notice.emit("這份存檔的玩法模式與選擇不同。",false)
+		world=null
+		if membership==null:write_guard.release()
+		return ERR_INVALID_PARAMETER
 	var recovered:bool=world.recovered_from_backup
+	if membership!=null:world.public_build_access=membership.can_build_public
 	var peer:MultiplayerPeer
 	var err:Error
 	if transport=="websocket":
@@ -279,6 +306,7 @@ func host(port:int, nickname:String, save_file:String, key_value:String="", bind
 	multiplayer.multiplayer_peer=peer
 	room_key=key_value
 	headless=dedicated
+	solo_rest_enabled=solo and not dedicated and bind_ip=="127.0.0.1"
 	if not dedicated:_register(1,profile.token,nickname)
 	print("SERVER_READY port=%d bind=%s transport=%s"%[port,bind_ip,transport])
 	if recovered:notice.emit("主存檔無法讀取，已使用上一份備份恢復；原檔會另行保留。",true)
@@ -299,7 +327,7 @@ func join(address:String,port:int,nickname:String,key_value:String,tls_options:T
 		socket.inbound_buffer_size=4194304
 		socket.outbound_buffer_size=4194304
 		socket.max_queued_packets=128
-		err=socket.create_client(address,tls_options)
+		err=socket.create_client(SnapshotWire.offer(address),tls_options)
 		peer=socket
 	else:
 		var enet:=ENetMultiplayerPeer.new()
@@ -347,25 +375,28 @@ func _registration_available(id:int,token:String) -> bool:
 
 func _register(id:int,token:String,nickname:String) -> bool:
 	if not _registration_available(id,token):return false
+	var returning:bool=world.state.players.has(token)
 	var before:Dictionary=world.state.duplicate(true)
-	world.add_player(token,nickname if not nickname.strip_edges().is_empty() else "島民")
+	world.add_player(token,nickname if not nickname.strip_edges().is_empty() else "島民",World.WANGAN_COAST.FERRY_LANDING)
 	if not world.save():
 		world.state=before
 		world.active_tokens.erase(token)
 		_send_notice(id,"無法保存角色，請稍後再試。",false)
 		return false
-	_attach_registered(id,token)
+	_attach_registered(id,token,returning)
 	return true
 
-func _attach_registered(id:int,token:String) -> void:
+func _attach_registered(id:int,token:String,returning:bool=false) -> void:
 	peers[id]=token
+	returning_peers[id]=returning
 	directions[id]=Vector2.ZERO
 	last_movement[id]=Time.get_ticks_msec()
 	sequences[id]=0
 	rates[id]=[]
 	_blueprint_attach(id)
 	pending.erase(id)
-	_send_snapshot(id)
+	if night_vote.is_empty():_send_snapshot(id)
+	else:_end_night_vote("有島民加入，已取消這次休息投票。")
 	if id==1:connected_world.emit()
 	else:welcome.rpc_id(id)
 
@@ -374,12 +405,15 @@ func commit_identity_admission(id:int,claim:Dictionary,invite:String) -> Diction
 		return {"ok":false,"code":"RECOVERING","message":"小島正在保護存檔，請待伺服器恢復後再加入。"}
 	var plan := membership.plan_admission(claim.account_id,claim.display_name,invite)
 	if not plan.ok:
+		if plan.code=="WORLD_BLOCKED":
+			return {"ok":false,"code":plan.code,"message":"你的帳號目前被這座島封鎖。"}
 		return {"ok":false,"code":plan.code,"message":"這座島的成員席位已滿。" if plan.code=="WORLD_FULL" else "邀請已失效，請向島主索取新的邀請。"}
 	if not _registration_available(id,plan.character):
 		return {"ok":false,"code":"ALREADY_ONLINE","message":"此島民已在線，或目前連線名額已滿。"}
 	var draft := World.new()
 	draft.state = world.state.duplicate(true)
-	draft.add_player(plan.character,claim.display_name.left(12))
+	var returning:bool=draft.state.players.has(plan.character)
+	draft.add_player(plan.character,claim.display_name.left(12),World.WANGAN_COAST.FERRY_LANDING)
 	if not admission_store.commit(world.save_path,membership.path,identity_world,draft.state,plan.state):
 		if AdmissionStore.has_pending(membership.path):
 			freeze_admission_writes()
@@ -389,7 +423,8 @@ func commit_identity_admission(id:int,claim:Dictionary,invite:String) -> Diction
 	world.state = draft.state
 	world.active_tokens[plan.character] = true
 	world.recovered_from_backup = false
-	return {"ok":true,"character":plan.character}
+	world.last_saved_at=Membership.now()
+	return {"ok":true,"character":plan.character,"returning":returning}
 
 func freeze_admission_writes() -> void:
 	admission_recovery_required = true
@@ -411,7 +446,7 @@ func register_player(version:int,token:String,nickname:String,key_value:String) 
 		_send_notice(id,"此世界需要已驗證帳號。",false)
 		return
 	if version!=PROTOCOL:
-		_send_notice(id,"遊戲版本過舊或不相容，請更新遊戲後再加入。",false)
+		_send_notice(id,VERSION_MISMATCH_NOTICE,false)
 		return
 	if token.length()<12 or token.length()>64 or key_value!=room_key:
 		_send_notice(id,"房間密碼不正確，無法加入。",false)
@@ -424,6 +459,8 @@ func welcome() -> void:
 	connected_world.emit()
 
 func _peer_left(id:int) -> void:
+	returning_peers.erase(id)
+	map_signals.erase(id)
 	emote_sent_at.erase(id)
 	chat_sent_at.erase(id)
 	note_sent_at.erase(id)
@@ -436,34 +473,43 @@ func _peer_left(id:int) -> void:
 		if peers.has(id):
 			world.cancel_trades(peers[id])
 			world.active_tokens.erase(peers[id])
+			if str(world.state.animal.get(World.CHICKEN_CUDDLE.FIELD,""))==peers[id]:World.CHICKEN_CUDDLE.clear(world.state.animal)
 			world.harvest_disconnect(peers[id]) # T071：放下模型蔬菜並退出這一輪（下面一起存檔）
 			world.fish_meet_disconnect(peers[id]) # T071：退出河岸釣魚會這一輪（貢獻保留，下面一起存檔）
 			world.showcase_disconnect(peers[id]) # T071：退出家園布置題這一輪（道具留在地塊上，下面一起存檔）
 			_forget_tool_actions(_public_actor(peers[id]))
 		peers.erase(id)
+		if not night_vote.is_empty():_end_night_vote("有島民離開，已取消這次休息投票。")
 		directions.erase(id)
 		last_movement.erase(id)
+		controller_holds.erase(id)
 		sequences.erase(id)
 		rates.erase(id)
 		pending.erase(id)
-		if not admission_recovery_required and not world.save():accepting=false
+		if not admission_recovery_required and not world.save():
+			accepting=false
+			storage_paused=true
 	if not admission_recovery_required and not previous.is_empty():
 		membership.touch(previous.account_id)
 		mark_directory_dirty()
 
 func _physics_process(dt:float) -> void:
 	if world==null or not multiplayer.is_server():return
+	_tick_storage_report(dt)
 	if admission_recovery_required:return
-	if accepting:
+	if not night_vote.is_empty() and (Time.get_ticks_msec()>=int(night_vote.until) or fposmod(float(world.state.time),World.WEATHER.DAY_SECONDS)>=World.REST_DAWN):
+		_end_night_vote("休息投票已結束，島上的時間照常前進。")
+	if accepting and not (local_paused and peers.size()==1 and peers.has(1)):
 		if not world.step(dt,peers.size()>0):
 			accepting=false
+			storage_paused=world.step_error==World.STEP_FAIL_SAVE
 			# step_error tells a rolled-back salt tick (data fault, nothing saved) from a
 			# storage failure; both pause the world without writing a half-finished tick.
 			var notice:="北門鹽田的資料出現異常，世界已暫停以保護進度，請管理員檢查世界資料後重新開啟。" if world.step_error==World.STEP_FAIL_SALT else "設備保存失敗，世界已暫停操作，請檢查儲存空間後重新進入。"
 			for id in peers:_send_notice(id,notice,false)
 			return
 		for id in peers:
-			if not identity_allows_play(id):
+			if controller_holds.has(id) or not identity_allows_play(id):
 				directions[id] = Vector2.ZERO
 				continue
 			if Time.get_ticks_msec()-int(last_movement.get(id,0))>400:directions[id]=Vector2.ZERO
@@ -477,6 +523,7 @@ func _physics_process(dt:float) -> void:
 		save_clock=0
 		if not world.save():
 			accepting=false
+			storage_paused=true
 			for id in peers:_send_notice(id,"世界保存遇到問題，暫停操作以保護進度。",false)
 	var now:=Time.get_ticks_msec()
 	for id in pending.keys():
@@ -502,7 +549,7 @@ func identity_allows_play(id: int) -> bool:
 func input_direction(d:Vector2) -> void:
 	if shutting_down:return
 	if world!=null and peers.has(1):
-		directions[1]=d.limit_length()
+		directions[1]=Vector2.ZERO if controller_holds.has(1) or night_vote.get("yes",{}).has(1) else d.limit_length()
 		last_movement[1]=Time.get_ticks_msec()
 	elif multiplayer.multiplayer_peer.get_connection_status()==MultiplayerPeer.CONNECTION_CONNECTED:
 		movement.rpc_id(1,d.limit_length(),str(snapshot.get("region_id","home")),int(snapshot.get("players",{}).get(own_id,{}).get("travel_epoch",0)))
@@ -510,7 +557,7 @@ func input_direction(d:Vector2) -> void:
 @rpc("any_peer","call_remote","unreliable_ordered",1)
 func movement(d:Vector2,region:String,epoch:int) -> void:
 	var id:=multiplayer.get_remote_sender_id()
-	if world!=null and peers.has(id) and context_matches(id,region,epoch) and identity_allows_play(id) and is_finite(d.x) and is_finite(d.y):
+	if world!=null and peers.has(id) and not controller_holds.has(id) and not night_vote.get("yes",{}).has(id) and context_matches(id,region,epoch) and identity_allows_play(id) and is_finite(d.x) and is_finite(d.y):
 		directions[id]=d.limit_length()
 		last_movement[id]=Time.get_ticks_msec()
 
@@ -525,7 +572,11 @@ func perform(action:String,p:Vector2i,extra:String="") -> int:
 @rpc("any_peer","call_remote","reliable",2)
 func request_action(sequence:int,action:String,p:Vector2i,extra:String,region:String,epoch:int) -> void:
 	var id:=multiplayer.get_remote_sender_id()
-	if world!=null and context_matches(id,region,epoch):_action(id,sequence,action,p,extra)
+	# Controller recovery affects only the sending peer and may arrive across a region transition.
+	if world!=null and (action in ["controller_hold","controller_resume"] or context_matches(id,region,epoch)):
+		_action(id,sequence,action,p,extra)
+	elif action=="night_vote" and peers.has(id):
+		_complete_shipping(id,sequence,action,{"ok":false})
 
 func context_matches(id:int,region:String,epoch:int) -> bool:
 	if world==null or not peers.has(id):return false
@@ -533,13 +584,26 @@ func context_matches(id:int,region:String,epoch:int) -> bool:
 	return world.player_region(token)==region and int(world.state.players[token].get("travel_epoch",0))==epoch
 
 func _action(id:int,sequence:int,action:String,p:Vector2i,extra:String) -> void:
-	if not peers.has(id) or not accepting or not identity_allows_play(id):return
+	if not peers.has(id):return
+	if not accepting or not identity_allows_play(id):
+		if action=="night_vote":_complete_shipping(id,sequence,action,{"ok":false})
+		return
 	if sequence<=int(sequences[id]) or sequence>int(sequences[id])+1000:return
 	# This existing buffer action has 25 characters; retain the general bound
 	# while allowing its exact registered name through both host and peer paths.
 	if abs(p.x)>1000 or abs(p.y)>1000 or (action.length()>24 and action!="collect_processing_output"):return
 	if not extra_allowed(action,extra):return
 	sequences[id]=sequence
+	if action=="controller_hold" or action=="controller_resume":
+		if action=="controller_hold":controller_holds[id]=true
+		else:controller_holds.erase(id)
+		directions[id]=Vector2.ZERO
+		last_movement[id]=0
+		if action=="controller_hold" and not night_vote.is_empty():_end_night_vote("有島民的手把已斷線，已取消休息投票。")
+		return
+	if controller_holds.has(id):
+		if action=="night_vote":_complete_shipping(id,sequence,action,{"ok":false})
+		return
 	var now:=Time.get_ticks_msec()
 	var recent:Array=rates[id]
 	while not recent.is_empty() and now-int(recent[0])>1000:recent.pop_front()
@@ -550,6 +614,25 @@ func _action(id:int,sequence:int,action:String,p:Vector2i,extra:String) -> void:
 		if action=="news_note":_reply_island_note(id,sequence,false)
 		return
 	recent.append(now)
+	if membership!=null:
+		if action in ["dock_project_start","festival_story_open"] and not _can_start_large_projects(id):
+			_send_notice(id,"請由島主或管理員啟動這項工程。",false)
+			return
+		if action=="dock_repair" and int(world.state.get("dock_stage",0))==0 and not world.state.get("dock_project_started",false):
+			_send_notice(id,"等島主或管理員宣布開工後，就能交付材料。",false)
+			return
+	if action=="night_rest":
+		_attempt_night_rest(id)
+		return
+	if action=="night_vote":
+		var accepted:=_change_night_vote(id,extra,now)
+		_complete_shipping(id,sequence,action,{"ok":accepted})
+		return
+	if not night_vote.is_empty() and night_vote.yes.has(id):
+		_end_night_vote("有島民繼續活動，已取消這次休息投票。")
+	if action=="map_signal":
+		_change_map_signal(id,p,extra,now)
+		return
 	if action=="emote":
 		if not EMOTES.has(extra) or now-int(emote_sent_at.get(id,-3000))<2000:return
 		emote_sent_at[id]=now
@@ -588,6 +671,9 @@ func _action(id:int,sequence:int,action:String,p:Vector2i,extra:String) -> void:
 	# A stored receipt means World only replays an earlier answer; never animate it twice.
 	var replayed:bool=action in TOOL_ACTION_EVENTS and world.state.players.has(peers[id]) and world.state.players[peers[id]].get("receipts",{}).has(request_id)
 	var result:Dictionary=world.act(peers[id],request_id,action,p,extra)
+	if result.ok and action in ["livestock_pet","livestock_brush","livestock_feed"]:
+		result=result.duplicate()
+		result["animal"]=extra
 	if result.ok and not replayed and action in TOOL_ACTION_EVENTS:_record_tool_action(peers[id],action,p,extra)
 	if result.ok and action=="news_note":note_sent_at[id]=now
 	if result.ok and (action in ["travel","transit","mine_travel"] or result.get("mine_exhausted",false)):
@@ -604,7 +690,16 @@ func _action(id:int,sequence:int,action:String,p:Vector2i,extra:String) -> void:
 ## previous limit (ship / mine_auto_config byte limits, else 32 characters).
 ## World still owns every semantic check (recipe, adjacency, access, digest).
 static func extra_allowed(action:String,extra:String) -> bool:
-	if action in ["island_chat","news_note"]:return not chat_text(extra).is_empty()
+	if action=="night_rest":return extra.is_empty()
+	if action=="night_vote":
+		if extra=="open":return true
+		if extra.length()>24:return false
+		var parts:=extra.split(":")
+		return parts.size()==2 and parts[0] in ["yes","no"] and parts[1].is_valid_int() and int(parts[1])>0
+	if action=="map_signal":return extra=="cancel" or MAP_SIGNALS.has(extra)
+	if action==World.WELCOME_SIGN.WRITE:
+		return extra.length()<=World.WELCOME_SIGN.MAX_BYTES and extra.to_utf8_buffer().size()<=World.WELCOME_SIGN.MAX_BYTES
+	if action in ["island_chat","news_note",World.RESIDENT_GOALS.TREE_NOTE_ACTION]:return not chat_text(extra).is_empty()
 	if action in ["trade_edit","trade_confirm"]:
 		return extra.to_utf8_buffer().size()<=World.TRADE.MAX_EXTRA_BYTES
 	if action=="trade_cancel":
@@ -622,6 +717,78 @@ static func extra_allowed(action:String,extra:String) -> bool:
 	if action == KITCHEN_CONTRIBUTE:
 		return extra.is_empty()
 	return extra.length() <= PLAIN_EXTRA_MAX
+
+func solo_rest_reason() -> String:
+	if not solo_rest_enabled or world==null or peers.size()!=1 or not peers.has(1):
+		return "這個選項目前只在單機小島開放。"
+	if not accepting:return "小島目前暫停寫入，無法結算休息。"
+	return world.night_rest_reason(peers[1])
+
+func _attempt_night_rest(id:int) -> void:
+	if id!=1:
+		_send_notice(id,"這個選項目前只在單機小島開放。",false)
+		return
+	var reason:=solo_rest_reason()
+	if not reason.is_empty():
+		_send_notice(id,reason,false)
+		return
+	directions[id]=Vector2.ZERO
+	last_movement[id]=0
+	var result:Dictionary=world.rest_until_dawn(peers[id])
+	if result.ok:_send_snapshot(id)
+	_send_notice(id,result.message,result.ok)
+
+func _night_vote_problem() -> String:
+	if solo_rest_enabled or not accepting:return "目前無法開始多人休息投票。"
+	for voter:int in peers:
+		if controller_holds.has(voter) or not identity_allows_play(voter):return "等所有在線島民都能操作後再投票。"
+		var reason:String=world.night_rest_reason(peers[voter])
+		if not reason.is_empty():return reason
+	return ""
+
+func _change_night_vote(id:int,choice:String,now:int) -> bool:
+	if not night_vote.is_empty() and now>=int(night_vote.until):
+		_end_night_vote("休息投票已逾時，島上的時間照常前進。")
+	if choice=="open":
+		if not night_vote.is_empty():
+			_send_notice(id,"已有一場休息投票，請查看目前的投票。",false)
+			return false
+	else:
+		if night_vote.is_empty() or int(choice.get_slice(":",1))!=int(night_vote.id):
+			_send_notice(id,"這場休息投票已結束。",false)
+			return false
+		if choice.begins_with("no:"):
+			_end_night_vote("有島民想繼續活動，已取消休息投票。")
+			return true
+	var problem:=_night_vote_problem()
+	if not problem.is_empty():
+		if night_vote.is_empty():_send_notice(id,problem,false)
+		else:_end_night_vote(problem)
+		return false
+	if choice=="open":
+		night_vote_serial+=1
+		night_vote={"id":night_vote_serial,"until":now+NIGHT_VOTE_TTL_MS,"yes":{}}
+	night_vote.yes[id]=true
+	directions[id]=Vector2.ZERO
+	last_movement[id]=0
+	if night_vote.yes.size()==peers.size():
+		var result:Dictionary=world.rest_until_dawn(peers[id])
+		_end_night_vote(result.message,result.ok)
+		return bool(result.ok)
+	for peer_id:int in peers:_send_snapshot(peer_id)
+	return true
+
+func _end_night_vote(message:String,success:bool=false) -> void:
+	night_vote.clear()
+	for id:int in peers:
+		_send_snapshot(id)
+		_send_notice(id,message,success)
+
+func night_vote_view(id:int) -> Dictionary:
+	if solo_rest_enabled:return {}
+	if night_vote.is_empty():return {"id":0,"total":peers.size()}
+	return {"id":night_vote.id,"total":peers.size(),"yes":night_vote.yes.size(),
+		"mine":night_vote.yes.has(id),"seconds":maxi(0,ceili((int(night_vote.until)-Time.get_ticks_msec())/1000.0))}
 
 ## kitchen_register extra: "seat_a|seat_b", at most 32 ASCII bytes, exactly two
 ## canonical NON-NEGATIVE "x,y" cells (no sign/spaces/leading zeros), distinct
@@ -672,7 +839,7 @@ func _complete_shipping(id: int, sequence: int, action: String, result: Dictiona
 	# Cooking needs the exact request sequence too: a festival/world notice is
 	# not an acknowledgement of a queued dish or cancellation. Processing queue
 	# operations (protocol 39) use the same correlated path; no new RPC.
-	if action in CORRELATED_ACTIONS:
+	if action in CORRELATED_ACTIONS or action in World.COMMUNITY.ACTIONS:
 		if id == 1:receive_action_completed(sequence,action,result)
 		elif _can_send(id):receive_action_completed.rpc_id(id,sequence,action,result)
 
@@ -821,6 +988,8 @@ func _handle_blueprint_apply(id:int,nonce:String,design_json:String,origin:Vecto
 	var reply_nonce:=nonce.left(BlueprintProtocol.NONCE_LENGTH*2)
 	var refusal:=_blueprint_caller_refusal(id)
 	if refusal.get("drop")==true:return
+	if refusal.is_empty() and night_vote.get("yes",{}).has(id):
+		_end_night_vote("有島民正在確認施工，已取消這次休息投票。")
 	if refusal.is_empty() and not (BlueprintProtocol.valid_nonce(nonce) and BlueprintProtocol.valid_hash(expected_hash)):
 		refusal=BlueprintProtocol.failure("施工編號或報價資料無效，請重新報價。")
 	if refusal.is_empty():
@@ -943,8 +1112,17 @@ static func _cooking_done_at(entry:Dictionary) -> float:
 		if entry.has(field):return float(entry[field])
 	return 0.0
 
-func public_state(region:String="home") -> Dictionary:
+func public_state(region:String="home",recipient:String="") -> Dictionary:
 	var out:Dictionary=world.region_snapshot(region).duplicate(true)
+	var cuddler:=World.CHICKEN_CUDDLE.holder(world.state,world.active_tokens)
+	out.animal.erase(World.CHICKEN_CUDDLE.FIELD)
+	if region=="home" and not cuddler.is_empty():out.animal[World.CHICKEN_CUDDLE.FIELD]=_public_actor(cuddler)
+	var exhibits:Dictionary={}
+	for token:String in world.state.players:
+		var exhibitor:Dictionary=world.state.players[token]
+		var pieces:Array=exhibitor.get("collection_display",[])
+		if not pieces.is_empty():exhibits[_public_actor(token)]={"name":str(exhibitor.name),"items":pieces.duplicate()}
+	if not exhibits.is_empty():out.collection_exhibits=exhibits
 	out.erase(World.OUTLYING_COMMISSIONS.STATE_KEY)
 	if out.has("public_fund"):out.public_fund.erase("contributors")
 	for dish in World.COMMUNITY.DISHES:
@@ -983,6 +1161,19 @@ func public_state(region:String="home") -> Dictionary:
 	# 誰看過哪件展品只在本人的 own_memory_exhibit（_send_snapshot）。
 	out.erase(World.MEMORY_EXHIBIT.STATE_KEY)
 	if World.MEMORY_EXHIBIT.unlocked(world.state):out[World.MEMORY_EXHIBIT.STATE_KEY]=World.MEMORY_EXHIBIT.public(world.state)
+	var rest_fixtures:=0
+	for saved_player:Dictionary in world.state.players.values():
+		rest_fixtures|=int(saved_player.get(World.RESIDENT_GOALS.REST_KIT_KEY,0))
+		if rest_fixtures==World.RESIDENT_GOALS.REST_KIT_MASK:break
+	out.bobo_rest_fixtures=rest_fixtures
+	out.erase(World.RESIDENT_GOALS.MURAL_KEY)
+	var mural:=World.RESIDENT_GOALS.mural_public(world.state)
+	if not mural.is_empty():out[World.RESIDENT_GOALS.MURAL_KEY]=mural
+	var garden:=World.RESIDENT_GOALS
+	if out.has(garden.GARDEN_KEY):
+		for pot:Dictionary in out[garden.GARDEN_KEY]:
+			pot.name=garden.GARDEN_NPCS.get(pot.author,{}).get("name","") if pot.npc else str(world.state.players.get(pot.author,{}).get("name","島民"))
+			pot.author=_public_actor(pot.author) if not pot.npc else pot.author
 	var visible:Dictionary={}
 	for id in peers:
 		var token:String=peers[id]
@@ -994,6 +1185,37 @@ func public_state(region:String="home") -> Dictionary:
 		person.erase("travel_book")
 		person.erase("resident_participation")
 		person.erase("bonds")
+		var voyage:=World.RESIDENT_GOALS
+		if person.has(voyage.VOYAGE_START):
+			var harbor_pos:Vector2=voyage.voyage_position(float(out.time)-float(person[voyage.VOYAGE_START]))
+			person.x=harbor_pos.x
+			person.y=harbor_pos.y
+			person.at_sea=true
+			var leader:String=person.get(voyage.VOYAGE_CAPTAIN,"")
+			if not leader.is_empty() and leader in peers.values():
+				person.voyage_captain=_public_actor(leader)
+		person.erase(voyage.VOYAGE_CAPTAIN)
+		person.erase(voyage.VOYAGE_PHOTO)
+		person.erase(voyage.VOYAGE_START)
+		person.erase(voyage.VOYAGE_DONE)
+		person.erase(World.RESIDENT_GOALS.ARU_PHOTO_KEY)
+		person.erase(World.RESIDENT_GOALS.ARU_REST_KEY)
+		person.erase(World.RESIDENT_GOALS.SHEEP_SHELTER_KEY)
+		person.erase(World.RESIDENT_GOALS.TEA_CHAIR_KEY)
+		person.erase(World.RESIDENT_GOALS.TEA_SETUP_KEY)
+		person.erase(World.RESIDENT_GOALS.PAINT_INVITES_KEY)
+		person.erase(World.RESIDENT_GOALS.GROWTH_KEY)
+		person.erase(World.RESIDENT_GOALS.GROWTH_LOG_KEY)
+		person.erase(World.RESIDENT_GOALS.ADDRESS_KEY)
+		person.erase(World.RESIDENT_GOALS.GUEST_ROOM_KEY)
+		person.erase(World.WANGAN_MEMORY.KEY)
+		person.erase(World.WANGAN_MEMORY.WEIR_KEY)
+		person.erase(World.WANGAN_MEMORY.LOG_KEY)
+		person.erase(World.CHAPTER_ONE.PERSONAL_START)
+		person.erase(World.RESIDENT_GOALS.GUEST_CLOTH_KEY)
+		person.erase(World.RESIDENT_GOALS.BELL_INSPECT_KEY)
+		person.erase(World.RESIDENT_GOALS.REST_KIT_KEY)
+		person.erase(World.RESIDENT_GOALS.RECIPE_PAGE_KEY)
 		person.erase(World.RESIDENT_GOALS.ROUTE_KEY)
 		person.erase(World.RESIDENT_GOALS.SKETCH_KEY)
 		person.erase(World.RESIDENT_GOALS.CROP_TRADE_KEY)
@@ -1006,6 +1228,7 @@ func public_state(region:String="home") -> Dictionary:
 		person.erase("showcase")
 		person.erase("souvenir") # T071 紀念票兌換紀錄只給本人（data.own_souvenir）
 		person.erase("news_seen")
+		person.erase("island_note_seen")
 		person.erase("ferry_recap_seen")
 		person.erase(World.MEMORY_EXHIBIT.RECORD_KEY) # 第 40 章記憶展補看紀錄只給本人
 		person.erase("outlying_boat_arrival")
@@ -1024,6 +1247,17 @@ func public_state(region:String="home") -> Dictionary:
 	out.showcase=World.SHOWCASE.public(world.state)
 	for field in ["objects","ground","roofs","forest","crops"]:
 		for obj in out[field].values():
+			if field=="ground" and obj.has("visit_guest"):
+				var visitor:String=obj.visit_guest
+				if recipient in [obj.owner,visitor]:obj.visit_guest=_public_actor(visitor)
+				else:obj.erase("visit_guest")
+			if field=="objects":
+				obj.erase("guest_withdraw")
+				if obj.has("withdraw_guest"):
+					var guest:String=obj.withdraw_guest
+					if recipient==guest:obj["guest_withdraw"]=true
+					if recipient==obj.owner:obj.withdraw_guest=_public_actor(guest)
+					else:obj.erase("withdraw_guest")
 			if obj.has("owner"):obj.owner=String(obj.owner).sha256_text().left(16)
 			if field=="crops" and obj.has("harvest_friend"):
 				obj.harvest_friend=String(obj.harvest_friend).sha256_text().left(16)
@@ -1041,6 +1275,7 @@ func public_state(region:String="home") -> Dictionary:
 	out.erase("mine_auto_freight")
 	out.erase("mine_survey")
 	out.erase("tea_ceramics")
+	out.erase(World.TEA_REVISIT.HOUSE_KEY)
 	# Protocol 44: per-player flower records stay server-side; every region and
 	# recipient gets the same token-free shared garden projection.
 	out.erase("flower_nursery")
@@ -1066,10 +1301,17 @@ func public_state(region:String="home") -> Dictionary:
 			out.chapter_one[field]=public_entries
 	return out
 
+func _can_start_large_projects(id:int) -> bool:
+	var account := str(identities.get(id, {}).get("account_id", ""))
+	return membership == null or (not membership.is_blocked(account) and membership.role(account) in ["owner", "admin"])
+
 func _send_snapshot(id:int) -> void:
 	if admission_recovery_required:return
 	if id!=1 and not _can_send(id):return
-	var data:=public_state(world.player_region(peers[id]))
+	var data:=public_state(world.player_region(peers[id]),peers[id])
+	if membership!=null:
+		data["can_start_large_projects"]=_can_start_large_projects(id)
+		data["can_build_public_plot"]=membership.can_build_public(peers[id])
 	data["room_population"]=peers.size()
 	data["room_capacity"]=ROOM_CAPACITY
 	data["region_population"]={}
@@ -1081,6 +1323,14 @@ func _send_snapshot(id:int) -> void:
 	if data.has("history_memory"):
 		data.history_memory["own_memory"]=world.state.history_memory.players.get(peers[id],World.HISTORY_MEMORY.fresh_record()).duplicate(true)
 	var route_actor:String=peers[id]
+	var house:=World.TEA_SERVICE.public_house(world.state,route_actor)
+	if not house.is_empty():
+		data[World.TEA_REVISIT.HOUSE_KEY]=house
+	if data.has("history_memory"):
+		var panned:=World.GOLD_PANNING.total(world.state,route_actor)>0
+		var delivered:=World.ORE_ROUTE.total(world.state,route_actor)>0
+		if panned or delivered:
+			data.history_memory["mine_fieldwork"]={"panned":panned,"delivered":delivered}
 	if data.has(World.LANYANG_REVISIT.STATE_KEY):
 		data[World.LANYANG_REVISIT.STATE_KEY]["claimed_own"]=World.LANYANG_REVISIT.claimed_own(world.state,route_actor)
 	if data.has(World.JINGUASHI_REVISIT.STATE_KEY):
@@ -1109,6 +1359,36 @@ func _send_snapshot(id:int) -> void:
 	data.resident_goals=World.RESIDENT_GOALS.view(world.state.players[route_actor],world.state,route_actor) # T066「一起做的事」本人摘要。
 	if World.RESIDENT_GOALS.done(world.state.players[route_actor],"xiaoli").has(1):
 		data.own_shop_history=World.TRANSACTION_LEDGER.shop_history(world.state,route_actor)
+	if world.player_region(route_actor)=="maokong":
+		var seats:={}
+		for resident:Dictionary in world.state.players.values():
+			var choice:String=resident.get(World.RESIDENT_GOALS.TEA_CHAIR_KEY,"")
+			if World.RESIDENT_GOALS.TEA_CHAIRS.has(choice):seats[choice]=true
+			if seats.size()==World.RESIDENT_GOALS.TEA_CHAIRS.size():break
+		data.chacha_tea_chairs=seats
+	if world.player_region(route_actor)==World.REGIONS.HOME:
+		var sheep_corner:=0
+		for resident:Dictionary in world.state.players.values():
+			sheep_corner|=int(resident.get(World.RESIDENT_GOALS.SHEEP_SHELTER_KEY,0))
+			if sheep_corner==World.RESIDENT_GOALS.SHEEP_COMFORT_MASK:break
+		data.sheep_comfort_fixtures=sheep_corner
+		data.aru_bench_open=World.aru_bench_active(world.state,World.Village.resident_cell(world.state,"aru"))
+	data.own_sheep_corner=int(world.state.players[route_actor].get(World.RESIDENT_GOALS.SHEEP_SHELTER_KEY,0))
+	data.own_chacha_tea_chair=str(world.state.players[route_actor].get(World.RESIDENT_GOALS.TEA_CHAIR_KEY,""))
+	data.own_chacha_tea_setup=str(world.state.players[route_actor].get(World.RESIDENT_GOALS.TEA_SETUP_KEY,""))
+	data.own_diandian_mural=World.RESIDENT_GOALS.mural_contributed(world.state,route_actor)
+	data.own_diandian_invites=world.state.players[route_actor].get(World.RESIDENT_GOALS.PAINT_INVITES_KEY,[]).duplicate()
+	data.own_xinghe_growth=world.state.players[route_actor].get(World.RESIDENT_GOALS.GROWTH_KEY,{}).duplicate()
+	data.own_xinghe_growth_log=world.state.players[route_actor].get(World.RESIDENT_GOALS.GROWTH_LOG_KEY,{}).duplicate()
+	data.own_luoluo_address=int(world.state.players[route_actor].get(World.RESIDENT_GOALS.ADDRESS_KEY,0))
+	data.own_guest_room=world.state.players[route_actor].get(World.RESIDENT_GOALS.GUEST_ROOM_KEY,false)
+	data.own_guest_cloth=world.state.players[route_actor].get(World.RESIDENT_GOALS.GUEST_CLOTH_KEY,false)
+	data.own_wangan_house=world.state.players[route_actor].get(World.WANGAN_MEMORY.KEY,false)
+	data.own_wangan_weir=int(world.state.players[route_actor].get(World.WANGAN_MEMORY.WEIR_KEY,0))
+	data.own_wangan_log=world.state.players[route_actor].get(World.WANGAN_MEMORY.LOG_KEY,false)
+	data.own_lingpopo_bell=int(world.state.players[route_actor].get(World.RESIDENT_GOALS.BELL_INSPECT_KEY,0))
+	data.own_bobo_rest_kit=int(world.state.players[route_actor].get(World.RESIDENT_GOALS.REST_KIT_KEY,0))
+	data.own_milu_recipe_pages=int(world.state.players[route_actor].get(World.RESIDENT_GOALS.RECIPE_PAGE_KEY,0))
 	data.own_achao_route_marks=int(world.state.players[route_actor].get(World.RESIDENT_GOALS.ROUTE_KEY,0))
 	data.own_crop_sketches=world.state.players[route_actor].get(World.RESIDENT_GOALS.SKETCH_KEY,{}).duplicate()
 	data.own_market=world.market_view(route_actor) # T071：攤位庫存、錢箱、結算只給本人。
@@ -1120,7 +1400,11 @@ func _send_snapshot(id:int) -> void:
 	data.own_crop_summary=world.own_crop_summary(route_actor)
 	data.festival_story=world.festival_story_view()
 	data.ferry_story_recap=World.ISLAND_STORY_RECAP.build(data,world.state.players[route_actor].get("ferry_recap_seen",World.ISLAND_STORY_RECAP.NO_MARKER))
-	data.island_news={"completed":world.island_project_mask(),"seen":int(world.state.players[route_actor].get("news_seen",0))}
+	var resident:Dictionary=world.state.players[route_actor]
+	data.island_news={"completed":world.island_news_project_mask(),"seen":int(resident.get("news_seen",0)),
+		"notes_unread":World.ISLAND_NOTES.unread(world.state,resident),"note_revision":World.ISLAND_NOTES.revision(world.state),
+		"returning":returning_peers.get(id,false)}
+	data.erase("island_note_revision")
 	data.resident_participation=preload("res://scripts/resident_story_catalog.gd").participation(world.state,route_actor)
 	var trade: Dictionary=world.trade_view(route_actor)
 	if not trade.is_empty():trade.partner=_public_actor(trade.partner)
@@ -1136,6 +1420,7 @@ func _send_snapshot(id:int) -> void:
 	data.own_construction_undo=world.undo_summary(route_actor).duplicate(true)
 	# T055: daily order board (status, deadlines, gating) for the recipient only.
 	data.order_board=world.order_board(route_actor).duplicate(true)
+	if data.get("wangan_star_walk",false):data.dock_order_board=world.order_board(route_actor,"dock")
 	var route_region:String=world.player_region(route_actor)
 	data.mine_auto_freight={"route":world.state.mine_auto_freight.routes.get(route_actor,{}).duplicate(true),
 		"sources":World.MINE_FREIGHT.own_chests(world.state.regions[route_region].objects,route_actor) if route_region in World.MINE_AUTO_FREIGHT.REGIONS else [],
@@ -1152,9 +1437,11 @@ func _send_snapshot(id:int) -> void:
 		data.station_life.own_story=World.STATION_LIFE.story(world.state,peers[id]).duplicate(true)
 	var player_id:String=String(peers[id]).sha256_text().left(16)
 	data.players[player_id]["travel_book"]=world.state.players[peers[id]].travel_book.duplicate(true)
+	if world.state.players[peers[id]].get(World.CHAPTER_ONE.PERSONAL_START,false):
+		data.players[player_id][World.CHAPTER_ONE.PERSONAL_START]=true
 	for obj in data.objects.values():
 		if obj.type in World.PRIVATE_BOXES and obj.owner!=player_id:
-			obj.items={}
+			if not obj.get("guest_withdraw",false):obj.items={}
 			obj.erase("freight_id")
 			# Material-source identity of someone else's private chest is a
 			# capability hint; only the owner may see it (protocol 40).
@@ -1163,11 +1450,65 @@ func _send_snapshot(id:int) -> void:
 	for visible_id in data.players:
 		if visible_id!=player_id:
 			data.players[visible_id].erase("inventory")
+			data.players[visible_id].erase("mud_alcove")
+			data.players[visible_id].erase("mud_duel")
+			data.players[visible_id].erase("crop_care")
+			data.players[visible_id].erase("collection_donations")
+			data.players[visible_id].erase("collection_acquired")
+			data.players[visible_id].erase("fox_tracks")
+			data.players[visible_id].erase("squirrel_day")
+			data.players[visible_id].erase("seal_seen")
+			data.players[visible_id].erase("windbell_deer_seen")
+			data.players[visible_id].erase("hedgehog_visit_day")
+			data.players[visible_id].erase("hedgehog_observed_day")
+			data.players[visible_id].erase("fox_hint_until")
+			for field:String in World.Rabbit.PET_FIELDS:
+				if data.players[visible_id].has(field):
+					var companion:Dictionary=data.players[visible_id][field]
+					var visible_pet:={"following":companion.following}
+					if field==World.Dog.FIELD:visible_pet.last_play=companion.get("last_play","")
+					data.players[visible_id][field]=visible_pet
 			data.players[visible_id].erase("coins")
 			data.players[visible_id].erase("orders")
+			data.players[visible_id].erase(World.WARM_SPRINGS.WARMTH_FIELD)
 	data.tool_actions=tool_action_view(world.player_region(peers[id]))
-	if id==1:receive_state(data,player_id)
-	else:receive_state.rpc_id(id,data,player_id)
+	data.map_signals=map_signal_view(str(data.region_id),Time.get_ticks_msec())
+	if not solo_rest_enabled:data.night_vote=night_vote_view(id)
+	if id==1:
+		receive_state(data,player_id)
+		return
+	var transport:=multiplayer.multiplayer_peer as WebSocketMultiplayerPeer
+	if transport!=null:
+		var connection:=transport.get_peer(id)
+		if connection!=null and SnapshotWire.accepts(connection.get_requested_url()):
+			data=SnapshotWire.encode(data)
+	receive_state.rpc_id(id,data,player_id)
+
+func _change_map_signal(id:int,cell:Vector2i,kind:String,now:int) -> void:
+	if kind=="cancel":
+		map_signals.erase(id)
+		_send_notice(id,"已取消你的地圖標記。",true)
+		return
+	var token:String=peers[id]
+	var person:Dictionary=world.state.players[token]
+	var region:String=world.player_region(token)
+	var distance:=Vector2(person.x,person.y).distance_to(Vector2(cell)+Vector2(0.5,0.5))
+	if not Rect2i(Vector2i.ZERO,World.SIZE).has_point(cell) or not World.land(cell,region) or distance>4.0:
+		_send_notice(id,"請瞄準附近的地面再放標記。",false)
+		return
+	map_signals[id]={"region":region,"cell":cell,"kind":kind,"until":now+MAP_SIGNAL_MS}
+	_send_notice(id,"已標記「%s」，同區域的玩家可在周邊地圖查看。"%MAP_SIGNALS[kind],true)
+
+func map_signal_view(region:String,now:int) -> Array:
+	var visible:Array=[]
+	for id in map_signals.keys():
+		var entry:Dictionary=map_signals[id]
+		var remaining:int=entry.until-now
+		if remaining<=0:
+			map_signals.erase(id)
+		elif entry.region==region:
+			visible.append({"cell":entry.cell,"kind":entry.kind,"remaining":remaining})
+	return visible
 
 func _tool_action_now() -> int:
 	if tool_action_clock.is_valid():return int(tool_action_clock.call())
@@ -1225,6 +1566,9 @@ func _project_salt(data:Dictionary,token:String) -> void:
 
 @rpc("authority","call_remote","reliable",3)
 func receive_state(data:Dictionary,player_id:String) -> void:
+	if data.has(SnapshotWire.COMPRESSED):
+		data=SnapshotWire.decode(data)
+		if data.is_empty():return
 	snapshot=data
 	own_id=player_id
 	changed.emit(data,player_id)
@@ -1276,6 +1620,11 @@ func shutdown() -> bool:
 	blueprint_welcomed=false
 	multiplayer.multiplayer_peer.close()
 	peers.clear()
+	returning_peers.clear()
+	solo_rest_enabled=false
+	night_vote.clear()
+	controller_holds.clear()
+	map_signals.clear()
 	blueprint_quote_stamps.clear()
 	blueprint_apply_stamps.clear()
 	identities.clear()
@@ -1284,6 +1633,9 @@ func shutdown() -> bool:
 	if is_instance_valid(directory_request):
 		directory_request.queue_free()
 		directory_request = null
+	if is_instance_valid(storage_report_request):
+		storage_report_request.queue_free()
+		storage_report_request=null
 	directory_invite.clear()
 	world=null
 	write_guard.release()
@@ -1297,7 +1649,7 @@ func register_authenticated(version: int, ticket: String, invite: String) -> voi
 	if not pending.has(id) or identity_requests.has(id) or identity_rejected.has(id) or peers.has(id):
 		return
 	if version != PROTOCOL:
-		reject_identity(id, "遊戲版本過舊或不相容，請更新遊戲後再加入。", "VERSION_MISMATCH")
+		reject_identity(id, VERSION_MISMATCH_NOTICE, "VERSION_MISMATCH")
 		return
 	if membership == null or ticket.is_empty() or ticket.length() > 256 or invite.length() > 64 or not accepting:
 		reject_identity(id, "需要相容版本與有效登入。")
@@ -1346,7 +1698,7 @@ func identity_request(id: int, endpoint: String, payload: Dictionary, invite: St
 			reject_identity(id,committed.message,committed.code)
 			return
 		identities[id] = data
-		_attach_registered(id,committed.character)
+		_attach_registered(id,committed.character,committed.returning)
 		mark_directory_dirty()
 		for peer_id in identities:
 			send_membership(peer_id)
@@ -1389,16 +1741,82 @@ func request_invite_rotation(ttl: int = 3600) -> void:
 func request_invite_revocation() -> void:
 	manage_invite.rpc_id(1, "revoke", 0)
 
+func request_admin_change(target_id: String, enabled: bool) -> void:
+	manage_invite.rpc_id(1, "admin:" + target_id, int(enabled))
+
+func request_member_kick(target_id: String) -> void:
+	manage_invite.rpc_id(1, "kick:" + target_id, 0)
+
+func request_member_block(target_id: String, enabled: bool) -> void:
+	manage_invite.rpc_id(1, "block:" + target_id, int(enabled))
+
+func request_public_builder(target_id: String, enabled: bool) -> void:
+	manage_invite.rpc_id(1, "public_build:" + target_id, int(enabled))
+
+func _disconnect_member(account: String, kick_actor := "") -> bool:
+	if account.is_empty(): return false
+	for peer_id in identities.keys():
+		if identities[peer_id].account_id != account: continue
+		if not kick_actor.is_empty() and not membership.record_kick(kick_actor, account): return false
+		_peer_left(peer_id)
+		multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+		return true
+	return false
+
+func _block_member(id: int, target_id: String, enabled: bool) -> void:
+	var account := membership.set_blocked(identities[id].account_id, target_id, enabled)
+	if not account.is_empty():
+		if enabled: _disconnect_member(account)
+		for peer_id in identities:
+			if identity_allows_play(peer_id): send_membership(peer_id)
+	receive_identity.rpc_id(id, {"ok": not account.is_empty(), "operation": "block_member", "enabled": enabled})
+
+func _manage_admin(id: int, target_id: String, enabled: bool) -> void:
+	var success := membership.set_admin(identities[id].account_id, target_id, enabled)
+	if success:
+		mark_directory_dirty()
+		for peer_id in identities:
+			if identity_allows_play(peer_id):
+				send_membership(peer_id)
+				if peers.has(peer_id):_send_snapshot(peer_id)
+	receive_identity.rpc_id(id, {"ok": success, "operation": "admin_change", "enabled": enabled})
+
 @rpc("any_peer", "call_remote", "reliable")
 func manage_invite(operation: String, ttl: int) -> void:
 	var id := multiplayer.get_remote_sender_id()
 	if not multiplayer.is_server() or membership == null or not accepting or not identity_allows_play(id) or not _can_send(id):
+		return
+	# Use the existing passport RPC so older clients keep the same RPC table.
+	if operation.begins_with("admin:") and ttl in [0, 1]:
+		_manage_admin(id, operation.trim_prefix("admin:"), ttl == 1)
+		return
+	if operation.begins_with("kick:") and ttl == 0:
+		var actor: String = identities[id].account_id
+		var target := membership.managed_account(actor, operation.trim_prefix("kick:"))
+		var success := _disconnect_member(target, actor)
+		if success:
+			for peer_id in identities:
+				if membership.is_owner(identities[peer_id].account_id) and identity_allows_play(peer_id): send_membership(peer_id)
+		receive_identity.rpc_id(id, {"ok": success, "operation": "kick_member"})
+		return
+	if operation.begins_with("block:") and ttl in [0, 1]:
+		_block_member(id, operation.trim_prefix("block:"), ttl == 1)
+		return
+	if operation.begins_with("public_build:") and ttl in [0, 1]:
+		var success := membership.set_public_builder(identities[id].account_id, operation.trim_prefix("public_build:"), ttl == 1)
+		if success:
+			for peer_id in identities:
+				if identity_allows_play(peer_id):
+					send_membership(peer_id)
+					if peers.has(peer_id):_send_snapshot(peer_id)
+		receive_identity.rpc_id(id, {"ok":success,"operation":"public_builder","enabled":ttl==1})
 		return
 	if operation not in ["rotate", "revoke"]:
 		return
 	var account: String = identities[id].account_id
 	var result: Dictionary = membership.rotate(account, ttl) if operation == "rotate" else {"ok": membership.revoke(account)}
 	result["operation"] = operation
+	if result.ok: send_membership(id)
 	if result.ok and not directory_address.is_empty():
 		directory_invite = {"account": account, "operation": operation, "code": result.get("code", "")}
 		result.erase("code")
@@ -1416,6 +1834,35 @@ func mark_directory_dirty() -> void:
 		return
 	directory_dirty = true
 	directory_retry = 0.0
+
+func _tick_storage_report(dt:float) -> void:
+	if membership==null or shutting_down:return
+	var state:="running"
+	if admission_recovery_required:state="recovery_required"
+	elif storage_paused or not world.save_error.is_empty():state="save_failed"
+	elif not accepting:state="paused"
+	if state!=storage_report_state:
+		storage_report_state=state
+		storage_report_delay=0.0
+	storage_report_delay-=dt
+	if storage_report_request!=null or storage_report_delay>0.0:return
+	storage_report_delay=10.0
+	var request:=HTTPRequest.new()
+	request.timeout=4.0
+	request.max_redirects=0
+	request.body_size_limit=8192
+	if identity_tls!=null:request.set_tls_options(identity_tls)
+	add_child(request)
+	storage_report_request=request
+	request.request_completed.connect(func(_result:int,_status:int,_headers:PackedStringArray,_body:PackedByteArray)->void:
+		storage_report_request=null
+		request.queue_free()
+	,CONNECT_ONE_SHOT)
+	var headers:=PackedStringArray(["Content-Type: application/json","Authorization: Bearer "+identity_secret])
+	var body:=JSON.stringify({"world_id":identity_world,"state":state,"last_saved":world.last_saved_at})
+	if request.request(identity_url+"/v1/world-storage",headers,HTTPClient.METHOD_POST,body)!=OK:
+		storage_report_request=null
+		request.queue_free()
 
 func tick_directory(dt: float) -> void:
 	if directory_address.is_empty() or shutting_down or admission_recovery_required:
@@ -1436,7 +1883,8 @@ func publish_directory() -> void:
 	if data.is_empty():
 		directory_retry = 2.0
 		return
-	data.merge({"world_id": identity_world, "address": directory_address, "protocol": PROTOCOL, "mode": directory_mode})
+	data.merge({"world_id": identity_world, "address": directory_address, "protocol": PROTOCOL,
+		"mode": "冒險" if world.state.get("world_mode")=="adventure" else "生活"})
 	directory_dirty = false
 	directory_clock = 0.0
 	var request := HTTPRequest.new()

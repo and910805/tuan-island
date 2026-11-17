@@ -100,6 +100,7 @@ func run() -> void:
 	if not failed:sb_after_rain()
 	if not failed:sb_fill()
 	if not failed:sb_second_islander()
+	if not failed:sb_complete_batch()
 	if not failed:sb_final()
 
 ## The inherited end state, then refusals that need no wheel.
@@ -366,6 +367,53 @@ func sb_second_islander() -> void:
 	if failed:return
 	sb_rake(2,"K's batch from A's brine")
 	sb_info.second={"weather":sb_weather(),"poured":[ka,kb],"level_after":SB.level(world.state)}
+
+func sb_stock_batch_lot() -> void:
+	if raining():sb_dry_morning()
+	if failed:return
+	var before:=SR.stocked_total(world.state)
+	consumed_salt+=SR.LOT_SALT
+	sact(SR.STOCK_ACTION,SR.WORKER,"",{"sea_salt":-SR.LOT_SALT})
+	sb_check(SR.stocked_total(world.state)==before+1,"Exactly one lot joins the shared order")
+
+func sb_complete_batch() -> void:
+	if not sb_check(SR.stocked_total(world.state)==1,"The order already contains A's tank-fed salt"):return
+	# K's prior harvest used shared brine produced by A. Stock it before earning any other salt.
+	tok=tk("k")
+	sb_stock_batch_lot()
+	if failed:return
+	tok=TOKEN_A
+	var pan:=int(SB.pan_ids(world.state,tok)[0])
+	while not failed and SR.stocked_total(world.state)<SR.TOTAL:
+		if int(bag().get(SR.SALT_ITEM,0))<SR.LOT_SALT:
+			if raining():sb_dry_morning()
+			if SB.pan_progress(world.state,pan).s=="empty":sact("salt_flood",pan_cell(pan))
+			if failed:return
+			if SB.pour_block(world.state,"a",tok).is_empty():sb_ok(SB.POUR_ACTION,"a","prepare the next lot for the basket order")
+			wait_until(func()->bool:return SB.pan_progress(world.state,pan).s=="salt",60.0,4.0*WEATHER.DAY_SECONDS,"salt for the basket order")
+			sb_rake(pan,"basket order")
+		if not failed:sb_stock_batch_lot()
+	if failed:return
+	var needed_fiber:=SR.TOTAL*SR.FIBER_PER_BASKET
+	if int(bag().get(SR.FIBER_ITEM,0))<needed_fiber:
+		strav(S.TRANSFER,"home")
+		while not failed and int(bag().get(SR.FIBER_ITEM,0))<needed_fiber:
+			hit_resource("tree")
+		strav(FERRY,S.REGION)
+	wait_until(func()->bool:return raining(),60.0,8.0*WEATHER.DAY_SECONDS,"rain for basket packing")
+	if failed:return
+	var order:=SR.order(world.state)
+	for kind:String in SR.KINDS:
+		for index in int(order[kind]):sact(SR.PACK_ACTION,SR.CHEST,kind,{"fiber":-SR.FIBER_PER_BASKET})
+	if not sb_check(SR.packed(world.state)==order and SR.rain_packs(world.state)==SR.TOTAL,"All six baskets match the order and were packed in rain"):return
+	sact(SR.SEND_ACTION,SR.STOP)
+	sact(SR.CLAIM_ACTION,SR.WORKER)
+	if not sb_check(SR.completed(world.state) and SR.claimed_own(world.state,tok) and int(bag().get(SR.BASKET_ITEM,0))==1,
+		"A ships the order and earns exactly one salt basket"):return
+	sb_info.baskets={"ingredients":order,"packed_in_rain":SR.rain_packs(world.state),"shipped_day":SR.record(world.state).done_day}
+	sb_reload("shipped basket order",0.0)
+	if not failed:sb_check(SR.completed(world.state) and SR.claimed_own(world.state,tok) and int(bag().get(SR.BASKET_ITEM,0))==1,
+		"Shipment and reward survive reload")
 
 func sb_final() -> void:
 	sb_reload("final",0.0)

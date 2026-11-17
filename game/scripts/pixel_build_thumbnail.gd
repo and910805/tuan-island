@@ -20,9 +20,29 @@ func _draw() -> void:
 	var origin := Vector2(0, 16)
 	camera = Vector2(40, 30) * TILE - origin
 	match kind:
-		"floor", "path":
+		"floor", "path", "spring_pebble_path":
 			ground_tile(origin, kind)
 		"roof", "greenhouse_roof":
 			roof_sprite(origin,1.0,kind)
+		"assembly_table":
+			draw_texture(preload("res://assets/automation/assembly-table-icon.png"),origin+Vector2(0,5))
+		"inn_fabric_screen":
+			draw_texture_rect(preload("res://assets/ui-life/inn-fabric-screen.png"),Rect2(origin+Vector2(0,5),Vector2(32,23)),false)
+		"inn_quilt_bed":
+			quilt_bed_sprite(origin+Vector2(7,-12),true,"",0.58)
+		"inn_stone_footbath":
+			draw_texture_rect(preload("res://assets/ui-life/inn-stone-footbath.png"),Rect2(origin+Vector2(0,5),Vector2(32,22)),false)
+		"inn_luggage_rack":
+			draw_texture_rect(preload("res://assets/ui-life/inn-luggage-rack.png"),Rect2(origin+Vector2(0,5),Vector2(32,22)),false)
+		"dye_table":
+			draw_texture(preload("res://assets/bakery/dye-table-icon.png"),origin+Vector2(0,5))
+		"clay_kiln":
+			draw_texture_rect(preload("res://assets/bakery/clay-kiln.png"),Rect2(origin+Vector2(0,-7),Vector2(32,40)),false)
+		"small_smelter":
+			draw_texture_rect(preload("res://assets/industry/small-smelter.png"),Rect2(origin+Vector2(0,-1),Vector2(32,36)),false)
+		"master_bench":
+			draw_texture_rect(preload("res://assets/ui-life/master-bench.png"),Rect2(origin+Vector2(0,5),Vector2(32,19)),false)
+		"spring_stone_bench":
+			draw_texture_rect(preload("res://assets/ui-life/spring-stone-bench.png"),Rect2(origin+Vector2(0,5),Vector2(32,23)),false)
 		_:
 			object_sprite(origin, kind)

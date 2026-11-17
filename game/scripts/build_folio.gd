@@ -24,15 +24,20 @@ const PixelTheme = preload("res://scripts/inventory_pixel_theme.gd")
 const ItemArt = preload("res://scripts/inventory_item_art.gd")
 const HouseUI = preload("res://scripts/house_ui.gd")
 const StyleCatalog = preload("res://scripts/build_style_catalog.gd")
+const WORKSHOP_TOPICS=preload("res://scripts/workshop_layouts.gd").TOPICS
 
 const LAYOUT := "build_folio"
 const TABS := ["全部", "基礎", "家具", "生活"]
+const INN_COLLECTION := ["inn_quilt_bed","inn_stone_footbath","inn_lattice_wardrobe","inn_fabric_screen",
+	"inn_tea_table","spring_stone_bench","towel_rack","ceramic_eave_chime","warm_lamp_niche",
+	"inn_luggage_rack","spring_pebble_path","inn_welcome_sign"]
 const TAB_ICONS := ["backpack", "wood", "fiber", "stone"]
 const INK := Color("354334")
 const INK_SOFT := Color("5d634a")
 const SHORT := Color("a4452c")
 const READY := Color("3f6a3a")
 const PLACEMENT_NOTES := {
+	"stove":"放在田邊或住家旁的空地。靠近互動後選擇料理，做好再領取。渡口野餐需要兩份蘿蔔湯和一份麵包。",
 	"floor":"從地板開始規劃小屋。選擇後可按住範圍操作鍵拖曳，成片鋪設。",
 	"wall":"沿地板外圍圍起房間，記得留下門的位置；封閉房間會一併計算自動屋頂材料。",
 	"door":"替小屋留一個出入口。放好後靠近互動，即可開門或關門。",
@@ -40,9 +45,26 @@ const PLACEMENT_NOTES := {
 	"roof":"新房間圍好後會自動加蓋；這張圖樣可用來補蓋既有地板上的屋頂。",
 	"bed":"為屋內留一個休息角落。小屋檢查會確認床是否能從門口走到。",
 	"path":"沿常走的路鋪上石板。選擇後可拖曳成片鋪設。",
+	"spring_pebble_path":"以石材與陶土鋪出暖泉風卵石路，可拖曳成片施工。",
+	"ceramic_eave_chime":"放在自己的木牆南面。互動時輕響一聲，受環境聲音量控制。",
+	"shell_chime":"把望安退潮時撿到的貝殼串成風鈴。可放在小徑旁，靠近互動即可聽到聲音。",
+	"acorn_ornament":"在望安西側林邊向松鼠交換的橡果掛飾，可以擺在家園。",
+	"warm_lamp_niche":"裝在自己木牆南面的玻璃壁燈，發出穩定的暖光。",
+	"towel_rack":"用摺好的浴巾布置旅舍。占一格地面。",
+	"inn_welcome_sign":"寫下旅舍名稱和兩行歡迎語，路過的島民可以讀。",
+	"inn_tea_table":"有兩個茶杯展示位，可擺放或收回暖薑茶與霧竹茶飲。",
+	"inn_luggage_rack":"可手動從背包挑選兩件物品展示，只有主人可以取回。",
+	"spring_stone_bench":"占兩格的旅舍長凳，可和另一位島民同坐。",
 	"chest":"把常用材料收在一起。共用箱可供島上夥伴存取。",
 	"private_chest":"放在自己的工作角落，收好私人用品。",
 	"rope_rack":"掛起阿潮的紀念繩結。靠近互動可翻閱他的關係事件。",
+	"basic_tea_set":"把茶屋的一席茶帶回家，木托盤上放著兩只杯子。",
+	"wood_mailbox":"放在家門口，靠近後可翻閱自己的送信紀錄。",
+	"guest_wardrobe":"放在客房，靠近後可以換上或收起已解鎖的圍裙。",
+	"inn_lattice_wardrobe":"在家園免費換穿已取得的原色、藍染工作服與米露的圍裙。",
+	"inn_fabric_screen":"用木框與織布隔開房間。預覽會標出兩個有碰撞的地格。",
+	"inn_quilt_bed":"厚厚的羊毛被可以染色。靠近休息可補滿自己的探索體力。",
+	"inn_stone_footbath":"占 3×2 格，四位島民可一起坐下泡腳。",
 	"sketch_easel":"把速寫放在家園。靠近互動可開啟自己的菜園圖鑑。",
 }
 
@@ -91,20 +113,34 @@ static func category(kind: String, foundations: Array, furniture: Array) -> int:
 	return 1 if kind in foundations else (2 if kind in furniture else 3)
 
 static func style_id_for_page(page: int) -> String:
-	return "" if page<TABS.size() else StyleCatalog.style_ids()[page-TABS.size()]
+	var offset:=page-TABS.size()
+	var styles:=StyleCatalog.style_ids()
+	return str(styles[offset]) if offset>=0 and offset<styles.size() else ""
 
 ## Same gating as before: resident stories via Village, mine depth for the two
 ## Jinguashi machines.
 static func unlocked(app, person: Dictionary, id: String) -> bool:
 	var result := Village.unlocked(person, id)
+	if id==World.RESIDENT_GOALS.MASTER_BENCH:result=app.session.snapshot.get("resident_goals",{}).get("aru",{}).get("2",{}).get("state")=="done" and app.session.snapshot.get("region_id","home")==World.REGIONS.HOME
+	if id=="long_bench" and app.session.snapshot.get("resident_goals",{}).get("aru",{}).get("2",{}).get("state")=="done":result=true
 	if id == "expedition_tent":result = World.exploration_level(int(person.get("exploration_points",0))) >= World.EXPEDITION_TENT_LEVEL
-	if id == "supply_box":result = World.exploration_level(int(person.get("exploration_points",0))) >= World.SUPPLY_BOX_LEVEL
+	if id == "supply_box":result = World.supply_box_unlocked(person,app.session.snapshot.get("resident_goals",{}).get("bobo",{}).get("3",{}).get("state")=="done")
 	if id in ["author_sign","author_shelf"]:result = World.crafting_level(person)>=10
+	if id==World.RESIDENT_GOALS.FESTIVAL_BELL:result=app.session.snapshot.get("resident_goals",{}).get("lingpopo",{}).get("3",{}).get("state")=="done"
+	if id=="basic_tea_set":result=app.session.snapshot.get("resident_goals",{}).get("chacha",{}).get("1",{}).get("state")=="done"
+	if id=="wood_mailbox":result=app.session.snapshot.get("resident_goals",{}).get("luoluo",{}).get("1",{}).get("state")=="done"
+	if id=="guest_wardrobe":result=app.session.snapshot.get("resident_goals",{}).get("nuannuan",{}).get("3",{}).get("state")=="done"
+	if id==World.WELCOME_SIGN.KIND:result=app.session.snapshot.get("resident_goals",{}).get("nuannuan",{}).get("1",{}).get("state")=="done"
+	if id==World.INDUSTRY.FOOT_BATH:result=app.session.snapshot.get("resident_goals",{}).get("nuannuan",{}).get("2",{}).get("state")=="done"
 	if id=="sketch_easel":result=app.session.snapshot.get("resident_goals",{}).get("diandian",{}).get("1",{}).get("state")=="done"
 	if id == "fish_display":result = World.Collections.angling_level(person) >= World.Collections.FISH_DISPLAY_LEVEL
 	if id == "master_flower_bed":result = World.farming_level(person) >= World.MASTER_FARMING_LEVEL
 	if id == "greenhouse_rack":result = person.get("greenhouse_reported",false)
+	if id == "animal_collector":result = app.session.snapshot.get("picnic",false)
+	if id == "assembly_table":result = person.get("workshop_upgraded",false)
+	if id == "dye_table":result = app.session.snapshot.get("flower_nursery",{}).get("garden",{}).get("complete",false)
 	if id == "jam_pot":result = World.MARKET.unlocked(app.session.snapshot)
+	if id == "large_sprinkler":result = World.farming_level(person) >= World.LARGE_SPRINKLER_LEVEL
 	if id == "medium_sprinkler":result = World.farming_level(person) >= World.MEDIUM_SPRINKLER_LEVEL
 	if id == "seed_maker":result = World.farming_level(person) >= World.SEED_MAKER_LEVEL
 	if id == "waterworks":result = int(app.session.snapshot.get("mine_depths",{}).get("unlocked",1)) >= 4
@@ -117,8 +153,8 @@ static func unlocked(app, person: Dictionary, id: String) -> bool:
 	return result
 
 ## Exact recipe materials (every key except name), in the shelf's usual order.
-static func materials(id: String, order: Array) -> Array:
-	var recipe: Dictionary = World.BUILD[id]
+static func materials(id: String, order: Array, inventory:Dictionary={}) -> Array:
+	var recipe: Dictionary = World.build_recipe(id,inventory)
 	var result: Array = []
 	for item in order:
 		if recipe.has(item):result.append(item)
@@ -131,19 +167,31 @@ static func reduced_motion(app) -> bool:
 	return sound != null and bool(sound.get("reduced_motion"))
 
 static func lock_text(app, id: String) -> Array:
+	if id==World.RESIDENT_GOALS.MASTER_BENCH:return ["完成阿榆的長椅修繕關係事件後，可在家園放置。","阿榆的長椅圖樣"]
+	if id=="long_bench":return ["完成阿榆的長椅修繕委託或關係事件後解鎖。","長椅圖樣"]
 	if id == "expedition_tent":return ["探索達到十級後解鎖。", "探索十級解鎖"]
-	if id == "supply_box":return ["探索達到六級後解鎖。", "探索六級解鎖"]
+	if id == "supply_box":return ["探索六級，或完成波波的休息站事件後解鎖。", "探索六級／波波"]
 	if id in ["author_sign","author_shelf"]:return ["手作達到十級後解鎖。", "手作十級解鎖"]
+	if id==World.RESIDENT_GOALS.FESTIVAL_BELL:return ["完成鈴婆婆的〈最後一枚鈴〉後解鎖。","最後一枚鈴"]
+	if id=="basic_tea_set":return ["回報茶茶的茶桌布置後解鎖。","完成茶茶的第一席茶"]
+	if id=="wood_mailbox":return ["完成洛洛的第一封信後解鎖。","完成洛洛的送信"]
+	if id=="guest_wardrobe":return ["回報暖暖的客房布置後解鎖。","完成暖暖的客房"]
+	if id==World.WELCOME_SIGN.KIND:return ["在礁溪完成暖暖的〈一直沒亮的門牌〉後解鎖。","一直沒亮的門牌"]
+	if id==World.INDUSTRY.FOOT_BATH:return ["在礁溪完成暖暖的〈池邊的裂縫〉後解鎖。","池邊的裂縫"]
 	if id=="sketch_easel":return ["回報點點的三張速寫後解鎖。","完成點點的速寫"]
 	if id == "fish_display":return ["漁獵觀察達到十級後解鎖。", "漁獵觀察十級解鎖"]
 	if id == "master_flower_bed":return ["農耕達到十級後解鎖。", "農耕十級解鎖"]
 	if id == "greenhouse_rack":return ["向宜蘭水圳的星禾回報跨季收成後解鎖。", "完成冬天也開花"]
-	if id == "medium_sprinkler":return ["農耕達到六級後解鎖，能澆灌周圍八格。", "農耕六級解鎖"]
-	if id == "seed_maker":return ["農耕達到三級後解鎖。每採收一格成熟作物就累積 1 點農耕經驗。", "農耕三級解鎖"]
+	if id == "large_sprinkler":return ["農耕八級後解鎖。每天澆灌周圍二十四格，不穿牆。","農耕八級解鎖"]
+	if id == "medium_sprinkler":return ["農耕六級後解鎖。每天澆灌周圍八格，不穿牆。", "農耕六級解鎖"]
+	if id == "seed_maker":return ["農耕三級後解鎖。銅錠可用小熔爐熔製，木工零件可在工作臺製作。", "農耕三級解鎖"]
 	if id == "waterworks":return ["完成金瓜石第三層抽水工程後解鎖。", "先完成抽水工程"]
 	if id == "mine_drill":return ["完成金瓜石第四層工程、開通第五層後解鎖。", "先開通第五層"]
-	if id == "glass_furnace":return ["修好金瓜石的升降台後解鎖。", "完成卡住的升降台"]
-	if id == "jam_pot":return ["渡口野餐後開放。", "完成渡口野餐"]
+	if id == "glass_furnace":return ["修好金瓜石升降台後解鎖。鐵礦可用小熔爐熔成鐵錠。", "完成卡住的升降台"]
+	if id == "animal_collector":return ["渡口野餐後可放置。在裝配桌製作組件，再準備一個收集籃。","完成渡口野餐"]
+	if id == "assembly_table":return ["手作六級後可在工作台升級工坊，再建造裝配桌。","先升級工坊"]
+	if id == "dye_table":return ["完成田尾公共花園後，可在家園用花材提染。","完成田尾公共花園"]
+	if id == "jam_pot":return ["渡口野餐後開放。陶土可在鶯歌取得，銅錠可在小熔爐熔製。", "完成渡口野餐"]
 	if id == World.INDUSTRY.GATE_KIND:return [World.INDUSTRY.GATE_LOCKED, "完成旱日分流"]
 	if id == World.INDUSTRY.TOWER_KIND:return [World.INDUSTRY.TOWER_LOCKED, "完成旱日分流"]
 	if id in World.KITCHEN_GATED:return ["公共廚房開張後解鎖：先登記公共廚房，再和大家備齊蘿蔔湯 4、麵包 2、菜園沙拉 2。", "公共廚房開張後解鎖"]
@@ -261,9 +309,7 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	head.add_child(info)
 	var title: Label = app.label("", 21)
 	title.name = "BuildTitle"
-	title.autowrap_mode = TextServer.AUTOWRAP_OFF
-	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	title.clip_text = true
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(title)
 	var status: Label = app.label("", 14)
 	status.name = "BuildStatus"
@@ -292,9 +338,6 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 		words.add_theme_constant_override("separation", 0)
 		row.add_child(words)
 		var item_name: Label = app.label("", 13)
-		item_name.autowrap_mode = TextServer.AUTOWRAP_OFF
-		item_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		item_name.clip_text = true
 		item_name.add_theme_color_override("font_color", INK_SOFT)
 		words.add_child(item_name)
 		var count: Label = app.label("", 16)
@@ -314,7 +357,8 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 
 	var catalog := {"pages": [], "buttons": [], "entries": [], "selected": "", "page": 0,
 		"details": details, "icon": icon, "title": title, "description": description,
-		"caption_selected": INK, "caption_normal": Color("f4e6bf"), "build_scroll":scroll}
+		"caption_selected": INK, "caption_normal": Color("f4e6bf"), "build_scroll":scroll,
+		"reveal_slot":reveal_shelf_slot.bind(scroll)}
 
 	var place: Button = app.button("", func():
 		app.building = catalog.selected
@@ -324,12 +368,21 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	)
 	place.name = "BuildPlace"
 	place.tooltip_text = "手把 Y 跳到選擇配方，A 確定"
-	details.add_child(place)
+	var place_actions:=HBoxContainer.new()
+	details.add_child(place_actions)
+	place.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	place_actions.add_child(place)
+	var diagram:Button=app.button("圖解",func():app._workshop_guide(int(WORKSHOP_TOPICS.get(catalog.selected,0))))
+	diagram.name="BuildWorkshopGuide"
+	diagram.tooltip_text="查看這類設備的接線、用料與操作步驟"
+	place_actions.add_child(diagram)
 
 	# --- tabs -----------------------------------------------------------------
 	var style_ids := StyleCatalog.style_ids()
 	var labels := TABS.duplicate()
 	for style_id: String in style_ids:labels.append(StyleCatalog.style(style_id).name)
+	var inn_page:=labels.size()
+	labels.append("暖泉旅舍")
 	for index in labels.size():
 		var page := GridContainer.new()
 		page.name = "BuildPage%d" % index
@@ -359,20 +412,8 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	tab_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tab_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(tab_spacer)
-	# The blueprint book shares the style-tab row (note in the middle, button on
-	# the right). A separate footer row pushed the folio past 1024x640 and cut
-	# the second shelf row's captions.
+	# The spacious style row shares the undo status and the blueprint book.
 	style_bar.add_theme_constant_override("separation", 8)
-	var footer_note: Label = app.label("常用的小屋或田邊設施，可以框選存成藍圖，整組放到別處。", 13)
-	footer_note.name = "BlueprintBookNote"
-	footer_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	footer_note.autowrap_mode = TextServer.AUTOWRAP_OFF
-	footer_note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	footer_note.clip_text = true
-	footer_note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	footer_note.add_theme_color_override("font_color", INK_SOFT)
-	style_bar.add_child(footer_note)
 	var book: Button = app.button("藍圖冊", func(): app._blueprint_menu())
 	book.name = "BlueprintBook"
 	book.icon = ItemArt.icon("stone")
@@ -385,21 +426,17 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	var fit := func():
 		if not is_instance_valid(body) or not is_instance_valid(outer):return
 		var view: Vector2 = folio.get_viewport_rect().size if folio.is_inside_tree() else Vector2(1280, 800)
-		var wide := RECIPE_WIDE if view.x < NARROW_VIEW else RECIPE_BASE
+		var wide := RECIPE_WIDE if view.x < NARROW_VIEW or app.font_scale_factor() >= 1.2 else RECIPE_BASE
 		if absf(recipe_card.custom_minimum_size.x - wide) > 0.5:recipe_card.custom_minimum_size.x = wide
-		var gap := float(folio.get_theme_constant("separation"))
-		var reserve := maxf(bar.size.y, bar.get_combined_minimum_size().y) + gap
-		for child in folio.get_children():
-			if child != bar and child != body and child is Control and child.visible:
-				# A just-shown strip may not be sorted yet; trust its minimum then.
-				reserve += maxf(child.size.y, child.get_combined_minimum_size().y) + gap
 		var floor_height := recipe_card.get_combined_minimum_size().y
-		var available := maxf(floor_height, floorf(outer.size.y - reserve - 2.0))
+		var available := maxf(floor_height, floorf(outer.size.y - body.position.y - 2.0))
 		if absf(body.custom_minimum_size.y - available) > 1.0:
 			body.custom_minimum_size.y = available
 	catalog["fit"] = fit
 	if outer != null:
 		outer.resized.connect(fit)
+		bar.resized.connect(func():fit.call_deferred())
+		style_bar.resized.connect(func():fit.call_deferred())
 	var viewport:Viewport = app.get_viewport()
 	if viewport != null:
 		viewport.size_changed.connect(fit)
@@ -422,6 +459,12 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	app.undo_ui.attach(app, bar, folio, bar.get_index() + 1, func(_shown: bool):
 		fit.call_deferred()
 	)
+	var undo_status:Label=app.undo_ui.status
+	undo_status.reparent(style_bar)
+	style_bar.move_child(undo_status,book.get_index())
+	undo_status.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	undo_status.text_overrun_behavior=TextServer.OVERRUN_NO_TRIMMING
+	undo_status.clip_text=false
 	var house_check: Button = app.button(HouseUI.TITLE, func(): HouseUI.open(app))
 	house_check.name = "HouseCheck"
 	house_check.icon = ItemArt.icon("wood")
@@ -435,14 +478,16 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	var cost_line := func(id: String, person: Dictionary) -> String:
 		var bag: Dictionary = person.get("inventory", {})
 		var parts := PackedStringArray()
-		for item in materials(id, order):
-			parts.append("%s %d／%d" % [World.NAMES.get(item, item), int(bag.get(item, 0)), int(World.BUILD[id][item])])
+		var recipe:=World.build_recipe(id,bag)
+		for item in materials(id, order, bag):
+			parts.append("%s %d／%d" % [World.NAMES.get(item, item), int(bag.get(item, 0)), int(recipe[item])])
 		return " · ".join(parts)
 	var slots: Array = []
 	for kind in World.BUILD:
 		var pages := [0, category(kind, foundations, furniture)]
 		for index in style_ids.size():
 			if kind in StyleCatalog.kinds(style_ids[index]):pages.append(TABS.size()+index)
+		if kind in INN_COLLECTION:pages.append(inn_page)
 		for page in pages:
 			var entry := BuildSlot.new()
 			entry.name = "BuildSlot_%s_%d" % [kind, page]
@@ -465,19 +510,27 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 			# Caption stays child 0 (select_entry recolours it).
 			var caption := Label.new()
 			caption.text = World.BUILD[kind].name
-			caption.add_theme_font_size_override("font_size", 14)
+			caption.add_theme_font_size_override("font_size", 15)
 			caption.add_theme_color_override("font_color", Color("f4e6bf"))
 			caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-			caption.clip_text = true
+			caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			entry.add_child(caption)
 			caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 			caption.offset_left = 4
 			caption.offset_right = -4
-			caption.offset_top = -(CAPTION_H + 4)
 			caption.offset_bottom = -4
+			var caption_height:=func():
+				var line:=caption.get_theme_font("font").get_height(caption.get_theme_font_size("font_size"))
+				var width:=maxf(SLOT_MIN.x,entry.size.x)-8.0
+				var needed:=caption.get_theme_font("font").get_string_size(caption.text,HORIZONTAL_ALIGNMENT_LEFT,-1,caption.get_theme_font_size("font_size")).x
+				var height:=ceilf(line)*(1.0 if needed<=width else ceilf(needed/width))+4.0
+				caption.offset_top=-(height+4.0)
+				entry.custom_minimum_size.y=SLOT_MIN.y+maxf(0.0,height-CAPTION_H)
+			caption.theme_changed.connect(caption_height)
+			entry.resized.connect(caption_height)
+			caption_height.call()
 			var frame: Control = panels.build_picture(entry, kind, THUMB_ZOOM)
 			frame.set_anchors_preset(Control.PRESET_CENTER_TOP)
 			frame.offset_left = -THUMB.x / 2
@@ -492,14 +545,18 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 				frame.get_child(0).position = Vector2(16, -16 if kind=="mine_drill" else 0)
 			slots.append([entry, frame, kind])
 			_hover_lift(app, entry, frame)
+	for index in INN_COLLECTION.size():
+		var entry:Control=catalog.entries[inn_page][INN_COLLECTION[index]]
+		catalog.pages[inn_page].move_child(entry,index)
 
 	# --- live refresh -----------------------------------------------------------
 	panels.updates.append(func(person: Dictionary):
 		var id: String = catalog.selected
 		if id.is_empty() or not World.BUILD.has(id):return
-		var recipe: Dictionary = World.BUILD[id]
+		diagram.visible=WORKSHOP_TOPICS.has(id)
 		var open_plan := unlocked(app, person, id)
 		var bag: Dictionary = person.get("inventory", {})
+		var recipe:=World.build_recipe(id,bag)
 		var enough := true
 		if sprite.kind != id:
 			sprite.kind = id
@@ -508,13 +565,7 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 		sprite.scale = Vector2.ONE * (2 if id in WIDE_OBJECTS else PREVIEW_ZOOM)
 		sprite.position = Vector2(16, 8 if id=="mine_drill" else 24) if id in WIDE_OBJECTS else Vector2.ZERO
 		catalog.title.text = recipe.name
-		# T066 居民紀念小物的名稱較長（最多 11 字）：標題改小一號、折成兩行，不以「…」截斷。
-		var long_title: bool = World.RESIDENT_GOALS.is_keepsake_kind(id)
-		catalog.title.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY if long_title else TextServer.AUTOWRAP_OFF
-		catalog.title.clip_text = not long_title
-		catalog.title.max_lines_visible = 2 if long_title else -1
-		catalog.title.add_theme_font_size_override("font_size", 17 if long_title else 21)
-		var needed := materials(id, order)
+		var needed := materials(id, order, bag)
 		for index in rows.size():
 			var row: Array = rows[index]
 			row[0].visible = index < needed.size()
@@ -533,8 +584,10 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 			# T066 居民紀念小物：說明取自 RESIDENT_GOALS.KEEPSAKES 的 blurb。
 			if World.RESIDENT_GOALS.is_keepsake_kind(id):catalog.description.text = "和%s一起做的事的紀念。%s不擋路，拆除會收回背包。" % [World.RESIDENT_BOND.name_of(str(World.RESIDENT_GOALS.KEEPSAKES[id].resident)), str(World.RESIDENT_GOALS.KEEPSAKES[id].blurb)]
 			else:catalog.description.text = notes.get(id, PLACEMENT_NOTES.get(id,"選好位置，替島上的生活添一件喜歡的物件。放置前可先查看地面的施工預覽。"))
+			if id=="sprinkler":
+				catalog.description.text = "工作台套件款每 %d 秒檢查相鄰四格自家作物。可手動補水，或接水管從自己的桶取水。"%World.SPRINKLER_INTERVAL if recipe.has("sprinkler_kit") else "每天澆一次相鄰四格，不穿牆。可手動補水或接水管。"
 			place.text = "選擇配方" if enough else "材料不足，仍可選擇"
-			status.text = "材料齊全 · 點地面放置" if enough else "缺少材料 · 仍可先選擇"
+			status.text = "材料齊全" if enough else "材料不足"
 			status.add_theme_color_override("font_color", READY if enough else SHORT)
 		else:
 			var lock := lock_text(app, id)
@@ -542,8 +595,8 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 			place.text = lock[1]
 			status.text = "圖樣未解鎖"
 			status.add_theme_color_override("font_color", INK_SOFT)
-		if int(catalog.page)>=TABS.size():
-			var style_id: String = style_ids[int(catalog.page)-TABS.size()]
+		var style_id:=style_id_for_page(int(catalog.page))
+		if not style_id.is_empty():
 			var style := StyleCatalog.preview_spec(style_id+"."+id)
 			catalog.description.text += "\n%s · %s（搭配建議）" % [style.style_name,style.note]
 		for slot in slots:
@@ -555,6 +608,19 @@ static func open(panels, app, data: Dictionary) -> Dictionary:
 	panels.select_entry(app, catalog, 0, "floor")
 	app._layout_preview.call_deferred()
 	return catalog
+
+static func reveal_shelf_slot(entry:Control,scroll:ScrollContainer)->void:
+	if not is_instance_valid(entry) or not is_instance_valid(scroll):return
+	var view:=scroll.get_global_rect()
+	if view.encloses(entry.get_global_rect()):return
+	var page:=entry.get_parent() as GridContainer
+	if page==null:
+		scroll.ensure_control_visible(entry)
+		return
+	var first:=entry.get_index()-entry.get_index()%page.columns
+	var top:Control=page.get_child(first)
+	# Align the first visible row rather than leaving only its captions visible.
+	scroll.scroll_vertical+=roundi(top.get_global_rect().position.y-view.position.y)
 
 ## Small hover/focus cue: the thumbnail rises two whole pixels inside its slot.
 ## Reduced motion keeps the art still (hover/selected/focus styles still differ).

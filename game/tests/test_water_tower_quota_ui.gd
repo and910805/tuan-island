@@ -267,14 +267,23 @@ func press(name:String,label:String)->void:
 	await refresh()
 
 ## Put keyboard focus on `name` and press KEY_ENTER through root.push_input.
-func enter_on(name:String,label:String)->void:
+func enter_on(name:String,label:String,with_pad:=false)->void:
 	var b:=button(name)
 	check(b!=null and not b.disabled,"%s can take focus (%s)"%[name,label])
 	if b==null:return
 	b.grab_focus()
 	await settle()
 	check(focused_name()==name,"Focus on %s before Enter (%s): %s"%[name,label,focused_name()])
-	await act_key(KEY_ENTER)
+	if with_pad:
+		app.action_clock=0
+		app.session.rates[1].clear()
+		for pressed in [true,false]:
+			var event:=InputEventJoypadButton.new()
+			event.button_index=JOY_BUTTON_A
+			event.pressed=pressed
+			root.push_input(event)
+		await refresh()
+	else:await act_key(KEY_ENTER)
 
 ## Disclosed unlock fixture (copied from test_water_tower_ui.gd).
 func write_unlock()->void:
@@ -495,7 +504,7 @@ func quota_walk(label:String)->void:
 	var before:=modal_id()
 	for value:int in [4,8,16,24]:
 		await set_step("TowerQuota","quota","More",value,0,value,0,"quota up "+label,before)
-		if value==8:check(label_text("TowerQuota")=="每日配水：8 份・今天已送 0","Quota 8 wording (%s): %s"%[label,label_text("TowerQuota")])
+		if value==8:check(label_text("TowerQuota")=="每日配水：8 份・已送 0・剩 8","Quota 8 wording (%s): %s"%[label,label_text("TowerQuota")])
 	check(is_disabled("TowerQuotaMore") and is_enabled("TowerQuotaLess"),"At 24: ＋ disabled, － enabled (%s)"%label)
 	layout_ok("quota 24 "+label)
 	for value:int in [16,8,4,0]:
@@ -518,7 +527,7 @@ func tick_flow(label:String)->void:
 	await tick()
 	check(int(obj(TOWER).water)==57 and int(obj(S_A).water)==12 and int(obj(S_N).water)==12,"Tick 1: tower sends 3 into the room left (%s): tower %d S_A %d S_N %d"%[label,int(obj(TOWER).water),int(obj(S_A).water),int(obj(S_N).water)])
 	expect("tick 1 "+label,0,8,3)
-	check(label_text("TowerQuota")=="每日配水：8 份・今天已送 3" and not label_text("TowerQuota").contains("送完了"),"Label shows 今天已送 3 (%s): %s"%[label,label_text("TowerQuota")])
+	check(label_text("TowerQuota")=="每日配水：8 份・已送 3・剩 5" and not label_text("TowerQuota").contains("送完了"),"Label shows 今天已送 3 (%s): %s"%[label,label_text("TowerQuota")])
 	same_page(before,"tick 1 "+label)
 	check(control("TowerQuota")==quota_label,"Quota label updated in place (%s)"%label)
 	check(label_text("TowerWater")=="存水 57／96","Water line follows the tick (%s): %s"%[label,label_text("TowerWater")])
@@ -538,7 +547,7 @@ func tick_flow(label:String)->void:
 	check(label_text("TowerQuota")=="每日配水：4 份・今天已送 8（今天送完了）","Lowered quota keeps today's 8 (%s): %s"%[label,label_text("TowerQuota")])
 	await set_step("TowerQuota","quota","Less",0,0,0,0,"quota off "+label,before)
 	await set_step("TowerQuota","quota","More",4,0,4,0,"quota on again "+label,before)
-	check(label_text("TowerQuota")=="每日配水：4 份・今天已送 0","Re-enabled quota counts from 0 (%s): %s"%[label,label_text("TowerQuota")])
+	check(label_text("TowerQuota")=="每日配水：4 份・已送 0・剩 4","Re-enabled quota counts from 0 (%s): %s"%[label,label_text("TowerQuota")])
 	for value:int in [8,16,24]:
 		await set_step("TowerQuota","quota","More",value,0,value,0,"quota to 24 "+label,before)
 	obj(S_A).water=0  # PRESET
@@ -562,7 +571,7 @@ func worst_flow(label:String)->void:
 	expect("worst "+label,48,24,24)
 	check(is_disabled("TowerReserveMore"),"＋ disabled at 48 (%s)"%label)
 	check(focused_name()!="TowerReserveMore","Focus left the disabled ＋ (%s): %s"%[label,focused_name()])
-	check(focused_name()=="TowerToggle","Focus moved to the toggle (%s): %s"%[label,focused_name()])
+	check(focused_name()=="TowerReserveLess","Focus stays in the reserve row (%s): %s"%[label,focused_name()])
 	focus_ok("after reserve 48 "+label)
 	# 只蓄水 does not send and does not touch the quota record.
 	obj(S_A).water=0  # PRESET
@@ -599,13 +608,13 @@ func worst_flow(label:String)->void:
 		await set_step("TowerReserve","reserve","Less",value,value,24,24,"reserve down "+label,before)
 	await enter_on("TowerReserveLess","reserve 0 by Enter "+label)
 	expect("reserve 0 by Enter "+label,0,24,24)
-	check(is_disabled("TowerReserveLess") and focused_name()!="TowerReserveLess","Focus left the disabled － (%s): %s"%[label,focused_name()])
+	check(is_disabled("TowerReserveLess") and focused_name()=="TowerReserveMore","Focus stays in the reserve row at the lower limit (%s): %s"%[label,focused_name()])
 	focus_ok("after reserve 0 "+label)
 	for value:int in [16,8,4]:
 		await set_step("TowerQuota","quota","Less",value,0,value,24,"quota down after use "+label,before)
-	await enter_on("TowerQuotaLess","quota 不限 by Enter "+label)
-	expect("quota 不限 by Enter "+label,0,0,0)
-	check(is_disabled("TowerQuotaLess") and focused_name()!="TowerQuotaLess","Focus left the disabled quota － (%s): %s"%[label,focused_name()])
+	await enter_on("TowerQuotaLess","quota 不限 by A "+label,true)
+	expect("quota 不限 by A "+label,0,0,0)
+	check(is_disabled("TowerQuotaLess") and focused_name()=="TowerQuotaMore","Focus stays in the quota row at the lower limit (%s): %s"%[label,focused_name()])
 	focus_ok("after quota 不限 "+label)
 	layout_ok("settings cleared "+label)
 	await key(KEY_ESCAPE)
@@ -685,7 +694,7 @@ func size_flow(label:String)->void:
 func pure_checks()->void:
 	check(TowerUI.reserve_text(0)=="桶水保留：不保留" and TowerUI.reserve_text(12)=="桶水保留：儲水桶留 12 份" and TowerUI.reserve_text(48)=="桶水保留：儲水桶留 48 份","reserve_text wording")
 	check(TowerUI.quota_text(0,0)=="每日配水：不限" and TowerUI.quota_text(0,5)=="每日配水：不限","quota_text 不限")
-	check(TowerUI.quota_text(8,3)=="每日配水：8 份・今天已送 3","quota_text partly used")
+	check(TowerUI.quota_text(8,3)=="每日配水：8 份・已送 3・剩 5","quota_text partly used")
 	check(TowerUI.quota_text(8,8)=="每日配水：8 份・今天已送 8（今天送完了）" and TowerUI.quota_text(4,8)=="每日配水：4 份・今天已送 8（今天送完了）","quota_text used up")
 	check(TowerUI.SUPPLY_TITLE[true]=="出水會送到" and TowerUI.SUPPLY_TITLE[false]=="改為出水後會送到","Supply titles")
 	check(Industry.TOWER_RESERVES==[0,12,24,36,48] and Industry.TOWER_QUOTAS==[0,4,8,16,24],"Option tables")

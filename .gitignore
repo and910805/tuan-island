@@ -6,3 +6,9 @@ outputs/
 *.log
 *.writer-lock
 *.bak
+*.tmp
+*.sqlite*
+*.db
+__pycache__/
+*.pyc
+*-private.pem

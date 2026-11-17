@@ -178,7 +178,7 @@ func leak_free(value,label:String) -> void:
 	expect(not text.contains("SECRET") and not text.contains("tok-"),label+": never leaks tokens")
 
 func do(w,token:String,action:String,p:Vector2i,extra:String="",rid:String="") -> Dictionary:
-	pose(w,token,near(p))
+	pose(w,token,Vector2(p)+Vector2(-0.6,0.5) if action=="build" and extra=="loom" else near(p))
 	serial+=1
 	if rid=="":rid="req-%d"%serial
 	var r:Dictionary=w.act(token,rid,action,p,extra)
@@ -606,7 +606,7 @@ func test_seed_catalog_processing() -> void:
 	var world:World=new_world()
 	var person:Dictionary=world.state.players[A]
 	person.harvests=10
-	person.inventory.merge({"plank":8,"copper_joint":2,"charcoal":24},true)
+	person.inventory.merge({"wood":15,"copper_ingot":4,"woodwork_parts":2,"charcoal":24},true)
 	var station:=find_site(world,HOME,[])
 	if not must(world,A,"build",station,"seed_maker","Build the seed maker").ok:return
 	var planned=JSON.parse_string(FileAccess.get_file_as_string("res://docs/crop-catalog-plan.json"))
@@ -617,6 +617,11 @@ func test_seed_catalog_processing() -> void:
 		var seed:=id+"_seed"
 		var previous:=held(world,A,seed)
 		var fuel:=held(world,A,"charcoal")
+		if id in World.SEED_MAKER.NURSERY_CROPS:
+			world.state.players[A].inventory[id]=cost
+			refuse(world,A,"queue_processing",station,seed,id+": flowers go to Tianwei")
+			expect(held(world,A,id)==cost and held(world,A,"charcoal")==fuel,id+": refused flower queue preserves ingredients")
+			continue
 		world.state.players[A].inventory[id]=cost-1
 		refuse(world,A,"queue_processing",station,seed,id+": one produce short")
 		world.state.players[A].inventory[id]=cost
@@ -632,12 +637,49 @@ func test_seed_catalog_processing() -> void:
 		expect(held(world,A,seed)==previous+1,id+": awards exactly one seed")
 		refuse(world,A,"claim_processing",station,"",id+": cannot claim twice")
 
+	# Emulate a legacy flower order already paid for and in progress.
+	var original:=world.state.objects[World.key(station)] as Dictionary
+	original.erase("joinery_seed_maker")
+	var catalog:=World.processing_recipes("seed_maker",true)
+	var started:=Queue.enqueue(Queue.empty_state(),catalog,float(world.state.time),A,
+		"bluebell_seed","a".repeat(Queue.ID_LENGTH),{"bluebell":2,"charcoal":1})
+	expect(started.ok,"Construct a legacy paid flower batch")
+	if not started.ok:return
+	original.processing=started.state
+	expect(world.save(),"Save the legacy flower batch")
+	var legacy:=World.new()
+	if not expect_reload_seed(legacy,world.save_path):return
+	var old_seeds:=held(legacy,A,"bluebell_seed")
+	expect(legacy.step(60.1,true),"Legacy flower batch keeps advancing")
+	must(legacy,A,"claim_processing",station,"","Claim the legacy flower batch")
+	expect(held(legacy,A,"bluebell_seed")==old_seeds+1,"Legacy batch still grants one flower seed")
+	var old_plank:=held(legacy,A,"plank")
+	must(legacy,A,"remove",station,"","Remove the legacy seed maker")
+	expect(held(legacy,A,"plank")==old_plank+8 and held(legacy,A,"woodwork_parts")==0,"Legacy machine refunds its original recipe")
+
 func test_loom_processing() -> void:
 	var world:World=new_world()
-	world.state.players[A].inventory.merge({"plank":8,"fiber":4,"copper_joint":1,"cotton":3,"wool":2},true)
+	world.state.players[A].inventory.merge({"wood":20,"fiber":10,"woodwork_parts":2,"cotton":3,"wool":2},true)
 	var station:=find_site(world,HOME,[])
+	var blocked_corner:=World.key(station+Vector2i.ONE)
+	world.state.objects[blocked_corner]={"type":"lamp","owner":B,"items":{}}
+	refuse(world,A,"build",station,"loom","A blocked corner refuses the entire loom")
+	expect(held(world,A,"wood")==20 and held(world,A,"woodwork_parts")==2,"Blocked construction takes no materials")
+	world.state.objects.erase(blocked_corner)
 	if not must(world,A,"build",station,"loom","Build the loom").ok:return
-	must(world,A,"queue_processing",station,"cotton_cloth","Queue cotton")
+	var far:=station+Vector2i.ONE
+	for offset:Vector2i in World.INDUSTRY.SQUARE_CELLS:
+		expect(world.blocked(station+offset) and World.station_anchor(world.state.objects,station+offset)==station,"All four loom tiles collide and point to one machine")
+	var objects:Dictionary=world.state.objects
+	var design:=World.BLUEPRINT_DESIGN
+	var snapshot:={"objects":objects}
+	expect(not design.capture(snapshot,A,Rect2i(station,Vector2i.ONE),"半座織布機",World.BUILD,World.NAMES).ok,"Cannot capture a partial loom")
+	var captured:=design.capture(snapshot,A,Rect2i(station,Vector2i(2,2)),"織布機",World.BUILD,World.NAMES)
+	expect(captured.ok and captured.blueprint.pieces.size()==1 and captured.blueprint.pieces[0].settings.wide,"Four cells capture as one wide blueprint piece")
+	if captured.ok:
+		var rotated:=design.rotate(captured.blueprint,1,World.BUILD,World.NAMES)
+		expect(rotated.ok and rotated.blueprint==captured.blueprint,"Square loom blueprint keeps canonical anchor on rotation")
+	must(world,A,"queue_processing",far,"cotton_cloth","Queue cotton from the far corner")
 	must(world,A,"queue_processing",station,"wool_cloth","Queue wool")
 	expect(held(world,A,"cotton")==0 and held(world,A,"wool")==0,"Both recipes charge their stated materials")
 	expect(world.step(120.1,true),"Both cloth jobs finish")
@@ -648,12 +690,40 @@ func test_loom_processing() -> void:
 	must(reopened,A,"claim_processing",station,"","Claim wool cloth")
 	expect(held(reopened,A,"cotton_cloth")==1 and held(reopened,A,"wool_cloth")==1,"The loom returns one of each cloth")
 	refuse(reopened,A,"claim_processing",station,"","Cloth cannot be claimed again")
+	var destination:=station+Vector2i(2,0)
+	must(reopened,A,"move_object",far,World.key(destination),"Move the entire loom from its far corner")
+	expect(not reopened.state.objects.has(World.key(station)) and World.station_anchor(reopened.state.objects,destination+Vector2i.ONE)==destination,"Moving clears the old footprint and rebuilds the new one")
+	must(reopened,A,"remove",destination+Vector2i.ONE,"","Dismantle the joinery loom from the far corner")
+	expect(World.INDUSTRY.SQUARE_CELLS.all(func(offset):return not reopened.state.objects.has(World.key(destination+offset))),"Dismantle clears all four loom tiles")
+	if captured.ok:
+		pose(reopened,A,Vector2(station)+Vector2(-0.6,0.5))
+		var quote:=reopened.quote_blueprint(A,captured.blueprint,station,3)
+		expect(quote.ok and reopened.apply_blueprint(A,"b".repeat(32),captured.blueprint,station,3,quote.hash).ok,"Rotated blueprint builds one full loom")
+		must(reopened,A,"remove",station,"","Clear the blueprint loom")
+	var compact:={"version":1,"name":"舊織布機","width":1,"height":1,"pieces":[{"kind":"loom","x":0,"y":0}]}
+	pose(reopened,A,Vector2(station)+Vector2(-0.6,0.5))
+	var old_quote:=reopened.quote_blueprint(A,compact,station,0)
+	expect(old_quote.ok and reopened.apply_blueprint(A,"c".repeat(32),compact,station,0,old_quote.hash).ok,"Old one-tile blueprints still work")
+	expect(not reopened.state.objects.has(World.key(station+Vector2i.RIGHT)),"Old blueprint places the compact loom")
+	must(reopened,A,"remove",station,"","Clear the compact blueprint loom")
+	expect(held(reopened,A,"wood")==20 and held(reopened,A,"fiber")==10 and held(reopened,A,"woodwork_parts")==2,
+		"Modern loom refunds its new materials after save and reload")
+	reopened.state.objects[World.key(station)]={"type":"loom","owner":A,"items":{}}
+	reopened.state.players[A].inventory.wool=2
+	must(reopened,A,"queue_processing",station,"wool_cloth","Legacy loom still weaves")
+	var legacy:=World.new()
+	if not expect_reload_seed(legacy,reopened.save_path):return
+	expect(legacy.step(60.1,true),"Legacy queued batch survives reload")
+	must(legacy,A,"claim_processing",station,"","Claim old loom's wool cloth")
+	must(legacy,A,"remove",station,"","Dismantle the original loom")
+	expect(held(legacy,A,"plank")==8 and held(legacy,A,"copper_joint")==1 and held(legacy,A,"woodwork_parts")==2,
+		"Legacy loom refunds its original recipe")
 
 func test_wool_tent_journey()->void:
 	var world:World=new_world()
 	var person:Dictionary=world.state.players[A]
 	world.state.picnic=true
-	person.inventory.merge({"plank":14,"fiber":6,"copper_joint":1,"wheat":1},true)
+	person.inventory.merge({"wood":60,"plank":6,"fiber":12,"woodwork_parts":2,"wheat":1},true)
 	person["explored_regions"]={}
 	for region in World.REGIONS.ALL.slice(1,15):person.explored_regions[region]=true
 	var stove:=find_site(world,HOME,[])
@@ -683,7 +753,7 @@ func test_wool_tent_journey()->void:
 func test_cotton_sofa_journey()->void:
 	var world:World=new_world()
 	var person:Dictionary=world.state.players[A]
-	person.inventory.merge({"plank":8,"fiber":4,"copper_joint":1},true)
+	person.inventory.merge({"wood":38,"fiber":10,"woodwork_parts":2},true)
 	var field:=find_site(world,HOME,[])
 	var loom:=find_site(world,HOME,[field])
 	var sofa:=find_site(world,HOME,[field,loom])

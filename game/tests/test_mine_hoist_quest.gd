@@ -7,8 +7,8 @@ extends SceneTree
 ##  * main world: state.picnic=true; mine_depths starts at
 ##    {"unlocked":5,"ready":{},"pumped":24,"hoist":false} and is later set to
 ##    unlocked 6 (the B5 commission itself is covered by test_mine_deep_levels);
-##  * owner bag is replaced by exactly {copper_joint 14, plank 4, stone 12,
-##    ochre_earth 4, crystal_sand 3, wood 1, vein_quartz 2} (= HOIST_COST + the
+##  * owner bag is replaced by exactly {copper_joint 12, plank 4, stone 25,
+##    iron_ingot 6, crystal_sand 3, wood 1, vein_quartz 2} (= HOIST_COST + the
 ##    glass_furnace cost + one glass job + one crystal_sand job);
 ##  * other bag is replaced by exactly HOIST_COST (used to prove a second repair
 ##    is refused and charges nothing);
@@ -31,7 +31,7 @@ const SURFACE_ARRIVAL:=Vector2(27.5,19.5)
 const TILE:=Vector2i(38,34)
 const CLOSED:="此礦道尚未開放，或你離入口太遠。"
 const WRONG_PLACE:="請到金瓜石合作礦場的下坑路牌。"
-const FURNACE_COST:={"stone":12,"ochre_earth":4,"copper_joint":2}
+const FURNACE_COST:={"stone":25,"iron_ingot":6}
 var checks:=0
 var failures:=0
 var serial:=0
@@ -133,13 +133,13 @@ func check_static()->void:
 	expect(Mines.surface_landings({"unlocked":15,"ready":{},"pumped":24,"hoist":false}).is_empty(),"no surface landings before the repair")
 	expect(Mines.surface_landings({"unlocked":10,"ready":{},"pumped":24,"hoist":true})==[6,10] and Mines.lift_targets(10)==[6,10],"repaired hoist offers the opened landings")
 	expect(World.NAMES.get("ochre_earth")=="赭土" and World.NAMES.get("vein_quartz")=="脈石英","new minerals are registered items")
-	expect(World.BUILD.get("glass_furnace",{})=={"name":"玻璃爐","stone":12,"ochre_earth":4,"copper_joint":2},"glass furnace build cost")
+	expect(World.BUILD.get("glass_furnace",{})=={"name":"玻璃爐","stone":25,"iron_ingot":6},"glass furnace build cost")
 	var furnace:=World.processing_recipes("glass_furnace")
-	expect(furnace.size()==2 and furnace.has("glass") and furnace.has("crystal_sand"),"glass furnace has exactly the glass and crystal sand recipes")
+	expect(furnace.size()==4 and furnace.has("glass") and furnace.has("crystal_sand") and furnace.has("iron_ingot") and furnace.has("copper_ingot"),"Glass furnace retains glass, sand and legacy smelting recipes")
 	expect(furnace.get("glass",{}).get("ingredients",{})=={"crystal_sand":3,"wood":1} and float(furnace.get("glass",{}).get("time",0))==120.0 and int(furnace.get("glass",{}).get("yield",0))==1,"furnace glass: 3 crystal sand + 1 wood -> 1 in 120 s")
 	expect(furnace.get("crystal_sand",{}).get("ingredients",{})=={"vein_quartz":2} and float(furnace.get("crystal_sand",{}).get("time",0))==60.0 and int(furnace.get("crystal_sand",{}).get("yield",0))==3,"furnace crystal sand: 2 vein quartz -> 3 in 60 s")
 	expect(World.CRAFT.glass.ingredients=={"crystal_sand":2,"charcoal":1} and int(World.CRAFT.glass.yield)==2,"workbench glass recipe unchanged")
-	expect(Schema.processing_recipes("glass_furnace").keys().size()==2 and "glass_furnace" in Schema.PROCESSING_STATIONS,"save schema knows the furnace queue")
+	expect(Schema.processing_recipes("glass_furnace").keys().size()==4 and "glass_furnace" in Schema.PROCESSING_STATIONS,"save schema knows the furnace queue")
 	expect("glass_furnace" in Sources.STATION_FOR.queue_processing and "glass_furnace" in Sources.STATIONS and "glass_furnace" in Sources.OWNER_ONLY,"material sources: owner-only processing station")
 	expect("glass_furnace" in Rooms.SOLID_OBJECTS and "glass_furnace" in World.UNDO_SOLID,"furnace is solid like the loom")
 	expect("glass_furnace" not in World.LOGISTICS.PROCESSORS,"furnace is never conveyor-automated")
@@ -154,7 +154,7 @@ func check_quest(w:World,path:String)->void:
 	# PRESET
 	w.state.picnic=true
 	w.state.mine_depths={"unlocked":5,"ready":{},"pumped":24,"hoist":false}
-	w.state.players[OWNER]["inventory"]={"copper_joint":14,"plank":4,"stone":12,"ochre_earth":4,"crystal_sand":3,"wood":1,"vein_quartz":2}
+	w.state.players[OWNER]["inventory"]={"copper_joint":12,"plank":4,"stone":25,"iron_ingot":6,"crystal_sand":3,"wood":1,"vein_quartz":2}
 	w.state.players[OTHER]["inventory"]={"copper_joint":12,"plank":4}
 	relocate(w,OWNER,SURFACE,SURFACE_ARRIVAL)
 	relocate(w,OTHER,SURFACE,SURFACE_ARRIVAL)
@@ -231,7 +231,8 @@ func check_quest(w:World,path:String)->void:
 	expect(canon(bag(w,OWNER))==adjusted(before_build,negated(FURNACE_COST)),"furnace debits exactly %s"%str(FURNACE_COST))
 	var furnace:Dictionary=w.state.objects.get(World.key(TILE),{})
 	expect(furnace.get("type")=="glass_furnace" and furnace.get("owner")==OWNER and not furnace.has("auto_enabled") and not furnace.has("job") and (furnace.get("items",{}) as Dictionary).is_empty(),"furnace is a plain owner-only manual station")
-	expect(w.blocked(TILE),"furnace blocks its tile")
+	for offset:Vector2i in World.INDUSTRY.SQUARE_CELLS:
+		expect(w.blocked(TILE+offset) and World.station_anchor(w.state.objects,TILE+offset)==TILE,"Furnace corner blocks and resolves to the same station")
 	# Queue: owner only, its own recipes only.
 	refuse(w,OTHER,"queue_processing",TILE,"glass","只能使用自己的加工設備","another islander cannot use the furnace")
 	refuse(w,OWNER,"queue_processing",TILE,"cotton_cloth","這台設備不能加工此物品","furnace refuses a loom recipe")
@@ -270,8 +271,20 @@ func check_quest(w:World,path:String)->void:
 	var stuck:Dictionary=final_check.state.duplicate(true)
 	stuck.mine_depths["hoist"]=false
 	expect(not valid(stuck.duplicate(true)),"a save holding a glass furnace with the hoist still stuck is rejected")
-	stuck.objects.erase(World.key(TILE))
+	for offset:Vector2i in World.INDUSTRY.SQUARE_CELLS:stuck.objects.erase(World.key(TILE+offset))
 	expect(valid(stuck),"control: the stuck-hoist save validates once the furnace is removed")
+	var design:=World.BLUEPRINT_DESIGN
+	var snapshot:={"objects":final_check.state.objects}
+	expect(not design.capture(snapshot,OWNER,Rect2i(TILE,Vector2i.ONE),"半座爐",World.BUILD,World.NAMES).ok,"A partial glass furnace cannot be captured")
+	var wide:=design.capture(snapshot,OWNER,Rect2i(TILE,Vector2i(2,2)),"玻璃爐",World.BUILD,World.NAMES)
+	expect(wide.ok and wide.blueprint.pieces.size()==1 and wide.blueprint.pieces[0].settings.wide,"Wide glass furnace has one canonical blueprint piece")
+	if wide.ok:
+		var rotated:=design.rotate(wide.blueprint,3,World.BUILD,World.NAMES)
+		expect(rotated.ok and rotated.blueprint==wide.blueprint,"Glass furnace retains the footprint on rotation")
+	for offset:Vector2i in World.INDUSTRY.SQUARE_CELLS:final_check.state.objects.erase(World.key(TILE+offset))
+	final_check.state.objects[World.key(TILE)]={"type":"glass_furnace","owner":OWNER,"items":{}}
+	var old_bag:=canon(bag(final_check,OWNER))
+	expect(act(final_check,OWNER,"remove",TILE).ok and canon(bag(final_check,OWNER))==adjusted(old_bag,World.LEGACY_GLASS_FURNACE_COST),"Legacy glass furnace still refunds its original recipe")
 
 func write_json(path:String,data:Dictionary)->bool:
 	var file:=FileAccess.open(path,FileAccess.WRITE)

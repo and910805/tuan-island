@@ -137,6 +137,8 @@ func seed_world(path:String)->bool:
 	if not seed_memory(w,ALPHA) or not seed_memory(w,BETA):return false
 	stand(w,ALPHA,Memory.SERVICE)
 	if not seed_act(w,ALPHA,"memory_plaque",Memory.SERVICE):return false
+	w.state.history_memory.players[ALPHA].erase("completed_day")  # Legacy record for the day-one fixture.
+	w.state.history_memory.players[BETA].erase("completed_day")  # Legacy record for the day-one fixture.
 	var a:Dictionary=w.state.players[ALPHA]
 	var b:Dictionary=w.state.players[BETA]
 	a["x"]=A_SPOT.x

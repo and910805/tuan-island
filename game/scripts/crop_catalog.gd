@@ -1,5 +1,20 @@
 extends RefCounted
 
+const CARE_TARGET:=5
+const QUALITY_PREFIX:="quality_"
+
+static func base_kind(item:String) -> String:
+	return item.trim_prefix(QUALITY_PREFIX)
+
+static func quality_item(item:String) -> bool:
+	return item.begins_with(QUALITY_PREFIX) and CROPS.has(base_kind(item))
+
+static func quality_price(item:String) -> int:
+	return quality_price_for(int(CROPS[base_kind(item)].price))
+
+static func quality_price_for(normal_price:int) -> int:
+	return (normal_price*5)/4
+
 ## "cycles"：再生作物的收成次數。"regrow"：首熟之後每次再長出來要的秒數——規劃書第 09 章
 ## 「首熟後每 2 天一次」，換成這種作物自己的秒數（time ÷ 規劃書成長天數 × 2）。
 const CROPS := {

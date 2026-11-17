@@ -605,3 +605,46 @@ func verify_reload_and_replay() -> void:
 	expect(replays_equal, "Repeated replays are identical")
 	expect(JSON.stringify(reload.state) == state_before, "Replaying %d times did not mutate the world" % REPLAYS)
 	expect(FileAccess.get_file_as_string(path) == file_before and file_before == text, "Replaying did not write the save")
+	verify_late_cooking(reload)
+
+func verify_late_cooking(reloaded:World) -> void:
+	if failed:return
+	var original:=world
+	var late_path:String=reloaded.save_path+".late"
+	reloaded.save_path=late_path
+	world=reloaded
+	var growth:=float(World.CROPS.radish.time)
+	wait_for_crop_window("radish",growth+2.0)
+	var plots:Array[Vector2i]=[]
+	for y in range(33,40):
+		for x in range(36,46):
+			var tile:=Vector2i(x,y)
+			if free_cell(tile) and not route(tile,2.0,LATE).is_empty():plots.append(tile)
+			if plots.size()==2:break
+		if plots.size()==2:break
+	expect(plots.size()==2,"Late member can walk to two unclaimed farm tiles")
+	for tile in plots:
+		late_action("hoe",tile)
+		late_action("seed",tile,"radish")
+		late_action("water",tile)
+	advance(growth+0.1,"late member grows starter radishes")
+	for tile in plots:late_action("harvest",tile)
+	var newcomer:Dictionary=world.state.players[LATE]
+	expect(int(newcomer.inventory.get("radish",0))>=2 and int(newcomer.get("crafting_points",0))==0,
+		"Late member harvested required crops without inherited crafting experience")
+	late_action("queue_cook",stove,"soup")
+	advance(float(World.RECIPES.soup.time),"late member cooks at the public stove")
+	late_action("claim_cook",stove)
+	expect(int(world.state.players[LATE].inventory.get("soup",0))==2 and int(world.state.players[LATE].coins)==default_coins,
+		"Late member prepares and collects two bowls using only starter seeds")
+	expect(world.load_world(late_path) and int(world.state.players[LATE].inventory.get("soup",0))==2,"Late member's meal survives reloading")
+	world=original
+	for file in [late_path,late_path+".bak"]:
+		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)
+
+func late_action(action:String,tile:Vector2i,extra:="") -> void:
+	walk_to(tile,2.0,LATE)
+	if failed:return
+	actions+=1
+	var result:=world.act(LATE,"late-%d"%actions,action,tile,extra)
+	expect(result.ok,"Late member %s: %s"%[action,result.message])

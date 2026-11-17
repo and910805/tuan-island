@@ -91,7 +91,93 @@ func run()->void:
 			var rest=app.modal.find_child("MineRest",true,false)
 			check(rest!=null and rest.disabled,"Remote rest cannot be submitted")
 	check(preload("res://scripts/inventory_item_art.gd").icon("gold_ore")!=null and preload("res://scripts/inventory_item_art.gd").icon("gold_sample")!=null,"New item PNG icons resolve")
+	await check_mud_event(w,id,path)
+	await check_adventure_mud(w,id,path)
 	app._close_modal();app.session.shutdown();await create_timer(0.3).timeout
 	app.queue_free();await process_frame;await process_frame
 	for suffix in ["",".bak",".writer-lock"]:DirAccess.remove_absolute(path+suffix)
 	print("MINE_DEPTHS_UI_TESTS checks=%d failures=%d"%[checks,failures]);quit(int(failures>0))
+
+func check_mud_event(world:World,id:String,path:String)->void:
+	app._close_modal()
+	var person:Dictionary=world.state.players[id]
+	person.region=World.MINES.MUD_REGION
+	person.x=World.MINES.MUD_GATE.x+0.5
+	person.y=World.MINES.MUD_GATE.y+1.5
+	person.inventory.radish=0
+	person.inventory.quality_radish=0
+	for step in 10:world.move_player(id,Vector2.UP,1.0/60.0)
+	check(person.y>=World.MINES.MUD_ALCOVE_EDGE,"Mudling blocks only the optional upper pocket")
+	check(not world.act(id,"mud-empty","mine_mud_lure",World.MINES.MUD_GATE).ok,"A player without bait can still use the main mine")
+	person.inventory.radish=1
+	app.session._send_snapshot(1)
+	for arg:String in OS.get_cmdline_user_args():
+		if not arg.begins_with("--mud-preview="):continue
+		root.size=Vector2i(1280,800)
+		app.toast.hide()
+		await create_timer(0.3).timeout
+		app.view.queue_redraw()
+		RenderingServer.force_draw()
+		check(root.get_texture().get_image().save_png(arg.trim_prefix("--mud-preview="))==OK,"Capture mudling in the actual cave")
+	app._interact()
+	await process_frame
+	if not await press("MineMudLure"):return
+	check(person.get("mud_alcove",0)==1 and person.inventory.radish==0,"Offering a radish opens the side pocket")
+	check(not world.act(id,"mud-outside-claim","mine_mud_claim",World.MINES.MUD_REWARD).ok,"Player must cross the passage to collect")
+	for step in 11:world.move_player(id,Vector2.UP,1.0/60.0)
+	for step in 30:world.move_player(id,Vector2.LEFT,1.0/60.0)
+	var copper:=int(person.inventory.get("copper_ore",0))
+	app.session._send_snapshot(1)
+	app._interact()
+	await process_frame
+	if not await press("MineMudClaim"):return
+	check(person.get("mud_alcove",0)==2 and int(person.inventory.get("copper_ore",0))==copper+World.MINES.MUD_COPPER,"Collects the fixed copper reward")
+	check(not world.act(id,"mud-repeat","mine_mud_claim",World.MINES.MUD_REWARD).ok,"A second claim cannot duplicate copper")
+	var reopened:=World.new()
+	check(reopened.load_world(path) and reopened.state.players[id].get("mud_alcove",0)==2,"Side pocket completion survives reload")
+
+func check_adventure_mud(world:World,id:String,path:String)->void:
+	app._close_modal()
+	world.state.world_mode="adventure"
+	var person:Dictionary=world.state.players[id]
+	person.erase("mud_alcove")
+	person.region=World.MINES.MUD_REGION
+	person.x=World.MINES.MUD_GATE.x+0.5
+	person.y=World.MINES.MUD_GATE.y+1.5
+	var gate:=World.MINES.MUD_GATE
+	check(not world.act(id,"adventure-bait","mine_mud_lure",gate).ok,"Adventure uses the duel branch")
+	app.session._send_snapshot(1)
+	app._interact()
+	await process_frame
+	if not await press("MineMudDuel"):return
+	check(person.has("mud_duel") and not person.mud_duel.dodged,"Adventure menu starts the warning")
+	check(not world.act(id,"adventure-early","mine_mud_duel",gate,"strike").ok,"Early strike cannot clear the alcove")
+	check(world.step(World.MINES.MUD_WINDUP+0.1,true),"Advance to the first recovery window")
+	check(not world.act(id,"adventure-no-dodge","mine_mud_duel",gate,"strike").ok,"A player who stood still cannot clear the encounter")
+	check(world.step(World.MINES.MUD_RECOVERY,true),"Wait out the failed round")
+	check(world.act(id,"adventure-retry","mine_mud_duel",gate,"start").ok,"Player can retry without losing tools")
+	for step in 15:world.move_player(id,Vector2.LEFT,1.0/60.0)
+	check(person.mud_duel.dodged,"Actual lateral movement counts as a dodge")
+	check(world.step(World.MINES.MUD_WINDUP+0.1,true),"Reach the counter window")
+	app.session._send_snapshot(1)
+	for arg:String in OS.get_cmdline_user_args():
+		if not arg.begins_with("--adventure-preview="):continue
+		root.size=Vector2i(1280,800)
+		app.toast.hide()
+		await create_timer(0.25).timeout
+		app.view.queue_redraw()
+		RenderingServer.force_draw()
+		check(root.get_texture().get_image().save_png(arg.trim_prefix("--adventure-preview="))==OK,"Capture the adventure counter prompt")
+	app._interact()
+	check(person.get("mud_alcove",0)==1 and not person.has("mud_duel"),"Interaction counters successfully after the dodge")
+	for step in 15:world.move_player(id,Vector2.UP,1.0/60.0)
+	for step in 15:world.move_player(id,Vector2.LEFT,1.0/60.0)
+	var copper:=int(person.inventory.get("copper_ore",0))
+	app.session._send_snapshot(1)
+	app._interact()
+	await process_frame
+	if not await press("MineMudClaim"):return
+	check(int(person.inventory.get("copper_ore",0))==copper+World.MINES.MUD_COPPER,"Adventure yields the same copper reward as life mode")
+	var reloaded:=World.new()
+	check(reloaded.load_world(path) and reloaded.state.world_mode=="adventure" and reloaded.state.players[id].mud_alcove==2,
+		"Adventure mode and event completion survive reload")

@@ -3,6 +3,7 @@ extends RefCounted
 const Furniture=preload("res://scripts/furniture_sprite_art.gd")
 const PK=preload("res://scripts/public_kitchen.gd")
 const Items=preload("res://assets/ui-inventory/items.png")
+const ItemArt=preload("res://scripts/inventory_item_art.gd")
 const SOUP:=Rect2(96,64,32,32)
 const BREAD:=Rect2(128,64,32,32)
 const RADISH:=Rect2(96,0,32,32)
@@ -13,6 +14,31 @@ const STEAM:=Color("fff2d4")
 const SPARKLE:=Color("ffe7a0")
 const DURATION_CONTRIBUTE:=2.0
 const DURATION_OPENED:=4.0
+const PLATE_OFFSETS:={"trout_hotpot":-18.0,"corn_chowder":0.0,"watermelon_platter":18.0}
+
+static func draw_plates_served(canvas:CanvasItem,at:Vector2,event:Dictionary)->void:
+	for plate:String in event:
+		var progress:float=event[plate]
+		var lift:=roundf(24.0*(1.0-pow(1.0-progress,2.0)))
+		var alpha:=minf(progress*10.0,(1.0-progress)*3.0)
+		var texture:=ItemArt.icon(plate)
+		if texture==null:continue
+		var center:=at.round()+Vector2(16+float(PLATE_OFFSETS[plate]),-4-lift)
+		canvas.draw_texture_rect(texture,Rect2(center-Vector2(9,9),Vector2(18,18)),false,Color(1.0,1.0,1.0,alpha))
+		var glint:=Color(SPARKLE,alpha)
+		var spark:=center+Vector2(10,-5)
+		canvas.draw_rect(Rect2(spark-Vector2(1,0),Vector2(3,1)),glint)
+		canvas.draw_rect(Rect2(spark-Vector2(0,1),Vector2(1,3)),glint)
+
+static func draw_portions_taken(canvas:CanvasItem,at:Vector2,event:Dictionary)->void:
+	for plate:String in event:
+		var progress:float=event[plate]
+		var extent:=roundf(12.0-5.0*progress)
+		var offset:=Vector2(float(PLATE_OFFSETS[plate]),-3.0-16.0*progress)
+		var center:=(at+Vector2(16,0)+offset).round()
+		var image:=ItemArt.icon(plate)
+		var tint:=Color(1.0,1.0,1.0,1.0-progress)
+		canvas.draw_texture_rect(image,Rect2(center-Vector2.ONE*extent*0.5,Vector2.ONE*extent),false,tint)
 
 ## Old 4-arg callers keep the original picnic spread. `kitchen` may be the
 ## public_kitchen Dictionary or a snapshot containing it; `feedback` is a
@@ -35,11 +61,16 @@ static func draw_table(canvas:CanvasItem,at:Vector2,elapsed:float,reduced_motion
 	if not tea.is_empty():draw_tea_set(canvas,origin,tea,elapsed,reduced_motion)
 	# 玉米濃湯: drawn before the other dishes, so the nearer ones (watermelon tray, bread,
 	# salad, a centred hotpot) overlap its lower part and it reads as standing behind them.
-	if chowder>0:draw_chowder(canvas,origin,chowder,portions<=0 and fruit<=0 and _opened(kitchen))
+	if chowder>0:
+		var spread:=portions<=0 and fruit<=0 and _opened(kitchen)
+		draw_chowder(canvas,origin,chowder,spread)
+		if not reduced_motion:
+			var bowl:=CHOWDER_OPENED_RECT if spread else CHOWDER_RECT
+			_draw_steam(canvas,origin+bowl.position+Vector2(2,0),elapsed,false)
 	var soup_at:Vector2
 	if portions>0:
 		soup_at=origin+Vector2(2 if fruit>0 else 7,1)
-		canvas.draw_texture_rect_region(Items,Rect2(soup_at,Vector2(18,18)),SOUP)
+		canvas.draw_texture_rect(ItemArt.icon("trout_hotpot"),Rect2(soup_at,Vector2(18,18)),false)
 		# Up to four bowls keep the original 4px spacing; a warm round of six packs
 		# narrower 3px bowls into the same 24px strip.
 		var seats:=mini(portions,6)
@@ -242,20 +273,17 @@ static func _draw_tea_steam(canvas:CanvasItem,base:Vector2,elapsed:float,reduced
 		canvas.draw_rect(Rect2(point+Vector2(1,-1),Vector2(1,1)),tint)
 
 static func _draw_watermelon(canvas:CanvasItem,at:Vector2,portions:int)->void:
-	canvas.draw_rect(Rect2(at+Vector2(0,2),Vector2(13,9)),Color("8a6552"))
-	canvas.draw_rect(Rect2(at+Vector2(1,1),Vector2(11,9)),Color("f5e3ba"))
+	canvas.draw_texture_rect(ItemArt.icon("watermelon_platter"),Rect2(at-Vector2(1,0),Vector2(16,14)),false)
 	for index in mini(portions,4):
-		var piece:=at+Vector2(2+(index%2)*5,2+(index/2)*4)
-		canvas.draw_rect(Rect2(piece+Vector2(1,0),Vector2(2,1)),Color("f48a7b"))
-		canvas.draw_rect(Rect2(piece+Vector2(0,1),Vector2(4,1)),Color("d95758"))
-		canvas.draw_rect(Rect2(piece+Vector2(0,2),Vector2(4,1)),Color("497451"))
+		var mark:=at+Vector2(2+index*3,12)
+		canvas.draw_rect(Rect2(mark,Vector2(2,1)),Color("e9b590"))
 
 ## 玉米濃湯 on the shared table: a 10×7 blue-banded tureen of yellow soup standing at the
 ## back-right of the tabletop (its base on the table's back edge). It is drawn before the
 ## other dishes: the watermelon tray, the bread or a centred hotpot cover its lower rows;
 ## the two soup rows with the kernel dots (one per portion left, up to four) stay visible.
 ## With the opened-kitchen spread the salad sits there, so the tureen moves up three
-## pixels (CHOWDER_OPENED_RECT) and shows above the salad. Static in every motion mode.
+## pixels (CHOWDER_OPENED_RECT) and shows above the salad. The bowl itself stays still.
 const CHOWDER_RECT:=Rect2(21,3,10,7)
 const CHOWDER_OPENED_RECT:=Rect2(21,0,10,7)
 const CHOWDER_EDGE:=Color("4a3a2e")

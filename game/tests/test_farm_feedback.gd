@@ -48,6 +48,13 @@ func run() -> void:
 	feedback.observe(before, after, 11.0)
 	active = feedback.active("local", 11.0)
 	expect(active.get("kind") == "seeder" and active.get("cells") == [CELL], "seed feedback shows actual limited footprint")
+	expect(feedback.sprout_offset(CELL,11.0,false) == Vector2(0,-7), "new sprout starts above its plot")
+	expect(feedback.sprout_offset(CELL,11.2,false) == Vector2(0,-2), "sprout settles in whole pixels")
+	expect(feedback.sprout_offset("41,36",11.0,false) == Vector2.ZERO, "empty neighbor stays still")
+	expect(feedback.sprout_offset(CELL,11.0,true) == Vector2.ZERO, "reduced motion draws sprout in final position")
+	feedback.observe(after,after.duplicate(true),11.2)
+	expect(feedback.sprout_offset(CELL,11.2,false) == Vector2(0,-2), "duplicate snapshot leaves the original timing")
+	expect(feedback.sprout_offset(CELL,11.5,false) == Vector2.ZERO, "settled sprout stays on its soil")
 	world.state.crops[CELL].growth = World.CROPS.radish.time
 	before = world.state.duplicate(true)
 	expect(world.act("local", "harvest", "harvest_area", CENTER).ok, "successful harvest")

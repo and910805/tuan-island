@@ -22,7 +22,7 @@ extends RefCounted
 ##   keepsake_diandian  摺疊 A 字畫架夾著一張速寫（鉛筆灰的一雙放鬆的手），畫架托板上一支鉛筆
 ##   keepsake_nuannuan  短柱上的門牌（深色木框、米白牌面），框頂右側一盞亮著的暖黃小燈與微光
 
-const KINDS:=["keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan"]
+const KINDS:=["keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","keepsake_nuannuan_room"]
 const KIT_SUFFIX:="_kit"
 const SHADOW:=Color(0.18,0.13,0.08,0.3)
 const OUTLINE:=Color("3e2a1a")
@@ -155,6 +155,18 @@ static func _bowl(img:Image,cx:int,y:int,open:bool) -> void:
 static func piece(kind:String) -> Texture2D:
 	if not kind in KINDS:return null
 	if cache.has(kind):return cache[kind]
+	if kind=="keepsake_lingpopo_memorial":
+		cache[kind]=ImageTexture.create_from_image(preload("res://assets/ui-inventory/memorial-bell-reward.png").get_image())
+		return cache[kind]
+	if kind=="keepsake_xinghe_sign":
+		cache[kind]=ImageTexture.create_from_image(preload("res://assets/ui-inventory/xinghe-garden-sign.png").get_image())
+		return cache[kind]
+	if kind=="keepsake_achao_oar":
+		cache[kind]=ImageTexture.create_from_image(preload("res://assets/ui-inventory/achao-oar.png").get_image())
+		return cache[kind]
+	if kind=="keepsake_aru_bird":
+		cache[kind]=ImageTexture.create_from_image(preload("res://assets/ui-inventory/aru-wood-bird.png").get_image())
+		return cache[kind]
 	var img:=Image.create_empty(32,32,false,Image.FORMAT_RGBA8)
 	img.fill(Color(0,0,0,0))
 	match kind:
@@ -170,6 +182,7 @@ static func piece(kind:String) -> Texture2D:
 		"keepsake_luoluo":_luoluo(img)
 		"keepsake_diandian":_diandian(img)
 		"keepsake_nuannuan":_nuannuan(img)
+		"keepsake_nuannuan_room":_nuannuan_room(img)
 	var texture:=ImageTexture.create_from_image(img)
 	cache[kind]=texture
 	return texture
@@ -462,6 +475,22 @@ static func _diandian(img:Image) -> void:
 	_r(img,10,18,1,2,Color("a8a8b0"))
 	_r(img,19,18,1,2,Color("e8c8a0"))
 	_px(img,20,19,Color("3a3a3a"))
+
+static func _nuannuan_room(img:Image) -> void:
+	_r(img,4,28,24,2,SHADOW)
+	_boxed(img,7,22,18,7,WOOD,OUTLINE)
+	_r(img,8,27,16,1,WOOD_LIGHT)
+	_boxed(img,4,9,24,15,Color("46796b"),Color("322f2c"))
+	_r(img,6,10,20,1,Color("9fbc9e"))
+	_boxed(img,7,12,18,9,Color("f3ddb0"),Color("325c54"))
+	_r(img,9,15,4,1,Color("534536"))
+	_r(img,9,17,7,1,Color("534536"))
+	_r(img,17,15,4,1,Color("534536"))
+	_r(img,18,17,4,1,Color("a45d42"))
+	for x in [12,18]:
+		_px(img,x,5,Color("fcf0d1"))
+		_px(img,x+1,6,Color("fcf0d1"))
+		_px(img,x,7,Color("cfddbe"))
 
 static func _nuannuan(img:Image) -> void:
 	_r(img,6,29,20,2,SHADOW)

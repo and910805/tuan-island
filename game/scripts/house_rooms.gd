@@ -7,8 +7,9 @@ extends RefCounted
 const SEARCH_RADIUS := 8
 const Enclosure = preload("res://scripts/room_enclosure.gd")
 const MIN_AREA := Enclosure.MIN_AREA
+const Industry=preload("res://scripts/industry.gd")
 # Matches World.blocked object collisions; checked against every BUILD entry in tests.
-const SOLID_OBJECTS := ["ore_display", "wall", "window", "chest", "private_chest", "supply_box", "bench", "bed", "table", "stove","long_bench","sofa","planter","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace"]
+const SOLID_OBJECTS := ["ore_display", "wall", "window", "chest", "private_chest", "supply_box", "bench", "bed", "inn_quilt_bed", "inn_stone_footbath", "table", "stove","long_bench","master_bench","spring_stone_bench","small_smelter","sofa","planter","guest_wardrobe","inn_lattice_wardrobe","inn_fabric_screen","wood_mailbox","sketch_easel","rope_rack","towel_rack","inn_tea_table","inn_luggage_rack","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","large_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot","clay_kiln","dye_table","assembly_table","animal_collector"]
 const MAX_CELLS := Enclosure.MAX_CELLS
 const BOUNDARY := ["wall", "window", "door"]
 const DIRS: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
@@ -62,7 +63,7 @@ static func inspect(snapshot: Dictionary, at: Vector2i) -> Dictionary:
 		var obj = objects.get(tile)
 		if obj is Dictionary:
 			_add_owner(owners, obj)
-			if str(obj.get("type", "")) == "bed":beds.append(c)
+			if obj.get("type","")=="bed" or (obj.get("type","")==Industry.INN_BED and Industry.square_part(obj)==0):beds.append(c)
 	for b in boundary:_add_owner(owners, objects.get(_key(b)))
 	var reachable := _bed_reachable(cells, inside, objects, doors, beds)
 	var contributors: Array[String] = []
@@ -88,6 +89,22 @@ static func inspect(snapshot: Dictionary, at: Vector2i) -> Dictionary:
 	result.missing = missing
 	result.complete = missing.is_empty()
 	return result
+
+## Qualifies a furnished room at its actual interior tile, even if the broader
+## structure inspection can also be opened from outside.
+static func guest_room(snapshot:Dictionary,room:Dictionary,at:Vector2i,owner:String) -> Dictionary:
+	var furnished:={"bed":false,"lamp":false,"chair":false}
+	var contributed:=false
+	var objects:=_layer(snapshot,"objects")
+	for cell:Vector2i in room.get("cells",[]):
+		var obj:Dictionary=objects.get(_key(cell),{})
+		var kind:=str(obj.get("type",""))
+		if kind not in furnished:continue
+		furnished[kind]=true
+		if obj.get("owner","")==owner:contributed=true
+	var inside:bool=at in room.get("cells",[])
+	return {"furnished":furnished,"inside":inside,"contributed":contributed,
+		"ready":inside and room.get("complete",false) and contributed and furnished.values().all(func(value:bool):return value)}
 
 static func _bed_reachable(cells: Array[Vector2i], inside: Dictionary, objects: Dictionary, doors: Dictionary, beds: Array[Vector2i]) -> bool:
 	if doors.is_empty() or beds.is_empty():return false

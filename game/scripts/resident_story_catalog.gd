@@ -232,7 +232,7 @@ const RESIDENTS:={
 			{"id":"xinghe_c3_next_round","chapter":3,"region":"tianwei",
 			"prerequisites":[{"kind":"visited","region":"tianwei"},{"kind":"flower_phase_at_least","phase":"complete"}],
 			"local_work":"留種、交合作訂單、合力完成公共花園並回報。",
-			"materials":[{"item":"bluebell_seed","source":"田尾留種台（一朵成花換一包）","script":"res://scripts/flower_nursery.gd","symbol":"SAVE_SECONDS"},{"item":"orange_blossom_seed","source":"同上","script":"res://scripts/flower_nursery.gd","symbol":"SAVE_SECONDS"}],
+			"materials":[{"item":"bluebell_seed","source":"田尾留種台（兩朵成花換一包）","script":"res://scripts/flower_nursery.gd","symbol":"save_flower_cost"},{"item":"orange_blossom_seed","source":"同上","script":"res://scripts/flower_nursery.gd","symbol":"save_flower_cost"}],
 			"line":"在蘭陽我育的是樹苗，在這裡阿蕾教你留的是花種。兩邊其實一樣：先替下一輪留一份。",
 			"line_status":"fictional","history":"tianwei_flowers",
 			"flag":"未查核：不提田尾產業史實；花圃與阿蕾皆為原創。",

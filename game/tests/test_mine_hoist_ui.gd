@@ -17,7 +17,7 @@ const UI=preload("res://scripts/mine_ui.gd")
 const BuildFolio=preload("res://scripts/build_folio.gd")
 const ProcessingQueueUI=preload("res://scripts/processing_queue_ui.gd")
 const Village=preload("res://scripts/village.gd")
-const FURNACE_KIT:={"stone":12,"ochre_earth":4,"copper_joint":2}
+const FURNACE_KIT:={"stone":25,"iron_ingot":6}
 var app
 var w
 var id:String
@@ -184,7 +184,7 @@ func build_furnace()->Dictionary:
 	sequence+=1
 	var person:Dictionary=w.state.players[id]
 	person.region=World.REGIONS.HOME
-	person.x=furnace.x+0.5;person.y=furnace.y+1.6
+	person.x=furnace.x-0.5;person.y=furnace.y+0.5
 	var result:Dictionary=w.act(id,"hoist-ui-build-%d"%sequence,"build",furnace,"glass_furnace")
 	app.session._send_snapshot(1)
 	return result
@@ -192,7 +192,7 @@ func build_furnace()->Dictionary:
 func open_furnace(label:String)->void:
 	var person:Dictionary=w.state.players[id]
 	person.region=World.REGIONS.HOME
-	person.x=furnace.x+0.5;person.y=furnace.y+1.6
+	person.x=furnace.x-0.5;person.y=furnace.y+0.5
 	app.session._send_snapshot(1)
 	await settle()
 	app._interact()
@@ -280,7 +280,7 @@ func run()->void:
 		check(not BuildFolio.unlocked(app,w.state.players[id],"glass_furnace"),"Glass furnace locked before the repair")
 		var locked:Button=await catalog_place("before "+tag)
 		check(locked!=null and locked.disabled and locked.text=="完成卡住的升降台","Catalog shows 玻璃爐 locked before the repair at "+tag)
-		check("修好金瓜石的升降台後解鎖。" in texts(),"Catalog explains the furnace gate at "+tag)
+		check("修好金瓜石升降台後解鎖。鐵礦可用小熔爐熔成鐵錠。" in texts(),"Catalog explains the furnace gate at "+tag)
 		app._close_modal()
 		if not furnace_built and furnace.x>=0:
 			stock(FURNACE_KIT.duplicate())

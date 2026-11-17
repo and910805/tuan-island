@@ -612,7 +612,68 @@ func run()->void:
 		await max_stage_flow(tag)
 		await others_flow(tag)
 		await all_residents_flow(tag)
+		await scaled_dialogues(tag)
+		await controller_dialogue(tag)
 	app.session.shutdown();await create_timer(0.3).timeout
 	app.queue_free();await process_frame;await process_frame
 	for suffix in ["",".bak",".writer-lock"]:DirAccess.remove_absolute(path+suffix)
 	finish()
+
+func scaled_dialogues(tag:String)->void:
+	for scale_index in app.TEXT_SCALE_FACTORS.size():
+		app.sound.preferred_text_scale=scale_index
+		app._apply_font_scale_tree()
+		for resident in ["aru","milu","bobo"]:
+			app._close_modal()
+			await settle()
+			if await open_dialogue(resident):
+				await dialogue_layout(resident,"%s scale %d %s"%[resident,scale_index,tag])
+	app._close_modal()
+	app.sound.preferred_text_scale=1
+	app._apply_font_scale_tree()
+	await settle()
+
+func tap_controller(button:JoyButton)->void:
+	var event:=InputEventJoypadButton.new()
+	event.button_index=button
+	event.pressed=true
+	root.push_input(event,true)
+	var release:=event.duplicate() as InputEventJoypadButton
+	release.pressed=false
+	root.push_input(release,true)
+	await settle()
+
+func controller_dialogue(tag:String)->void:
+	app.sound.preferred_text_scale=3
+	app._apply_font_scale_tree()
+	stock_bag()
+	await place(World.REGIONS.HOME,Village.NPCS.aru.cell)
+	app.controller_navigation=true
+	if await open_dialogue("aru"):
+		var focus:=root.gui_get_focus_owner() as Button
+		check(focus!=null and focus.text.begins_with("交付這段委託"),"Controller starts on the quest action "+tag)
+		var found_journal:=false
+		for step in 4:
+			await tap_controller(JOY_BUTTON_DPAD_RIGHT)
+			focus=root.gui_get_focus_owner() as Button
+			if focus!=null and focus.text.begins_with("打開島民手冊"):found_journal=true
+			if focus==control("BondGift"):break
+		check(found_journal and focus!=null and focus==control("BondGift"),"D-pad reaches the journal and gift action "+tag)
+		if focus!=null and focus==control("BondGift"):
+			await tap_controller(JOY_BUTTON_A)
+			var list:=control("BondGiftList")
+			focus=root.gui_get_focus_owner() as Button
+			check(list!=null and focus!=null and list.is_ancestor_of(focus),"A opens the gifts and focuses an item "+tag)
+			if list!=null and focus!=null and list.is_ancestor_of(focus):
+				var item:=str(focus.name).trim_prefix("BondGift_")
+				var before:=int(inventory().get(item,0))
+				await tap_controller(JOY_BUTTON_A)
+				check(int(inventory().get(item,0))==before-1,"A sends exactly one gift "+tag)
+		app._close_modal()
+		if await open_dialogue("aru"):
+			await tap_controller(JOY_BUTTON_B)
+			check(not is_instance_valid(app.modal),"B returns to the island "+tag)
+	app.controller_navigation=false
+	app.sound.preferred_text_scale=1
+	app._apply_font_scale_tree()
+	await settle()

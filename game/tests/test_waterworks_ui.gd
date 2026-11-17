@@ -44,12 +44,25 @@ func layout()->void:
 	for id in ["WorksFeed_wood_1","WorksFeed_wood_5","WorksFeed_copper_ore_1","WorksFeed_copper_ore_5","WorksUnload","WorksToggle","WorksCollect","WorksDrain","WorksWater","WorksNetwork","WorksStatus","WorksProgress","WorksOutput"]:
 		check(visible(control(id)),"Waterworks %s visible at %s" % [id,root.size])
 
-func press(id:String)->void:
+func tap_pad(id:JoyButton)->void:
+	for down in [true,false]:
+		var event:=InputEventJoypadButton.new()
+		event.button_index=id
+		event.pressed=down
+		root.push_input(event)
+	await frames()
+
+func press(id:String,with_pad:=false)->void:
 	var button:=control(id) as Button
 	check(button!=null and not button.disabled and visible(button),"Usable button "+id)
 	if button==null or button.disabled:return
 	await create_timer(.13).timeout
-	button.pressed.emit()
+	if with_pad:
+		var sequence:int=app.session.counter
+		await tap_pad(JOY_BUTTON_X)
+		check(root.gui_get_focus_owner()==button and app.session.counter==sequence,"X only focuses "+id)
+		await tap_pad(JOY_BUTTON_A)
+	else:button.pressed.emit()
 	app.automation_ui.refresh(app)
 	app.logistics_ui.refresh(app)
 	await frames()
@@ -147,9 +160,17 @@ func run()->void:
 			break
 		await layout()
 		check(control("WorksWater").text.contains("6 / 12") and control("WorksNetwork").text.contains("10"),"Live internal and network water displayed")
+		objects["32,24"]={"type":"diversion_gate","owner":token,"mode":"closed","items":{}}
+		objects["33,24"]={"type":"water_tower","owner":token,"water":24,"enabled":true,"items":{}}
+		await refresh()
+		check(control("WorksNetwork").text.contains("水塔 1 · 蓄水 24") and control("WorksNetwork").text.contains("此處被分流閘隔開"),"Tower storage and blocked supply appear together")
+		await layout()
+		objects.erase("33,24")
+		objects["32,24"]={"type":"water_tank","owner":token,"water":10,"items":{}}
+		await refresh()
 		check(control("WorksCollect").disabled and control("WorksUnload").disabled,"Empty buffers disable withdrawals")
-		await press("WorksFeed_wood_1")
 		await press("WorksFeed_copper_ore_5")
+		await press("WorksFeed_wood_1",true)
 		check(machine.input.wood==1 and machine.input.copper_ore==5 and person.inventory.wood==7 and person.inventory.copper_ore==3,"Feed buttons use correct item and quantity")
 		check(control("WorksInput_copper_ore").text.contains("5 / 32"),"Feed counter updates from host snapshot")
 		person.x=12.5
@@ -172,7 +193,7 @@ func run()->void:
 		check(world.step(12.0,true) and not machine.has("job"),"Host finishes stopped batch")
 		await refresh()
 		check(control("WorksOutput").text.contains("1 / 32"),"Completed quantity displayed")
-		await press("WorksCollect")
+		await press("WorksCollect",true)
 		check(control("WorksBagOutput").text.contains("1"),"Output bag quantity updates after collect")
 		var receipt:String=app.modal_feedback.text
 		check(receipt.contains("已取回物品"),"Collect confirms the committed action")

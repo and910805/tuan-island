@@ -24,6 +24,9 @@ const NOTES:={
 }
 # 依出發地改寫的說明：從田尾回鶯歌是北上，不經臺北。
 const ROUTE_NOTES:={
+	"bamboo_grove>maokong":"從溪谷步道口沿茶園步道走回貓空合作茶園。到貓空轉乘站可再前往鶯歌或瑞芳。",
+	"star_garden>tianwei":"從庭園步道口走回田尾合作花圃。到花圃接駁點可再轉乘鶯歌或北門。",
+	"jiaoxi>toucheng":"從暖泉高地的回程站牌搭地方接駁，再轉回頭城北側月台。",
 	"tianwei>yingge":"從虛構的花圃接駁點轉地方接駁，再經縱貫線鐵路北上回到新北鶯歌；交通以遊戲合併轉乘呈現，不是直接相鄰。",
 	"beimen>tianwei":"從鹽田站牌搭沿海公車，經縱貫線鐵路北上，再轉花圃接駁回到田尾；這是遊戲合併、縮短後的旅程，沿途轉乘不一一列出。",
 	"beimen>home":"沿旅圖上的轉乘路線北上，再搭交通船渡海回到澎湖・望安的風鈴渡口。這是遊戲合併、縮短後的旅程，沿途轉乘不一一列出；回程免費，背包隨行。",
@@ -70,7 +73,7 @@ static func nearest(region:String,pos:Vector2)->String:
 		if pos.distance_to(point)<distance:id=key;distance=pos.distance_to(point)
 	return id
 
-static func open(app,station_id:String="")->void:
+static func open(app,station_id:String="",selected:String="")->void:
 	var s:Dictionary=app.session.snapshot
 	var person:Dictionary=s.get("players",{}).get(app.session.own_id,{})
 	if person.is_empty():return
@@ -80,14 +83,54 @@ static func open(app,station_id:String="")->void:
 	app.modal.set_meta("life_modal_layout","travel_map")
 	app.modal.set_meta("travel_body",content)
 	app.modal.set_meta("travel_station",station_id)
+	app.modal.set_meta("travel_selected",selected)
 	app.modal.theme=Pixel.make(app.hud.theme)
 	refresh(app)
+
+static func open_toward(app,destination:String) -> void:
+	var route:=route_toward(app.session.snapshot,app.session.own_id,destination)
+	app._travel_menu(str(route.get("station","")),str(route.get("selection","")))
+
+static func route_toward(snapshot:Dictionary,owner:String,destination:String) -> Dictionary:
+	var person:Dictionary=snapshot.get("players",{}).get(owner,{})
+	if person.is_empty():return {}
+	var region:=str(snapshot.get("region_id","home"))
+	var position:=Vector2(person.x,person.y)
+	var book:Dictionary=person.get("travel_book",Transit.fresh())
+	var path:=Transit.intermediate(region,destination)
+	var next_stop:=str(path[0]) if not path.is_empty() else destination
+	var station:=""
+	var selection:=""
+	var distance:=INF
+	# Prefer an available through ticket. Otherwise choose the next actual leg.
+	for target in [destination,next_stop]:
+		for id in Transit.points(region):
+			var choices:=Transit.options(region,book,snapshot.get("picnic",false),id,
+				Transit.tea_unlocked(snapshot),flower_open(snapshot,owner),
+				salt_open(snapshot,owner),Transit.star_garden_open(snapshot),Transit.boat_open(snapshot))
+			if not choices.any(func(option):return option.region==target):continue
+			var stop:Vector2=Vector2(Transit.points(region)[id].cell)+Vector2(0.5,0.5)
+			if position.distance_squared_to(stop)<distance:
+				station=id
+				selection=target
+				distance=position.distance_squared_to(stop)
+		if not station.is_empty():break
+	return {} if station.is_empty() else {"station":station,"selection":selection}
 
 static func words(app,parent:Node,text:String,size:int=15)->Label:
 	var label:Label=app.label(text,size)
 	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	parent.add_child(label)
 	return label
+
+static func focus_departure(app)->bool:
+	if not is_instance_valid(app.modal) or not app.modal.has_meta("travel_body"):return false
+	var depart:=app.modal.find_child("TravelDepart",true,false) as Button
+	if is_instance_valid(depart) and depart.is_visible_in_tree() and not depart.disabled:
+		depart.grab_focus()
+		var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+		if scroll!=null:scroll.ensure_control_visible(depart)
+	return true
 
 static func refresh(app)->void:
 	if not is_instance_valid(app.modal) or not app.modal.has_meta("travel_body"):return
@@ -152,7 +195,11 @@ static func refresh(app)->void:
 		var title:=HBoxContainer.new();ticket.add_child(title)
 		var mode:=str(chosen.mode)
 		var artwork:Texture2D=Art.icon(selected) if selected in Transit.LOCAL else (Shell.icon("home") if selected=="home" else Shell.icon("pick" if selected=="jinguashi" else "seed"))
-		title.add_child(Shell.picture(artwork,72))
+		if mode.contains("船") or mode=="火車" or mode.contains("公車"):
+			artwork=arrival_art(mode)
+		var illustration:=Shell.picture(artwork,72)
+		illustration.name="TravelTicketArt"
+		title.add_child(illustration)
 		var heading:=VBoxContainer.new();heading.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title.add_child(heading)
 		words(app,heading,str(chosen.label),21)
 		var known:bool=book.get("visited",{}).has(selected)
@@ -162,14 +209,29 @@ static func refresh(app)->void:
 		itinerary.append(str(chosen.label))
 		words(app,ticket," → ".join(itinerary),14)
 		words(app,ticket,note(region,selected,mode),15)
-		if selected=="jinguashi" and int(p.inventory.get("reinforced_pick",0))==0:words(app,ticket,"背包還沒有強化石鎬；可以先去拜訪，在西側水邊淘砂金、到坑口幫忙推一車礦料，再回家準備。",13)
+		if selected=="jinguashi" and int(p.inventory.get("reinforced_pick",0))==0:
+			words(app,ticket,"可在下坑路牌借公用鎬採 B1–B5，也可在西側水邊淘砂金或到坑口推礦車。",13)
 	else:words(app,ticket,"請到車站或接駁站查看下一段旅程。",16)
-	var depart:Button=app.button("搭乘出發  →" if not chosen.is_empty() and chosen.get("mode","")!="步行" else "沿路出發  →",func():
+	var on_foot:bool=chosen.get("mode","") in ["步行","茶園步道","庭園步道"]
+	var depart:Button=app.button("沿路出發  →" if on_foot else "搭乘出發  →",func():
 		if chosen.is_empty():return
 		app.set_meta("travel_mode",str(chosen.mode))
 		app.session.perform(str(chosen.get("action","transit")),cell,selected)
 	)
-	depart.name="TravelDepart";depart.disabled=not (near and unlocked and not chosen.is_empty());right.add_child(depart)
+	var trip_actions:=HFlowContainer.new()
+	trip_actions.add_theme_constant_override("h_separation",8)
+	right.add_child(trip_actions)
+	depart.name="TravelDepart"
+	depart.tooltip_text="X 選取出發 · A 確認"
+	depart.disabled=not (near and unlocked and not chosen.is_empty())
+	trip_actions.add_child(depart)
+	var local_map:Button=app.button("攤開地方路線圖",func():
+		app._map_menu(app._travel_menu.bind(station_id,selected))
+	)
+	local_map.name="TravelLocalMap"
+	local_map.flat=true
+	local_map.add_theme_font_size_override("font_size",14)
+	trip_actions.add_child(local_map)
 	for commission_id:String in commissions:
 		var commission:Dictionary=World.OUTLYING_COMMISSIONS.DEFS.get(commission_id,{})
 		if commission.get("region","")!=region or cell!=Transit.STATIONS[region].cell:continue
@@ -184,7 +246,6 @@ static func refresh(app)->void:
 	if region=="jinguashi" and station_id=="shuttle":right.add_child(preload("res://scripts/jinguashi_revisit_ui.gd").entry_button(app,"ferry"))
 	# 第 40 章臺南北門回訪：鹽籃在海邊公車站（鹽田站牌）送出（三道閘門修好前寫明鎖定）。
 	if region==SaltPan.REGION and station_id=="bus" and salts:right.add_child(preload("res://scripts/salt_revisit_ui.gd").entry_button(app,"stop"))
-	var local_map:Button=app.button("攤開地方路線圖",app._map_menu);local_map.name="TravelLocalMap";local_map.flat=true;local_map.add_theme_font_size_override("font_size",14);right.add_child(local_map)
 	if is_instance_valid(app.modal_feedback):
 		app.modal_feedback.text="先完成渡口共餐，居民就會介紹這條路。" if not unlocked else ("已到乘車點；背包隨行，旅行不會跳過其他島民的時間。" if near else "請走到「%s」再出發；可先查看地方路線圖。"%str(point.get("label","田區路口")))
 	if not focus_name.is_empty():
@@ -192,10 +253,19 @@ static func refresh(app)->void:
 		if next is BaseButton and not next.disabled:next.grab_focus.call_deferred()
 	app._layout_preview.call_deferred()
 
-# 抵達緞帶的插圖：交通船與合作小船沒有船隻圖，改用旅圖圖示，避免讓渡海旅程顯示成公車或火車。
 static func arrival_art(mode:String)->Texture2D:
-	if mode.contains("船"):return Shell.icon("map")
+	if mode==BOAT_MODE:return Art.icon("cooperative_boat")
+	if mode.contains("船"):return Art.icon("ferry")
+	if mode.contains("步"):return Shell.icon("map")
 	return Art.icon("train" if mode=="火車" else "bus")
+
+static func dismiss_arrival(app)->bool:
+	if not is_instance_valid(app.hud):return false
+	var ribbon:=app.hud.get_node_or_null("TravelArrival") as Control
+	if not is_instance_valid(ribbon) or not ribbon.is_visible_in_tree() or ribbon.is_queued_for_deletion():return false
+	ribbon.hide()
+	ribbon.queue_free()
+	return true
 
 static func arrived(app,origin:String,destination:String)->void:
 	if origin not in Transit.ROUTE or destination not in Transit.ROUTE:return
@@ -205,14 +275,25 @@ static func arrived(app,origin:String,destination:String)->void:
 	ribbon.mouse_filter=Control.MOUSE_FILTER_PASS;ribbon.z_index=8
 	var row:=HBoxContainer.new();row.add_theme_constant_override("separation",10);ribbon.add_child(row)
 	var art_space:=Control.new();art_space.custom_minimum_size=Vector2(112,64);row.add_child(art_space)
+	art_space.clip_contents=true
 	var mode:=str(app.get_meta("travel_mode","接駁"))
 	var sprite:=Shell.picture(arrival_art(mode),80);sprite.custom_minimum_size=Vector2.ZERO;sprite.size=Vector2(80,60);sprite.position=Vector2(16,0);art_space.add_child(sprite)
-	var title:Label=app.label("%s → %s"%[World.REGIONS.label(origin),World.REGIONS.label(destination)],16);title.custom_minimum_size.x=300;title.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title.size_flags_vertical=Control.SIZE_SHRINK_CENTER;row.add_child(title)
+	sprite.name="ArrivalArt"
+	var title:Label=app.label("%s → %s"%[Shell.region_display_name(origin),Shell.region_display_name(destination)],16);title.custom_minimum_size.x=300;title.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title.size_flags_vertical=Control.SIZE_SHRINK_CENTER;row.add_child(title)
 	var skip:Button=app.button("略過",func():ribbon.queue_free());skip.custom_minimum_size=Vector2(48,32);skip.size_flags_vertical=Control.SIZE_SHRINK_CENTER;skip.add_theme_font_size_override("font_size",13);row.add_child(skip)
+	skip.tooltip_text="Esc／手把 B"
 	app.hud.add_child(ribbon)
 	var bounds:Vector2=app.get_viewport().get_visible_rect().size
-	ribbon.size=Vector2(minf(560,bounds.x-48),80);ribbon.position=Vector2((bounds.x-ribbon.size.x)/2,140)
+	ribbon.size=Vector2(minf(520,bounds.x-48),80);ribbon.position=Vector2((bounds.x-ribbon.size.x)/2,140)
+	var lifetime:=ribbon.create_tween()
 	if app.sound and not app.sound.reduced_motion:
-		sprite.position.x=-8
-		var movement:=sprite.create_tween();movement.tween_property(sprite,"position:x",24.0,0.65).set_trans(Tween.TRANS_SINE)
-	var lifetime:=ribbon.create_tween();lifetime.tween_interval(1.8);lifetime.tween_callback(ribbon.queue_free)
+		sprite.position.x=-20
+		ribbon.modulate.a=0.4
+		var entrance:=ribbon.create_tween().set_parallel()
+		entrance.tween_property(ribbon,"modulate:a",1.0,0.18)
+		entrance.tween_property(sprite,"position:x",16.0,0.52).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		lifetime.tween_interval(1.6)
+		lifetime.tween_property(ribbon,"modulate:a",0.0,0.2)
+	else:
+		lifetime.tween_interval(1.8)
+	lifetime.tween_callback(ribbon.queue_free)

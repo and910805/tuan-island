@@ -32,6 +32,8 @@ func measure(label:String,region:String,water:Vector2i,bank:Vector2,minute:float
 	var world:=World.new()
 	world.add_player(TOKEN,"釣客")
 	world.state.time=minute
+	if region=="home" and World.WANGAN_COAST.STAR_POOL.has_point(water):
+		world.state.wangan_star_walk=true
 	var player:Dictionary=world.state.players[TOKEN]
 	player.region=region
 	player.x=bank.x
@@ -48,6 +50,7 @@ func measure(label:String,region:String,water:Vector2i,bank:Vector2,minute:float
 		items[item]=count
 		lines.append([item,count])
 		gross+=count*int(World.FISH[item].price)
+		expect(item in player.collection.fish,"The catch is registered in the personal fish collection")
 	expect(items==expected,"%s yields %s; got %s"%[label,str(expected),str(items)])
 	expect(int(player.fish_caught)==FISH_COUNT,"Exactly one fish per completed cast")
 	expect(elapsed>=60.0 and (is_equal_approx(elapsed,60.0) if mode.is_empty() else elapsed>60.0),"Measure bite and tracking time")
@@ -68,8 +71,16 @@ func _initialize() -> void:
 	var river_mix:={"carp":5,"minnow":5,"redfish":5,"loach":5}
 	measure("home_easy","home",river,riverbank,720.0,"",river_mix)
 	measure("home_standard","home",river,riverbank,720.0,"standard",river_mix)
+	var south_shore:=Vector2i(50,59)
+	var south_bank:=Vector2(50.5,58.5)
+	expect(World.WANGAN_COAST.FISHING_WATER.has_point(south_shore) and not World.land(south_shore) and World.land(Vector2i(south_bank)),"The new catch comes from seawater beside a walkable bank")
+	measure("wangan_south_shore_day","home",south_shore,south_bank,720.0,"",{"sardine":20})
+	measure("wangan_south_shore_night","home",south_shore,south_bank,1260.0,"",{"sardine":16,"flounder":4})
+	var pool:=World.WANGAN_COAST.STAR_POOL.end-Vector2i.ONE
+	measure("wangan_tidepool_day","home",pool,Vector2(34.5,58.5),720.0,"",{"gold_shrimp":20})
+	measure("wangan_tidepool_night","home",pool,Vector2(34.5,58.5),1260.0,"",{"gold_shrimp":20})
 	var coast:=Vector2i(52,25)
-	var coast_bank:=Vector2(50.5,25.5)
+	var coast_bank:=Vector2(50.5,26.5)
 	measure("beimen_coast_day","beimen",coast,coast_bank,720.0,"",{"sardine":20})
 	measure("beimen_coast_night","beimen",coast,coast_bank,1260.0,"",{"sardine":19,"flounder":1})
 	measure("beimen_pier_night","beimen",Vector2i(52,22),Vector2(50.5,22.5),1260.0,"",{"moon_squid":20})

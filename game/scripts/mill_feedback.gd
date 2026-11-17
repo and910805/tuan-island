@@ -60,7 +60,8 @@ static func input_cap() -> int:
 ## Fixed-key status. Every count is a plain int, progress in [0,1].
 static func _status(phase:String) -> Dictionary:
 	return {"valid":phase!="invalid","phase":phase,"mode":"idle","working":false,"progress":0.0,
-		"ready":0,"queued":0,"buffered":0,"wheat":0,"auto_enabled":false,"blocked":false}
+		"ready":0,"queued":0,"buffered":0,"wheat":0,"auto_enabled":false,"blocked":false,
+		"active_kind":"","ready_kind":""}
 
 static func invalid() -> Dictionary:
 	return _status("invalid")
@@ -68,7 +69,7 @@ static func invalid() -> Dictionary:
 ## A queue record of the mill recipe (shape only; World/SaveSchema own the
 ## exact validation). `phase` is "active", "waiting" or "ready".
 static func _record_ok(record,phase:String) -> bool:
-	if not record is Dictionary or record.get("kind")!=KIND:return false
+	if not record is Dictionary or Industry.PROCESS.get(record.get("kind",""),{}).get("station","")!=STATION:return false
 	if not _whole(record.get("yield"),1,1000000000):return false
 	if phase=="active":
 		var started=record.get("started")
@@ -119,16 +120,19 @@ static func classify(obj,world_time) -> Dictionary:
 		out.mode="manual"
 		out.queued=waiting.size()
 		out.ready=ready.size()
+		if not ready.is_empty():out.ready_kind=ready[0].kind
 		if not active.is_empty():
 			var started:=float(active.started)
 			var finish:=float(active.finish)
 			if started<0.0 or started>now:return invalid()
 			if finish>now:
 				out.working=true
+				out.active_kind=active.kind
 				out.progress=clampf((now-started)/(finish-started),0.0,1.0)
 			else:
 				# Due but not yet advanced by World: finished work, never animated.
 				out.ready+=1
+				if out.ready_kind.is_empty():out.ready_kind=active.kind
 	elif job is Dictionary:
 		if job.get("kind")!=KIND or not _number(job.get("ready")):return invalid()
 		if job.has("yield") and not _whole(job.yield,1,1000000000):return invalid()
@@ -138,6 +142,7 @@ static func classify(obj,world_time) -> Dictionary:
 		var span:=duration()
 		if ready_at>now:
 			out.working=true
+			out.active_kind=KIND
 			out.progress=clampf(1.0-(ready_at-now)/span,0.0,1.0) if span>0.0 else 0.0
 		if is_auto:
 			# An in-flight auto job keeps running even after auto is switched off
@@ -146,7 +151,9 @@ static func classify(obj,world_time) -> Dictionary:
 			if not out.working and out.buffered+int(job.get("yield",recipe_yield()))>output_cap():out.blocked=true
 		else:
 			out.mode="manual"
-			if not out.working:out.ready=1
+			if not out.working:
+				out.ready=1
+				out.ready_kind=KIND
 	if out.working:out.phase="working"
 	elif out.blocked:out.phase="blocked"
 	elif out.ready>0:out.phase="ready"
@@ -161,10 +168,11 @@ static func sample(status:Dictionary,clock,reduced:bool) -> Dictionary:
 	if not status.get("valid",false):return out
 	var working:bool=status.get("working",false)
 	if working:
+		var powder:=GRAIN if status.get("active_kind")=="feed" else FLOUR
 		var fill:=clampi(int(floorf(float(status.get("progress",0.0))*PROGRESS_INNER)),0,PROGRESS_INNER)
 		out.progress={"track":PROGRESS_TRACK,"fill":Rect2(PROGRESS_TRACK.position+Vector2(1,1),Vector2(fill,1))}
 		# Flour leaving the outlet chute into the sack: always shown while working.
-		out.pixels.append({"rect":Rect2(12,33,1,2),"color":_tint(FLOUR,0.9)})
+		out.pixels.append({"rect":Rect2(12,33,1,2),"color":_tint(powder,0.9)})
 		if reduced or not _number(clock):
 			out.pixels.append({"rect":Rect2(14,17,1,1),"color":GRAIN})
 		else:
@@ -174,15 +182,15 @@ static func sample(status:Dictionary,clock,reduced:bool) -> Dictionary:
 			var g:=frame%GRAIN_CYCLE
 			if g<4:out.pixels.append({"rect":Rect2(14,15+g,1,1),"color":GRAIN})
 			# Puff where the stream lands in the sack.
-			out.pixels.append({"rect":Rect2(float(PUFF_X[frame%PUFF_X.size()]),35,1,1),"color":_tint(FLOUR,0.8)})
+			out.pixels.append({"rect":Rect2(float(PUFF_X[frame%PUFF_X.size()]),35,1,1),"color":_tint(powder,0.8)})
 			# Three tiny dust motes rising and fading above the sack mouth.
 			for index in 3:
 				var step:=(frame+index*4)%DUST_CYCLE
 				var t:=float(step)/float(DUST_CYCLE)
 				var drift:=int(DUST_DRIFT[(int(frame/3.0)+index)%DUST_DRIFT.size()])
-				out.pixels.append({"rect":Rect2(float(10+index*2+drift),34-int(floorf(t*4.0)),1,1),"color":_tint(FLOUR,0.75*(1.0-t))})
+				out.pixels.append({"rect":Rect2(float(10+index*2+drift),34-int(floorf(t*4.0)),1,1),"color":_tint(powder,0.75*(1.0-t))})
 	if int(status.get("ready",0))>0:
-		out.badges.append({"kind":"manual_ready","rect":READY_BADGE,"count":int(status.ready),"full":false})
+		out.badges.append({"kind":"manual_ready","rect":READY_BADGE,"count":int(status.ready),"full":false,"item":str(status.get("ready_kind",KIND))})
 	if int(status.get("buffered",0))>0 or status.get("blocked",false):
 		out.badges.append({"kind":"auto_output","rect":OUTPUT_BADGE,"count":int(status.get("buffered",0)),
 			"full":status.get("blocked",false) or int(status.get("buffered",0))>=output_cap()})
@@ -196,7 +204,10 @@ static func _tint(color:Color,alpha:float) -> Color:
 ## Short caption suffix for the focused world label ("" when nothing to say).
 static func caption(status:Dictionary) -> String:
 	if not status.get("valid",false):return ""
-	if status.working:return " · 加工中 %d%%"%int(floorf(float(status.progress)*100.0))
+	if status.working:
+		var suffix:=" · 加工中 %d%%"%int(floorf(float(status.progress)*100.0))
+		if status.ready>0:suffix+=" · %d 批待領"%int(status.ready)
+		return suffix
 	if status.ready>0:return " · 可領取 ×%d"%int(status.ready)
 	if status.blocked:return " · 輸出已滿"
 	if status.buffered>0:return " · 麵粉 ×%d"%int(status.buffered)

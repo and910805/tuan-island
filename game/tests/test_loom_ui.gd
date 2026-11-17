@@ -43,7 +43,7 @@ const RECIPE_PREFIX:="ProcessingRecipe_"
 const COTTON:="cotton_cloth"
 const WOOL:="wool_cloth"
 const AUTO_ONLY:=["ProcessingManualTab","ProcessingAutoTab","ProcessingFeed","ProcessingUnload","ProcessingToggleAuto","ProcessingCollect"]
-const BUILD_KIT:={"plank":8,"fiber":4,"copper_joint":1}
+const BUILD_KIT:={"wood":20,"fiber":10,"woodwork_parts":2}
 
 var checks:=0
 var failures:=0
@@ -172,7 +172,7 @@ func progress() -> String:
 	return var_to_str([person.get("cooked",0),person.get("collection",{}),person.get("harvests",0)])
 
 func near(c:Vector2i) -> Vector2:
-	return Vector2(c)+Vector2(0.5,1.6)
+	return Vector2(c)+Vector2(-0.6,0.5)
 
 func site_clear(w0,a:Vector2i,size:Vector2i) -> bool:
 	for y in range(a.y,a.y+size.y):
@@ -434,7 +434,10 @@ func run() -> void:
 	await settle(6)
 	expect(app.playing and app.hud.visible,"entered through Session.connected_world -> Main._entered")
 	expect(session.own_id==T.sha256_text().left(16),"Main session holds the public own_id")
+	await pose(Vector2(LOOM)+Vector2(2.6,1.5))
+	await capture("loom-field.png")
 	if await flow_open():
+		await capture("loom.png")
 		await flow_recipes()
 		await flow_missing()
 		await flow_queue_cancel()
@@ -446,8 +449,16 @@ func run() -> void:
 
 # ------------------------------------------------------------------ flows --
 
+func capture(file_name:String) -> void:
+	if DisplayServer.get_name()=="headless":return
+	for arg in OS.get_cmdline_user_args():
+		if not arg.begins_with("--capture-dir="):continue
+		await RenderingServer.frame_post_draw
+		var path:=arg.trim_prefix("--capture-dir=").path_join(file_name)
+		expect(root.get_texture().get_image().save_png(path)==OK,"Capture "+file_name)
+
 func flow_open() -> bool:
-	await pose(near(LOOM))
+	await pose(Vector2(LOOM)+Vector2(2.6,1.5))
 	app._interact()
 	await settle(6)
 	expect(ui()!=null,"interact next to the loom opens %s"%ROOT_NAME)

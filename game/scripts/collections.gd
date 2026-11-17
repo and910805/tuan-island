@@ -23,13 +23,61 @@ const FISHING_FORECAST_LEVEL := 6
 const FISH_DISPLAY_LEVEL := 10
 const COAST_DAY_START := 360
 const COAST_NIGHT_START := 1200
+const WanganCoast=preload("res://scripts/wangan_coast.gd")
+const SHORE_FINDS:={
+	WanganCoast.SHELL_ITEM:{"name":"潮紋貝殼","hint":"退潮時，到望安南岸沙灘撿拾。"},
+	"seaweed":{"name":"海苔","hint":"沿南岸棧道往東，到岸邊採集。"},
+}
+const STORY_OBJECTS:={"gold_sample":"金工收藏樣本"}
+const ResidentGoals=preload("res://scripts/resident_goals.gd")
+const DISPLAY_CAP:=6
+const GALLERY_ACTIONS:=["collection_donate","collection_display","collection_unshow"]
+
+static func story_item(item:String)->bool:
+	return STORY_OBJECTS.has(item) or ResidentGoals.is_keepsake_item(item)
+
+static func kept_story_item(item:String,player:Dictionary)->bool:
+	return ResidentGoals.is_keepsake_item(item) and ResidentGoals.keepsake_claimed(player,item.trim_suffix(ResidentGoals.KIT_SUFFIX))
+
+static func story_catalog()->Dictionary:
+	var catalog:=STORY_OBJECTS.duplicate()
+	for kind:String in ResidentGoals.KEEPSAKE_ORDER:
+		catalog[ResidentGoals.keepsake_item(kind)]=ResidentGoals.KEEPSAKES[kind].name
+	return catalog
+
+static func gallery_item(item:String,crops:Dictionary,recipes:Dictionary)->bool:
+	return crops.has(item) or FISH.has(item) or SHORE_FINDS.has(item) or story_item(item) or (recipes.has(item) and is_meal(item))
+
+static func gallery_valid(player:Dictionary,crops:Dictionary,recipes:Dictionary)->bool:
+	var donations:Variant=player.get("collection_donations",{})
+	var display:Variant=player.get("collection_display",[])
+	if not donations is Dictionary or not display is Array or display.size()>DISPLAY_CAP:return false
+	for record:Variant in [donations,player.get("collection_acquired",{})]:
+		if not record is Dictionary:return false
+		for item in record:
+			if not item is String or not gallery_item(item,crops,recipes) or not record[item] is bool or not record[item]:return false
+	var shown:Dictionary={}
+	for item in display:
+		if not item is String or not donations.has(item) or shown.has(item):return false
+		shown[item]=true
+	return true
+
+static func note_acquisitions(player:Dictionary,previous:Dictionary,crops:Dictionary,recipes:Dictionary)->void:
+	var record:Dictionary=player.get("collection_acquired",{})
+	for item:String in player.inventory:
+		var base:=item.trim_prefix("quality_") if crops.has(item.trim_prefix("quality_")) else item
+		if gallery_item(base,crops,recipes) and int(player.inventory[item])>int(previous.get(item,0)):
+			record[base]=true
+	if not record.is_empty():player.collection_acquired=record
 
 static func coast_is_day(minute:float) -> bool:
 	return minute>=COAST_DAY_START and minute<COAST_NIGHT_START
 
 static func fishing_forecast(region:String,person:Dictionary,minute:float) -> String:
-	if region!="beimen" or angling_level(person)<FISHING_FORECAST_LEVEL:return ""
+	if region not in ["home","beimen"] or angling_level(person)<FISHING_FORECAST_LEVEL:return ""
 	var is_day:=coast_is_day(minute)
+	if region=="home":
+		return "望安南岸 · 現在可釣藍背沙丁，20:00 後有機會釣到奶油比目魚。" if is_day else "望安南岸 · 今晚有機會釣到奶油比目魚，06:00 後以藍背沙丁為主。"
 	var change:=COAST_NIGHT_START if is_day else COAST_DAY_START
 	var hour:=change/60
 	var next_day:="明日 " if not is_day and minute>=COAST_NIGHT_START else ""
@@ -47,7 +95,7 @@ static func angling_level(person:Dictionary) -> int:
 static func water_clues(region:String,person:Dictionary) -> String:
 	if angling_level(person)<WATER_CLUES_LEVEL:return ""
 	return {
-		"home":"河灣橋附近的水域可釣到溪魚；帶一條回家做料理。",
+		"home":"河灣橋可釣溪魚，南岸棧道外可釣藍背沙丁，夜間偶有奶油比目魚。",
 		"lanyang":"宜蘭水圳 · 秋季或小雨天，成功釣魚可累積斑點泥鰍保底。",
 		"beimen":"北門東岸 · 日間藍背沙丁，夜間奶油比目魚。"
 	}.get(region,"")
@@ -61,6 +109,9 @@ const RARE_WATERS := {
 }
 
 static func fishing_result(region:String,season:String,total:int,person:Dictionary,minute:=720.0,spot:="coast",raining:=false) -> Dictionary:
+	if region=="home" and spot==WanganCoast.STAR_POOL_SPOT:return {"id":"gold_shrimp"}
+	if region=="home" and spot==WanganCoast.FISHING_SPOT:
+		return {"id":"flounder" if not coast_is_day(minute) and total%5==4 else "sardine"}
 	var water:Dictionary=RARE_WATERS.get(region,{})
 	if region=="beimen":
 		var day:=coast_is_day(minute)
@@ -103,7 +154,9 @@ const MILESTONES := {
 
 static func ensure_player(player: Dictionary) -> void:
 	if not player.has("collection"):
-		player.collection = {"crops": {}, "fish": {}, "meals": {}, "claimed": {}}
+		player.collection = {"crops": {}, "fish": {}, "meals": {}, "shore": {}, "claimed": {}}
+	elif player.collection is Dictionary and not player.collection.has("shore"):
+		player.collection.shore={}
 
 static func is_meal(recipe_id: String) -> bool:
 	# Flour is a mill product, never a stove meal (and never a collection entry).
@@ -123,7 +176,7 @@ static func validate(player: Dictionary, crops: Dictionary, recipes: Dictionary)
 	ensure_player(player)
 	if not player.collection is Dictionary:
 		return false
-	var allowed := {"crops": crops, "fish": FISH, "meals": recipes, "claimed": MILESTONES}
+	var allowed := {"crops": crops, "fish": FISH, "meals": recipes, "shore": SHORE_FINDS, "claimed": MILESTONES}
 	if player.collection.size() != allowed.size():
 		return false
 	for category in allowed:

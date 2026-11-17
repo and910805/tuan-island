@@ -13,6 +13,20 @@ static func fresh(now:float) -> Dictionary:
 static func can_move(station:Dictionary) -> bool:
 	return not station.enabled and station.fuel==0 and station.saplings==0 and station.items.is_empty()
 
+static func field_status(station:Dictionary) -> String:
+	var fuel:=int(station.get("fuel",0))
+	var saplings:=int(station.get("saplings",0))
+	var parts:=PackedStringArray()
+	if not station.get("enabled",false):
+		parts.append("已停止")
+	elif fuel==0 and saplings==0:
+		parts.append("缺木炭及樹苗")
+	else:
+		parts.append("木炭 %d · 樹苗 %d"%[fuel,saplings])
+	var wood:=int(station.get("items",{}).get("wood",0))
+	if wood>0:parts.append("木材 %d 待領"%wood)
+	return " · ".join(parts)
+
 static func due(state:Dictionary,now:float) -> Array[String]:
 	var stations:Array[String]=[]
 	for key in state.objects:

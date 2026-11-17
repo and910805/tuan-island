@@ -1,5 +1,7 @@
 extends RefCounted
 
+const Weather=preload("res://scripts/weather.gd")
+
 const SERVICE := Vector2i(33,29)
 const OBSERVATIONS := [Vector2i(33,22),Vector2i(33,25),Vector2i(33,32)]
 const DEMANDS := [[4,4,4],[2,6,4],[4,2,6]]
@@ -32,7 +34,7 @@ static func valid(state: Dictionary) -> bool:
 	var has_completed := false
 	for actor in memory.players:
 		var record = memory.players[actor]
-		if not state.players.has(actor) or not record is Dictionary or record.size() != 4:
+		if not state.players.has(actor) or not record is Dictionary or record.size() != (5 if record.has("completed_day") else 4):
 			return false
 		if not record.get("seen") is Array or not record.get("gates") is Array or record.gates.size() != 2:
 			return false
@@ -47,6 +49,8 @@ static func valid(state: Dictionary) -> bool:
 		if seen.is_empty():return false
 		var finished: bool = record.round == DEMANDS.size()
 		if record.completed != finished:
+			return false
+		if record.has("completed_day") and (not finished or not integer(record.completed_day,int(Weather.day_index(state.time)))):
 			return false
 		if (seen.size() < allowed.size() or finished) and (record.gates[0] != 0 or record.gates[1] != 0):
 			return false
@@ -88,6 +92,8 @@ static func apply(state: Dictionary, actor: String, action: String, cell: Vector
 	record.round = int(record.round) + 1
 	record.gates = [0,0]
 	record.completed = record.round == DEMANDS.size()
+	if record.completed:
+		record.completed_day=int(Weather.day_index(state.time))
 	return result(true,"完成三輪配水練習。" if record.completed else "這一輪配水成功。")
 
 static func result(ok: bool, message: String) -> Dictionary:

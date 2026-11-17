@@ -9,10 +9,14 @@ static var atlas:Texture2D
 static func clear_cache()->void:
 	atlas=null
 
+static func draw_placement(canvas:CanvasItem,at:Vector2,kind:String,tint:Color) -> void:
+	if kind in KINDS or kind=="flower_pot":
+		draw_sprite(canvas,at,kind,Color(tint,0.58))
+
 static func draw_sprite(canvas:CanvasItem,at:Vector2,kind:String,tint:=Color.WHITE) -> bool:
 	if kind=="ore_display":return Bobo.draw(canvas,at+Vector2(-8,-16),kind)
 	if kind=="flower_pot":
-		canvas.draw_texture(preload("res://assets/ui-inventory/flower-pot.png"),at)
+		canvas.draw_texture(preload("res://assets/ui-inventory/flower-pot.png"),at,tint)
 		return true
 	if kind=="mill":return preload("res://scripts/bakery_art.gd").draw_mill(canvas,at)
 	if preload("res://scripts/souvenir_art.gd").has_kind(kind):return preload("res://scripts/souvenir_art.gd").draw(canvas,at,kind,tint) # T071 紀念票兌換裝飾（souvenir_art.gd 程式繪製的 32px 圖）

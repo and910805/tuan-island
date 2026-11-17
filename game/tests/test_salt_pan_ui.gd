@@ -721,12 +721,33 @@ func run()->void:
 
 	# ── journal / heritage ──
 	var done_rec:={"letter":true,"intro":true,"raked":3,"wheel_raked":1,"auto_raked":1,"order":true,"complete":true}
-	publish(salt_state("complete",{"record":done_rec,"shared":{"repaired":true}}),"beimen",Vector2(Salt.HERITAGE_SIGN)+Vector2(0.5,-0.5))
-	await open("journal")
-	var source_text:=""
-	for i in range(SaltUI.SOURCES.size()):source_text+=text_of("SaltSource_%d"%i)+"\n"
-	for entry in SaltUI.SOURCES:check(entry[1] in source_text,"Journal shows source URL "+entry[1])
-	check("https://www.swcoast-nsa.gov.tw/zh-tw/attraction/details/369" in source_text,"Verified swcoast URL shown as text")
+	var manual_target:=Salt.pan_rect(Salt.PUBLIC_LOT*2).position
+	var first_plan:={"text":"到保留手作池引海水，等鹽結成後親手收一次鹽。","region":"beimen","cell":manual_target}
+	publish(salt_state("first_salt",{"record":intro_rec,"own":{"guidance":first_plan},"shared":{"repaired":true}}),"beimen",Salt.ARRIVAL)
+	app._map_menu()
+	await settle()
+	var map_data:Dictionary=app.map_view.salt_landmarks(app.map_view.data)
+	check(map_data.target==manual_target and map_data.manual.has_point(manual_target) and not map_data.plot.has_area(),
+		"The first-salt guidance points at the public pan")
+	check(map_data.names.has(Salt.HERITAGE_SIGN) and map_data.names.has(Salt.BRINE_TANK) and map_data.names.has(Salt.APPRENTICE_CHEST),
+		"The map shows the heritage view and the repaired saltworks equipment")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--beimen-map-shot=") and DisplayServer.get_name()!="headless":
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--beimen-map-shot="))==OK,"Capture the first salt route")
+	publish(salt_state("complete",{"record":done_rec,"own":{"lot":2},"shared":{"repaired":true}}),"beimen",Vector2(Salt.HERITAGE_SIGN)+Vector2(0.5,-0.5))
+	app.map_view.update_world(app.session.snapshot,app.session.own_id)
+	map_data=app.map_view.salt_landmarks(app.map_view.data)
+	check(map_data.plot.has_point(Salt.pan_rect(4).position) and map_data.plot.has_point(Salt.pan_rect(5).position),
+		"The owned parcel outline includes both working pans")
+	await press("BeimenMapHistory")
+	follow_layout()
+	await settle()
+	check(SaltUI.is_open(app),"The Beimen local map opens the salt history spread")
+	for i in SaltUI.SOURCES.size():
+		var link:=control("SaltSource_%d"%i) as LinkButton
+		var entry:Array=SaltUI.SOURCES[i]
+		check(link!=null and link.uri==entry[1] and link.text==entry[0],"The journal links the source "+entry[0])
 	check(SaltUI.ORIGINAL_NOTE in text_of("SaltOriginal") and "鹽風合作鹽田、阿曬與水車收鹽台是遊戲原創；井仔腳瓦盤鹽田是今日保存的文化景觀" in text_of("SaltOriginal"),"Originality statement")
 	check("1818年遷至現址" in text_of("SaltFact_0") and not "可追溯" in text_of("SaltFact_0"),"Verified 1818 relocation wording")
 	check(control("SaltJournalLeftPage").get_global_rect().end.x<control("SaltJournalRightPage").get_global_rect().position.x,"Journal is a two-page spread")
@@ -749,10 +770,19 @@ func run()->void:
 	check(not SaltUI.suppress_world_prompts(app),"Prompts return after closing")
 
 	# ── life_ui_tasks: 阿曬 resident page + 北門瓦盤鹽田 local-memory page ──
-	publish(salt_state("report",{"record":order_rec.merged({"order":true}),"shared":{"repaired":true}}),"home",home_at)
+	var first_rake:={"letter":true,"intro":true,"raked":1}
+	publish(salt_state("wheel",{"record":first_rake,"shared":{"repaired":true}}),"home",home_at)
 	Tasks.journal(app)
 	await settle()
-	check(control("SaltWorkerBookmark")==null and control("SaltMemoryBookmark")==null,"Salt journal pages hidden before the report")
+	check(control("SaltWorkerBookmark")==null and control("SaltMemoryBookmark")!=null,"The first manual rake unlocks salt memories before the report")
+	await press("SaltMemoryBookmark")
+	follow_layout()
+	await settle()
+	check("親手收過海鹽" in text_of("SaltFieldwork") and "瀨東鹽場" in text_of("SaltFact_0"),"The home journal records the fieldwork and the saltworks' former name")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--salt-memory-shot=") and DisplayServer.get_name()!="headless":
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--salt-memory-shot="))==OK,"Capture the earned salt memory")
 	app._close_modal()
 	publish(salt_state("complete",{"record":done_rec,"shared":{"repaired":true}}),"home",home_at)
 	for size in SIZES:

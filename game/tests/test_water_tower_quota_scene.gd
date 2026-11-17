@@ -53,7 +53,7 @@ const OTHER_TOWER:=Vector2i(46,28)
 const VIEW_SPOT:=Vector2(43.9,40.8)
 const TOWER_SPOT:=Vector2(43.5,38.6)
 const OTHER_SPOT:=Vector2(46.5,29.4)
-const SHOT_STEPS:=["page_default","page_reserve_24","page_quota_8_partial","page_quota_done","page_store_only","page_worst_case","page_visitor","world_after"]
+const SHOT_STEPS:=["page_default","page_reserve_24","page_quota_8_partial","page_quota_done","page_store_only","page_worst_case","page_visitor","world_after","world_quota_remaining","world_quota_used"]
 const ROW_PARTS:=["TowerReserveRow","TowerReserve","TowerReserveLess","TowerReserveMore","TowerQuotaRow","TowerQuota","TowerQuotaLess","TowerQuotaMore","TowerSupplyTitle"]
 var app
 var w
@@ -395,6 +395,7 @@ func row_difference(a:String,b:String,part:String)->float:
 func page_state(step:String,reserve:int,quota:int,used:int,enabled:bool,owner:bool)->void:
 	check(layout_name()==TowerUI.LAYOUT,"Tower page open for %s (%s)"%[step,tag])
 	var image:Image=await shot(step)
+	check(app.view.hide_interaction_prompt and app.view.focused_label.is_empty(),"The tower settings hide its background interaction prompt (%s)"%tag)
 	images[step]=image
 	page_fits("%s %s"%[step,tag])
 	settings_check(step,reserve,quota,used,enabled,owner)
@@ -463,7 +464,7 @@ func owner_flow()->void:
 	check(int(w.state.objects[k(S2)].water)==0,"Disabled S2 got nothing (%s)"%tag)
 	check(label_text("TowerWater")=="存水 45／96","Page water follows the tick (%s): %s"%[tag,label_text("TowerWater")])
 	await page_state("page_quota_8_partial",24,8,3,true,true)
-	check(label_text("TowerQuota")=="每日配水：8 份・今天已送 3","Partial quota wording (%s)"%tag)
+	check(label_text("TowerQuota")=="每日配水：8 份・已送 3・剩 5","Partial quota wording (%s)"%tag)
 	# 4. Enable S2 (real toggle_sprinkler); the next tick sends the remaining 5.
 	await act("toggle_sprinkler",S2)
 	if w.state.objects[k(S2)].enabled!=true:
@@ -507,7 +508,7 @@ func owner_flow()->void:
 	check(consumers==2+EXTRAS.size(),"Worst case lists %d consumers (%s): %d"%[2+EXTRAS.size(),tag,consumers])
 	check(control("TowerConsumerEmpty")==null,"No empty-list line (%s)"%tag)
 	await page_state("page_worst_case",48,24,8,false,true)
-	check(label_text("TowerReserve")=="桶水保留：儲水桶留 48 份" and label_text("TowerQuota")=="每日配水：24 份・今天已送 8","Worst-case wording (%s)"%tag)
+	check(label_text("TowerReserve")=="桶水保留：儲水桶留 48 份" and label_text("TowerQuota")=="每日配水：24 份・已送 8・剩 16","Worst-case wording (%s)"%tag)
 	for part:String in ["TowerReserveMore","TowerQuotaMore"]:
 		var d:=row_difference("page_default","page_worst_case",part)
 		check(d>=0.02,"%s enabled (at 0) vs disabled (at the top) look different (%s): %.1f%%"%[part,tag,d*100.0])
@@ -546,6 +547,7 @@ func world_flow()->void:
 	var t:=tower_obj()
 	check(int(t.get("reserve",0))==48 and int(t.get("quota",0))==24 and t.get("enabled",true)==false,"Settings kept after closing (%s)"%tag)
 	var after:Image=await shot("world_after")
+	check(not app.view.hide_interaction_prompt,"Closing the tower settings restores interaction prompts (%s)"%tag)
 	images["world_after"]=after
 	if after==null or after.is_empty():return
 	var box:=Rect2(tall_box(TOWER))
@@ -563,8 +565,22 @@ func world_flow()->void:
 	var d:=box_difference(after,plain,tall_box(TOWER))
 	print("NOTE %s tower box with vs without settings differs %.2f%%"%[tag,d*100.0])
 	check(d<=0.01,"Settings do not change the tower art (%s): %.2f%%"%[tag,d*100.0])
-	w.state.objects[k(TOWER)]=saved  # PRESET (restore)
+	w.state.objects[k(TOWER)]=saved.duplicate(true)  # PRESET (restore before the next comparison)
 	await refresh()
+	await stand(TOWER_SPOT)
+	await world_quota_frame("world_quota_remaining",3,"配額剩 5")
+	await world_quota_frame("world_quota_used",8,"配額已用完")
+	w.state.objects[k(TOWER)]=saved
+	await refresh()
+
+func world_quota_frame(step:String,used:int,expected:String)->void:
+	var tower:=tower_obj()
+	tower.merge({"enabled":true,"quota":8,"quota_day":Industry.tower_day(float(w.state.time)),"quota_used":used},true)
+	await refresh()
+	await shot(step)
+	var view=app.view
+	var viewport:=Rect2(Vector2.ZERO,Vector2(root.size)/view.view_zoom())
+	check(view.world_label_placements(viewport).any(func(entry):return entry.id==k(TOWER) and entry.active and entry.title.contains(expected)),"Visible tower label shows "+expected+" (%s)"%tag)
 
 func size_flow()->void:
 	images={}

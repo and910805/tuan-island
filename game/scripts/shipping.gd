@@ -1,4 +1,5 @@
 extends RefCounted
+const CropCatalog=preload("res://scripts/crop_catalog.gd")
 
 const CELL := Vector2i(42, 31)
 const NO_CELL := Vector2i(-1, -1)
@@ -21,10 +22,11 @@ static func cell_for(snapshot: Dictionary) -> Vector2i:
 			return cell
 	return NO_CELL
 
-static func prices(crops: Dictionary, fish: Dictionary, other: Dictionary) -> Dictionary:
+static func prices(crops: Dictionary, fish: Dictionary, other: Dictionary, include_quality:bool=false) -> Dictionary:
 	var result := MATERIAL_PRICES.duplicate()
 	for item in crops:
 		result[item] = crops[item].price
+		if include_quality:result[CropCatalog.QUALITY_PREFIX+item]=CropCatalog.quality_price_for(int(crops[item].price))
 	for item in fish:
 		result[item] = fish[item].price
 	result.merge(other)

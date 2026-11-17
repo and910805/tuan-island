@@ -187,12 +187,54 @@ func verify_motion() -> void:
 	expect(frames.size() == 2, "animation cycles both frames")
 	expect(offsets.size() == 3, "idle shuffle visits -1/0/+1 px")
 	expect(Art.frame_index(-5.0, false) == 0, "negative elapsed clamps to frame 0")
+	var peak:=Art.PET_SECONDS/2.0
+	expect(Art.reaction_offset("cow",peak,0,false)==Vector2(0,2),"A newly acquainted cow dips toward the feed")
+	expect(Art.reaction_offset("cow",peak,5,false)==Vector2(0,3),"A bonded cow makes a stronger motion")
+	expect(Art.reaction_offset("sheep",peak,0,false)==Vector2(0,-3),"A newly acquainted sheep hops")
+	expect(Art.reaction_offset("sheep",peak,5,false)==Vector2(0,-6),"A bonded sheep makes a higher hop")
+	for id in Art.IDS:
+		expect(Art.reaction_offset(id,peak,5,true)==Vector2.ZERO,"Reduced motion keeps the animal still")
+		expect(Art.reaction_offset(id,Art.PET_SECONDS,5,false)==Vector2.ZERO,"The reaction ends at the home position")
+
+func verify_reaction_events() -> void:
+	var World=preload("res://scripts/world.gd")
+	var world=World.new()
+	world.add_player("ranch","牧場")
+	world.state.picnic=true
+	var actor:Dictionary=world.state.players.ranch
+	var cell:Vector2i=World.LIVESTOCK.ANIMALS.cow.cell
+	actor.x=cell.x+0.5
+	actor.y=cell.y+0.5
+	actor.inventory.feed=1
+	var view=preload("res://scripts/world_view.gd").new()
+	root.add_child(view)
+	view.set_process(false)
+	view.update_snapshot(world.state.duplicate(true),"ranch")
+	expect(view.livestock_pet_feedback.is_empty(),"Joining does not animate the stored livestock state")
+	expect(world.act("ranch","feed-cow","livestock_feed",cell,"cow").ok,"Cow feeding succeeds through World")
+	view.elapsed=1.0
+	view.update_snapshot(world.state.duplicate(true),"ranch")
+	expect(view.livestock_pet_feedback.get("cow")==1.0,"Cow reacts to confirmed feeding")
+	view.elapsed=1.1
+	view.update_snapshot(world.state.duplicate(true),"ranch")
+	expect(view.livestock_pet_feedback.get("cow")==1.0,"Duplicate snapshots do not restart the reaction")
+	cell=World.LIVESTOCK.ANIMALS.sheep.cell
+	actor.x=cell.x+0.5
+	actor.y=cell.y+0.5
+	expect(world.act("ranch","pet-sheep","livestock_pet",cell,"sheep").ok,"Sheep petting succeeds through World")
+	view.update_snapshot(world.state.duplicate(true),"ranch")
+	expect(view.livestock_pet_feedback.get("sheep")==1.1,"Sheep reacts to confirmed petting")
+	view.free()
 
 func _initialize() -> void:
+	run.call_deferred()
+
+func run() -> void:
 	verify_parts()
 	verify_api()
 	verify_sprites()
 	verify_motion()
+	verify_reaction_events()
 	for line in report:
 		print("LIVESTOCK " + line)
 	print("LIVESTOCK_SCENE_ART_TESTS checks=%d failures=%d" % [checks, failures])

@@ -7,12 +7,23 @@ const ATLAS_PATH := "res://assets/life-art/crops.png"
 const CELL := Vector2i(32, 32)
 const FOOT := Vector2(16, 29)
 const ROWS := ["radish", "lettuce", "wheat", "carrot", "potato", "tomato"]
-const PREVIEW_ROWS := {"cauliflower":"lettuce","sweet_corn":"wheat","strawberry":"tomato","cucumber":"lettuce","cabbage":"lettuce","sugar_beet":"radish","star_mushroom":"potato","sweet_potato":"potato","eggplant":"tomato","rice":"wheat","ginger":"potato","mist_tea":"lettuce"}
+const KITCHEN_GARDEN_PATH := "res://assets/life-art/crops-kitchen-garden.png"
+const KITCHEN_GARDEN_ROWS := ["cauliflower","sweet_corn","strawberry","cucumber"]
+const REGIONAL_PATH := "res://assets/life-art/crops-regional.png"
+const REGIONAL_ROWS := ["rice","mist_tea","star_mushroom","sweet_potato"]
+const HARVEST_PATH := "res://assets/life-art/crops-harvest.png"
+const HARVEST_ROWS := ["cabbage","sugar_beet","eggplant","ginger","watermelon","cotton"]
 const HARVESTABLE := 3
 
 var atlas: Texture2D
+var kitchen_garden:Texture2D
+var regional:Texture2D
+var harvest:Texture2D
 
 func setup() -> bool:
+	kitchen_garden=load(KITCHEN_GARDEN_PATH)
+	regional=load(REGIONAL_PATH)
+	harvest=load(HARVEST_PATH)
 	if ResourceLoader.exists(ATLAS_PATH):
 		atlas = load(ATLAS_PATH)
 	if atlas != null and atlas.get_size() == Vector2(CELL.x * 4, CELL.y * ROWS.size()):
@@ -53,37 +64,52 @@ static func draw_dormant_mark(canvas: CanvasItem, at: Vector2) -> void:
 	for pixel: Vector2i in DORMANT_PIXELS:
 		canvas.draw_rect(Rect2(at + Vector2(pixel), Vector2.ONE), DORMANT_MARK)
 
-func draw_crop(canvas: Node2D, at: Vector2, crop: Dictionary, dormant := false) -> void:
+static func breeze_offset(t: float, tile: Vector2i) -> int:
+	return roundi(sin(t * 2.1 + tile.x * 0.63 + tile.y * 0.37))
+
+func draw_crop(canvas: Node2D, at: Vector2, crop: Dictionary, dormant := false, sway := 0) -> void:
 	var stage := stage_for(crop)
 	if stage < 0:
 		return
 	if stage == HARVESTABLE:
 		dormant = false
 	var tint := DORMANT_TINT if dormant else Color.WHITE
-	_draw_plant(canvas, at, crop, stage, tint)
+	_draw_plant(canvas, at, crop, stage, tint, sway if stage > 0 and not dormant else 0)
 	if dormant:
 		draw_dormant_mark(canvas, at)
 
-func _draw_plant(canvas: Node2D, at: Vector2, crop: Dictionary, stage: int, tint: Color) -> void:
-	if crop.get("kind", "") in ["pumpkin","watermelon"]:
+func _draw_plant(canvas: Node2D, at: Vector2, crop: Dictionary, stage: int, tint: Color, sway: int) -> void:
+	if crop.kind=="pumpkin":
 		# Independent bakery atlas; does not depend on the legacy crops.png loading.
 		if not BakeryArt.draw_crop(canvas, at, stage, tint):
 			return
-	elif FlowerArt.has_crop(str(crop.get("kind", ""))) or crop.kind=="cotton":
+	elif FlowerArt.has_crop(crop.kind):
 		# Tianwei flowers use their own growth sheet; a missing texture draws nothing
 		# (never another crop's art).
-		var texture := FlowerArt.crop_texture("bluebell" if crop.kind=="cotton" else str(crop.kind), stage)
+		var texture := FlowerArt.crop_texture(crop.kind, stage)
 		if texture == null:
 			return
 		canvas.draw_texture_rect(texture, Rect2(at, Vector2(CELL)), false, tint)
 	else:
-		if atlas == null:
+		var row:=KITCHEN_GARDEN_ROWS.find(crop.kind)
+		var sheet:=kitchen_garden if row>=0 else atlas
+		if row<0:
+			row=REGIONAL_ROWS.find(crop.kind)
+			if row>=0:
+				sheet=regional
+		if row<0:
+			row=HARVEST_ROWS.find(crop.kind)
+			if row>=0:
+				sheet=harvest
+		if sheet==null:
 			return
-		var row := ROWS.find(PREVIEW_ROWS.get(crop.kind,crop.kind))
+		if row<0:row=ROWS.find(crop.kind)
 		if row < 0:
 			return
 		var source := Rect2(Vector2(stage * CELL.x, row * CELL.y), Vector2(CELL))
-		canvas.draw_texture_rect_region(atlas, Rect2(at, Vector2(CELL)), source, tint)
+		var sways:bool = sheet == harvest or sheet == kitchen_garden or (sheet == regional and crop.kind != "star_mushroom")
+		var lean := Vector2(sway, 0) if sways else Vector2.ZERO
+		canvas.draw_texture_rect_region(sheet, Rect2(at + lean, Vector2(CELL)), source, tint)
 	if stage == HARVESTABLE:
 		var hint := Color("ffe7a0")
 		canvas.draw_rect(Rect2(at + Vector2(26, 2), Vector2(2, 6)), hint)

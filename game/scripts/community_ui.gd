@@ -67,6 +67,8 @@ static func open(app) -> void:
 		body.minimum_size_changed.connect(app._layout_preview.call_deferred)
 	build(app,body)
 	refresh(app)
+	if is_instance_valid(app.modal_feedback) and app.controller_navigation:
+		app.modal_feedback.text="手把 X 選取餐點操作 · A 確認"
 	app._layout_preview.call_deferred()
 	focus_first.call_deferred(app)
 
@@ -519,6 +521,26 @@ static func focus_first(app) -> void:
 	if not is_open(app):return
 	var b:=preferred(app)
 	if b!=null and b.is_visible_in_tree():b.grab_focus()
+
+static func focus_dish_action(app) -> bool:
+	if not is_open(app):return false
+	var focused:=_focus_owner(app) as Button
+	var next:Button
+	if focused!=null and not focused.disabled and (str(focused.name).begins_with("DishMain_") or focused.name=="HotpotWarm"):
+		next=focused
+	else:
+		for id:String in DISH_ORDER:
+			var action:=_node(app,"DishMain_"+id) as Button
+			if action==null or not action.is_visible_in_tree() or action.disabled:continue
+			if next==null:next=action
+			if action.text==CLAIM:
+				next=action
+				break
+	if next!=null:
+		next.grab_focus()
+		var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+		if scroll!=null:scroll.ensure_control_visible(next)
+	return true
 
 ## After an update: a hidden focus owner (e.g. 加裝 once installed) moves to the next
 ## table action; a warm serve that just went out moves to 領一份. In the tea card a

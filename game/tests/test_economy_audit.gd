@@ -162,7 +162,7 @@ func test_coverage(convs:Array) -> void:
 	for kind:String in World.BUILD:
 		expect(ids.has("build:"+kind) and ids.has("remove:"+kind),"BUILD %s is modelled both ways"%kind)
 	for kind:String in World.CROPS:
-		expect(ids.has("farm:"+kind) and ids.has("buy:"+kind+"_seed") and ids.has("seed_maker:"+kind+"_seed"),"crop %s has farm, seed purchase and seed machine"%kind)
+		expect(ids.has("farm:"+kind) and ids.has("buy:"+kind+"_seed") and (ids.has("seed_maker:"+kind+"_seed") == (kind not in World.SEED_MAKER.NURSERY_CROPS)),"crop %s has farm, seed purchase and its intended processing route"%kind)
 		expect(World.NAMES.has(kind+"_seed"),"crop %s has a named seed"%kind)
 	for fish:String in World.FISH:expect(ids.has("fish:"+fish),"fish %s is modelled"%fish)
 	for item:String in Audit.sale_table():expect(ids.has("sell:"+item),"sale of %s is modelled"%item)
@@ -254,12 +254,14 @@ func test_unlock_order(convs:Array) -> void:
 	cut=Audit.reachable(no_hoist,start)
 	expect(not cut.have.has(Audit.built("glass_furnace")) and cut.have.has("glass") and cut.have.has(Audit.mine(15)),"no hoist: no furnace, but workbench glass still reaches floor 15")
 	expect(not cut.have.has("vein_quartz") or cut.fired.has("mine:9"),"vein quartz comes from floor 9 or 10")
-	# 赭土只在第 6、7 層，玻璃爐要它。
+	# 赭土仍只在第 6、7 層，玻璃爐改用鐵錠。
 	var no_ochre:=[]
 	for entry:Dictionary in convs:
 		if entry.id not in ["mine:6","mine:7"]:no_ochre.append(entry)
 	cut=Audit.reachable(no_ochre,start)
-	expect(not cut.have.has("ochre_earth") and not cut.have.has(Audit.built("glass_furnace")),"ochre earth only comes from floors 6 and 7")
+	expect(not cut.have.has("ochre_earth") and cut.have.has(Audit.built("glass_furnace")),"Ochre remains exclusive to floors 6 and 7; the furnace uses iron instead")
+	expect(Audit.build_cost("glass_furnace")=={"stone":25,"iron_ingot":6},"Glass furnace requires the intended iron and stone")
+	expect(Audit.sale_table().get("ochre_earth")==10,"Surplus ochre earth can be shipped for ten bells")
 
 func test_certificate(convs:Array) -> void:
 	var result:Dictionary=Audit.certificate(convs)
@@ -353,9 +355,7 @@ func test_seed_returns() -> void:
 			if route.via=="seed_maker":
 				expect(float(route.ratio)<=1.0+0.000001,"seed machine returns at most one %s per packet planted (%.2f)"%[seed_item,float(route.ratio)])
 			if float(route.ratio)>1.0+0.000001:above_one[seed_item+":"+str(route.via)]=float(route.ratio)
-	# 已知、刻意保留的例外：田尾留種台一朵換一包，藍花與橙花一株收兩朵，所以一包變兩包。
-	# 花的種子不能賣、不能出貨；多出來的種子只能再種。這裡釘住，數值一變就會亮。
-	expect(above_one.size()==2 and is_equal_approx(float(above_one.get("bluebell_seed:flower_save",0.0)),2.0) and is_equal_approx(float(above_one.get("orange_blossom_seed:flower_save",0.0)),2.0),"only Tianwei seed saving multiplies seeds, and only x2 for two flowers: %s"%str(above_one))
+	expect(above_one.is_empty(),"no seed route multiplies packets: %s"%str(above_one))
 	for kind:String in Flower.SEEDS:
 		expect(Audit.best_sale(str(Flower.SEEDS[kind]))==0,"%s seed cannot be sold"%kind)
 	print("ECON NOTE seed routes above 1.0: %s"%str(above_one))

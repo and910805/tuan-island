@@ -80,7 +80,7 @@ const LIKES:={
 	# 規劃書「魚料理、繩結」：繩結沒有對應物品，以編繩用的纖維代替。
 	"achao":["grilled_fish","salt_grilled_fish","trout_hotpot","fiber"],
 	# 規劃書「薑茶、陶杯」：沒有薑茶與陶杯物品，以暖泉薑與現有熱茶代替。
-	"nuannuan":["ginger","tea_light","tea_deep","mist_tea_brew"],
+	"nuannuan":["ginger","tea_light","tea_deep","mist_tea_brew","ginger_tea"],
 	# 規劃書「飯糰、地圖」：沒有飯糰與地圖物品，以送信路上好帶的點心代替。
 	"luoluo":["bread","garden_cookie","roasted_sweet_potato"],
 	# 規劃書「簡單家常菜」：對應現有的家常湯與菜。

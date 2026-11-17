@@ -136,22 +136,52 @@ static func chapter_done(s:Dictionary) -> bool:
 
 ## 北門 tracker (two short lines). "" unless the chapter is finished (a running chapter step is
 ## more urgent and keeps the card), the player has raked by hand, and the batch has a step they
-## can do right now with what they carry (claim, send, pack or stock).
-static func tracker_text(s:Dictionary,own_id:String) -> String:
-	if not in_beimen(s) or not chapter_done(s) or not SR.unlocked(s) or not SR.player_ready(s):return ""
+## can do right now with what they carry (claim, send, pack, stock or prepare salt).
+static func navigation(s:Dictionary,own_id:String) -> Dictionary:
+	if not in_beimen(s) or not chapter_done(s) or not SR.unlocked(s) or not SR.player_ready(s):return {}
 	var person:=_person_of(s,own_id)
-	if person.is_empty():return ""
+	if person.is_empty():return {}
 	var bag:=_bag(person)
 	if SR.completed(s):
-		return "鹽籃批次送出了\n到阿曬那裡領鹽籃" if SR.claim_block(s,bag).is_empty() else ""
-	if SR.send_block(s).is_empty():return "鹽籃批次・6 籃都裝好了\n到海邊公車站送出"
+		if not SR.claim_block(s,bag).is_empty():return {}
+		return {"cell":SR.WORKER,"action":"到合作社找阿曬領鹽籃","tracker":"鹽籃批次送出了\n到阿曬那裡領鹽籃"}
+	if SR.send_block(s).is_empty():
+		return {"cell":SR.STOP,"action":"到海邊公車站送出鹽籃","tracker":"鹽籃批次・6 籃都裝好了\n到海邊公車站送出"}
 	var kinds:=PackedStringArray()
 	for kind:String in SR.KINDS:
 		if SR.pack_block(s,kind,bag).is_empty():kinds.append(str(SR.KIND_NAMES[kind]))
 	if not kinds.is_empty():
-		return "鹽籃批次・已裝 %d／6 籃%s\n到收鹽箱旁裝%s"%[SR.packed_total(s),"・雨天" if SR.rainy_today(s) else "","、".join(kinds)]
-	if SR.stock_block(s,bag).is_empty():return "鹽籃批次・入倉 %d／6 批\n帶海鹽找阿曬入倉"%SR.stocked_total(s)
-	return ""
+		var names:="、".join(kinds)
+		return {"cell":SR.CHEST,"action":"到合作社收鹽箱裝%s"%names,
+			"tracker":"鹽籃批次・已裝 %d／6 籃%s\n到收鹽箱旁裝%s"%[SR.packed_total(s),"・雨天" if SR.rainy_today(s) else "",names]}
+	if SR.stock_block(s,bag).is_empty():
+		return {"cell":SR.WORKER,"action":"帶海鹽到合作社找阿曬入倉",
+			"tracker":"鹽籃批次・入倉 %d／6 批\n帶海鹽找阿曬入倉"%SR.stocked_total(s)}
+	if SR.stocked_total(s)<SR.TOTAL and int(bag.get(SR.SALT_ITEM,0))<SR.LOT_SALT:
+		return brine_preparation(s)
+	return {}
+
+static func brine_preparation(s:Dictionary) -> Dictionary:
+	if not Brine.common_block(s).is_empty():return {}
+	var rows:=Brine.rows(s)
+	for row:Dictionary in rows:
+		if row.s=="salt":
+			var spot:=World.SALT_PAN.pan_rect(int(row.pan)).get_center()
+			return {"cell":spot,"action":"到%s收鹽，備下一批"%row.name,
+				"tracker":"鹽籃批次・鹽已結晶\n收好海鹽，再找阿曬入倉"}
+	var wet:=Brine.rainy_now(s)
+	var rain_tomorrow:=Weather.rains(Weather.day_index(s.get("time",0.0))+1.0,SR.REGION)
+	for row:Dictionary in rows:
+		if (wet or rain_tomorrow) and int(row.store)>0:
+			return {"cell":Brine.TANK,"action":"到儲滷槽收存%s的滷水"%row.name,
+				"tracker":"鹽籃批次・%s\n到儲滷槽收滷備用"%("雨天" if wet else "明日有雨")}
+		if not wet and not rain_tomorrow and int(row.pour)>0:
+			return {"cell":Brine.TANK,"action":"到儲滷槽放滷到%s，備下一批"%row.name,
+				"tracker":"鹽籃批次・海鹽不足\n到儲滷槽放滷到%s"%row.name}
+	return {}
+
+static func tracker_text(s:Dictionary,own_id:String) -> String:
+	return str(navigation(s,own_id).get("tracker",""))
 
 ## The tracker card follows the batch (and its button opens this page).
 static func tracking(s:Dictionary,own_id:String) -> bool:

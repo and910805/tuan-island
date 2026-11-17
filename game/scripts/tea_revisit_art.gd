@@ -95,6 +95,16 @@ static func _teaware(img:Image) -> void:
 static func draw_teaware(canvas:CanvasItem,at:Vector2,tint:=Color.WHITE) -> void:
 	canvas.draw_texture(teaware_texture(),at,tint)
 
+static func draw_steam(canvas:CanvasItem,spout:Vector2,elapsed:float,reduced_motion:bool) -> void:
+	var frame:=1 if reduced_motion else posmod(floori(elapsed*4.0),4)
+	var base:=spout.round()
+	var trail:=PackedVector2Array([Vector2(0,0),Vector2(0,-2),Vector2(-1,-3),Vector2(-1,-5),Vector2(1,-7)])
+	var upper:=base+Vector2(3+frame%2,-8-frame)
+	canvas.draw_polyline(PackedVector2Array([base,base+Vector2(0,-3),base+Vector2(-1,-4),base+Vector2(-1,-6)]),
+		Color(0.98,0.96,0.85,0.88),1.0)
+	for i in trail.size():trail[i]+=upper
+	canvas.draw_polyline(trail,Color(0.98,0.96,0.85,0.70-float(frame)*0.10),1.0)
+
 ## 11×11 miniature on an exhibit pedestal, centred on cx, standing on y=bottom.
 static func mini(img:Image,cx:int,bottom:int) -> void:
 	var top:=bottom-10

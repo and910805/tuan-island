@@ -68,6 +68,25 @@ func _initialize() -> void:
 	w.state.crops["51,26"]={"owner":"a","kind":"radish","growth":0,"wet":false,"remaining":1}
 	var info:=World.INDUSTRY.network_info(w.state,"52,26")
 	check(info.connected_tanks==1 and info.connected_pumps==1,"graph separates owners")
+	var industry:=World.INDUSTRY
+	check(industry.pipe_caption(0,{})=="水管 · 未接通","Unconnected pipe has its own reason")
+	check(industry.pipe_caption(1,{"connected_pumps":1})=="水管 · 未接水桶或水塔","A pump without storage is explained")
+	check(industry.pipe_caption(5,info)=="水管 · 蓄水已空","An empty connected tank stays distinguishable from a disconnected pipe")
+	check(industry.pipe_caption(5,{"tower_water":12,"tower_capacity":48})=="水管 · 管網蓄水 12／48","Tower-only storage is included")
+	var split:={"objects":{
+		"1,1":{"type":"water_tank","owner":"a","water":24},
+		"2,1":{"type":"diversion_gate","owner":"a","mode":"closed"},
+		"3,1":{"type":"water_pipe","owner":"a"},
+		"4,1":{"type":"water_tower","owner":"a","water":0,"enabled":true}}}
+	check(not industry.network_info(split,"3,1").flow_visible,"An empty nearby outlet cannot animate water stored across a closed gate")
+	split.objects["4,1"].water=1
+	check(industry.network_info(split,"3,1").flow_visible,"A wet outlet on this side can animate the pipe")
+	split.objects["4,1"].enabled=false
+	check(not industry.network_info(split,"3,1").flow_visible,"Storage-only tower stops feeding the pipe animation")
+	split.objects["4,1"].merge({"enabled":true,"quota":4,"quota_day":industry.tower_day(0.0),"quota_used":4},true)
+	check(not industry.network_info(split,"3,1").flow_visible,"An exhausted tower quota stops its pipe animation")
+	split.time=1440.0
+	check(industry.network_info(split,"3,1").flow_visible,"The next day restores the pipe animation")
 	check(not act("refill_tank",Vector2i(53,26),"","b") and not act("toggle_pump",PUMP,"","b"),"foreign devices reject actions")
 	var before:=w.state.duplicate(true)
 	w.save_path="user://missing-industry-fixture/world.json"
@@ -83,6 +102,7 @@ func _initialize() -> void:
 	check(World.INDUSTRY.network_info(w.state,"52,26").connected_pumps==0,"disconnect updates graph immediately")
 	check(w.step(8,true) and w.state.objects["52,26"].water==7,"disconnected pump cannot refill")
 	check(act("refill_tank",Vector2i(53,26)) and w.state.objects["53,26"].water==48,"manual tank fill remains available")
+	check(industry.pipe_caption(1,industry.network_info(w.state,"53,26"))=="水管 · 管網蓄水 48／48","Refilled network reports actual available storage")
 	check(w.step(8,false) and w.state.objects["53,26"].water==48,"offline water transfer pauses")
 	check(w.step(8,true) and w.state.objects["53,26"].water==43 and w.state.objects["52,26"].water==12,"tank only transfers the missing amount")
 	var broken:Dictionary=w.state.duplicate(true)

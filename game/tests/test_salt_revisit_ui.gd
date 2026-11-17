@@ -354,11 +354,11 @@ func button_state(name:String,enabled:bool,reason:String,label:String)->void:
 	if b!=null and not enabled:check(b.tooltip_text==reason,"%s tooltip 「%s」 (%s): %s"%[name,reason,label,b.tooltip_text])
 
 func not_basket_tracker(label:String)->void:
-	check(not tracker().begins_with("鹽籃批次") and UI.tracker_text(snap(),id).is_empty() and tracker_heading()!="臺南北門回訪  ▾","The salt chapter keeps the tracker (%s): %s"%[label,tracker()])
+	check(not tracker().begins_with("鹽籃批次") and UI.tracker_text(snap(),id).is_empty() and not tracker_heading().begins_with("臺南北門回訪"),"The salt chapter keeps the tracker (%s): %s"%[label,tracker()])
 
 func basket_tracker(expected:String,label:String)->void:
 	check(tracker()==expected,"Tracker follows the batch (%s): %s"%[label,tracker()])
-	check(tracker_heading()=="臺南北門回訪  ▾" and tracker_button()!=null and tracker_button().text=="打開鹽籃批次  →","Tracker heading and button (%s): %s"%[label,tracker_heading()])
+	check(tracker_heading().begins_with("臺南北門回訪") and tracker_button()!=null and tracker_button().text=="打開鹽籃批次  →","Tracker heading and button (%s): %s"%[label,tracker_heading()])
 
 func progress_line(packed:int,rain:int=0)->String:
 	var lots:=SR.stocked(w.state)

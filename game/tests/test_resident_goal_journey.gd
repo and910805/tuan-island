@@ -128,10 +128,9 @@ const RG_WALK_UP:="請走到這位居民身邊。"
 const RG_REOPEN:="請重新打開關係事件。"
 const RG_STEPS_MSG:="三個步驟都要做過一次。"
 const RG_CHOOSE:="請先選一個做法。"
-const RG_NO_GOAL:="這一階還沒有可以一起做的事。"
 const RG_ORDER:="順序不太對。鈴婆婆說不急，再看一次圖示。"
 const RG_NEED_MSG:="還不能一起做這件事：要先「%s」。"
-const RG_TOTAL:=32
+const RG_TOTAL:=48
 const RG_VILLAGE=preload("res://scripts/village.gd")
 ## World.gd literals: what one felled tree / one grass tile gives, the 小床 message.
 const RG_TREE_YIELD:={"wood":6,"fiber":2,"sapling":1,"resin":1}
@@ -270,7 +269,7 @@ func rg_first_meetings() -> void:
 	expect(str(view["milu"]["1"]["state"])=="locked" and str(view["lingpopo"]["2"]["state"])=="locked" and str(view["luoluo"]["3"]["state"])=="locked","goal view: the three goals are locked before any talk")
 	var milu:=rg_cell("milu")
 	rg_deny(Goals.ACTION,milu,"milu:1::","和米露的關係到「認識」之後，才能一起做這件事。","米露 goal before the first talk")
-	rg_deny(Goals.ACTION,milu,"milu:2::",RG_NO_GOAL,"米露 stage 2 has no goal")
+	rg_deny(Goals.ACTION,milu,"milu:2::","和米露的關係到「熟悉」之後，才能一起做這件事。","米露 stage 2 is still locked")
 	rg_deny(Goals.ACTION,milu,"milu:x::",RG_REOPEN,"米露 goal with a non-numeric stage")
 	rg_deny(Goals.ACTION,milu,"milu:1:",RG_REOPEN,"米露 goal with three fields")
 	rg_deny(Goals.ACTION,milu,"nobody:1::",RG_WALK_UP,"goal for an unknown resident")
@@ -352,11 +351,15 @@ func rg_grow(need:Dictionary) -> void:
 		grow(planted)
 		for c:Vector2i in planted:
 			if failed:return
-			var crop_kind:=str(world.state.crops[World.key(c)].get("kind",""))
+			var plot:Dictionary=world.state.crops[World.key(c)]
+			var crop_kind:=str(plot.get("kind",""))
 			var before:Dictionary=bag().duplicate(true)
-			act("harvest",c)
 			var yield_n:=int(World.CROPS[crop_kind].yield)
-			rg_bag_delta(before,{crop_kind:yield_n},"harvest %s at %s"%[crop_kind,str(c)])
+			var expected:Dictionary={crop_kind:yield_n}
+			var quality:=World.quality_crop(plot,World.has_crop_guarantee(person()))
+			if not quality.is_empty():expected[quality]=1
+			act("harvest",c)
+			rg_bag_delta(before,expected,"harvest %s at %s"%[crop_kind,str(c)])
 			grown[crop_kind]=int(grown.get(crop_kind,0))+yield_n
 		var enough:=true
 		for want:String in need:
@@ -450,7 +453,7 @@ func rg_luoluo_goal() -> void:
 	if failed:return
 	rg_deny(Goals.ACTION,cell,"luoluo:3:letter:","〈想說卻沒送出的話〉已經一起完成了，手帳可以重看。","洛洛 goal again with the other option")
 	rg_deny(Goals.ACTION,cell,"luoluo:4::",rg_stage_msg(r,4),"洛洛 stage-4 goal at 信任 (batch 2 added it)")
-	rg_deny(Goals.ACTION,cell,"luoluo:1::",RG_NO_GOAL,"洛洛 stage 1 has no goal")
+	rg_deny(Goals.ACTION,cell,"luoluo:1::","還不能一起做這件事：要先「把洛洛的信交給正確的收件人」。","洛洛 first event waits for letter delivery")
 
 # ---------------------------------------------------------------- prerequisites (batch 2)
 
@@ -640,11 +643,16 @@ func rg_aru_bed() -> void:
 
 ## "keepsake_<r>" when (r, stage) is the goal with a placeable keepsake, else "".
 func rg_kind(r:String,stage:int) -> String:
+	if r=="nuannuan" and stage==4:return "keepsake_nuannuan_room"
+	if r=="lingpopo" and stage==4:return "keepsake_lingpopo_memorial"
+	if r=="xinghe" and stage==4:return "keepsake_xinghe_sign"
+	if r=="achao" and stage==4:return "keepsake_achao_oar"
+	if r=="aru" and stage==4:return "keepsake_aru_bird"
 	return "keepsake_"+r if int(RG_KEEPSAKE_STAGES.get(r,0))==stage else ""
 
 ## The published keepsake table matches the independent copy for all 28 goals.
 func rg_keepsake_table() -> void:
-	expect(Goals.KEEPSAKES.size()==12 and Goals.keepsake_items().size()==12,"twelve keepsakes published (%d)"%Goals.KEEPSAKES.size())
+	expect(Goals.KEEPSAKES.size()==17 and Goals.keepsake_items().size()==17,"seventeen keepsakes published (%d)"%Goals.KEEPSAKES.size())
 	var bad:=[]
 	var with_kit:=0
 	for r:String in Goals.GOALS:
@@ -654,7 +662,7 @@ func rg_keepsake_table() -> void:
 			if not want.is_empty():with_kit+=1
 			if Goals.keepsake_kind(r,stage)!=want:bad.append("%s:%d"%[r,stage])
 			if not want.is_empty() and not (World.BUILD.has(want) and int(World.BUILD[want].get(want+"_kit",0))==1 and World.NAMES.has(want+"_kit")):bad.append("build %s"%want)
-	expect(bad.is_empty() and with_kit==12,"keepsake goals match the published table (%d with a kit, mismatches %s)"%[with_kit,JSON.stringify(bad)])
+	expect(bad.is_empty() and with_kit==17,"keepsake goals match the published table (%d with a kit, mismatches %s)"%[with_kit,JSON.stringify(bad)])
 
 func rg_aru_ks_row(claimed:bool) -> Dictionary:
 	return {"kind":RG_ARU_KS,"item":RG_ARU_KIT,"name":RG_ARU_KS_NAME,"claimed":claimed}
@@ -835,6 +843,7 @@ func rg_goal_ok(r:String,stage:int,choice:String,steps:String,delta:Dictionary) 
 	if not kind.is_empty():
 		allowed.append("state.players.%s.inventory.%s"%[tok,kit])
 		allowed.append("state.players.%s.%s"%[tok,Goals.KEEPSAKE_KEY])
+		allowed.append("state.players.%s.collection_acquired.%s"%[tok,kit])
 		bag_delta[kit]=int(bag_delta.get(kit,0))+1
 	var ks_before:Variant=rg_canon(person().get(Goals.KEEPSAKE_KEY))
 	if not rg_ok(Goals.ACTION,cell,rg_extra(r,stage,choice,steps),msg,"%s stage-%d goal %s"%[r,stage,rg_extra(r,stage,choice,steps)],allowed):return
@@ -844,6 +853,7 @@ func rg_goal_ok(r:String,stage:int,choice:String,steps:String,delta:Dictionary) 
 	else:
 		rg_keepsake_model[kind]=true
 		expect(int(bag().get(kit,0))==1,"%s goal: exactly one %s in the bag (%d)"%[r,kit,int(bag().get(kit,0))])
+		expect(bool(person().get("collection_acquired",{}).get(kit,false)),"%s goal: keepsake is recorded in the collection"%r)
 		expect(var_to_bytes(rg_canon(person().get(Goals.KEEPSAKE_KEY)))==var_to_bytes(rg_canon(rg_keepsake_model)),"%s goal: player.bond_keepsakes %s == %s"%[r,JSON.stringify(person().get(Goals.KEEPSAKE_KEY)),JSON.stringify(rg_keepsake_model)])
 	expect(int(person().coins)==coins0,"%s goal: coins unchanged"%r)
 	expect(var_to_bytes(rg_canon(person().get("bonds",{})))==bonds0,"%s goal: bond records byte-identical (no points)"%r)

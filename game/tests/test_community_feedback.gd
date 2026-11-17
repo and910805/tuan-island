@@ -89,7 +89,36 @@ func run() -> void:
 	test_invalid_time()
 	test_input_untouched()
 	test_no_everlasting_event(contribute_time, opened_time)
+	test_shared_plates()
 	finish()
+
+func test_shared_plates()->void:
+	var fb=fresh()
+	var empty:={"region_id":"home","time":100.0,"community":{"table":"39,30"}}
+	var served:=empty.duplicate(true)
+	served.community.chowder={"portions":4}
+	served.community.watermelon={"portions":4}
+	fb.observe({},served,20.0)
+	expect(fb.sample_shared(20.5,false)=={},"initial snapshot never replays a serving")
+	fb.observe(empty,served,21.0)
+	expect(fb.sample_shared(21.4,false).keys()==["watermelon_platter","corn_chowder"],"two dishes served between snapshots share the animation")
+	expect(fb.sample_shared(21.4,true)=={},"reduced motion hides the serving animation")
+	var with_hotpot:=served.duplicate(true)
+	with_hotpot.community.hotpot={"portions":4}
+	fb.observe(served,with_hotpot,21.5)
+	var overlapping:Dictionary=fb.sample_shared(21.9,false)
+	expect(overlapping.size()==3 and overlapping.get("corn_chowder",0.0)>overlapping.get("trout_hotpot",1.0),"later serving leaves earlier cues at their own age")
+	expect(fb.sample_shared(22.5,false).keys()==["trout_hotpot"],"each cue expires by its own start time")
+	var claimed:=served.duplicate(true)
+	claimed.community.chowder.portions=3
+	fb.observe(served,claimed,22.0)
+	fb.observe(claimed,claimed,22.1)
+	expect(fb.sample_shared(23.0,false)=={},"claims and repeated snapshots do not extend or replay the cue")
+	fb.observe(empty,served,30.0)
+	var rewind:=served.duplicate(true)
+	rewind.time=90.0
+	fb.observe(served,rewind,30.2)
+	expect(fb.sample_shared(30.2,false)=={},"returning to an earlier save clears the cue")
 
 func test_partials_and_completion(contribute_time: float, opened_time: float) -> void:
 	var fb = fresh()

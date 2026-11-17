@@ -29,7 +29,8 @@ func run()->void:
 		expect(stream.mix_rate==Audio.RATE and not stream.stereo and peak>1000 and peak<8000,"Audible headroom for "+cue)
 		expect(pcm.decode_s16(0)==0 and absi(pcm.decode_s16(pcm.size()-2))<=2,"Attack and release taper "+cue)
 		hashes[pcm.hex_encode().sha256_text()]=true
-	expect(hashes.size()==3 and sound.get_child_count()==1,"Three distinct cues on one voice")
+	var cue_voices:=sound.get_children().filter(func(child:Node):return child is AudioStreamPlayer and child not in [sound.ambience,sound.nearby,sound.machine,sound.cart_roll])
+	expect(hashes.size()==3 and cue_voices==[sound.player],"Three distinct fishing cues share one SFX voice")
 	var snapshot:Dictionary={"region_id":"home","time":10.0,"players":{"local":{"fish_caught":0},"other":{"fish_caught":0}}}
 	var local:Dictionary=snapshot.players.local
 	app.fishing_audio.update(snapshot,"local")
@@ -75,6 +76,8 @@ func run()->void:
 	await process_frame
 	await process_frame
 	expect(reference.get_ref()==null,"Node is released before its pending success cue is due")
+	sound.close()
+	await create_timer(0.15).timeout
 	app.queue_free()
 	await process_frame
 	DirAccess.remove_absolute(path)

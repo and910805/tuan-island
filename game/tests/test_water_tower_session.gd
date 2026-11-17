@@ -41,6 +41,7 @@ const BENCH:=Vector2i(50,27)
 const TANK:=Vector2i(49,24)
 const TOWER:=Vector2i(48,24)
 const TOWER_KEY:="48,24"
+const GATE:=Vector2i(47,24)
 const A_SPOT:=Vector2(32.5,24.5)
 const B_SPOT:=Vector2(32.5,30.5)
 
@@ -141,7 +142,7 @@ func home_spot(w:World,targets:Array,taken:Array)->Vector2:
 	for y in range(20,32):
 		for x in range(42,56):
 			var tile:=Vector2i(x,y)
-			if tile in [BENCH,TANK,TOWER] or tile in taken:continue
+			if tile in [BENCH,TANK,TOWER,GATE] or tile in taken:continue
 			var at:=Vector2(x+0.5,y+0.5)
 			if not w.can_stand(at):continue
 			var ok:=true
@@ -169,6 +170,7 @@ func seed_world(path:String)->bool:
 		if not seed_act(w,ALPHA,"memory_gate",Memory.SERVICE,"b:%d"%pair[1]):return false
 		if not seed_act(w,ALPHA,"memory_flow",Memory.SERVICE):return false
 	if not seed_act(w,ALPHA,"memory_plaque",Memory.SERVICE):return false
+	w.state.history_memory.players[ALPHA].erase("completed_day")  # Legacy record for the day-one fixture.
 	# The revisit (day 1, spring, demand 6/4/2 -> gates a:3 b:2).
 	place(w,ALPHA,"lanyang",A_SPOT)
 	if not seed_act(w,ALPHA,Revisit.GATE_ACTION,Revisit.GATE_CELL,"a:3"):return false
@@ -191,8 +193,9 @@ func seed_world(path:String)->bool:
 	inv["copper_joint"]=2
 	inv["stone"]=6
 	inv["tank_kit"]=1
-	a_spot=home_spot(w,[BENCH,TANK,TOWER],[])
-	var b_spot:=home_spot(w,[TOWER],[Vector2i(floori(a_spot.x),floori(a_spot.y))])
+	inv["diversion_gate_kit"]=1
+	a_spot=home_spot(w,[BENCH,TANK,TOWER,GATE],[])
+	var b_spot:=home_spot(w,[TOWER,GATE],[Vector2i(floori(a_spot.x),floori(a_spot.y))])
 	if a_spot.x<0 or b_spot.x<0:return false
 	place(w,ALPHA,"home",a_spot)
 	place(w,BETA,"home",b_spot)
@@ -432,6 +435,13 @@ func scenario()->bool:
 	expect(marks_of([alpha,beta])==before5,"case 5 re-sent old sequence changes nothing on either end")
 	var off2:=await succeed(alpha,Industry.TOWER_ACTION,TOWER,"","case 5 alpha's next normal toggle still works (只蓄水)",[beta])
 	expect(str(off2.message)=="水塔已設為「只蓄水」" and await all_see([alpha,beta],want_row(96,false),3.0),"case 5 both see 只蓄水 again")
+	await succeed(alpha,"build",GATE,Industry.GATE_KIND,"owner installs a downstream gate",[beta])
+	await succeed(alpha,Industry.GATE_ACTION,GATE,"closed","owner closes the gate",[beta])
+	var gate_key:=World.key(GATE)
+	for client:Client in [alpha,beta]:
+		var report:=Industry.zone_report(client.session.snapshot,gate_key)
+		expect(report.ok and report.mode=="closed" and int(report.tanks)==1,"%s sees the closed gate on the same supply network"%client.label)
+	await refuse(beta,Industry.GATE_ACTION,GATE,"open",Industry.GATE_NOT_OWNER,"visitor cannot reopen the owner's gate",[alpha])
 
 	# 6. Normal shutdown -> exact save.
 	await leave(alpha)
@@ -443,6 +453,7 @@ func scenario()->bool:
 	if not expect(disk is Dictionary,"case 6 save parses"):return false
 	expect(disk_valid(disk),"case 6 saved world passes SaveSchema")
 	disk_tower_ok(disk,96,false,"case 6 save")
+	expect(disk.objects.get(gate_key,{}).get("mode","")=="closed","Closed gate is saved")
 	expect(int(disk.objects.get(World.key(TANK),{}).get("water",-1))==0 and int(disk.players[ALPHA].inventory.get(Industry.TOWER_KIT,0))==0,"case 6 save: tank 0, kit spent")
 
 	# 7. Restart; same tower; late joiner sees it.
@@ -455,6 +466,8 @@ func scenario()->bool:
 	gamma=await join("gamma",GAMMA,port2)
 	if not expect(joined(gamma),"case 7 late joiner gamma joins"):return false
 	await settle([alpha,beta,gamma])
+	for client:Client in [alpha,beta,gamma]:
+		expect(Industry.zone_report(client.session.snapshot,gate_key).mode=="closed","%s sees the saved gate mode after restart"%client.label)
 	expect(row_of(gamma.tower())==want_row(96,false),"case 7 gamma sees the tower 96 / 只蓄水 (%s)"%row_of(gamma.tower()))
 	expect(Industry.tower_report(gamma.session.snapshot,TOWER_KEY)==Industry.tower_report(alpha.session.snapshot,TOWER_KEY),"case 7 gamma's tower_report equals alpha's")
 	private_check(gamma,[alpha,beta],"case 7")

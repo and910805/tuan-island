@@ -1,6 +1,6 @@
 @static_unload
 extends RefCounted
-## 第 40 章「蘭陽回訪」的兩件程式繪製 32px 圖（沒有新美術檔）：
+## 第 40 章「蘭陽回訪」的像素圖：
 ##
 ##  * 分流閘 diversion_gate（家園水網的一格）：先畫底下的銅水管（IndustryArt.pipe_texture，
 ##    與一般水管同樣依鄰格連接），再疊上木造閘框。三種設定一眼可分：
@@ -130,6 +130,57 @@ static func draw_gate(canvas:CanvasItem,at:Vector2,mode:String,mask:int=10) -> v
 	var pipe:=IndustryArt.pipe_texture(mask&15)
 	if pipe!=null:canvas.draw_texture(pipe,at)
 	canvas.draw_texture(gate_texture(mode),at)
+
+# Public canal gate. Each leaf occupies a canal tile and has four heights.
+static func fork_texture(upstream:int,middle:int) -> Texture2D:
+	upstream=clampi(upstream,0,3)
+	middle=clampi(middle,0,3)
+	var key:="fork:%d:%d"%[upstream,middle]
+	if cache.has(key):return cache[key]
+	var img:=Image.create_empty(64,32,false,Image.FORMAT_RGBA8)
+	_fork_leaf(img,0,upstream)
+	_fork_leaf(img,32,middle)
+	cache[key]=ImageTexture.create_from_image(img)
+	return cache[key]
+
+static func _fork_leaf(img:Image,x:int,level:int) -> void:
+	var sill:=Color("4c5c4e")
+	var stone:=Color("7e8871")
+	var bevel:=Color("a9ad8d")
+	var iron:=Color("433a2f")
+	var moss:=Color("687c43")
+	# River stones anchor the timber and split the current at the sill.
+	for offset:int in [1,26]:
+		_r(img,x+offset,19,5,12,SHADOW)
+		_r(img,x+offset,17,5,12,sill)
+		_r(img,x+offset+1,17,3,10,stone)
+		_r(img,x+offset+1,17,3,1,bevel)
+		_px(img,x+offset+1,23,moss)
+	_r(img,x+5,24,22,3,sill)
+	_r(img,x+5,24,22,1,bevel)
+	var bottom:=23-level*4
+	_r(img,x+5,7,22,bottom-6,POST)
+	for y in range(8,bottom,4):
+		_r(img,x+6,y,20,3,BOARD_DARK)
+		_r(img,x+7,y,18,1,BOARD)
+		_r(img,x+8+(y%3),y+1,5,1,BOARD_CLOSED)
+	_r(img,x+7,8,2,bottom-7,BEAM)
+	_r(img,x+23,8,2,bottom-7,BEAM)
+	# Short runs of foam show the water emerging beneath the raised boards.
+	if level>0:
+		_r(img,x+11,bottom+1,6,1,WATER_LIGHT)
+		_r(img,x+17,22,6,1,WATER_SOFT)
+		_r(img,x+9,27,7,1,WATER_LIGHT)
+		_r(img,x+18,29,4,1,WATER_SOFT)
+	for offset:int in [4,25]:
+		_r(img,x+offset,4,3,20,POST)
+		_r(img,x+offset,5,1,17,POST_LIGHT)
+	_r(img,x+3,4,26,4,POST)
+	_r(img,x+4,4,24,1,BOARD)
+	_r(img,x+12,2,8,3,iron)
+	_r(img,x+14,1,4,2,bevel)
+	_r(img,x+15,7,2,bottom-7,iron)
+	_px(img,x+16,3,BOARD_LIGHT)
 
 # ------------------------------------------------------------------ plaque --
 

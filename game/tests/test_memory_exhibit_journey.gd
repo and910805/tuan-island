@@ -170,6 +170,8 @@ func first_share_and_revisit() -> void:
 	var s:=world.state
 	ex_check(LR.unlocked(s) and LR.player_ready(s,tok) and not LR.completed(s),"plaque set: revisit unlocked, A ready")
 	ex_check(ME.personal_hint(s,tok)==ME.HINT_NOT_DONE and ME.on_display_ids(s).is_empty(),"exhibit still empty, hint NOT_DONE")
+	ex_deny(LR.GATE_ACTION,LR.GATE_CELL,"a:1",LR.RETURN_TOMORROW,"the first practice requires returning on a later day")
+	wait(next_midnight()+1.0-now())
 	# Rain: wait for a dry Lanyang day through real World.step.
 	var rain_days:=0
 	var wait_from:=now()

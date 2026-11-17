@@ -125,11 +125,14 @@ func _initialize() -> void:
 	# each stored code now means the key carrying that label, as the settings UI always showed.
 	var legacy := ConfigFile.new()
 	var legacy_keys: Dictionary = Bindings.DEFAULTS.duplicate()
+	legacy_keys.erase("social")
 	legacy_keys.move_up = KEY_UP
 	legacy_keys.interact = KEY_Q
 	legacy.set_value("input", "version", 1)
 	legacy.set_value("input", "keys", legacy_keys)
-	expect(legacy.save(path) == OK and restored.load_preferences(path) and restored.keys == legacy_keys
+	var migrated := legacy_keys.duplicate()
+	migrated.social = KEY_NONE
+	expect(legacy.save(path) == OK and restored.load_preferences(path) and restored.keys == migrated
 		and restored.label("interact") == "Q", "existing version-1 bindings reload unchanged with their labels")
 	expect(matching_actions(restored, native_key(KEY_Q, NATIVE_FIVE_PHYSICAL)) == ["interact"]
 		and matching_actions(restored, native_key(KEY_E, KEY_Q)).is_empty(), "reloaded binding fires from its labelled key only")

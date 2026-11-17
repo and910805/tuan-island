@@ -23,7 +23,7 @@ const UI=preload("res://scripts/mine_ui.gd")
 const BuildFolio=preload("res://scripts/build_folio.gd")
 const ProcessingQueueUI=preload("res://scripts/processing_queue_ui.gd")
 const Village=preload("res://scripts/village.gd")
-const FURNACE_KIT:={"stone":12,"ochre_earth":4,"copper_joint":2}
+const FURNACE_KIT:={"stone":25,"iron_ingot":6}
 var app
 var w
 var id:String
@@ -143,10 +143,15 @@ func folio_layout(label:String)->void:
 	var page:=control("BuildPage0") as GridContainer
 	check(page!=null and page.get_child_count()>=page.columns*2,"Shelf page has two rows (%s)"%label)
 	if page!=null:
-		for index in range(mini(page.columns*2,page.get_child_count())):
-			var slot:=page.get_child(index) as Control
-			var caption:=slot.get_child(0) as Label
-			check(visible(slot) and visible(caption),"Shelf slot %s and its name fully on view (%s)"%[caption.text,label])
+		var full_rows:=0
+		for start in range(0,page.get_child_count()-page.columns+1,page.columns):
+			var row_visible:=true
+			for index in range(start,start+page.columns):
+				var slot:=page.get_child(index) as Control
+				var caption:=slot.get_child(0) as Label
+				row_visible=row_visible and visible(slot) and visible(caption)
+			full_rows+=int(row_visible)
+		check(full_rows>=2,"Two complete shelf rows and their labels fit at the current scroll position (%s)"%label)
 	var status:=control("BuildStatus") as Label
 	check(status!=null and status.get_visible_line_count()>=status.get_line_count(),"Recipe status text is not cut (%s)"%label)
 
@@ -242,7 +247,7 @@ func find_site()->Vector2i:
 func stand_by_furnace()->void:
 	var person:Dictionary=w.state.players[id]
 	person.region=World.REGIONS.HOME
-	person.x=furnace.x+0.5;person.y=furnace.y+1.6
+	person.x=furnace.x-0.5;person.y=furnace.y+0.5
 	await refresh()
 
 ## The jinguashi -> home teleport shows the real 1.8 s TravelArrival ribbon right
@@ -260,7 +265,7 @@ func build_furnace()->Dictionary:
 	sequence+=1
 	var person:Dictionary=w.state.players[id]
 	person.region=World.REGIONS.HOME
-	person.x=furnace.x+0.5;person.y=furnace.y+1.6
+	person.x=furnace.x-0.5;person.y=furnace.y+0.5
 	var result:Dictionary=w.act(id,"hoist-scene-build-%d"%sequence,"build",furnace,"glass_furnace")
 	app.session._send_snapshot(1)
 	return result
@@ -338,7 +343,7 @@ func run()->void:
 		# PRESET: the furnace from the previous size is removed first, because a
 		# save may not hold a glass furnace while the hoist is still stuck.
 		if furnace_built:
-			w.state.objects.erase(World.key(furnace))
+			for offset:Vector2i in World.INDUSTRY.SQUARE_CELLS:w.state.objects.erase(World.key(furnace+offset))
 			furnace_built=false
 		progress(15,false)  # PRESET: B15 reached by stairs, hoist still stuck
 		# 1. Entry card, stuck, no materials.
@@ -369,7 +374,7 @@ func run()->void:
 			check(visible(control("BuildSlot_glass_furnace_0")),"Selected 玻璃爐 slot is on view (locked %s)"%tag)
 			check(visible(locked),"Locked BuildPlace button on view at "+tag)
 			check(locked!=null and locked.disabled and locked.text=="完成卡住的升降台","Folio shows 玻璃爐 locked at "+tag)
-			has_texts(["玻璃爐","修好金瓜石的升降台後解鎖。"],"folio locked "+tag)
+			has_texts(["玻璃爐","修好金瓜石升降台後解鎖。鐵礦可用小熔爐熔成鐵錠。"],"folio locked "+tag)
 			img_folio_before=await shot("folio-furnace-locked-%s"%tag)
 		app._close_modal()
 		# 2. Entry card with materials.
@@ -435,7 +440,7 @@ func run()->void:
 		check(not is_instance_valid(app.modal),"No modal over the world view at "+tag)
 		# PRESET placement: one cell east of the furnace so the sprite is not hidden behind the player.
 		var person:Dictionary=w.state.players[id]
-		person.x=furnace.x+1.5;person.y=furnace.y+0.9
+		person.x=furnace.x+2.5;person.y=furnace.y+1.5
 		await refresh()
 		await dismiss_arrival()
 		await shot("furnace-world-%s"%tag)

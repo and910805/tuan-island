@@ -1,6 +1,6 @@
 @static_unload
 extends RefCounted
-## 第 40 章北門合作鹽田「儲滷槽」的程式繪製圖（沒有新美術檔；全部靜態，任何動態模式都一樣）。
+## 第 40 章北門合作鹽田「儲滷槽」的程式繪製圖。
 ##
 ## 一格（SaltBrine.TANK＝(48,14)，合作社工寮東側）上的 32×48 圖，腳落在格子下緣（ANCHOR），
 ## 往上高出格子 RISE＝16 px 以內（實際槽口最高點約高出 12 px）。左右都不超出這一格：
@@ -21,9 +21,10 @@ extends RefCounted
 ##   mid（11–20）   ：滷水蓋住大半個槽口，較深的藍綠；水位尺一半多。
 ##   high（21–29）  ：滷水幾乎滿到槽口，只剩一圈窄窄的內壁；最深的藍綠；水位尺 3／4 多。
 ##   full（30）     ：滷水齊平槽口，槽口內緣一圈白色鹽沫（滿槽的亮邊）；水位尺全滿。
-## 每種狀態只畫一次就快取成貼圖（cache）；沒有動畫，reduced motion 與否畫面完全一樣。
+## 每種基礎水位快取成貼圖，收存或放滷時另繪短暫的水面與管口回饋。
 
 const SaltBrine=preload("res://scripts/salt_brine.gd")
+const TRANSFER_SECONDS:=0.76
 
 const SIZE:=Vector2i(32,48)
 ## Bottom-centre feet of the canvas (on the tank cell's lower edge).
@@ -112,6 +113,23 @@ static func texture_for(level:int) -> Texture2D:
 ## camera-shifted). Static: no elapsed / reduced-motion input on purpose.
 static func draw_tank(canvas:CanvasItem,at:Vector2,level:int) -> void:
 	canvas.draw_texture(texture_for(level),(at+Vector2(0,-RISE)).round())
+
+static func draw_transfer(canvas:CanvasItem,at:Vector2,level:int,delta:int,age:float) -> void:
+	if age<0.0 or age>=TRANSFER_SECONDS:return
+	var top:=(at+Vector2(0,-RISE)).round()
+	var progress:=age/TRANSFER_SECONDS
+	var tint:=BRINE_LIGHT
+	tint.a=(1.0-progress)*0.94
+	if level>0:
+		var surface_y:=roundf(26.0+float(SURFACE_SHIFT[state_of(level)])*0.48)
+		var spread:=roundf(2.0+7.0*(progress if delta>0 else 1.0-progress))
+		var center:=top+Vector2(16,surface_y)
+		canvas.draw_line(center-Vector2(spread,0),center+Vector2(spread,0),tint,1.0)
+		canvas.draw_line(center+Vector2(-spread+2,2),center+Vector2(spread-2,2),tint,1.0)
+	for trail in range(2):
+		var step:=fposmod(progress*2.8+trail*0.5,1.0)
+		if delta>0:step=1.0-step
+		canvas.draw_rect(Rect2(top+Vector2(7,42+roundf(step*8.0)),Vector2(2,2)),tint)
 
 # ------------------------------------------------------------------ painting --
 

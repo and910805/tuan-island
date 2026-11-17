@@ -12,7 +12,7 @@ const PLOT_TAG:="小栗留的田"
 const PLOT_LABEL_ID:="wangan_plot"
 const HEADING:="第一件事・種一株蘿蔔"
 
-## 新島民的下船點（World.SPAWN）附近多遠以內仍算「剛下船」。
+## 新島民的下船點附近多遠以內仍算「剛下船」。
 const ARRIVAL_REACH:=3.0
 
 ## 「剛下船的新島民」：在家園、第一章還沒有人出貨、本人沒有採收紀錄（計數與
@@ -23,17 +23,19 @@ const ARRIVAL_REACH:=3.0
 static func is_new_arrival(s:Dictionary,owner:String) -> bool:
 	if not fresh_player(s,owner):return false
 	var person:Dictionary=s.players[owner]
-	var spawn:Vector2=preload("res://scripts/world.gd").SPAWN
-	return Vector2(float(person.get("x",0.0)),float(person.get("y",0.0))).distance_to(spawn)<=ARRIVAL_REACH
+	var world=preload("res://scripts/world.gd")
+	var position:=Vector2(float(person.get("x",0.0)),float(person.get("y",0.0)))
+	return position.distance_to(world.WANGAN_COAST.FERRY_LANDING)<=ARRIVAL_REACH or position.distance_to(world.SPAWN)<=ARRIVAL_REACH
 
 ## The state half of is_new_arrival (no position rule).
 static func fresh_player(s:Dictionary,owner:String) -> bool:
 	var chapter=s.get("chapter_one")
-	if not chapter is Dictionary or chapter.get("shipped",true)!=false:return false
+	if not chapter is Dictionary:return false
 	if str(s.get("region_id","home"))!="home":return false
 	var people=s.get("players")
 	if not people is Dictionary or not people.get(owner) is Dictionary:return false
 	var person:Dictionary=people[owner]
+	if chapter.get("shipped",true) and not person.get(CHAPTER_ONE.PERSONAL_START,false):return false
 	if str(person.get("region","home"))!="home":return false
 	if int(person.get("harvests",0))!=0 or int(person.get("builds",0))!=0:return false
 	var records=chapter.get("harvests",{})
@@ -49,7 +51,9 @@ static func fresh_player(s:Dictionary,owner:String) -> bool:
 ## shipment) and the plot is still usable for this player: a free cell or one
 ## of their own plots inside it. Fully occupied plots show no marker.
 static func marker_shown(s:Dictionary,owner:String) -> bool:
-	if CHAPTER_ONE.first_crop_step(s,owner).is_empty():return false
+	return not CHAPTER_ONE.first_crop_step(s,owner).is_empty() and plot_usable(s,owner)
+
+static func plot_usable(s:Dictionary,owner:String) -> bool:
 	if not CHAPTER_ONE.starter_plot_free(s).is_empty():return true
 	var crops=s.get("crops",{})
 	if not crops is Dictionary:return false

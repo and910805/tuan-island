@@ -14,7 +14,7 @@ func expect(condition: bool, message: String) -> void:
 		push_error("FAIL " + message)
 
 func verify_stages() -> void:
-	expect(Art.ROWS == World.CROPS.keys(), "atlas rows cover all six crops in order")
+	expect(Art.ROWS == World.CROPS.keys().slice(0,6), "Original atlas rows remain in catalog order")
 	expect(Art.stage_for({"kind": "", "growth": 0, "wet": true}) == -1, "wet empty soil draws no plant")
 	for kind in World.CROPS:
 		var duration := float(World.CROPS[kind].time)
@@ -30,17 +30,20 @@ func verify_stages() -> void:
 func verify_tomato_regrowth() -> void:
 	var world = World.new()
 	world.add_player("farmer", "島民")
+	world.state.players.farmer.x=FIELD.x+0.5
+	world.state.players.farmer.y=FIELD.y+0.5
+	world.state.time=float(World.WEATHER.DAYS_PER_SEASON*World.WEATHER.DAY_SECONDS)
 	world.state.players.farmer.inventory.tomato_seed = 1
 	expect(world.act("farmer", "hoe", "hoe", FIELD).ok, "prepare tomato plot")
 	expect(world.act("farmer", "seed", "seed", FIELD, "tomato").ok, "seed tomato")
 	for remaining in [2, 1, 0]:
 		expect(world.act("farmer", "water-%d" % remaining, "water", FIELD).ok, "water tomato")
 		var crop: Dictionary = world.state.crops[World.key(FIELD)]
-		expect(Art.stage_for(crop) == 0, "watering starts each tomato cycle at the seedling stage")
+		expect(Art.stage_for(crop) == (0 if remaining==2 else 1), "watering keeps the seeded or regrowing stage")
 		world.step(120, true)
 		expect(Art.stage_for(crop) == 3, "tomato reaches harvest art each cycle")
 		expect(world.act("farmer", "harvest-%d" % remaining, "harvest", FIELD).ok, "harvest tomato")
-		expect(crop.remaining == remaining and Art.stage_for(crop) == (0 if remaining > 0 else -1), "harvest resets art for %d remaining" % remaining)
+		expect(crop.remaining == remaining and Art.stage_for(crop) == (1 if remaining > 0 else -1), "harvest resets art for %d remaining" % remaining)
 
 func verify_dry_ripe_save() -> void:
 	var world = World.new()
@@ -89,6 +92,31 @@ func verify_atlas() -> void:
 			if previous != null:
 				expect(sprite.get_data() != previous.get_data(), label + " differs from previous stage")
 			previous = sprite
+	verify_growth_sheet(art.kitchen_garden,Art.KITCHEN_GARDEN_ROWS)
+	verify_growth_sheet(art.regional,Art.REGIONAL_ROWS)
+	verify_growth_sheet(art.harvest,Art.HARVEST_ROWS)
+	var atlas_kinds:Array=Art.ROWS+Art.KITCHEN_GARDEN_ROWS+Art.REGIONAL_ROWS+Art.HARVEST_ROWS
+	for kind:String in World.CROPS:
+		var routes:=atlas_kinds.count(kind)+int(kind=="pumpkin")+int(Art.FlowerArt.has_crop(kind))
+		expect(routes==1,kind+" has exactly one dedicated growth sheet")
+
+func verify_growth_sheet(texture:Texture2D,kinds:Array) -> void:
+	expect(texture!=null,"Growth sheet imports")
+	if texture==null:
+		return
+	var garden:=texture.get_image()
+	expect(garden.get_size()==Vector2i(128,32*kinds.size()),"Atlas uses 32 px cells")
+	var seen:Dictionary={}
+	for row in kinds.size():
+		for stage in 4:
+			var sprite:=garden.get_region(Rect2i(Vector2i(stage,row)*Art.CELL,Art.CELL))
+			var bounds:=sprite.get_used_rect()
+			var label:="%s stage %d"%[kinds[row],stage]
+			expect(bounds.has_area() and Rect2i(1,1,30,30).encloses(bounds),label+" fits with transparent borders")
+			expect(absi(bounds.end.y-30)<=1,label+" is grounded at the same foot")
+			var signature:=sprite.get_data().hex_encode()
+			expect(not seen.has(signature),label+" has distinct art")
+			seen[signature]=true
 
 func _initialize() -> void:
 	verify_stages()

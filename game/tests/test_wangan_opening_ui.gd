@@ -288,11 +288,24 @@ func size_pass(size:Vector2i)->void:
 	await tool_click("water",Vector2i(45,27))
 	check(w.state.crops.get("45,27",{}).get("wet",false)==true,"Click watered (%s)"%tag)
 	expect_tracker("第一件事・種一株蘿蔔\n作物正在長大，等它成熟\n成熟前可以先逛逛","wait "+tag)
+	# A real reconnect mid-crop must resume the current step, not restart hoeing.
+	await close_app()
+	if not await open_app(size,path):return
+	check(card()==null,"Growing crop does not replay arrival (%s)"%tag)
+	check(str(app.toast.text)=="歡迎回來！作物正在長大，等它成熟。","Reconnect resumes actual wet-crop step (%s): %s"%[tag,app.toast.text])
+	# Reconnection can offer the existing return-news modal; close it as a player
+	# would before continuing the tool-input portion of this test.
+	app._close_modal()
+	await refresh()
 	for i in 30:
 		if float(w.state.crops["45,27"].growth)>=float(World.CROPS.radish.time):break
 		w.step(5.0,true)
 	await refresh()
 	expect_tracker("第一件事・種一株蘿蔔\n作物熟了，用採收籃收成\n%s 採收 · 點成熟的作物"%app.binding_label("harvest"),"harvest "+tag)
+	app._entered()
+	check(str(app.toast.text)=="歡迎回來！作物熟了，用採收籃收成。","Entry hint follows mature crop (%s): %s"%[tag,app.toast.text])
+	app._close_modal()
+	await refresh()
 	await tool_click("harvest",Vector2i(45,27))
 	check(int(person().inventory.get("radish",0))>=1,"Click harvested a radish (%s)"%tag)
 	expect_tracker("✓ 第一株收成了\n把蘿蔔帶到出貨箱\n靠近出貨箱按 %s"%app.binding_label("interact"),"ship "+tag)

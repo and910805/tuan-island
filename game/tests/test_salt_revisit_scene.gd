@@ -390,6 +390,18 @@ func open_at(spot:Vector2,entry_shot:String="")->void:
 	await interact()
 	await open_entry(entry_shot,"travel_map" if spot==SR.STOP_STAND else "salt_pan")
 
+func batch_map(expected:Vector2i,label:String)->void:
+	app._map_menu()
+	await settle()
+	if not is_instance_valid(app.map_view):
+		check(false,"The Beimen local map opens (%s)"%tag)
+		return
+	var marks:Dictionary=app.map_view.salt_landmarks(app.map_view.data,app.session.own_id)
+	check(marks.target==expected and marks.note.begins_with("鹽籃批次"),"The batch map shows %s (%s)"%[label,tag])
+	await shot(label)
+	app._close_modal()
+	await settle()
+
 func salt_flow()->void:
 	# Locked: entries on 阿曬's page and the bus stop, then the page.
 	await stand(SR.STOP_STAND,SR.REGION)
@@ -445,6 +457,8 @@ func salt_flow()->void:
 	# A rainy Beimen day: no stocking, packing goes on.
 	w.state.time=rain_time  # PRESET
 	bag().sea_salt=6;bag().fiber=2  # PRESET
+	await stand(SR.CHEST_STAND,SR.REGION)
+	await batch_map(SR.CHEST,"map_pack_rain")
 	await open_at(SR.CHEST_STAND)
 	check(SR.rainy_today(w.state) and label_text("SrStockReason")==SR.RAIN_STOCK and not (control("Sr_pickle") as Button).disabled,"Rainy day: stock refused, pack enabled (%s)"%tag)
 	await shot("page_rainy_day")
@@ -463,6 +477,7 @@ func salt_flow()->void:
 	await stand(SR.WORKER_STAND,SR.REGION)
 	check(str(app.objective.text)=="鹽籃批次・入倉 4／6 批\n帶海鹽找阿曬入倉","Tracker in 北門 (%s): %s"%[tag,str(app.objective.text)])
 	await shot("beimen_tracker")
+	await batch_map(SR.WORKER,"map_stock")
 	await open_at(SR.WORKER_STAND)
 	await press("Sr_stock")
 	await press("Sr_stock")
@@ -477,12 +492,14 @@ func salt_flow()->void:
 	await shot("page_ready_to_send")
 	page_fits("ready to send "+tag)
 	app._close_modal()
+	await batch_map(SR.STOP,"map_send")
 	await open_at(SR.STOP_STAND,"stop_entry")
 	await press("SrSend")
 	check(SR.completed(w.state),"Completed (%s)"%tag)
 	await shot("page_completed")
 	page_fits("completed "+tag)
 	app._close_modal()
+	await batch_map(SR.WORKER,"map_claim")
 	await open_at(SR.WORKER_STAND)
 	await press("SrClaim")
 	check(int(bag().get(SR.BASKET_ITEM,0))==1,"Basket claimed (%s)"%tag)

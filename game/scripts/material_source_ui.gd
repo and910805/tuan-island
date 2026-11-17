@@ -419,6 +419,14 @@ func _option_label(cell:String,type:String)->String:
 	var at:=World.cell(cell)-station_cell
 	var sides:={Vector2i(0,-1):"北側",Vector2i(0,1):"南側",Vector2i(-1,0):"西側",Vector2i(1,0):"東側"}
 	var side:String=str(sides.get(at,"旁邊"))
+	var objects:Dictionary=app.session.snapshot.get("objects",{})
+	if World.INDUSTRY.square_part(objects.get(World.key(station_cell),{}))==0:
+		var width:=1 if World.INDUSTRY.is_vertical(objects[World.key(station_cell)]) else 2
+		if at.x<0:side="西側"
+		elif at.x>=width:side="東側"
+		elif at.y<0:side="北側"
+		else:side="南側"
+		side+=" %s"%cell
 	return ("我的私人箱" if type=="private_chest" else "共用箱")+" · "+side
 
 # --------------------------------------------------------------- quote

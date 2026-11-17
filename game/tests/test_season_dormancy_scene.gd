@@ -11,7 +11,7 @@ extends SceneTree
 ##   x=40 a tomato 70%（夏）        x=41 b same tomato under a greenhouse_roof
 ##   x=42 c pumpkin 70%（秋）       x=43 d ripe tomato, remaining 3
 ##   x=44 e strawberry at regrow_start, remaining 2（春）
-##   x=45 f watermelon 70%（夏, bakery atlas）  x=46 g bluebell 70%（春, FlowerArt sheet）
+##   x=45 f watermelon 70%（夏, harvest atlas）  x=46 g bluebell 70%（春, FlowerArt sheet）
 ##   x=47 h empty tilled plot
 ## Day 29 (index 28) = first autumn day, day 15 (index 14) = first summer day; both are
 ## sunny in weather.gd's 7-day cycle (index % 7 == 0), so no weather tint / rain marks.
@@ -324,14 +324,20 @@ func texture_image(texture:Texture2D)->Image:
 
 ## The 32×32 plant sprite draw_crop uses for `kind` at `stage` (alpha = opaque area).
 func plant_sprite(kind:String,stage:int)->Image:
-	if kind in ["pumpkin","watermelon"]:return texture_image(BakeryArt.growth_texture(stage))
+	if kind=="pumpkin":return texture_image(BakeryArt.growth_texture(stage))
 	if FlowerArt.has_crop(kind):return texture_image(FlowerArt.crop_texture(kind,stage))
 	var art=app.view.crop_art
 	if art==null:return null
 	var atlas:Texture2D=art.atlas
+	var row:=CropArt.ROWS.find(kind)
+	if kind in CropArt.KITCHEN_GARDEN_ROWS:
+		atlas=art.kitchen_garden
+		row=CropArt.KITCHEN_GARDEN_ROWS.find(kind)
+	elif kind in CropArt.HARVEST_ROWS:
+		atlas=art.harvest
+		row=CropArt.HARVEST_ROWS.find(kind)
 	var whole:=texture_image(atlas)
 	if whole==null:return null
-	var row:int=CropArt.ROWS.find(str(CropArt.PREVIEW_ROWS.get(kind,kind)))
 	if row<0:return null
 	return whole.get_region(Rect2i(stage*CropArt.CELL.x,row*CropArt.CELL.y,CropArt.CELL.x,CropArt.CELL.y))
 
@@ -438,15 +444,6 @@ func cell_mismatches(x:PackedColorArray,y:PackedColorArray)->int:
 	var n:=0
 	for index in range(mini(x.size(),y.size())):
 		if x[index]!=y[index]:n+=1
-	return n
-
-## Opaque sprite pixels of two plots drawn with the same texture (pumpkin / watermelon).
-func sprite_mismatches(x:PackedColorArray,y:PackedColorArray,sprite:Image)->int:
-	var n:=0
-	for j in 32:
-		for i in 32:
-			if mark_area.has(Vector2i(i,j)) or sprite.get_pixel(i,j).a<0.99:continue
-			if x[j*32+i]!=y[j*32+i]:n+=1
 	return n
 
 func ripe_hint_check(samples:Dictionary,season:String)->void:
@@ -558,14 +555,8 @@ func size_flow()->void:
 	for letter:String in ["b","d","e","g","h"]:
 		var n:=cell_mismatches(fall[letter],hot[letter])
 		expect(n==0,"Plot %s identical in autumn and summer (%s): %d px differ"%[letter,tag,n])
-	# Pumpkin and watermelon share the bakery growth sheet: same tint path, same pixels.
-	var sheet:=plant_sprite("pumpkin",plot_stage("c"))
-	if sheet!=null and plot_stage("c")==plot_stage("f"):
-		var awake_px:=sprite_mismatches(fall["c"],hot["f"],sheet)
-		var dormant_px:=sprite_mismatches(hot["c"],fall["f"],sheet)
-		expect(awake_px==0,"Awake pumpkin (autumn) and awake watermelon (summer) plant pixels match (%s): %d differ"%[tag,awake_px])
-		expect(dormant_px==0,"Dormant pumpkin (summer) and dormant watermelon (autumn) plant pixels match (%s): %d differ"%[tag,dormant_px])
-	else:expect(false,"Bakery growth sheet for the pumpkin / watermelon cross-check (%s)"%tag)
+	expect(cell_mismatches(fall["c"],hot["f"])>0,"Awake pumpkin and watermelon show distinct plants "+tag)
+	expect(cell_mismatches(hot["c"],fall["f"])>0,"Dormant pumpkin and watermelon show distinct plants "+tag)
 	# 5. Nothing else in the field band changes with the season (HUD panels excluded: the
 	#    calendar / status text legitimately changes).
 	var band:=pixel_box(Rect2(cell_origin(Vector2i(39,36)),Vector2(10*32,2.5*32)))

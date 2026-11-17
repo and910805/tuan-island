@@ -21,6 +21,13 @@ static func refresh(app) -> void:
 	Tasks.refresh_chapter_starter(app)
 	if not app.modal.has_meta("chapter_content"):return
 	var step:Dictionary=World.CHAPTER_ONE.next_step(app.session.snapshot)
+	if step.id=="meal":
+		var person:Dictionary=app.session.snapshot.get("players",{}).get(app.session.own_id,{})
+		var inventory:Dictionary=person.get("inventory",{})
+		step.meal_counts={}
+		for item in ["radish","wheat","soup","bread"]:
+			step.meal_counts[item]=int(inventory.get(item,0))
+		step.meal_delivered=app.session.snapshot.get("picnic_materials",{}).duplicate(true)
 	if app.modal.get_meta("chapter_step",{})==step:return
 	app.modal.set_meta("chapter_step",step)
 	var content:VBoxContainer=app.modal.get_meta("chapter_content")
@@ -81,6 +88,7 @@ static func refresh(app) -> void:
 		details.name="ChapterDetails"
 		details.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		body.add_child(details)
+	if phase=="meal":add_picnic_recipes(app,body,step.meal_counts,step.meal_delivered)
 	var footer:=HBoxContainer.new()
 	var shell:Node=content.get_parent().get_parent()
 	for child in shell.get_children():
@@ -96,6 +104,39 @@ static func refresh(app) -> void:
 	var book_button:Button=app.button("島民手冊",func():app._journal())
 	book_button.icon=Shell.icon("journal")
 	footer.add_child(book_button)
+
+static func add_picnic_recipes(app,body:VBoxContainer,held:Dictionary,delivered:Dictionary) -> void:
+	var recipes:=VBoxContainer.new()
+	recipes.name="ChapterPicnicRecipes"
+	recipes.add_theme_constant_override("separation",8)
+	body.add_child(recipes)
+	if app.village_art_preview:
+		var stove:Button=app.button("查看小石灶配方",func():app.life_panels.build_menu(app,"stove"))
+		stove.name="ChapterBuildStove"
+		stove.icon=Items.icon("soup")
+		recipes.add_child(stove)
+	for item in ["soup","bread"]:
+		var recipe:Dictionary=World.RECIPES[item]
+		var row:=HBoxContainer.new()
+		row.add_theme_constant_override("separation",10)
+		recipes.add_child(row)
+		row.add_child(Shell.picture(Items.icon(item),32))
+		var lines:=VBoxContainer.new()
+		lines.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		row.add_child(lines)
+		var title:Label=app.label("%s · 已交 %d／%d"%[recipe.name,int(delivered.get(item,0)),2 if item=="soup" else 1],16)
+		title.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		lines.add_child(title)
+		var materials:PackedStringArray=[]
+		for ingredient in recipe.ingredients:
+			materials.append("%s %d／%d"%[World.NAMES[ingredient],int(held.get(ingredient,0)),int(recipe.ingredients[ingredient])])
+		var detail:Label=app.label("、".join(materials)+" → 一次做出 %d 份 · 背包已有 %d 份"%[
+			int(recipe.yield),int(held.get(item,0))],14)
+		detail.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		lines.add_child(detail)
+	var hint:Label=app.label("在小石灶選料理，完成後記得領取。帶回公告板按 %s 交野餐材料。"%app.binding_label("interact"),15)
+	hint.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	recipes.add_child(hint)
 
 static func add_first_crop(app,body:VBoxContainer) -> void:
 	var heading:Label=app.label("第一件事・種一株蘿蔔",18)

@@ -10,8 +10,10 @@ extends SceneTree
 ##   godot --path game --script res://tests/test_hud_text_readability.gd -- --village-art-preview
 ## Optional screenshots + JSON report (opt-in, absolute directory outside the project):
 ##   ... -- --village-art-preview --hud-readability-output=C:/tmp/hud-readability
+## --text-scale=0..3 selects one of the in-game sizes; --scope=everyday checks HUD, inventory and settings.
 
 const World = preload("res://scripts/world.gd")
+const Opening = preload("res://scripts/wangan_opening_ui.gd")
 const PLAYER := "readability"
 const SIZES := [Vector2i(1024, 640), Vector2i(1280, 800)]
 const PANELS := [
@@ -265,7 +267,11 @@ func audit_text(scope: String, owner: Control, viewport: Rect2, stats: Dictionar
 		if control is Button:
 			var button := control as Button
 			if button.icon != null and not button.expand_icon:
-				available -= button.icon.get_width() + button.get_theme_constant("h_separation")
+				var icon_width := button.icon.get_width()
+				var max_icon_width := button.get_theme_constant("icon_max_width")
+				if max_icon_width > 0:
+					icon_width = mini(icon_width, max_icon_width)
+				available -= icon_width + button.get_theme_constant("h_separation")
 			expect(needed <= available + 1.0, "%s button text fits (%.0f > %.0f)" % [name, needed, available])
 		elif control is Label:
 			var label := control as Label
@@ -286,19 +292,22 @@ func audit_text(scope: String, owner: Control, viewport: Rect2, stats: Dictionar
 			ink.size.x = needed  # spilled text past its own rect
 		var clip := clip_ancestor(control)
 		var bounds := viewport
-		if clip != null:
+		while clip != null:
 			bounds = bounds.intersection(clip.get_global_rect())
-		var scrolled := in_scroll(control, owner) or (clip is ScrollContainer)
+			clip = clip_ancestor(clip)
+		var scrolled := in_scroll(control, owner)
 		if scrolled:
 			# Vertical scroll position is a user choice; only horizontal cut is a defect,
 			# and only for text currently within the scroll's vertical window.
-			if ink.end.y > bounds.position.y and ink.position.y < bounds.end.y:
+			if bounds.has_area() and ink.end.y > bounds.position.y and ink.position.y < bounds.end.y:
 				expect(ink.position.x >= bounds.position.x - 1.0 and ink.end.x <= bounds.end.x + 1.0,
 					"%s horizontally inside scroll/viewport %s vs %s" % [name, ink, bounds])
 		else:
 			expect(bounds.grow(1.0).encloses(ink), "%s ink inside clip/viewport %s vs %s" % [name, ink, bounds])
 		# --- rendered contrast
 		var visible_ink := ink.intersection(bounds)
+		if scrolled and visible_ink.size.y < ink.size.y - 1.0:
+			continue # At a scroll edge, a glyph may be only partially visible.
 		var contrast := rendered_contrast(visible_ink)
 		if contrast >= 0.0:
 			stats.measured += 1
@@ -348,6 +357,11 @@ func check_hud(label: String, viewport: Rect2) -> void:
 		names.append(block[0])
 	for wanted in ["location", "calendar", "toolbar"]:
 		expect(wanted in names, "%s HUD shows %s" % [label, wanted])
+	var arrival := Opening.card(app)
+	if is_instance_valid(arrival) and arrival.is_visible_in_tree():
+		var arrival_rect := arrival.get_global_rect()
+		expect(viewport.encloses(arrival_rect), "%s arrival card inside viewport" % label)
+		expect(not arrival_rect.intersects(app.preview_top.get_global_rect()), "%s arrival card clears the calendar" % label)
 	var play := Rect2(viewport.get_center() - viewport.size * 0.18, viewport.size * 0.36)
 	for i in blocks.size():
 		var a: Rect2 = blocks[i][2]
@@ -437,6 +451,7 @@ func run() -> void:
 		push_error("FAIL timeout")
 		quit(1))
 	output_dir = user_arg("hud-readability-output")
+	var scope := user_arg("scope")
 	if not output_dir.is_empty():
 		if output_dir.begins_with("res://") or output_dir.begins_with("user://") or not output_dir.is_absolute_path():
 			push_error("FAIL --hud-readability-output must be an absolute OS path outside res:// and user://")
@@ -457,6 +472,11 @@ func run() -> void:
 	root.add_child(app)
 	app.set_process(false)
 	app.sound.volume = 0.0
+	var scale_arg := user_arg("text-scale")
+	if not scale_arg.is_empty():
+		expect(scale_arg.is_valid_int() and int(scale_arg) in range(4), "valid text scale index")
+		app.sound.preferred_text_scale = clampi(int(scale_arg), 0, 3)
+		app._apply_font_scale_tree()
 	fixture()
 	app.session.snapshot = world.state
 	app.session.world = world
@@ -465,8 +485,8 @@ func run() -> void:
 	app.session.peers[1] = app.session.own_id
 	app._entered()
 	app._refresh_hud()
-	report["font"] = {"names": Array(preload("res://scripts/island_type.gd").regular().font_names),
-		"resolved": preload("res://scripts/island_type.gd").regular().get_font_name(),
+	report["font"] = {"resolved": preload("res://scripts/island_type.gd").regular().get_font_name(),
+		"scale": app.font_scale_factor(),
 		"reduced_motion": app.sound.reduced_motion}
 	for size in SIZES:
 		current_size = "%dx%d" % [size.x, size.y]
@@ -483,13 +503,49 @@ func run() -> void:
 		app._notice("已把「%s」放進背包，記得到渡口看看下一步。" % World.NAMES.values()[0], true)
 		await check_hud("hud_toast", viewport)
 		app.toast.visible = false
-		await check_inventory(viewport)
+		if scope == "hud":
+			continue
+		if scope not in ["build", "help"]:
+			await check_inventory(viewport)
 		for entry in PANELS:
+			if scope == "everyday" and entry[0] != "_settings_menu":
+				continue
+			if scope == "build" and entry[0] != "_build_menu":
+				continue
+			if scope == "help" and entry[0] != "_help":
+				continue
 			if not app.has_method(entry[0]):
 				warn("panel %s not available" % entry[0])
 				continue
 			app.callv(entry[0], entry[1])
 			await check_panel(entry[0], viewport)
+			if scope == "help":
+				var advanced: Label
+				for node in app.modal.find_children("*", "Label", true, false):
+					if node.text == "做大一點的工坊":advanced = node
+				expect(advanced != null, "Guide has a separate workshop section")
+				if advanced != null:
+					var guide_scroll := clip_ancestor(advanced)
+					if guide_scroll is ScrollContainer:
+						guide_scroll.set_v_scroll(int(advanced.position.y))
+					await check_panel("help_automation", viewport)
+			if scope == "build":
+				var long_name := app.modal.find_child("BuildSlot_keepsake_xinghe_0", true, false) as Button
+				expect(long_name != null, "Build folio includes the long-name keepsake")
+				if long_name != null:
+					long_name.pressed.emit()
+					var shelf := clip_ancestor(long_name)
+					if shelf is ScrollContainer:
+						await process_frame
+						shelf.ensure_control_visible(long_name)
+					await check_panel("build_long_name", viewport)
+					var title := app.modal.find_child("BuildTitle", true, false) as Label
+					expect(title != null and title.text == World.BUILD.keepsake_xinghe.name,
+						"The selected keepsake retains its full title")
+					var place := app.modal.find_child("BuildPlace", true, false) as Button
+					var body_clip := clip_ancestor(place)
+					expect(body_clip == null or body_clip.get_global_rect().grow(1.0).encloses(place.get_global_rect()),
+						"The recipe button remains fully visible with the long title")
 			app._close_modal()
 			await process_frame
 		expect(app.modal == null, current_size + " all panels closed")

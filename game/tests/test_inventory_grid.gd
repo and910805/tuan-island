@@ -52,8 +52,11 @@ func check_layout(panel: Control, size: Vector2i) -> void:
 		"first slot is fully visible in the grid at %s" % size)
 
 func check_categories(main: Node, panel: Control, point: Vector2) -> void:
-	var expected := [World.NAMES.keys(), ["crystal_sand", "ochre_earth", "vein_quartz", "warm_stone", "glass", "clay", "tea_jar", "tea_returned_jar", "tea_worn_jar", "tea_spent_jar", "wood", "stone", "fiber", "copper_ore", "copper_joint", "plank", "resin", "charcoal", "flour", "blue_dye", "sugar","cotton_cloth","wool_cloth"], [], [], []]
+	var expected := [World.NAMES.keys(), ["orange_dye","fired_brick","woodwork_parts","rope","copper_ingot","iron_ore","iron_ingot","hardwood","crystal_sand", "ochre_earth", "vein_quartz", "warm_stone", "glass", "clay", "tea_jar", "tea_returned_jar", "tea_worn_jar", "tea_spent_jar", "wood", "stone", "fiber", "copper_ore", "copper_joint", "plank", "resin", "charcoal", "flour", "blue_dye", "sugar","cotton_cloth","wool_cloth"], [], [], []]
 	for id in World.NAMES:
+		if id.begins_with("quality_") and int(panel.inventory.get(id,0))==0:
+			expected[0].erase(id)
+			continue
 		if id.ends_with("_seed") or id == "sapling":
 			expected[2].append(id)
 		elif World.CROPS.has(id) or World.FISH.has(id) or id in ["egg", "tea_leaf", "tea_light", "tea_deep"]:
@@ -65,6 +68,8 @@ func check_categories(main: Node, panel: Control, point: Vector2) -> void:
 		panel.tabs[index].pressed.emit()
 		await layout_frames()
 		var ids := collect_slots(panel, true).map(func(slot): return slot.item_id)
+		ids.sort()
+		expected[index].sort()
 		expect(ids == expected[index], "category %d contains exactly its items, including zeros" % index)
 		expect(panel.tabs[index].button_pressed and not main._world_pointer_allowed(point),
 			"category selection stays in the modal")
@@ -147,7 +152,16 @@ func run() -> void:
 		main._unhandled_input(click)
 		expect(main.action_clock == 0.0, "open inventory rejects a world click")
 		var slots := collect_slots(panel, true)
-		expect(slots.size() == World.NAMES.size(), "all item slots exist at %s" % size)
+		var all_slots := collect_slots(panel, false)
+		expect(all_slots.size() == World.NAMES.size(), "all item slots exist at %s" % size)
+		expect(all_slots.all(func(slot):return slot.visible==(not slot.item_id.begins_with("quality_") or slot.count>0)), "only unheld quality tiers are hidden from the all-items tab")
+		var saw_unheld:=false
+		for slot in slots:
+			if slot.count==0:saw_unheld=true
+			elif saw_unheld:
+				expect(false,"Held items must appear before zero-count items on first open")
+				break
+		expect(not slots.is_empty() and slots[0].item_id=="wood","Default wood selection is on the first row")
 		if not slots.is_empty():
 			expect(panel.get_global_rect().encloses(slots[0].get_global_rect()), "first slot fits inventory at %s" % size)
 			check_layout(panel, size)
@@ -156,17 +170,22 @@ func run() -> void:
 			expect(frame_style is StyleBoxTexture and frame_style.texture != null, "panel has a textured frame")
 			expect(panel.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST, "panel uses nearest-neighbor filtering")
 			var ids := {}
+			var barn_icons:Dictionary={}
+			var barn_items:=["milk","wool","cotton_cloth","wool_cloth"]
 			var atlas_pixels := Image.load_from_file("res://assets/ui-inventory/items.png")
 			expect(atlas_pixels != null and not atlas_pixels.is_empty(), "item PNG decodes")
 			check_icon_alpha(atlas_pixels)
-			for slot in slots:
+			for slot in all_slots:
 				ids[slot.item_id] = true
 				var texture: Texture2D = slot.artwork.texture
 				var pixels: Image = texture.get_image() if texture != null else null
-				expect(texture != null and texture.get_size() == Vector2(32, 32)
-					and pixels != null and pixels.get_size() == Vector2i(32, 32) and not pixels.is_invisible(),
-					"%s has decoded 32x32 art" % slot.item_id)
-			expect(ids.size() == slots.size() and ids.size() == World.NAMES.size() and World.NAMES.keys().all(func(id): return ids.has(id)), "all catalog item IDs appear exactly once")
+				expect(texture != null and pixels != null and not pixels.is_empty() and not pixels.is_invisible(),
+					"%s has decoded visible art" % slot.item_id)
+				if slot.item_id in barn_items and pixels!=null:
+					expect(pixels.get_size()==Vector2i(32,32),"%s uses a 32px source"%slot.item_id)
+					barn_icons[Marshalls.raw_to_base64(pixels.get_data())]=true
+			expect(barn_icons.size()==barn_items.size(),"milk, wool and both cloths have distinguishable pixel art")
+			expect(ids.size() == all_slots.size() and ids.size() == World.NAMES.size() and World.NAMES.keys().all(func(id): return ids.has(id)), "all catalog item IDs appear exactly once")
 			var original: Dictionary = world.state.duplicate(true)
 			await check_categories(main, panel, world_point)
 			for slot in slots:
@@ -195,6 +214,28 @@ func run() -> void:
 					check_amount(slot, amount)
 					expect(panel.detail_count.text.ends_with(str(amount)) and snapshot == unchanged, "refresh retains exact amount without mutation")
 				break
+		if size==Vector2i(1024,640):
+			var expected_width:=minf(900.0,float(size.x)-32.0)
+			expect(is_equal_approx(panel.size.x,expected_width) and panel.grid.columns==6,
+				"backpack opens at the intended width and column count for %s"%size)
+			for arg in OS.get_cmdline_user_args():
+				if not arg.begins_with("--capture-dir="):continue
+				var preview_state:Dictionary=world.state.duplicate(true)
+				preview_state.players[main.session.own_id].inventory={"milk":4,"wool":3,"cotton_cloth":2,"wool_cloth":1}
+				key(main,KEY_ESCAPE)
+				await layout_frames()
+				main.session.snapshot=preview_state
+				key(main,KEY_TAB)
+				panel=main.modal
+				main.view.update_snapshot(preview_state,main.session.own_id)
+				await layout_frames()
+				panel.slots.milk.grab_focus()
+				panel.select_item("milk")
+				await layout_frames()
+				await RenderingServer.frame_post_draw
+				var path:=arg.trim_prefix("--capture-dir=").path_join("inventory-%dx%d.png"%[size.x,size.y])
+				expect(root.get_texture().get_image().save_png(path)==OK,"inventory screenshot captured at %s"%size)
+				main.session.snapshot=world.state
 		var close_key := KEY_TAB if size.x <= 1280 and size.y == 720 else KEY_ESCAPE
 		key(main, close_key)
 		await layout_frames()

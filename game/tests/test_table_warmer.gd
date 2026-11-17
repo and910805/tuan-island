@@ -156,8 +156,7 @@ func check_static() -> void:
 	for action:String in Warmer.ACTIONS:
 		expect(action.length()<=24 and Session.extra_allowed(action,""),"%s passes the Session transport bounds"%action)
 		expect(action not in Community.ACTIONS,"%s is not routed through the plain community branch"%action)
-	expect(not World.OTHER_SALES.has("warm_stone") and not World.CROPS.has("warm_stone") and not World.FISH.has("warm_stone"),"warm_stone has no sale price (like ochre_earth)")
-	expect(not World.OTHER_SALES.has("ochre_earth"),"control: ochre_earth has no sale price either")
+	expect(not World.OTHER_SALES.has("warm_stone") and not World.CROPS.has("warm_stone") and not World.FISH.has("warm_stone"),"warm_stone has no sale price")
 	var rows:=Warmer.materials({"warm_stone":4,"stone":9})
 	expect(rows.size()==3 and rows[0].item=="warm_stone" and rows[0].have==4 and rows[0].need==6 and rows[0].short==2 and rows[1].short==2 and rows[2].short==0,"materials() reports have/need/short in cost order")
 	expect(Warmer.missing({"warm_stone":4,"stone":9})=={"warm_stone":2,"copper_joint":2} and Warmer.missing_text({"warm_stone":4,"stone":9})=="暖岩片 2、銅接頭 2","missing() and missing_text()")

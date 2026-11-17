@@ -34,6 +34,7 @@ func run()->void:
 	test_unrelated_and_zero_preserved()
 	test_alias_isolation()
 	test_json_whole_floats()
+	test_string_name_keys()
 	test_lexical_determinism()
 	test_invalid_inputs()
 	test_property(20261114,20)
@@ -233,6 +234,12 @@ func test_lexical_determinism()->void:
 	var s:=M.plan({"zest":3,"apple":3},{},{})
 	expect(s.get("ok")==false and (s.missing as Dictionary).keys()==["apple","zest"],"missing listed in lexical order")
 
+func test_string_name_keys()->void:
+	var result:=M.plan({&"wheat":3},{"wheat":1},{&"wheat":4})
+	expect_ok(result,{"wheat":1},{"wheat":2},{"wheat":0},{"wheat":2},{"wheat":3},"StringName recipe and chest keys normalize")
+	result=M.plan({"wheat":3},{&"wheat":2},{"wheat":4})
+	expect_ok(result,{"wheat":2},{"wheat":1},{"wheat":0},{"wheat":3},{"wheat":3},"StringName backpack keys normalize")
+
 func test_invalid_inputs()->void:
 	var bad_counts:Array=[NAN,INF,-INF,1.5,0.25,-1,-1.0,true,false,"2",null,CAP+1,float(CAP)+1.0,[1],{}]
 	for v:Variant in bad_counts:
@@ -243,7 +250,7 @@ func test_invalid_inputs()->void:
 	expect_invalid(M.plan({"wheat":0.0},{"wheat":9}),M.MSG_COST,"cost zero float")
 	expect_invalid(M.plan({"wheat":1,"salt":0},{"wheat":9}),M.MSG_COST,"cost one zero entry")
 	var long_key:="k".repeat(65)
-	var bad_keys:Array=["",long_key,7,1.0,&"wheat",null]
+	var bad_keys:Array=["",long_key,7,1.0,null]
 	for k:Variant in bad_keys:
 		var d:={}
 		d[k]=1

@@ -46,7 +46,7 @@ const T_CELL:=Vector2i(42,34)
 const R_CELL:=Vector2i(41,35)
 const LABEL:="earned actions, accelerated in-process clock"
 const MSG_HOE:="農田準備好了，接著選種子播種"
-const MSG_WATER:="水分充足，幼苗會慢慢長大"
+const MSG_WATER:="水分充足"
 const MSG_DORMANT:="作物正在休眠，等到適合的季節會繼續生長。"
 const MSG_POOR:="鈴幣不足，可以先把收成帶來出售"
 const MSG_NO_CROP:="這裡沒有作物"
@@ -583,11 +583,21 @@ func play(action:String,target:Vector2i,extra:String,delta:Dictionary,coin_delta
 	if failed:return {"ok":false,"message":"skipped"}
 	var before:Dictionary=bag().duplicate(true)
 	var coins:int=int(person().coins)
+	var expected:=delta.duplicate()
+	var expected_message:=message
+	if action=="harvest":
+		var plot:Dictionary=world.state.crops[World.key(target)]
+		var quality:=World.quality_crop(plot,World.has_crop_guarantee(person()))
+		if not quality.is_empty():
+			expected[quality]=1
+			var separator:=message.find("。")+1
+			expected_message=message.left(separator)+"品質收成 · %s +1。"%World.NAMES[quality]+message.substr(separator)
 	actions+=1
 	var result:Dictionary=world.act(tok,"season-dormancy-%d"%(actions+rejections),action,target,extra)
 	if not expect(bool(result.ok),"%s %s at %s succeeds (got '%s')"%[action,extra,str(target),str(result.message)]):return result
-	expect(str(result.message)==message,"%s message '%s' (got '%s')"%[action,message,str(result.message)])
-	expect_delta(before,delta,"%s %s at %s"%[action,extra,str(target)])
+	var message_matches:=str(result.message).begins_with(expected_message) if action=="water" else str(result.message)==expected_message
+	expect(message_matches,"%s message '%s' (got '%s')"%[action,expected_message,str(result.message)])
+	expect_delta(before,expected,"%s %s at %s"%[action,extra,str(target)])
 	expect(int(person().coins)==coins+coin_delta,"%s coins %d -> %d (want %+d)"%[action,coins,int(person().coins),coin_delta])
 	if coin_delta!=0:
 		coins_net+=coin_delta

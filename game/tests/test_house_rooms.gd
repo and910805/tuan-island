@@ -1,6 +1,7 @@
 extends SceneTree
 const World=preload("res://scripts/world.gd")
 const Rooms=preload("res://scripts/house_rooms.gd")
+const Session=preload("res://scripts/session.gd")
 var checks:=0
 var failures:=0
 const DOOR:=Vector2i(11,9)
@@ -141,5 +142,103 @@ func run() -> void:
 		for x in range(30):big.ground[k(Vector2i(x,y))]={"type":"floor","owner":"a"}
 	r=Rooms.inspect(big,Vector2i(15,15))
 	expect(r.found and not r.complete and r.area==Rooms.MAX_CELLS,"oversized component capped")
+	check_visit_permissions()
+	check_outdoor_visit_permissions()
 	print("HOUSE_ROOMS_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(0 if failures==0 else 1)
+
+func check_visit_permissions() -> void:
+	var world:=World.new()
+	world.add_player("alice","Owner")
+	world.add_player("bob","Visitor")
+	var offset:=Vector2i(18,12)
+	var doorway:=DOOR+offset
+	var inside:=INNER+offset
+	var approach:=Vector2(doorway)+Vector2(0.5,-0.5)
+	var fixture:=house()
+	for layer in ["ground","objects"]:
+		for tile in fixture[layer]:
+			var point:=World.cell(tile)+offset
+			world.state[layer][World.key(point)]=fixture[layer][tile]
+			if not World.base_resource(point).is_empty():world.state.removed[World.key(point)]=true
+	if not World.base_resource(doorway+Vector2i.UP).is_empty():
+		world.state.removed[World.key(doorway+Vector2i.UP)]=true
+	world.state.players.alice.x=inside.x+0.5
+	world.state.players.alice.y=inside.y+1.5
+	world.state.players.bob.x=approach.x
+	world.state.players.bob.y=approach.y
+	var path:=OS.get_environment("TEMP").path_join("visit-room-"+str(Time.get_ticks_usec())+".json")
+	world.save_path=path
+	expect(not world.act("bob","visitor-policy","room_visit_access",inside,"owner").ok,"Visitor cannot change room access")
+	expect(world.act("alice","open-door","door",doorway).ok,"Shared room door opens normally")
+	for step in 40:world.move_player("bob",Vector2.DOWN,1.0/60.0)
+	expect(world.state.players.bob.y>inside.y,"Open room admits visitors")
+	expect(world.act("alice","owner-only","room_visit_access",inside,"owner").ok,"Owner can restrict own enclosed room")
+	expect(world.load_world(path) and world.state.ground[World.key(inside)].owner_visit,"Room setting survives reload")
+	for step in 40:world.move_player("bob",Vector2.UP,1.0/60.0)
+	expect(world.state.players.bob.y<doorway.y,"Already present visitor can leave after room becomes private")
+	for step in 40:world.move_player("bob",Vector2.DOWN,1.0/60.0)
+	expect(world.state.players.bob.y<inside.y,"Visitor cannot walk back in through the open door")
+	var inner_pos:=Vector2(inside)+Vector2(0.5,0.5)
+	expect(world.safe_arrival(inner_pos,"bob")!=inner_pos and world.safe_arrival(inner_pos,"alice")==inner_pos,"Arrival respects room access with no owner restriction")
+	world.add_player("third","Visitor",approach)
+	var guest_public:="bob".sha256_text().left(16)
+	expect(not world.act("alice","fake-guest","room_visit_access",inside,"friend:fake").ok,"Unknown visitor reference is rejected")
+	expect(world.act("alice","invite-guest","room_visit_access",inside,"friend:"+guest_public).ok
+		and world.load_world(path),"Named guest grant persists after loading")
+	var floor_key:=World.key(inside)
+	var session:=Session.new()
+	session.world=world
+	expect(session.public_state("home","alice").ground[floor_key].visit_guest==guest_public
+		and session.public_state("home","bob").ground[floor_key].visit_guest==guest_public
+		and not session.public_state("home","third").ground[floor_key].has("visit_guest"),
+		"Only owner and named guest receive projected visitor reference")
+	session.free()
+	for step in 40:
+		world.move_player("bob",Vector2.DOWN,1.0/60.0)
+		world.move_player("third",Vector2.DOWN,1.0/60.0)
+	expect(world.state.players.bob.y>inside.y and world.state.players.third.y<inside.y,"Only designated visitor enters despite another visitor with same name")
+	expect(world.act("alice","revoke-guest","room_visit_access",inside,"owner").ok
+		and not world.state.ground[floor_key].has("visit_guest"),"Owner can revoke just the named visitor")
+	for step in 70:world.move_player("bob",Vector2.UP,1.0/60.0)
+	expect(world.state.players.bob.y<doorway.y,"Revoked visitor can still leave")
+	expect(world.act("alice","reopen-room","room_visit_access",inside,"island").ok,"Owner reopens visitation")
+	for step in 40:world.move_player("third",Vector2.DOWN,1.0/60.0)
+	expect(world.state.players.third.y>inside.y,"Any visitor can enter after reopening")
+	for file in [path,path+".bak"]:
+		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)
+
+func check_outdoor_visit_permissions() -> void:
+	var world:=World.new()
+	world.add_player("alice","Owner")
+	world.add_player("bob","Visitor")
+	var site:=Vector2i(27,21)
+	var second:=site+Vector2i.RIGHT
+	for tile in [site,second,site+Vector2i.LEFT]:
+		if not World.base_resource(tile).is_empty():world.state.removed[World.key(tile)]=true
+	for tile in [site,second]:
+		world.state.ground[World.key(tile)]={"type":"floor","owner":"alice","items":{}}
+	world.state.players.alice.x=site.x+0.5
+	world.state.players.alice.y=site.y+0.5
+	world.state.players.bob.x=site.x-0.5
+	world.state.players.bob.y=site.y+0.5
+	var room:=World.ROOM_ENCLOSURE.analyze(world.state,site)
+	expect(not room.sealed and room.area==2,"Outdoor visit fixture has two connected floor tiles and no walls")
+	expect(world.act("alice","outdoor-private","room_visit_access",site,"owner").ok and world.state.ground[World.key(second)].owner_visit,"Outdoor restriction includes the connected owner's deck")
+	for step in 20:world.move_player("bob",Vector2.RIGHT,1.0/60.0)
+	expect(world.state.players.bob.x<site.x,"Outdoor boundary stops uninvited visitor")
+	expect(world.act("alice","outdoor-public","room_visit_access",second,"island").ok,"Owner reopens the whole connected outdoor deck")
+	for step in 20:world.move_player("bob",Vector2.RIGHT,1.0/60.0)
+	expect(world.state.players.bob.x>site.x,"Visitor walks onto reopened outdoor area")
+	world.state.ground[World.key(second)].owner="bob"
+	expect(not world.act("alice","outdoor-mixed","room_visit_access",site,"owner").ok and not world.state.ground[World.key(site)].has("owner_visit"),"Mixed ownership rejects the entire change")
+	var public_cell:=World.PUBLIC_BUILD_PLOT.position
+	world.state.players.alice.x=public_cell.x+0.5
+	world.state.players.alice.y=public_cell.y+0.5
+	world.state.ground[World.key(public_cell)]={"type":"floor","owner":"alice","items":{}}
+	expect(not world.act("alice","private-public","room_visit_access",public_cell,"owner").ok,"Public construction ground cannot be marked private")
+	for x in range(11,37):
+		world.state.ground[World.key(Vector2i(x,15))]={"type":"floor","owner":"alice","items":{}}
+	world.state.players.alice.x=20.5
+	world.state.players.alice.y=15.5
+	expect(not world.act("alice","too-large","room_visit_access",Vector2i(20,15),"owner").ok,"Outdoor deck over 25 tiles cannot be restricted")

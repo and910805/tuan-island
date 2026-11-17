@@ -1,5 +1,8 @@
 extends RefCounted
 
+const Forestry=preload("res://scripts/forestry.gd")
+const MineDrill=preload("res://scripts/mine_drill.gd")
+const Waterworks=preload("res://scripts/waterworks.gd")
 const INTERVAL:=2.0
 const BELT_LIMIT:=128
 const FILTERS:=["wood","fiber","resin","plank","charcoal","copper_ore","copper_joint","stone","gold_ore","wheat","flour"]
@@ -51,6 +54,30 @@ static func edit(objects:Dictionary,planned:Dictionary,key:String) -> Dictionary
 	if not planned.has(key):planned[key]=objects[key].duplicate(true)
 	return planned[key]
 
+static func delivery_block(belt:Dictionary,dest:Dictionary,reserved:Dictionary) -> String:
+	if dest.is_empty():return "前方未接設備"
+	if dest.get("owner","")!=belt.get("owner",""):return "前方是其他島民的設備"
+	var item:String=belt.get("filter","wood")
+	match dest.type:
+		"conveyor":
+			if not dest.enabled:return "前方輸送帶已停用"
+			if dest.filter!=item:return "前方篩選不同"
+			if not dest.items.is_empty() or not reserved.items.is_empty():return "前方輸送帶有貨"
+		"private_chest":
+			if int(reserved.items.get(item,0))>=1000000000:return "前方儲物箱已滿"
+		"forester","mine_drill":
+			if item!="charcoal":return "前方只收木炭"
+			var limit:=Forestry.CAPACITY if dest.type=="forester" else MineDrill.FUEL_CAP
+			if int(reserved.fuel)>=limit:return "前方燃料槽已滿"
+		"waterworks":
+			if not Waterworks.INPUTS.has(item):return "前方不收這種材料"
+			if int(reserved.input[item])>=Waterworks.INPUT_CAP:return "前方進料槽已滿"
+		"sawmill","charcoal_kiln","mill":
+			if item!=input_item(str(dest.type)):return "前方不收這種材料"
+			if int(reserved.get(input_field(str(dest.type)),0))>=PROCESS_INPUT_CAP:return "前方進料槽已滿"
+		_:return "前方設備不收貨"
+	return ""
+
 static func plan(world,now:float,transfer:bool) -> Dictionary:
 	var objects:Dictionary=world.state.objects
 	var changes:Dictionary={}
@@ -67,27 +94,21 @@ static func plan(world,now:float,transfer:bool) -> Dictionary:
 			if int(belt.items.get(item,0))>0:
 				var front:String=world.key(tile+offset)
 				var dest:Dictionary=objects.get(front,{})
-				if dest.is_empty() or dest.owner!=belt.owner:continue
 				var reserved:Dictionary=changes.get(front,dest)
+				if not delivery_block(belt,dest,reserved).is_empty():continue
 				match dest.type:
 					"conveyor":
-						if not dest.enabled or dest.filter!=item or not dest.items.is_empty() or not reserved.items.is_empty():continue
 						edit(objects,changes,front).items[item]=1
 					"private_chest":
-						if int(reserved.items.get(item,0))>=1000000000:continue
 						edit(objects,changes,front).items[item]=int(reserved.items.get(item,0))+1
 					"forester":
-						if item!="charcoal" or int(reserved.fuel)>=world.FORESTRY.CAPACITY:continue
 						edit(objects,changes,front).fuel=int(reserved.fuel)+1
 					"mine_drill":
-						if item!="charcoal" or int(reserved.fuel)>=world.MINE_DRILL.FUEL_CAP:continue
 						edit(objects,changes,front).fuel=int(reserved.fuel)+1
 					"waterworks":
-						if not world.WATERWORKS.INPUTS.has(item) or int(reserved.input[item])>=world.WATERWORKS.INPUT_CAP:continue
 						edit(objects,changes,front).input[item]=int(reserved.input[item])+1
 					"sawmill","charcoal_kiln","mill":
 						var field:=input_field(str(dest.type))
-						if item!=input_item(str(dest.type)) or int(reserved.get(field,0))>=PROCESS_INPUT_CAP:continue
 						var station_edit:=edit(objects,changes,front)
 						station_edit[field]=int(reserved.get(field,0))+1
 					_:continue

@@ -34,6 +34,35 @@ func _initialize() -> void:
 	expect(reloaded.admit("third", "Sam", second.code), "New code joins third seat")
 	expect(reloaded.read("third").character != reloaded.read("owner").character, "Identical names use separate characters")
 	expect(reloaded.admit("third") and reloaded.read("third").members.size() == 3, "Member reconnects without code and takes no extra seat")
+	var guest_id := Membership.management_id("legacy-peer")
+	var third_id := Membership.management_id(reloaded.read("third").character)
+	expect(reloaded.read("owner").members.any(func(row):return row.get("management_id") == guest_id) and reloaded.read("third").members.all(func(row):return not row.has("management_id")), "Management handles are scoped to the caller")
+	expect(not reloaded.set_admin("guest", third_id, true) and not reloaded.set_admin("owner", Membership.management_id("legacy-owner"), false), "Member cannot promote and owner role is protected")
+	expect(reloaded.set_admin("owner", guest_id, true) and reloaded.open(file) and reloaded.role("guest") == "admin", "Owner grant survives restart")
+	expect(reloaded.managed_account("guest", third_id) == "third" and reloaded.managed_account("guest", Membership.management_id("legacy-owner")).is_empty(), "Admin can moderate a member and cannot target owner")
+	expect(not reloaded.rotate("guest").ok and not reloaded.set_admin("guest", third_id, true), "Admin cannot alter invitations or assign roles")
+	var published := reloaded.publish_snapshot([])
+	expect(published.members.any(func(row):return row.account_id == "guest" and row.role == "admin" and not row.has("management_id")), "Directory receives role without moderation handle")
+	expect(typeof(published.invite.generation)==TYPE_INT and published.invite.generation==second.generation
+		and typeof(published.invite.expires)==TYPE_INT and published.invite.expires==second.expires,
+		"Directory invitation fields retain their values and integer wire types after reopening")
+	var third_character: String = reloaded.read("third").character
+	expect(reloaded.set_blocked("third",guest_id,true).is_empty(), "Member cannot block another account")
+	expect(reloaded.set_blocked("guest",third_id,true) == "third" and reloaded.open(file), "Administrator block survives roster reload")
+	expect(reloaded.read("third").is_empty() and not reloaded.admit("third","Renamed",second.code)
+		and reloaded.plan_admission("third","Renamed",second.code).code == "WORLD_BLOCKED", "Blocked account cannot bypass block with a valid invite or name change")
+	var writable_path := reloaded.path
+	reloaded.path = writable_path.path_join("missing").path_join("roster")
+	expect(reloaded.set_blocked("guest",third_id,false).is_empty() and reloaded.is_blocked("third"), "Failed write leaves block effective")
+	reloaded.path = writable_path
+	expect(reloaded.set_blocked("guest",third_id,false) == "third" and reloaded.open(file)
+		and reloaded.plan_admission("third","Renamed").character == third_character, "Unblock restores original character and requires no invitation")
+	expect(reloaded.set_admin("owner", guest_id, false) and reloaded.open(file) and reloaded.managed_account("guest", third_id).is_empty(), "Revoke survives restart and removes moderation access")
+	var history: Array = reloaded.read("owner").management_history
+	expect(history.map(func(event):return event.action) == ["invite_rotate","invite_rotate","admin_grant","block","unblock","admin_revoke"], "Successful management changes persist in order; denied actions and failed saves leave no entries")
+	expect(history[3].actor == "Renamed" and history[3].target == "Sam" and not reloaded.read("guest").has("management_history"), "Only owner receives named management history")
+	var stored_audit: String = JSON.stringify(JSON.parse_string(FileAccess.get_file_as_string(file)).audit)
+	expect(not stored_audit.contains(second.code) and not stored_audit.contains(second.code.sha256_text()) and not stored_audit.contains(third_character), "Audit excludes invite credentials and character credentials")
 	expect(reloaded.admit("fourth", "Fourth", second.code), "Fourth seat works")
 	for i in range(5,9):
 		expect(reloaded.admit("member-%d"%i, "Member %d"%i, second.code), "Seat %d works"%i)

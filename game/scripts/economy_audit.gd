@@ -53,6 +53,8 @@ const Bond=preload("res://scripts/resident_bond.gd")
 const COIN:="@coin"
 const TIME:="@time"
 const HOIST:="@hoist"
+const GARDEN_DONE:="@flower_garden"
+const WORKSHOP_DONE:="@workshop_upgrade"
 const PICK:="reinforced_pick"
 const EPS:=0.000001
 ## certificate() 給每個真實物品的最低價值：讓「沒有價目的東西互相越換越多」也會被抓到。
@@ -89,7 +91,7 @@ static func _add(target:Dictionary,item:String,amount:int) -> void:
 	target[item]=int(target.get(item,0))+amount
 
 static func sale_table() -> Dictionary:
-	return Shipping.prices(World.CROPS,World.FISH,World.OTHER_SALES)
+	return Shipping.prices(World.CROPS,World.FISH,World.OTHER_SALES,true)
 
 ## 一個物品賣給系統最多能拿到的鈴幣：出貨箱價，或市集攤位在主題日的價（×1.3 進位）。
 static func best_sale(item:String,prices:Dictionary={}) -> int:
@@ -128,6 +130,7 @@ static func conversions() -> Array:
 	for id:String in Industry.PROCESS:
 		var recipe:Dictionary=Industry.PROCESS[id]
 		list.append(conv("process:"+id,"process",recipe.ingredients,{id:int(recipe.yield)},[built(str(recipe.station))]))
+		if id in World.INDUSTRY.METAL_RECIPES:list.append(conv("smelter:"+id,"process",recipe.ingredients,{id:int(recipe.yield)},[built(World.INDUSTRY.SMELTER)]))
 	var seed_recipes:Dictionary=SeedMaker.recipes(World.CROPS)
 	for id:String in seed_recipes:
 		var recipe:Dictionary=seed_recipes[id]
@@ -137,8 +140,24 @@ static func conversions() -> Array:
 		var cost:=build_cost(kind)
 		var needs:=[]
 		if kind=="glass_furnace":needs.append(HOIST)
+		if kind==Industry.DYE_TABLE:needs.append(GARDEN_DONE)
+		if kind==Industry.ASSEMBLY_TABLE:needs.append(WORKSHOP_DONE)
 		list.append(conv("build:"+kind,"build",cost,{built(kind):1},needs))
 		list.append(conv("remove:"+kind,"remove",{built(kind):1},cost))
+	# Kit and metal models return different materials, so each has its own node.
+	var kit_cost:=World.KIT_SPRINKLER_COST.duplicate()
+	kit_cost.erase("name")
+	var kit_device:=built("sprinkler_kit")
+	list.append(conv("build:sprinkler_kit","build",kit_cost,{kit_device:1}))
+	list.append(conv("remove:sprinkler_kit","remove",{kit_device:1},kit_cost))
+	list.append(conv("workshop_upgrade","unlock",{},{WORKSHOP_DONE:1},[built("bench")],true))
+	for kind:String in Industry.assembly_items():
+		var kit:String=Industry.assembly_items()[kind]
+		var station:=built(kit)
+		list.append(conv("assemble:"+kit,"craft",World.assembly_recipe(kind),{kit:1},[built(Industry.ASSEMBLY_TABLE)]))
+		if kind==Industry.ANIMAL_COLLECTOR:continue
+		list.append(conv("build:"+kit,"build",{kit:1},{station:1}))
+		list.append(conv("remove:"+kit,"remove",{station:1},{kit:1}))
 	# --- 用鈴幣買 ---
 	for kind:String in World.CROPS:
 		list.append(conv("buy:"+kind+"_seed","buy",{COIN:int(World.CROPS[kind].seed_price)},{kind+"_seed":1}))
@@ -161,7 +180,7 @@ static func conversions() -> Array:
 			list.append(conv("tea:sell_%s_%s"%[style,jar],"tea",{tea:1,jar:1},{COIN:Tea.price_for(style,"jar"),str(Tea.RETURN_ITEM[jar]):1}))
 	# --- 田尾留種與染料（flower_nursery.gd）---
 	for kind:String in Flower.SEEDS:
-		list.append(conv("flower_save:"+kind,"flower",{kind:1},{str(Flower.SEEDS[kind]):1}))
+		list.append(conv("flower_save:"+kind,"flower",{kind:Flower.save_flower_cost(kind)},{str(Flower.SEEDS[kind]):1}))
 	list.append(conv("flower_dye","flower",Flower.DYE.ingredients,{str(Flower.DYE.item):int(Flower.DYE["yield"])}))
 	# --- 其他不靠時間的轉換 ---
 	list.append(conv("lanyang_nursery","other",Lanyang.NURSERY_COST,{"sapling":int(Lanyang.NURSERY_YIELD)}))
@@ -175,6 +194,7 @@ static func conversions() -> Array:
 	list.append(conv("mine_hoist","unlock",Mines.HOIST_COST,{HOIST:1},[mine(int(Mines.HOIST_DEPTH))]))
 	# --- 要花時間的來源（world.gd 採集量為手抄）---
 	list.append(conv("gather:tree","source",{},{"wood":6,"fiber":2,"sapling":1,"resin":1},[],true))
+	list.append(conv("gather:planted_tree","source",{"sapling":1},{"wood":6,"fiber":2,"sapling":1,"resin":1,"hardwood":World.HARDWOOD_YIELD},[],true))
 	list.append(conv("gather:rock","source",{},{"stone":5},[],true))
 	list.append(conv("gather:grass","source",{},{"fiber":4},[],true))
 	list.append(conv("gather:quarry","source",{},{"stone":6},[],true))
@@ -197,15 +217,27 @@ static func conversions() -> Array:
 		var crop:Dictionary=World.CROPS[kind]
 		# 星夜菇只能種在金瓜石第五層的洞內菌床（world.gd planting_problem，手抄）。
 		var farm_needs:=[mine(5)] if kind=="star_mushroom" else []
-		list.append(conv("farm:"+kind,"source",{kind+"_seed":1},{kind:int(crop.yield)*int(crop.get("cycles",1))},farm_needs,true))
+		var yield_per_seed:=int(crop.yield)*int(crop.get("cycles",1))
+		list.append(conv("farm:"+kind,"source",{kind+"_seed":1},{kind:yield_per_seed},farm_needs,true))
+		var cared:=World.CROP_CATALOG.CARE_TARGET
+		list.append(conv("farm_quality:"+kind,"source",{kind+"_seed":cared},
+			{kind:yield_per_seed*cared,World.CROP_CATALOG.QUALITY_PREFIX+kind:1},farm_needs,true))
 	list.append(conv("chicken","source",{"feed":1},{"egg":1},[],true))
+	list.append(conv("chicken_quality","source",{"feed":Livestock.BONUS_INTERVAL},
+		{"egg":Livestock.BONUS_INTERVAL,"quality_egg":1},[],true))
 	for animal:String in Livestock.ANIMALS:
-		list.append(conv("livestock:"+animal,"source",{"feed":1},{str(Livestock.ANIMALS[animal].item):1},[],true))
+		var product:=str(Livestock.ANIMALS[animal].item)
+		list.append(conv("livestock:"+animal,"source",{"feed":1},{product:1},[],true))
+		list.append(conv("livestock_quality:"+animal,"source",{"feed":Livestock.BONUS_INTERVAL},
+			{product:Livestock.BONUS_INTERVAL,"quality_"+product:1},[],true))
 	list.append(conv("tea:pick","source",{},{"tea_leaf":2},[],true))
 	list.append(conv("tea:potter_gift","source",{},{"clay":2},[],true))
 	list.append(conv("salt_pan","source",{},{"sea_salt":int(Salt.YIELD)},[],true))
 	list.append(conv("flower_starter","source",{},Flower.STARTER,[],true))
 	list.append(conv("shore:seaweed","source",{},{"seaweed":1},[],World.SEAWEED_REGROW_SECONDS>0.0))
+	list.append(conv("shore:wangan_shell","source",{},{World.WANGAN_COAST.SHELL_ITEM:1},[],true))
+	list.append(conv("woodland:acorn","source",{},{World.Squirrel.ACORN:1},[],true))
+	list.append(conv("woodland:ornament","other",{World.Squirrel.ACORN:World.Squirrel.COST},{World.Squirrel.KIT:1}))
 	list.append(conv("mine_survey","source",{},{"gold_sample":1},[],true))
 	list.append(conv("starter_kit","source",ChapterOne.STARTER_COST,ChapterOne.STARTER_ITEMS,[],true))
 	# --- 任務、訂單、委託（一次性或每日一次）---
@@ -222,6 +254,7 @@ static func conversions() -> Array:
 	for order:Dictionary in Village.ORDERS:
 		list.append(conv("order:"+str(order.id),"quest",order.items,{COIN:int(order.coins)},[],true))
 	list.append(conv("flower_order","quest",Flower.ORDER,{COIN:int(Flower.ORDER_PAY)},[],true))
+	list.append(conv("flower_garden","quest",Flower.GARDEN_NEEDS,{GARDEN_DONE:1},[],true))
 	list.append(conv("salt_order","quest",Salt.ORDER,{COIN:int(Salt.ORDER_PAY)},[],true))
 	for id:String in Outlying.DEFS:
 		list.append(conv("outlying:"+id,"quest",Outlying.DEFS[id].needs,{COIN:int(Outlying.DEFS[id].reward_coins)},[],true))
@@ -243,7 +276,9 @@ static func demands() -> Array:
 	list.append({"id":"bridge_fund","items":World.FUND_MATERIAL_PRICES})
 	list.append({"id":"livestock_collector","items":Livestock.COLLECTOR_COST})
 	list.append({"id":"install_egg_basket","items":{"egg_basket":1}})
+	list.append({"id":"collector_bind","items":{"egg_basket":1}})
 	list.append({"id":"eat_rice_ball","items":{"star_rice_ball":1}})
+	list.append({"id":"drink_ginger_tea","items":{"ginger_tea":1}})
 	list.append({"id":"table_warmer","items":TableWarmer.INSTALL_COST})
 	list.append({"id":"lanyang_repair","items":Lanyang.REPAIR_COST})
 	list.append({"id":"station_repair","items":StationLife.REPAIR_COST})
@@ -253,6 +288,8 @@ static func demands() -> Array:
 	for slot:String in Salt.KITS:salt_kits[str(Salt.KITS[slot])]=1
 	list.append({"id":"salt_machines","items":salt_kits})
 	list.append({"id":"flower_garden","items":Flower.GARDEN_NEEDS})
+	for pigment:String in Industry.FURNITURE_DYES:
+		list.append({"id":"dye_furniture:"+pigment,"items":{pigment:1}})
 	list.append({"id":"public_kitchen","items":PublicKitchen.REQUIREMENTS})
 	list.append({"id":"jinguashi_revisit","items":JinguashiRevisit.AMOUNTS})
 	list.append({"id":"tea_revisit","items":{"tea_light":1,"tea_deep":1}})
@@ -260,6 +297,8 @@ static func demands() -> Array:
 	var gifts:={}
 	for item:String in Bond.COMMON_GIFTS:gifts[item]=1
 	list.append({"id":"resident_gifts","items":gifts})
+	list.append({"id":"aru_bench_repair","items":World.RESIDENT_GOALS.cost(World.RESIDENT_GOALS.goal("aru",2),"")})
+	list.append({"id":"lingpopo_memorial_bell","items":World.RESIDENT_GOALS.cost(World.RESIDENT_GOALS.goal("lingpopo",3),"soup")})
 	return list
 
 ## 從 start（物品 ID 陣列）出發，反覆套用拿得到材料與解鎖的轉換，直到不再增加。
@@ -376,7 +415,7 @@ static func certificate_gaps(convs:Array,value:Dictionary) -> Array:
 	return gaps
 
 ## 一包種子種到底的收成，全部換回種子會有幾包：{種子:[{"via","ratio"}]}。
-## 種子機照「整株收成換一包」設計，比值是 1；田尾留種台是一朵換一包。
+## 種子機與田尾留種台都使用整株收成換一包。
 static func seed_returns() -> Dictionary:
 	var result:={}
 	var machine:Dictionary=SeedMaker.recipes(World.CROPS)
@@ -388,7 +427,7 @@ static func seed_returns() -> Dictionary:
 		if machine.has(seed_item):
 			var recipe:Dictionary=machine[seed_item]
 			routes.append({"via":"seed_maker","ratio":float(lifetime)*float(recipe.yield)/float(recipe.ingredients[kind])})
-		if Flower.SEEDS.has(kind):routes.append({"via":"flower_save","ratio":float(lifetime)})
+		if Flower.SEEDS.has(kind):routes.append({"via":"flower_save","ratio":float(lifetime)/Flower.save_flower_cost(kind)})
 		result[seed_item]=routes
 	return result
 

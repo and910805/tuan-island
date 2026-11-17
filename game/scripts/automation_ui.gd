@@ -5,18 +5,20 @@ const Tasks = preload("res://scripts/life_ui_tasks.gd")
 const ItemArt = preload("res://scripts/inventory_item_art.gd")
 const PixelTheme = preload("res://scripts/inventory_pixel_theme.gd")
 const SourcePicker = preload("res://scripts/material_source_ui.gd")
+const ProcessingUI=preload("res://scripts/processing_queue_ui.gd")
 ## Player-facing "what is this for" guidance for every World.CRAFT recipe.
-## kind: place (kit consumed 1:1 by World.BUILD[build]), collection (consumed by
+## kind: place (standard 1:1 kit), alternate_place (fallback kit), collection (consumed by
 ## World.BUILD[build] as decoration), part (ingredient of other CRAFT recipes),
 ## key_tool (enables a world action), tool (portable equipment, see PORTABLE_TOOLS).
 ## tab is the BuildFolio tab that lists `build`. Tool text takes binding labels for
 ## `keys` so rebinding stays accurate. test_workbench_guidance.gd checks every
 ## field against the real recipe, build and device data.
 const GUIDE := {
+	"woodwork_parts":{"kind":"part","used_in_build":["loom","assembly_table","seed_maker","large_sprinkler"],"feeds":[],"text":"用木板與硬木組裝的接榫，可組裝織布機、裝配桌、種子機及大型灑水器。"},
 	"egg_basket":{"kind":"animal_facility","text":"帶著收集籃到渡口找糯米雞，在照料面板裝設。籃子可放六顆雞蛋，裝滿後先領取再餵食。"},
-	"supply_box_kit":{"kind":"place","build":"supply_box","tab":"生活","text":"探索六級解鎖。到建造目錄「生活」放置，清空後可拆回背包。"},
+	"supply_box_kit":{"kind":"place","build":"supply_box","tab":"生活","text":"探索六級或完成波波的休息站事件解鎖。到建造目錄「生活」放置，清空後可拆回背包。"},
 	"glass":{"kind":"collection","build":"greenhouse_roof","tab":"基礎",
-		"text":"金瓜石五層採晶砂。建造目錄「基礎」用玻璃 2、銅接頭 1 在自家農田蓋溫室玻璃棚。"},
+		"text":"晶砂在望安星砂海岸或金瓜石第五層。建造目錄「基礎」用玻璃 2、銅接頭 1 搭溫室玻璃棚。"},
 	"salt_wheel_kit": {"kind": "salt_facility",
 		"text": "在北門親手收過一次鹽後可製作。到自己照顧的鹽田操作水車座，裝上水車後會自動引入海水。"},
 	"salt_rake_kit": {"kind": "salt_facility",
@@ -29,10 +31,10 @@ const GUIDE := {
 		"text": "開通第五層後可製作。建造目錄「生活」放在礦層指定礦點旁，裝木炭自動採礦。"},
 	"waterworks_kit": {"kind": "place", "build": "waterworks", "tab": "生活",
 		"text": "第三層抽水工程完成後可製作。建造目錄「生活」放置並接水管，把銅礦與木材加工成銅接頭。"},
-	"copper_joint": {"kind": "part", "used_in_build": ["loom", "jam_pot", "glass_furnace", "seed_maker", "greenhouse_roof", "medium_sprinkler"], "feeds": ["mine_drill_kit", "waterworks_kit", "sprinkler_kit", "pipe_kit", "pump_kit", "forester_kit", "conveyor_kit", "tiller", "seeder", "harvester", "mill_kit", "salt_wheel_kit", "salt_rake_kit", "diversion_gate_kit", "water_tower_kit"],
-		"text": "果醬鍋、織布機、玻璃爐、種子機、玻璃棚、灑水器與鹽田機具的零件。"},
-	"sprinkler_kit": {"kind": "place", "build": "sprinkler", "tab": "生活",
-		"text": "建造目錄「生活」放在田邊，替上下左右自家作物澆水；手動補水或接水管。"},
+	"copper_joint": {"kind": "part", "used_in_build": ["greenhouse_roof", "festival_memorial_bell"], "feeds": ["mine_drill_kit", "waterworks_kit", "sprinkler_kit", "pipe_kit", "pump_kit", "forester_kit", "conveyor_kit", "tiller", "seeder", "harvester", "mill_kit", "salt_wheel_kit", "salt_rake_kit", "diversion_gate_kit", "water_tower_kit"],
+		"text": "玻璃棚、灑水器與鹽田機具的零件。"},
+	"sprinkler_kit": {"kind": "alternate_place", "build": "sprinkler", "tab": "生活",
+		"text": "建造目錄「生活」可用這組零件放置小型灑水器，替上下左右自家作物澆水；手動補水或接水管。"},
 	"pipe_kit": {"kind": "place", "build": "water_pipe", "tab": "生活",
 		"text": "建造目錄「生活」鋪設，連接自己的河水泵、儲水桶、灑水器與水力加工台。"},
 	"tank_kit": {"kind": "place", "build": "water_tank", "tab": "生活",
@@ -91,9 +93,11 @@ func open(app, title: String) -> VBoxContainer:
 	update_view = Callable()
 	return body
 
-func workbench(app, cell: Vector2i) -> void:
+func workbench(app, cell: Vector2i,initial_recipe:String="",return_trail:Array[String]=[]) -> void:
 	var body := open(app, "工作台")
 	modal.set_meta("life_modal_layout", "automation_workbench")
+	if is_instance_valid(app.modal_feedback):
+		app.modal_feedback.text="手把 X 前往製作 · B 返回"
 	var layout := HBoxContainer.new()
 	layout.add_theme_constant_override("separation", 12)
 	body.add_child(layout)
@@ -109,14 +113,20 @@ func workbench(app, cell: Vector2i) -> void:
 	scroll.add_child(choices)
 	var ids := World.CRAFT.keys()
 	var selected := {"id": ids[0]}
+	var source_choice:={"id":""}
 	var entries: Dictionary = {}
+	var recipe_history:Array[String]=return_trail.duplicate()
+	var choose_recipe:=func(recipe_id:String,clear_history:bool):
+		if not World.CRAFT.has(recipe_id):return
+		if clear_history:recipe_history.clear()
+		selected.id=recipe_id
+		source_choice.id=""
+		for key in entries:entries[key].set_pressed_no_signal(key==recipe_id)
+		refresh(app)
+		reveal_recipe(scroll,entries[recipe_id])
 	for id in ids:
 		var button: Button = app.button(World.CRAFT[id].name, func():
-			selected.id = id
-			for key in entries:
-				entries[key].set_pressed_no_signal(key == id)
-			refresh(app)
-			reveal_recipe(scroll, entries[id])
+			choose_recipe.call(id,true)
 		)
 		button.icon = ItemArt.icon(id)
 		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -128,7 +138,7 @@ func workbench(app, cell: Vector2i) -> void:
 		button.toggle_mode = true
 		choices.add_child(button)
 		entries[id] = button
-	var capture_craft: String = app.arg_value("capture-craft", "")
+	var capture_craft: String = initial_recipe if not initial_recipe.is_empty() else app.arg_value("capture-craft", "")
 	if World.CRAFT.has(capture_craft):
 		selected.id = capture_craft
 	entries[selected.id].set_pressed_no_signal(true)
@@ -169,7 +179,20 @@ func workbench(app, cell: Vector2i) -> void:
 			card.get_parent().add_theme_stylebox_override("panel", material_style)
 			var row := HBoxContainer.new()
 			card.add_child(row)
-			Tasks.add_icon(row, ItemArt.icon(item), 32)
+			var hint:=material_hint(item)
+			if hint.is_empty():Tasks.add_icon(row, ItemArt.icon(item), 32)
+			else:
+				var help:Button=app.button("",func():
+					source_choice.id="" if source_choice.id==item else item
+					refresh(app))
+				help.name="MaterialHint_"+item
+				help.icon=ItemArt.icon(item)
+				help.expand_icon=true
+				help.custom_minimum_size=Vector2(32,32)
+				help.add_theme_constant_override("icon_max_width",32)
+				help.theme_type_variation=&"ItemSlot"
+				help.tooltip_text="查看%s來源；再點一次回到成品用途。"%World.NAMES.get(item,item)
+				row.add_child(help)
 			var value: Label = app.label("", 15)
 			value.name = "MaterialAmount"
 			value.custom_minimum_size.x = 110
@@ -199,9 +222,35 @@ func workbench(app, cell: Vector2i) -> void:
 		app._select_tool(PORTABLE_TOOLS[selected.id][0])
 	)
 	actions.add_child(equip)
+	var back:Button=app.button("←",func():
+		if controller.busy() or recipe_history.is_empty():return
+		choose_recipe.call(recipe_history.pop_back(),false))
+	back.name="RecipeBack"
+	back.custom_minimum_size=Vector2(36,36)
+	actions.add_child(back)
+	var source_recipe:Button=app.button("↗",func():
+		var target:String=source_choice.id
+		if controller.busy() or not recipe_ingredients(selected.id).has(target):return
+		var route:=material_route(app.session.snapshot,app.session.own_id,target)
+		if route.get("action","")=="device":
+			var original:String=selected.id
+			var trail:Array[String]=recipe_history.duplicate()
+			ProcessingUI.open(app,route.cell,func():workbench(app,cell,original,trail),str(World.CRAFT[original].name))
+			return
+		if not World.CRAFT.has(target):target=str(route.get("recipe",""))
+		if not World.CRAFT.has(target) or target in recipe_history:return
+		recipe_history.append(selected.id)
+		choose_recipe.call(target,false))
+	source_recipe.name="MaterialRecipe"
+	source_recipe.custom_minimum_size=Vector2(36,36)
+	actions.add_child(source_recipe)
 	details.add_child(app.button("家園建造  %s"%app.binding_label("build_menu"), app._build_menu))
+	var upgrade:Button=app.button("升級工坊",func():app.session.perform("upgrade_workshop",cell))
+	upgrade.name="UpgradeWorkshop"
+	details.add_child(upgrade)
 	update_view = func(snapshot: Dictionary, person: Dictionary):
 		var id: String = selected.id
+		craft.focus_neighbor_left=craft.get_path_to(entries[id])
 		var needs := recipe_ingredients(id)
 		var bag: Dictionary = person.get("inventory", {})
 		for item in materials:
@@ -222,15 +271,32 @@ func workbench(app, cell: Vector2i) -> void:
 		var already_crafted: bool = person.get("crafted_reinforced_pick", false) or owns_pick(person)
 		title.text = "%s　持有 %d" % [World.CRAFT[id].name, int(bag.get(id, 0))]
 		preview.texture = ItemArt.icon(id)
-		use.text = recipe_use(id, app)
+		var material:String=source_choice.id
+		if not needs.has(material):material="";source_choice.id=""
+		use.text=recipe_use(id,app) if material.is_empty() else "%s來源：%s"%[World.NAMES.get(material,material),material_hint(material)]
+		var route:=material_route(snapshot,app.session.own_id,material)
+		if route.get("action","")=="recipe":use.text+=" 此區尚無自己的%s，可查看設備配方。"%World.BUILD[route.station].name
+		elif route.get("action","")=="far":use.text+=" 你的%s在%s約%d格，走近後互動。"%[World.BUILD[route.station].name,route.direction,ceili(float(route.distance))]
+		back.visible=not recipe_history.is_empty()
+		back.disabled=controller.busy()
+		back.tooltip_text="返回「%s」配方"%World.CRAFT[recipe_history.back()].name if back.visible else ""
+		var target_recipe:String=material if World.CRAFT.has(material) else str(route.get("recipe",""))
+		source_recipe.visible=route.get("action","")=="device" or (World.CRAFT.has(target_recipe) and target_recipe!=id and target_recipe not in recipe_history)
+		source_recipe.disabled=controller.busy()
+		source_recipe.tooltip_text=""
+		if route.get("action","")=="device":source_recipe.tooltip_text="開啟附近的%s"%World.BUILD[route.station].name
+		elif source_recipe.visible:source_recipe.tooltip_text="查看「%s」配方"%World.CRAFT[target_recipe].name
 		var bench: Dictionary = snapshot.get("objects", {}).get(World.key(cell), {})
 		var available: bool = bench.get("type") == "bench"
+		upgrade.visible=World.crafting_level(person)>=World.WORKSHOP_LEVEL and not person.get("workshop_upgraded",false)
+		upgrade.disabled=not available or controller.busy()
 		equip.visible = PORTABLE_TOOLS.has(id) and int(bag.get(id, 0)) > 0
 		equip.text = "%s  %s" % [PORTABLE_TOOLS[id][1],app.binding_label(PORTABLE_TOOLS[id][0])] if equip.visible else ""
 		var locked: bool = id == "waterworks_kit" and int(snapshot.get("mine_depths",{}).get("unlocked",1)) < 4
 		locked = locked or (id == "mine_drill_kit" and int(snapshot.get("mine_depths",{}).get("unlocked",1)) < 5)
 		var kitchen_locked: bool = id in World.KITCHEN_GATED and not bool(snapshot.get("public_kitchen",{}).get("opened",false))
-		locked = locked or kitchen_locked
+		var supply_locked:bool=id=="supply_box_kit" and not World.supply_box_unlocked(person,snapshot.get("resident_goals",{}).get("bobo",{}).get("3",{}).get("state")=="done")
+		locked = locked or kitchen_locked or supply_locked
 		# 第 40 章分流閘：蘭陽回訪的旱日分流完成後才解鎖；說明列寫出原因。
 		# 水塔（TOWER_KIT）用同一個解鎖，只換說明文字。
 		var gate_locked: bool = id in [World.INDUSTRY.GATE_KIT, World.INDUSTRY.TOWER_KIT] and not World.LANYANG_REVISIT.tech_unlocked(snapshot)
@@ -247,6 +313,8 @@ func workbench(app, cell: Vector2i) -> void:
 			craft.text = "工作台已移除"
 		elif kitchen_locked:
 			craft.text = "公共廚房開張後解鎖"
+		elif supply_locked:
+			craft.text = "探索六級或完成波波事件"
 		elif gate_locked:
 			craft.text = "完成旱日分流後解鎖"
 		elif locked:
@@ -261,14 +329,133 @@ func workbench(app, cell: Vector2i) -> void:
 			craft.text = "製作 %d 件%s" % [World.CRAFT[id].yield, " · 用箱子補足" if picker.uses_box() else ""]
 	refresh(app)
 
+func assembly(app,cell:Vector2i) -> void:
+	var body:=open(app,"裝配桌")
+	modal.set_meta("life_modal_layout","automation_device")
+	Tasks.line(app,body,"裝成組件後，可在家園工坊選對應設備放置。",16)
+	var layout:=GridContainer.new()
+	layout.columns=2
+	layout.add_theme_constant_override("h_separation",8)
+	layout.add_theme_constant_override("v_separation",8)
+	body.add_child(layout)
+	var bindings:Dictionary={}
+	for kind:String in World.INDUSTRY.assembly_items():
+		var kit:String=World.INDUSTRY.assembly_items()[kind]
+		var card:=Tasks.card(layout)
+		(card.get_parent() as Control).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		Tasks.add_icon(card,ItemArt.icon(kit),32)
+		Tasks.line(app,card,World.BUILD[kind].name,18)
+		var inputs:=World.assembly_recipe(kind)
+		var amounts:Dictionary={}
+		for item in inputs:
+			var row:=HBoxContainer.new()
+			card.add_child(row)
+			Tasks.add_icon(row,ItemArt.icon(item),20)
+			var count:Label=app.label("",14)
+			row.add_child(count)
+			amounts[item]=count
+		var spacer:=Control.new()
+		spacer.size_flags_vertical=Control.SIZE_EXPAND_FILL
+		card.add_child(spacer)
+		var make:Button=app.button("裝配",func():app.session.perform("assemble",cell,kind))
+		make.name="Assemble_"+kind
+		card.add_child(make)
+		bindings[kind]={"inputs":inputs,"amounts":amounts,"make":make}
+	update_view=func(snapshot:Dictionary,person:Dictionary):
+		var table:Dictionary=snapshot.get("objects",{}).get(World.key(cell),{})
+		var own:bool=table.get("type")==World.INDUSTRY.ASSEMBLY_TABLE and table.get("owner")==app.session.own_id
+		var bag:Dictionary=person.get("inventory",{})
+		for kind in bindings:
+			var entry:Dictionary=bindings[kind]
+			var enough:=true
+			for item in entry.inputs:
+				var need:=int(entry.inputs[item])
+				var held:=int(bag.get(item,0))
+				entry.amounts[item].text="%s %d／%d"%[World.NAMES[item],held,need]
+				enough=enough and held>=need
+			var level:=World.sprinkler_level(kind)
+			var ready:=World.farming_level(person)>=level
+			entry.make.disabled=not (own and enough and ready)
+			entry.make.text="農耕 %d 級"%level if not ready else ("裝配" if enough else "材料不足")
+	refresh(app)
+
+func animal_collector(app,cell:Vector2i) -> void:
+	var body:=open(app,"動物自動收集器")
+	modal.set_meta("life_modal_layout","automation_device")
+	var card:=Tasks.card(body)
+	Tasks.add_icon(card,ItemArt.icon(World.INDUSTRY.ANIMAL_COLLECTOR_KIT),48)
+	var summary:Label=app.label("",18)
+	card.add_child(summary)
+	var gauge:=ProgressBar.new()
+	gauge.max_value=World.AnimalCollector.CAPACITY
+	gauge.show_percentage=false
+	gauge.custom_minimum_size.y=18
+	card.add_child(gauge)
+	var hint:Label=app.label("",15)
+	card.add_child(hint)
+	var bind_row:=HBoxContainer.new()
+	bind_row.add_theme_constant_override("separation",8)
+	card.add_child(bind_row)
+	var binds:Dictionary={}
+	for id:String in World.AnimalCollector.SPECIES:
+		if not World.AnimalCollector.in_range(cell,id):continue
+		var bind:Button=app.button(World.AnimalCollector.name_for(id),func():app.session.perform("collector_bind",cell,id))
+		bind.name="CollectorBind_"+id
+		bind_row.add_child(bind)
+		binds[id]=bind
+	var actions:=HBoxContainer.new()
+	actions.add_theme_constant_override("separation",8)
+	card.add_child(actions)
+	var take:Button=app.button("領取產物",func():app.session.perform("collector_collect",cell))
+	take.name="CollectorTake"
+	actions.add_child(take)
+	var unbind:Button=app.button("取回收集籃",func():app.session.perform("collector_unbind",cell))
+	unbind.name="CollectorUnbind"
+	actions.add_child(unbind)
+	update_view=func(snapshot:Dictionary,person:Dictionary):
+		var objects:Dictionary=snapshot.get("objects",{})
+		var key:=World.key(cell)
+		var obj:Dictionary=objects.get(key,{})
+		var own:bool=obj.get("type")==World.INDUSTRY.ANIMAL_COLLECTOR and obj.get("owner")==app.session.own_id
+		var species:String=obj.get("collector_animal","")
+		var count:=int(obj.get("collector_count",0))
+		var basket:=int(person.get("inventory",{}).get("egg_basket",0))
+		summary.text="尚未安裝收集籃" if species.is_empty() else "%s · %s %d／%d"%[World.AnimalCollector.name_for(species),World.NAMES[World.AnimalCollector.item_for(species)],count,World.AnimalCollector.CAPACITY]
+		if int(obj.get("collector_count_quality",0))>0:summary.text+=" · 其中優良 %d"%int(obj.collector_count_quality)
+		gauge.value=count
+		if species.is_empty():hint.text="在工作台製作收集籃，再從附近的動物選一隻綁定。"
+		elif count>=World.AnimalCollector.CAPACITY:hint.text="收集籃已滿，領取後會繼續收集。"
+		else:hint.text="會自動接取動物已產出的物品。動物仍需要餵食。"
+		if not own:hint.text="只有收集器的擁有者可以操作。"
+		elif binds.is_empty():hint.text="請搬到對應動物四格內。"
+		for id in binds:
+			binds[id].disabled=not own or id==species or count>0 or (species.is_empty() and basket==0) or World.AnimalCollector.bound_elsewhere(objects,id,key)
+		take.disabled=not own or count==0
+		unbind.disabled=not own or species.is_empty() or count>0
+	refresh(app)
+
+func focus_sprinkler_action(app) -> bool:
+	if not is_instance_valid(modal) or app.modal!=modal or not modal.has_meta("sprinkler_controls"):return false
+	refresh(app)
+	for id in ["SprinklerRefill","SprinklerToggle"]:
+		var action:=modal.find_child(id,true,false) as Button
+		if not is_instance_valid(action) or action.disabled or not action.is_visible_in_tree():continue
+		action.grab_focus()
+		var scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
+		if scroll!=null:scroll.ensure_control_visible(action)
+		break
+	return true
+
 func sprinkler(app, cell: Vector2i) -> void:
-	var kind:String=app.session.snapshot.get("objects",{}).get(World.key(cell),{}).get("type","sprinkler")
+	var device:Dictionary=app.session.snapshot.get("objects",{}).get(World.key(cell),{})
+	var kind:String=device.get("type","sprinkler")
 	var capacity:int=World.INDUSTRY.SPRINKLER_CAPACITIES.get(kind,World.SPRINKLER_CAPACITY)
-	var coverage:="周圍八格" if kind=="medium_sprinkler" else "上下左右相鄰格"
+	var coverage:String={"large_sprinkler":"周圍二十四格","medium_sprinkler":"周圍八格"}.get(kind,"上下左右相鄰格")
 	var body := open(app, World.BUILD[kind].name)
 	modal.set_meta("life_modal_layout", "automation_device")
+	modal.set_meta("sprinkler_controls",true)
 	var details := Tasks.card(body)
-	Tasks.add_icon(details, ItemArt.icon("sprinkler_kit"), 64)
+	Tasks.add_icon(details, ItemArt.icon("large_sprinkler" if kind=="large_sprinkler" else "sprinkler_kit"), 64)
 	var water: Label = app.label("", 22)
 	var state: Label = app.label("", 16)
 	details.add_child(water)
@@ -281,11 +468,17 @@ func sprinkler(app, cell: Vector2i) -> void:
 	var supply: Label = app.label("", 15)
 	supply.custom_minimum_size.x = 280
 	details.add_child(supply)
-	Tasks.line(app, details, "每 %d 秒檢查%s內，同一位主人種植的作物。" % [World.SPRINKLER_INTERVAL,coverage], 16)
+	if device.get("sprinkler_daily",false):
+		Tasks.line(app, details, "每天澆一次%s內自己的作物，水不會穿過牆壁。" % coverage, 16)
+	else:
+		Tasks.line(app, details, "每 %d 秒檢查%s內，同一位主人種植的作物。" % [World.SPRINKLER_INTERVAL,coverage], 16)
 	var actions := HBoxContainer.new()
 	details.add_child(actions)
 	var refill: Button = app.button("補滿水", func(): app.session.perform("refill_sprinkler", cell))
 	var toggle: Button = app.button("啟用", func(): app.session.perform("toggle_sprinkler", cell))
+	refill.name="SprinklerRefill"
+	toggle.name="SprinklerToggle"
+	refill.tooltip_text="手把 X 選取 · A 確認"
 	actions.add_child(refill)
 	actions.add_child(toggle)
 	update_view = func(snapshot: Dictionary, _person: Dictionary):
@@ -297,6 +490,8 @@ func sprinkler(app, cell: Vector2i) -> void:
 		water.text = "水量 %d／%d" % [amount, capacity]
 		gauge.value = amount
 		state.text = ("運作中" if active else "已停止") if present else "灑水器已移除"
+		if present and active and obj.get("sprinkler_daily",false) and float(obj.get("next_water",0))>float(snapshot.get("time",0)):
+			state.text = "今天已澆水，明天再灑"
 		if present and amount == 0:
 			state.text += " · 無水，補水後才能灑水"
 		if present and not owner:
@@ -310,6 +505,8 @@ func sprinkler(app, cell: Vector2i) -> void:
 		if towers > 0:
 			if tanks == 0:supply.text = "未接通儲水桶"
 			supply.text += "\n水塔 %d 座 · 存水 %d／%d" % [towers, int(network.get("tower_water", 0)), int(network.get("tower_capacity", 0))]
+		var note:=World.INDUSTRY.supply_note(network)
+		if not note.is_empty():supply.text+="\n"+note
 		refill.disabled = not owner or amount >= capacity
 		toggle.disabled = not owner
 		toggle.text = "停止" if active else "啟用"
@@ -450,6 +647,49 @@ static func owns_pick(person: Dictionary) -> bool:
 ## Concise use guidance for a craft recipe. `app` supplies live key labels for
 ## portable tools (any object with binding_label(action)); without it the key
 ## prefix is left out rather than guessed.
+static func material_route(snapshot:Dictionary,own:String,item:String)->Dictionary:
+	if item not in ["plank","charcoal"]:return {}
+	var station:String=World.INDUSTRY.PROCESS[item].station
+	var person:Dictionary=snapshot.get("players",{}).get(own,{})
+	if person.is_empty():return {}
+	var position:=Vector2(float(person.x),float(person.y))
+	var nearest:=""
+	var distance:=INF
+	var objects:Dictionary=snapshot.get("objects",{})
+	var keys:=objects.keys()
+	keys.sort()
+	for key in keys:
+		var obj:Dictionary=objects[key]
+		if obj.get("type","")!=station or obj.get("owner","")!=own:continue
+		var gap:=position.distance_to(Vector2(World.cell(str(key)))+Vector2(0.5,0.5))
+		if gap<distance:nearest=str(key);distance=gap
+	if not nearest.is_empty():
+		var cell:=World.cell(nearest)
+		if distance<=3.2:return {"action":"device","station":station,"cell":cell}
+		var delta:=Vector2(cell)+Vector2(0.5,0.5)-position
+		var direction:="東" if delta.x>0.5 else ("西" if delta.x< -0.5 else "")
+		direction+="南" if delta.y>0.5 else ("北" if delta.y< -0.5 else "")
+		return {"action":"far","station":station,"cell":cell,"distance":distance,"direction":direction}
+	for ingredient in World.BUILD[station]:
+		if World.CRAFT.has(ingredient):return {"action":"recipe","station":station,"recipe":ingredient}
+	return {}
+
+static func material_hint(item:String)->String:
+	if item in ["plank","charcoal"]:
+		var recipe:Dictionary=World.INDUSTRY.PROCESS[item]
+		return "%s加工木材 %d → %s %d。"%[World.BUILD[recipe.station].name,int(recipe.ingredients.wood),World.NAMES[item],int(recipe.yield)]
+	var hints:={
+		"wood":"用斧頭採集成熟樹木；林務工作站也會產出。",
+		"stone":"用十字鎬採集島上的岩石。",
+		"fiber":"清理草叢或採集樹木取得。",
+		"sapling":"採集樹木取得，再種在自己的空地。",
+		"resin":"採集樹木取得；林務工作站也會產出。",
+		"copper_ore":"渡口運入礦料點／金瓜石；用強化石鎬或公用鎬。",
+		"hardwood":"用斧頭採伐自種成樹取得；林務站不產硬木。"}
+	if hints.has(item):return hints[item]
+	if World.CRAFT.has(item):return "在工作台查看「%s」配方與解鎖條件。"%World.CRAFT[item].name
+	return ""
+
 static func recipe_use(id: String, app = null) -> String:
 	var guide: Dictionary = GUIDE.get(id, {})
 	var text: String = guide.get("text", USE_FALLBACK)

@@ -8,6 +8,7 @@ var count:=0
 var item_title:=""
 var artwork:=TextureRect.new()
 var quantity:=Label.new()
+var grade:=Label.new()
 
 func _init() -> void:
 	custom_minimum_size=Vector2(80,80)
@@ -23,6 +24,14 @@ func _init() -> void:
 	artwork.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	artwork.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	add_child(artwork)
+	grade.text="★"
+	grade.position=Vector2(5,3)
+	grade.add_theme_color_override("font_color",Color("ffdb74"))
+	grade.add_theme_color_override("font_outline_color",Color("68492c"))
+	grade.add_theme_constant_override("outline_size",3)
+	grade.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	grade.hide()
+	add_child(grade)
 	quantity.position=Vector2(4,56)
 	quantity.size=Vector2(70,20)
 	quantity.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
@@ -40,6 +49,7 @@ func _ready() -> void:
 
 func configure(id:String,texture:Texture2D,amount:int,title:String) -> void:
 	item_id=id
+	grade.visible=id.begins_with("quality_")
 	artwork.texture=texture
 	item_title=title
 	set_count(amount)

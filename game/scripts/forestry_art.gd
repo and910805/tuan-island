@@ -21,9 +21,9 @@ static func icon(id:String) -> Texture2D:
 		kit_texture.filter_clip=true
 	return kit_texture
 
-static func draw_station(canvas:CanvasItem,at:Vector2,obj:Dictionary,time:float,reduced_motion:bool) -> void:
+static func draw_station(canvas:CanvasItem,at:Vector2,obj:Dictionary,time:float,reduced_motion:bool,tint:=Color.WHITE) -> void:
 	if not load_atlas():return
-	canvas.draw_texture_rect_region(atlas,Rect2(at+Vector2(0,-16),STATION.size),STATION)
+	canvas.draw_texture_rect_region(atlas,Rect2(at+Vector2(0,-16),STATION.size),STATION,tint)
 	var last:=float(obj.get("last_cycle",-1))
 	var age:=time-last
 	if not obj.get("enabled",false) or last<0 or age<0 or age>1.5:return

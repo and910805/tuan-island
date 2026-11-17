@@ -64,6 +64,9 @@ func _draw() -> void:
 		var cell:=origin+Vector2i(int(piece.x),int(piece.y))
 		var obj:={"type":kind,"owner":"blueprint_preview"}
 		if piece.has("style"):obj.style=piece.style
+		if kind in World.RESIDENT_GOALS.DOUBLE_BENCHES:obj.bench_vertical=piece.get("settings",{}).get("vertical",false)
+		if kind in Industry.ORIENTABLE_FOOTPRINTS:obj[Industry.vertical_field(kind)]=piece.get("settings",{}).get("vertical",false)
+		if kind in Industry.EXPANDABLE_STATIONS and Design.is_square_piece(piece):obj[Industry.square_part_field(kind)]=0
 		if piece.has("settings"):
 			var settings:Dictionary=piece.settings
 			obj["dir"]=int(settings.get("dir",1))

@@ -67,6 +67,13 @@ func _initialize() -> void:
 	var reload := World.new()
 	expect(reload.load_world(path) and reload.state.version == 26 and reload.state.history_memory.plaque and reload.state.history_memory.players.alpha.completed,"World four restores memory and plaque")
 	var invalid := reload.state.duplicate(true)
+	expect(invalid.history_memory.players.alpha.get("completed_day",-1)==int(World.WEATHER.day_index(invalid.time)),"Completion date persists")
+	var historical := invalid.duplicate(true)
+	historical.history_memory.players.alpha.erase("completed_day")
+	expect(valid(historical),"Older completed memories without a date remain valid")
+	invalid.history_memory.players.alpha.completed_day=int(World.WEATHER.day_index(invalid.time))+1
+	expect(not valid(invalid),"A completion date in the future is rejected")
+	invalid = reload.state.duplicate(true)
 	invalid.history_memory.players.alpha.gates = [1,0]
 	expect(not valid(invalid),"Completed record cannot retain adjusted gates")
 	invalid = reload.state.duplicate(true)

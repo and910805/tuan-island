@@ -120,11 +120,12 @@ func find_resource(kind: String) -> Vector2i:
 					return tile
 	return Vector2i(-1,-1)
 
-func route(target: Vector2i, reach: float = 2.0) -> Array:
+func route(target: Vector2i, reach: float = 2.0, actor:String=TOKEN) -> Array:
 	var local_world:=World.new()
-	local_world.state=world.region_snapshot(world.player_region(TOKEN))
-	local_world._region=world.player_region(TOKEN)
-	var start := Vector2i(int(person().x),int(person().y))
+	local_world.state=world.region_snapshot(world.player_region(actor))
+	local_world._region=world.player_region(actor)
+	var walker:Dictionary=world.state.players[actor]
+	var start := Vector2i(int(walker.x),int(walker.y))
 	var queue := [start]
 	var previous := {start: start}
 	var index := 0
@@ -144,19 +145,20 @@ func route(target: Vector2i, reach: float = 2.0) -> Array:
 				queue.append(next)
 	return []
 
-func walk_to(target: Vector2i, reach: float = 2.0) -> void:
+func walk_to(target: Vector2i, reach: float = 2.0, actor:String=TOKEN) -> void:
 	if failed:
 		return
-	var path := route(target,reach)
+	var path := route(target,reach,actor)
 	if path.is_empty():
 		expect(false, "No path to %s" % target)
 		return
 	for index in range(1,path.size()):
 		var direction := Vector2(path[index]-path[index-1])
 		for step in range(4):
-			world.move_player(TOKEN,direction,0.25/3.6)
+			world.move_player(actor,direction,0.25/3.6)
 		walking += 1
-		expect(Vector2(person().x,person().y).distance_to(Vector2(path[index])+Vector2(0.5,0.5)) <= 0.001, "Movement did not follow passable route")
+		var walker:Dictionary=world.state.players[actor]
+		expect(Vector2(walker.x,walker.y).distance_to(Vector2(path[index])+Vector2(0.5,0.5)) <= 0.001, "Movement did not follow passable route")
 		if failed:
 			return
 func act(action: String, target: Vector2i, extra: String = "") -> void:

@@ -725,7 +725,7 @@ func test_tea_pudding() -> void:
 func test_star_rice_ball() -> void:
 	var w=from_template()
 	var shore:=World.SEAWEED_CELL
-	expect(World.land(shore) and not World.land(shore+Vector2i.DOWN),"seaweed is on the true coastline")
+	expect(World.land(shore) and not World.land(shore+Vector2i.DOWN*3),"seaweed stays near the southern shoreline after the beach extension")
 	pose(w,A,Vector2(shore)+Vector2(0.5,0.5))
 	must(w,A,"axe",shore,"","seaweed: collect from the coast")
 	expect(held(w,"seaweed")==1,"seaweed: one frond")
@@ -783,13 +783,16 @@ func test_jam_pot() -> void:
 	var w=from_template()
 	var site:=Vector2i(41,36)
 	pose(w,A,stand_near(w,site))
-	stock(w,A,{"stone":8,"copper_joint":1,"strawberry":2,"sugar":1})
+	stock(w,A,{"clay":10,"copper_ingot":4,"strawberry":2,"sugar":1})
 	must(w,A,"build",site,"jam_pot","jam pot: build after picnic")
-	expect(held(w,"stone")==0 and held(w,"copper_joint")==0 and w.blocked(site),"jam pot: cost and collision")
+	expect(held(w,"clay")==0 and held(w,"copper_ingot")==0 and w.blocked(site),"jam pot: cost and collision")
 	refuse(w,A,"queue_processing",site,"strawberry_jam","jam pot: two berries are insufficient")
 	stock(w,A,{"strawberry":3})
 	must(w,A,"queue_processing",site,"strawberry_jam","jam pot: queue with three berries and one sugar")
 	expect(held(w,"strawberry")==0 and held(w,"sugar")==0,"jam pot: exact recipe debit")
+	must(w,A,"cancel_processing",site,"","jam pot: cancel active batch")
+	expect(held(w,"strawberry")==3 and held(w,"sugar")==1,"jam pot: cancel refunds the original batch ingredients")
+	must(w,A,"queue_processing",site,"strawberry_jam","jam pot: requeue refunded ingredients")
 	refuse(w,A,"remove",site,"","jam pot: cannot dismantle a working station")
 	expect(w.step(179.0,true),"jam pot: advance to one second before completion")
 	refuse(w,A,"claim_processing",site,"","jam pot: cannot collect before 180 seconds")
@@ -797,6 +800,14 @@ func test_jam_pot() -> void:
 	must(w,A,"claim_processing",site,"","jam pot: collect the batch")
 	expect(held(w,"strawberry_jam")==2 and meals_seen(w).has("strawberry_jam"),"jam pot: two jars and the meal discovery")
 	refuse(w,A,"claim_processing",site,"","jam pot: cannot collect twice")
+	must(w,A,"remove",site,"","jam pot: dismantle copper pot")
+	expect(held(w,"clay")==10 and held(w,"copper_ingot")==4,"jam pot: new pot returns construction materials")
+	w.state.objects[World.key(site)]={"type":"jam_pot","owner":A,"items":{}}
+	var old_stone:=held(w,"stone")
+	var old_joint:=held(w,"copper_joint")
+	must(w,A,"remove",site,"","jam pot: dismantle legacy pot")
+	expect(held(w,"stone")==old_stone+8 and held(w,"copper_joint")==old_joint+1 and held(w,"copper_ingot")==4,
+		"jam pot: legacy pot returns its original materials")
 
 func test_mill_queue() -> void:
 	var w=from_template()

@@ -43,7 +43,7 @@ extends "res://tests/test_festival_earned_journey.gd"
 ##    GLASS_FURNACE_LOCKED_MSG. On home visit 3 (after the repair) the build is
 ##    first refused while short of a material (exact 材料不足 message), copper
 ##    joints/stone are then made/gathered, and the furnace is built at an open
-##    home cell for exactly stone 12 + ochre_earth 4 + copper_joint 2. Its
+##    home site for exactly stone 25 + iron_ingot 6. Its
 ##    personal queue (queue_processing / claim_processing) then runs: 2 vein
 ##    quartz → 3 crystal sand (claim refused early with the remaining seconds,
 ##    60 world s waited, claimed); two R17 glass jobs (3 crystal sand + 1 wood
@@ -204,6 +204,11 @@ func trip_one() -> void:
 	deliver(5)
 	for d in [6,7]:
 		first_visit(d)
+		if d==6:
+			for i in range(6):
+				if int(bag().get("iron_ore",0))>=6 or failed:break
+				strike(6,World.MINES.NODES[i%3],"pick")
+			expect(int(bag().get("iron_ore",0))>=6,"B6 supplied enough iron ore to build the glass furnace later")
 		deliver(d)
 	first_visit(8)
 	if failed:return
@@ -444,16 +449,16 @@ func furnace_cost() -> Dictionary:
 		if item!="name":cost[item]=int(World.BUILD.glass_furnace[item])
 	return cost
 
-## Home visit 2, before the Q07 repair: the B6/B7 ochre earth is already in the
+## Home visit 2, before the Q07 repair: iron ore from B6 is already in the
 ## bag, but the blueprint is still locked behind the stuck hoist.
 func furnace_refused_before_repair() -> void:
 	if failed:return
 	expect(world.player_region(tok)=="home","home visit 2 starts at home")
-	var ochre:=int(bag().get("ochre_earth",0))
-	expect(not World.MINES.hoist_ready(world.state.mine_depths) and ochre>=int(furnace_cost().ochre_earth),"before Q07: hoist stuck, ochre earth %d from B6/B7 strikes already held"%ochre)
-	var cell:=open_cell()
+	var iron:=int(bag().get("iron_ore",0))
+	expect(not World.MINES.hoist_ready(world.state.mine_depths) and iron>=6,"before Q07: hoist stuck, iron ore from B6 already held")
+	var cell:=open_square_site()
 	if not expect(cell!=Vector2i(-1,-1),"open home cell for a glass furnace"):return
-	refuse_deep("build",cell,"glass_furnace",World.GLASS_FURNACE_LOCKED_MSG,"glass furnace refused before the Q07 hoist repair (ochre %d held)"%ochre)
+	refuse_deep("build",cell,"glass_furnace",World.GLASS_FURNACE_LOCKED_MSG,"glass furnace refused before the Q07 hoist repair")
 
 ## Home visit 3, after the Q07 repair: refused while short of a build material,
 ## then built at exact cost; 2 vein quartz → 3 crystal sand (claim refused
@@ -463,25 +468,27 @@ func glass_furnace_leg() -> void:
 	if failed:return
 	expect(world.player_region(tok)=="home","home visit 3 starts at home")
 	var cost:=furnace_cost()
-	expect_same(cost,{"stone":12,"ochre_earth":4,"copper_joint":2},"glass furnace build cost")
+	expect_same(cost,{"stone":25,"iron_ingot":6},"glass furnace build cost")
 	expect(World.MINES.hoist_ready(world.state.mine_depths),"hoist repaired: glass furnace blueprint unlocked")
-	expect(int(bag().get("ochre_earth",0))>=int(cost.ochre_earth) and int(bag().get("vein_quartz",0))>=2,"holding mined ochre earth %d (B6/B7) and vein quartz %d (B9/B10)"%[int(bag().get("ochre_earth",0)),int(bag().get("vein_quartz",0))])
+	expect(int(bag().get("iron_ore",0))>=6 and int(bag().get("vein_quartz",0))>=2,"Holding raw iron from B6 and vein quartz from B9/B10")
 	var short:=""
 	for item in cost:
 		if int(bag().get(item,0))<int(cost[item]):
 			short=item
 			break
-	var cell:=open_cell()
+	var cell:=open_square_site()
 	if not expect(cell!=Vector2i(-1,-1),"open home cell for the glass furnace"):return
+	stand_for_square_station(cell)
 	if expect(short!="","home visit 3 arrives short of a furnace material (bag %s)"%JSON.stringify(pick_items(cost))):
 		refuse_deep("build",cell,"glass_furnace","材料不足，需要%s %d"%[str(World.NAMES[short]),int(cost[short])],"glass furnace refused while short of %s (has %d)"%[short,int(bag().get(short,0))])
-	# Joints first (bench), then raw stone, as obtain_all orders kits before raw.
-	for item in ["copper_joint","stone","ochre_earth"]:obtain(item,int(cost[item]))
+	smelt_furnace_iron()
+	obtain("stone",int(cost.stone))
 	if failed:return
 	for item in cost:expect(int(bag().get(item,0))>=int(cost[item]),"holding furnace %s >= %d (has %d)"%[item,int(cost[item]),int(bag().get(item,0))])
-	furnace_cell=open_cell()
+	furnace_cell=open_square_site()
 	if not expect(furnace_cell!=Vector2i(-1,-1),"open home cell for the glass furnace"):return
 	var before:=bag().duplicate(true)
+	stand_for_square_station(furnace_cell)
 	act("build",furnace_cell,"glass_furnace")
 	if failed:return
 	var delta:={}
@@ -539,6 +546,54 @@ func furnace_claim(kind:String) -> void:
 	expect(str(result.message)=="已領取：%s ×%d"%[str(World.NAMES[kind]),amount],"furnace claim message for %s (got '%s')"%[kind,str(result.message)])
 	expect_delta(before,{kind:amount},"furnace claim credits exactly %s +%d"%[kind,amount])
 	furnace_made[kind]=int(furnace_made.get(kind,0))+amount
+
+func open_square_site() -> Vector2i:
+	var origin:=Vector2i(int(person().x),int(person().y))
+	for distance in range(3,14):
+		for y in range(origin.y-distance,origin.y+distance+1):
+			for x in range(origin.x-distance,origin.x+distance+1):
+				var site:=Vector2i(x,y)
+				if maxi(absi(x-origin.x),absi(y-origin.y))!=distance:continue
+				var clear:=true
+				for offset:Vector2i in World.INDUSTRY.SQUARE_CELLS:
+					var tile:=site+offset
+					var key:=World.key(tile)
+					if world.water(tile) or world.protected(tile) or world.resource(tile)!="" or world.state.objects.has(key) or world.state.crops.has(key):
+						clear=false
+						break
+				if not clear:continue
+				var footprint:=Rect2i(site,Vector2i(2,2))
+				if not route(site,2.5,func(tile:Vector2i):return not footprint.has_point(tile)).is_empty():return site
+	return Vector2i(-1,-1)
+
+func stand_for_square_station(site:Vector2i) -> void:
+	if failed:return
+	var footprint:=Rect2i(site,Vector2i(2,2))
+	var current:=Vector2(person().x,person().y)
+	if not footprint.has_point(Vector2i(current)) and current.distance_to(Vector2(site)+Vector2(0.5,0.5))<=2.5:return
+	var path:=route(site,2.5,func(tile:Vector2i):return not footprint.has_point(tile))
+	if not expect(not path.is_empty(),"Access to four-tile construction site %s"%site):return
+	var last:Vector2i=path.back()
+	for index in range(1,path.size()):
+		var direction:=Vector2(path[index]-path[index-1])
+		for tick in range(4):world.move_player(tok,direction,0.25/3.6)
+		walking+=1
+	expect(Vector2(person().x,person().y).distance_to(Vector2(last)+Vector2(0.5,0.5))<=0.001,
+		"Reach the outside of the four-tile construction site")
+
+func smelt_furnace_iron() -> void:
+	obtain("stone",25)
+	obtain("copper_ore",5)
+	obtain("charcoal",3)
+	if failed:return
+	var smelter:=open_square_site()
+	if not expect(smelter.x>=0,"Open four-cell site for the metal smelter"):return
+	stand_for_square_station(smelter)
+	act("build",smelter,"small_smelter")
+	for batch in range(3):act("queue_processing",smelter,"iron_ingot")
+	wait(180.1)
+	for batch in range(3):act("claim_processing",smelter)
+	expect(int(bag().get("iron_ingot",0))==6,"Smelt all six required iron ingots from the B6 ore")
 
 func furnace_wait(seconds:float) -> void:
 	wait(seconds)

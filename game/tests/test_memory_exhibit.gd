@@ -170,7 +170,9 @@ func earn_memory(w:World,token:String) -> bool:
 
 func earn_plaque(w:World,token:String) -> bool:
 	beside(w,token,Memory.SERVICE)
-	return act(w,token,"memory_plaque",Memory.SERVICE).ok
+	if not act(w,token,"memory_plaque",Memory.SERVICE).ok:return false
+	w.state.history_memory.players[token].erase("completed_day")  # Legacy record for the day-one fixture.
+	return true
 
 ## Earned 旱日分流 on day 1 (spring 6/4/2): gates a:3 b:2, then the three fields.
 func earn_revisit(w:World,token:String) -> bool:

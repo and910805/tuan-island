@@ -4,6 +4,18 @@ const ENTRY := Vector2i(28,19)
 const UP := Vector2i(11,20)
 const DOWN := Vector2i(36,20)
 const REST := Vector2i(14,20)
+const MUD_REGION := "mine_1"
+const MUD_GATE := Vector2i(18,11)
+const MUD_REWARD := Vector2i(16,11)
+const MUD_ALCOVE_EDGE := 12.0
+const MUD_COPPER := 4
+const MUD_WINDUP := 1.5
+const MUD_RECOVERY := 3.5
+
+static func mud_engaged(player:Dictionary,now:float) -> bool:
+	if not player.has("mud_duel"):return false
+	var pos:=Vector2(player.x,player.y)
+	return now<float(player.mud_duel.strike_at)+MUD_RECOVERY and pos.distance_to(Vector2(MUD_GATE)+Vector2(0.5,0.5))<=3.2
 const SERVICE := Vector2i(34,20)
 const NODES := [Vector2i(20,20),Vector2i(24,22),Vector2i(28,23)]
 const POOL := Rect2i(29,24,4,3)
@@ -65,6 +77,7 @@ static func energy_cost(depth:int) -> int:
 
 ## Extra +1 finds per strike (B5 keeps its original crystal sand).
 static func finds(depth:int) -> Array:
+	if depth==4:return ["iron_ore"]
 	if depth==SHALLOW_DEPTH:return ["crystal_sand"]
 	if depth>SHALLOW_DEPTH and depth<=MAX_DEPTH:return Catalog.entry(depth).get("finds",[]).duplicate()
 	return []

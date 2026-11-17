@@ -171,7 +171,7 @@ func check_data() -> void:
 	expect(Coll.is_meal(DISH),"Collections.is_meal(corn_chowder)")
 	var prices:Dictionary=World.SHIPPING.prices(World.CROPS,World.FISH,World.OTHER_SALES)
 	expect(int(prices.get(DISH,0))==30,"shipping price table lists corn_chowder at 30")
-	expect(not prices.has("milk") and not World.OTHER_SALES.has("milk"),"milk has no sale / shipping price")
+	expect(int(prices.get("milk",0))==36,"shipping price table lists milk at 36")
 	expect(World.NAMES.has("milk") and World.NAMES.has("sweet_corn"),"both ingredients are named items")
 	expect(same(Community.DISHES,{"hotpot":"trout_hotpot","watermelon":"watermelon_platter","chowder":"corn_chowder"}),"Community.DISHES has exactly hotpot / watermelon / chowder")
 	expect(Community.ACTIONS==["serve_hotpot","claim_hotpot","serve_watermelon","claim_watermelon","serve_chowder","claim_chowder"] and Community.ACTIONS.size()==6,"Community.ACTIONS has exactly six actions")

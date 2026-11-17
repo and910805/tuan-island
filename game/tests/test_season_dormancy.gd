@@ -48,7 +48,7 @@ const FUNDS:=5000
 const MSG_DORMANT:="作物正在休眠，等到適合的季節會繼續生長。"
 const MSG_DRY:="還沒成熟，先澆點水吧"
 const MSG_ONE_SECOND:="還沒成熟，再等 1 秒"
-const MSG_WATER:="水分充足，幼苗會慢慢長大"
+const MSG_WATER:="水分充足"
 
 ## 手抄自 crop_catalog.gd（T048）：再生作物首熟後每次再長的秒數。
 const HAND_REGROW:={"tomato":60.0,"strawberry":84.0,"cucumber":80.0,"eggplant":82.5,"mist_tea":84.0}
@@ -239,7 +239,7 @@ func water(wd,region:String,cell:Vector2i,label:String) -> bool:
 	place(wd,region,stand_of(region,cell))
 	var result:Dictionary=do_act(wd,"water",cell)
 	var ok_flag:bool=bool(result.get("ok",false))
-	expect(ok_flag and str(result.get("message",""))==MSG_WATER,"%s: water %s, got '%s'"%[label,World.key(cell),str(result.get("message",""))])
+	expect(ok_flag and str(result.get("message","")).begins_with(MSG_WATER),"%s: water %s, got '%s'"%[label,World.key(cell),str(result.get("message",""))])
 	expect(plot_at(wd,region,cell).get("wet",false)==true,"%s: plot is wet after watering"%label)
 	return ok_flag
 

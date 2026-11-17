@@ -1,4 +1,7 @@
 extends RefCounted
+
+static func blue_outfit_unlocked(person:Dictionary) -> bool:
+	return person.get("blue_outfit_unlocked",false)==true or person.get("blue_outfit",false)==true
 ## 第三章切片「花開之前，先留下種子」：田尾合作花圃規則核心（W1）。
 ## Pure static rules, data and validation. No IO, no wall clock, no random.
 ## Must NOT preload world.gd / regions.gd / transit.gd (they preload this file).
@@ -34,7 +37,7 @@ const COOKIE:={"garden_cookie":{"name":"花園餅乾","ingredients":{"flour":1,"
 const COOKIE_PRICE:=36 # 設計選擇
 ## Source plan R31, exact.
 const DYE:={"ingredients":{"bluebell":3},"item":"blue_dye","yield":2,"time":30.0}
-## 設計選擇：1 朵成花 → 1 包同種種子，60 秒（正式種子機 T062 仍待做）。
+## 一株的成花換一包，同一株的收成最多補回一包。
 const SAVE_SECONDS:=60.0
 const STARTER:={"bluebell_seed":2,"orange_blossom_seed":2,"chime_herb_seed":2}
 ## Tianwei market prices. Seed prices are plan §09; sugar 40 and the daily cap
@@ -96,7 +99,7 @@ const STORY:={
 	"intro":"阿蕾把六小包種子放進你手裡：「鈴蘭藍花、蜜橙花、風鈴香草各兩包。種下去之前，先想好要留哪一朵回來。」",
 	"plant":"育苗床的土已經鬆好。三種花各種下一格，澆過水，就等嫩芽冒出來。",
 	"harvest":"花苞一朵朵打開了。只採自己照顧的那幾格，其他島民的育苗床由各自照顧。",
-	"save":"阿蕾在留種台示範：「一朵成花，換一包種子。這包是下一輪的起點。」",
+	"save":"阿蕾在留種台示範：「把一株收成的花都留給我，就能換一包種子。藍花和蜜橙花各要兩朵，風鈴香草只要一株。」",
 	"ship":"市集的合作訂單要兩朵藍花、兩朵橙花和一株香草；交貨之後，手上每種花都還要留著一包種子。",
 	"garden":"公共花園還是一片空土。藍色染料、蜜橙花和風鈴香草，大家可以分次帶來。",
 	"report":"花架上開滿了花。星禾在花架旁等著，想聽這一輪種子是怎麼留下來的。",
@@ -104,6 +107,9 @@ const STORY:={
 }
 
 # ---------------------------------------------------------------- records
+
+static func save_flower_cost(kind:String)->int:
+	return int(CROPS[kind].yield)
 
 static func garden_fresh() -> Dictionary:
 	return {"given":{"blue_dye":0,"orange_blossom":0,"chime_herb":0},"contributors":{},"complete":false,"completed_at":-1.0}
@@ -164,7 +170,7 @@ static func guidance(state:Dictionary,token:String) -> Dictionary:
 		"intro":g={"title":"認識花農","detail":"和花圃的阿蕾打招呼，領取三種花的起始種子。","region":REGION,"site":"farmer","cell":FARMER}
 		"plant":g={"title":"播種","detail":"在育苗床鋤地，三種花各種下一格並澆水。","region":REGION,"site":"beds","cell":NURSERY_BEDS.position}
 		"harvest":g={"title":"採收","detail":"等花開後，採收自己育苗床上的三種花。","region":REGION,"site":"beds","cell":NURSERY_BEDS.position}
-		"save":g={"title":"留種","detail":"在留種台替三種花各留一包種子（一朵成花換一包，60 秒）。","region":REGION,"site":"seed","cell":SEED_TABLE}
+		"save":g={"title":"留種","detail":"在留種台替三種花各留一包種子。藍花與蜜橙花各要兩朵，風鈴香草要一株。每包等 60 秒。","region":REGION,"site":"seed","cell":SEED_TABLE}
 		"ship":g={"title":"合作訂單","detail":"到市集交出藍花 2、橙花 2、香草 1；交貨後每種仍須留著 1 包種子。","region":REGION,"site":"market","cell":MARKET}
 		"garden":g={"title":"公共花園","detail":"把藍色染料、蜜橙花和風鈴香草捐給公共花園，可分次、可與其他島民合力。","region":REGION,"site":"garden","cell":GARDEN_CELL}
 		"report":g={"title":"回報星禾","detail":"公共花園已開花，到花架旁向星禾回報。","region":REGION,"site":"xinghe","cell":XINGHE}
@@ -227,8 +233,9 @@ static func perform(record:Dictionary,garden:Dictionary,player:Dictionary,action
 			if not record.intro:return fail("先和花圃的阿蕾打聲招呼。")
 			if not record.saving.is_empty():return fail("留種台上已有你的工作，先領取。")
 			if not record.harvested.has(extra):return fail("先在田尾育苗床採收過%s，才能在這裡留種。"%NAMES[extra])
-			if int(inventory.get(extra,0))<1:return fail("沒有可留種的%s。"%NAMES[extra])
-			inventory[extra]=int(inventory[extra])-1
+			var cost:=save_flower_cost(extra)
+			if int(inventory.get(extra,0))<cost:return fail("留種需要 %d 份%s。"%[cost,NAMES[extra]])
+			inventory[extra]=int(inventory[extra])-cost
 			record.saving={"kind":extra,"ready":now+SAVE_SECONDS}
 			return ok("%s已放上留種台，約 60 秒後可領取種子。"%NAMES[extra])
 		"flower_save_take":
@@ -257,12 +264,14 @@ static func perform(record:Dictionary,garden:Dictionary,player:Dictionary,action
 			if not record.intro:return fail("先和花圃的阿蕾打聲招呼。")
 			if extra=="original":
 				if not player.get("blue_outfit",false):return fail("現在已穿著原色工作服。")
+				player.blue_outfit_unlocked=true
 				player.erase("blue_outfit")
 				return ok("換回原色工作服。")
 			if player.get("blue_outfit",false):return fail("現在已穿著藍染工作服。")
 			if int(inventory.get("blue_dye",0))<1:return fail("需要一份藍色染料。")
 			inventory.blue_dye-=1
 			player.blue_outfit=true
+			player.blue_outfit_unlocked=true
 			return ok("換上了藍染工作服，藍色染料 −1。")
 		"flower_buy":
 			if not record.intro:return fail("先和花圃的阿蕾打聲招呼。")

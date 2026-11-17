@@ -178,15 +178,30 @@ func interact_key()->void:
 	await key(KEY_E)
 	await refresh()
 
-func press(node_name:String,label:String)->bool:
+func tap_pad(button_id:JoyButton)->void:
+	for down in [true,false]:
+		var event:=InputEventJoypadButton.new()
+		event.button_index=button_id
+		event.pressed=down
+		root.push_input(event)
+	await settle()
+
+func press(node_name:String,label:String,with_pad:=false)->bool:
 	var b:=button(node_name)
 	check(b!=null and not b.disabled and b.is_visible_in_tree(),"Enabled %s (%s)"%[node_name,label])
 	if b==null or b.disabled:return false
 	app.action_clock=0
 	app.session.rates[1].clear()
-	b.grab_focus()
 	await create_timer(0.05).timeout
-	b.pressed.emit()
+	if with_pad:
+		button("Route_letter").grab_focus()
+		var request_count:int=app.session.counter
+		await tap_pad(JOY_BUTTON_X)
+		check(root.gui_get_focus_owner()==b and app.session.counter==request_count,"X focuses the dish without submitting (%s)"%label)
+		await tap_pad(JOY_BUTTON_A)
+	else:
+		b.grab_focus()
+		b.pressed.emit()
 	await settle()
 	await refresh()
 	return true
@@ -528,7 +543,7 @@ func size_flow(label:String)->void:
 	var ids_before:=node_ids()
 	var rest_before:=others()
 	# ---- D: serve through the real button.
-	if await press("DishMain_chowder","serve chowder "+label):
+	if await press("DishMain_chowder","serve chowder "+label,true):
 		check(chowder_state()=={"portions":4,"claimed":{}},"Server has a 4-portion chowder round (%s): %s"%[label,str(chowder_state())])
 		check(held(CHOWDER)==0,"Four chowders left the bag (%s): %d"%[label,held(CHOWDER)])
 		check(int(chowder_snap().get("portions",0))==4 and not chowder_snap().has("claimed") and chowder_snap().get("claimed_own",true)==false,"Snapshot: 4 portions, no claimed list, claimed_own false (%s): %s"%[label,str(chowder_snap())])
@@ -542,7 +557,7 @@ func size_flow(label:String)->void:
 		layout_ok("chowder served "+label)
 	# ---- E: claim through the real button.
 	rest_before=others()
-	if await press("DishMain_chowder","claim chowder "+label):
+	if await press("DishMain_chowder","claim chowder "+label,true):
 		check(held(CHOWDER)==1,"Claim puts one chowder in the bag (%s): %d"%[label,held(CHOWDER)])
 		check(int(chowder_state().get("portions",0))==3 and (chowder_state().get("claimed",{}) as Dictionary).has(id),"Server: 3 left, I am in claimed (%s): %s"%[label,str(chowder_state())])
 		check(chowder_snap().get("claimed_own",false)==true and not chowder_snap().has("claimed"),"Snapshot: claimed_own true, no claimed list (%s): %s"%[label,str(chowder_snap())])
@@ -575,6 +590,9 @@ func size_flow(label:String)->void:
 	check(shown("TeaReason") and label_text("TeaReason")==Tea.NOT_DONE,"Tallest: tea red reason shown (%s)"%label)
 	layout_ok("tallest: three dishes, un-installed warmer, tea reason "+label)
 	neighbours_ok("WarmerInstall","three dishes "+label)
+	button("DishMain_chowder").grab_focus()
+	await tap_pad(JOY_BUTTON_X)
+	expect_focus("DishMain_hotpot","X skips an already claimed dish "+label)
 	# Real arrow keys around the chowder row.
 	var chowder_b:=button("DishMain_chowder")
 	if chowder_b!=null:

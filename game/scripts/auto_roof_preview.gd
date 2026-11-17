@@ -36,9 +36,9 @@ extends RefCounted
 
 const Plan = preload("res://scripts/auto_roof_plan.gd")
 const WORLD_PATH := "res://scripts/world.gd"
-const BUILD_KINDS := ["floor", "path", "wall", "window", "door", "roof"]
-const AREA_KINDS := ["floor", "path", "roof"]
-const GROUND_KINDS := ["floor", "path"]
+const BUILD_KINDS := ["floor", "path", "spring_pebble_path", "wall", "window", "door", "roof"]
+const AREA_KINDS := ["floor", "path", "spring_pebble_path", "roof"]
+const GROUND_KINDS := ["floor", "path", "spring_pebble_path"]
 const BOUNDARY := ["wall", "window", "door"]
 const MAX_AREA := 25
 const MAX_AREA_END := 1000

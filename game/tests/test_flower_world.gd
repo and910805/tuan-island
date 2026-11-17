@@ -301,7 +301,7 @@ func test_chapter_flow() -> void:
 	expect(act(w,A,"remove",mine[5]).ok and not tianwei_crops(w).has(World.key(mine[5])),"A restores its own empty bed")
 	mine.remove_at(5)
 
-	# --- seed saving 1:1, 60 s
+	# --- a full plant harvest against one seed packet, 60 s
 	near(w,A,Flower.SEED_TABLE)
 	for kind in kinds:
 		r=act(w,A,"flower_save",Flower.SEED_TABLE,kind)

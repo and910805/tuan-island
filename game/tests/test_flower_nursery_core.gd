@@ -154,7 +154,7 @@ func progression(s:Dictionary) -> void:
 	capped.flower_nursery.players[A].harvested.bluebell=FN.LIMIT-1
 	FN.note_harvest(capped,A,"bluebell",5)
 	expect(capped.flower_nursery.players[A].harvested.bluebell==FN.LIMIT,"harvested capped at LIMIT")
-	# Seed saving 1:1, 60 s.
+	# A full plant harvest returns one seed packet after 60 s.
 	rejects(s,A,"flower_save","radish","","save extra whitelist")
 	var unharvested:=s.duplicate(true)
 	unharvested.flower_nursery.players[A].harvested.erase("chime_herb")
@@ -162,7 +162,11 @@ func progression(s:Dictionary) -> void:
 	rejects(unharvested,A,"flower_save","chime_herb","採收","save needs a tianwei harvest of that kind")
 	for kind in FN.FLOWERS:
 		var flowers:=int(bag(s)[kind])
-		expect(act(s,A,"flower_save",kind).ok and bag(s)[kind]==flowers-1 and rec(s).saving=={"kind":kind,"ready":s.time+60.0},"start saving "+kind)
+		var cost:=FN.save_flower_cost(kind)
+		var insufficient:=s.duplicate(true)
+		insufficient.players[A].inventory[kind]=cost-1
+		rejects(insufficient,A,"flower_save",kind,"留種需要 %d 份"%cost,"one below the recipe refuses "+kind)
+		expect(act(s,A,"flower_save",kind).ok and bag(s)[kind]==flowers-cost and rec(s).saving=={"kind":kind,"ready":s.time+60.0},"start saving "+kind)
 		rejects(s,A,"flower_save",kind,"已有你的工作","one saving job at a time")
 		rejects(s,A,"flower_save_take","","沒有完成的工作","cannot take saved seed early")
 		s.time+=59.5
@@ -177,8 +181,8 @@ func progression(s:Dictionary) -> void:
 	empty_bag.players[A].inventory.bluebell=0
 	empty_bag.flower_nursery.players[A].saved.erase("bluebell")
 	empty_bag.flower_nursery.players[A].harvested.bluebell=1
-	rejects(empty_bag,A,"flower_save","bluebell","沒有可留種","save without flower")
-	# Order: bag now bluebell 3, orange 3, chime 1, seeds 1/1/1.
+	rejects(empty_bag,A,"flower_save","bluebell","留種需要 2 份","save without flower")
+	# Order: bag now bluebell 2, orange 2, chime 1, seeds 1/1/1.
 	var unsaved:=s.duplicate(true)
 	unsaved.flower_nursery.players[A].saved.erase("orange_blossom")
 	rejects(unsaved,A,"flower_ship","",FN.UNSAVED_MESSAGE,"ship needs all three saved")
@@ -195,7 +199,7 @@ func progression(s:Dictionary) -> void:
 	rich.players[A].coins=FN.LIMIT
 	rejects(rich,A,"flower_ship","","上限","ship coin limit")
 	var coins:=int(s.players[A].coins)
-	expect(act(s,A,"flower_ship").ok and s.players[A].coins==coins+176 and bag(s).bluebell==1 and bag(s).orange_blossom==1 and bag(s).chime_herb==0 and rec(s).shipped,"ship pays 176 and deducts order")
+	expect(act(s,A,"flower_ship").ok and s.players[A].coins==coins+176 and bag(s).bluebell==0 and bag(s).orange_blossom==0 and bag(s).chime_herb==0 and rec(s).shipped,"ship pays 176 and deducts order")
 	for seed_id in FN.RESERVE:expect(bag(s)[seed_id]==1,"reserve seed kept "+seed_id)
 	rejects(s,A,"flower_ship","","已出貨","cannot ship twice")
 	expect(FN.phase(s,A)=="garden","phase garden")
@@ -229,6 +233,7 @@ func progression(s:Dictionary) -> void:
 	full.players[A].inventory.bluebell_seed=FN.LIMIT
 	rejects(full,A,"flower_buy","bluebell_seed","背包上限","buy bag limit")
 	# Garden: A gives blue_dye 2 + orange 1 (seeds untouched).
+	bag(s).orange_blossom=1
 	var seeds_before:=[bag(s).bluebell_seed,bag(s).orange_blossom_seed,bag(s).chime_herb_seed]
 	expect(act(s,A,"flower_give").ok and s.flower_nursery.garden.given=={"blue_dye":2,"orange_blossom":1,"chime_herb":0} and bag(s).blue_dye==0 and bag(s).orange_blossom==0,"partial donation")
 	expect([bag(s).bluebell_seed,bag(s).orange_blossom_seed,bag(s).chime_herb_seed]==seeds_before,"donation never takes seeds")

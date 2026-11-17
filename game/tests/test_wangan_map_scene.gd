@@ -117,7 +117,7 @@ func map_ok(map:Control,label:String)->void:
 	if map==null:return
 	check(root.get_visible_rect().encloses(map.get_global_rect()) and app.modal.get_global_rect().grow(0.5).encloses(map.get_global_rect()),"Map whole on screen (%s) %s"%[label,str(map.get_global_rect())])
 	var rects:Dictionary=map.layout_rects()
-	for own in ["home","home_caption","home_inset","lanyang"]:
+	for own in ["home","home_caption","home_icon","lanyang"]:
 		check(Rect2(Vector2.ZERO,map.size).encloses(rects[own]),"%s inside map (%s)"%[own,label])
 		for other in rects:
 			if other==own or (own.begins_with("home") and str(other).begins_with("home")):continue
@@ -167,6 +167,20 @@ func size_flow()->void:
 	check(is_instance_valid(app.modal),"Local map open (%s)"%tag)
 	await shot("local_map_home_before_picnic")
 	app._close_modal()
+	var player:Dictionary=w.state.players[id]
+	var saved_inventory:Dictionary=player.inventory.duplicate(true)
+	for item in player.inventory.keys():
+		if str(item).ends_with("_seed"):player.inventory.erase(item)
+	var plot:="45,26"
+	w.state.crops[plot]={"owner":id,"kind":"","growth":0.0,"wet":false}
+	await place("home",Vector2(47.5,31.5))
+	app._map_menu();await settle()
+	var restock:Dictionary=app.map_view.letter_target(app.session.snapshot,app.session.own_id)
+	check(restock.personal and restock.at==Vector2(43.5,29.5),"Map pins Xiaoli when seeds run out (%s)"%tag)
+	await shot("local_map_home_restock")
+	app._close_modal()
+	player.inventory=saved_inventory
+	w.state.crops.erase(plot)
 	w.state.picnic=true  # PRESET
 	await place("home",Vector2(47.5,31.5))
 	app._map_menu();await settle()

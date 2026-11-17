@@ -83,6 +83,10 @@ func shot(name:String)->void:
 	var ready_b:=await mill_pixels(ready,float(world.state.time),0.45,false)
 	expect(ready_a.get_data()==ready_b.get_data(),"finished manual work stops processing animation")
 	expect(ready_a.get_data()!=idle_a.get_data(),"ready manual output is visually distinguishable")
+	var feed_ready:=ready.duplicate(true)
+	feed_ready.processing.ready[0].kind="feed"
+	var feed_frame:=await mill_pixels(feed_ready,float(world.state.time),0.0,true)
+	expect(feed_frame.get_data()!=ready_a.get_data(),"Ready feed uses different pixels from ready flour")
 	await scene_frame("mill-ready",0.45,false)
 	app.session.perform("claim_processing",MILL,"")
 	app.session.perform("feed_processing",MILL,"")

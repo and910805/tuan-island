@@ -1,9 +1,6 @@
 extends RefCounted
-## 第 40 章「陶器可用於上菜」：把貓空與鶯歌回訪領到的茶陶組借給風鈴渡口的共餐桌，
-## 用一份焙好的茶泡一壺，分成六杯，島民各喝一杯。
-##
-## 與規劃的差距：只有共餐桌泡茶這一種上菜用途，沒有茶屋佈置；喝茶沒有數值效果、
-## 不進圖鑑、不給物品（只是共享的一輪）；火鍋與西瓜不使用茶陶組。杯數與用量為實作選擇。
+## 第 40 章茶陶組可以借給風鈴渡口共餐桌或貓空茶屋。兩處各自記錄茶壺，
+## 一份焙茶泡六杯，每位島民可喝一杯。隔日放涼後可以泡新茶。
 ##
 ## 純規則：不讀檔、不看現實時鐘、不用亂數；失敗時 state 完全不變（先檢查完全部條件，
 ## 最後才寫入）。不 preload World（避免循環），只 preload community.gd 與 tea_revisit.gd。
@@ -66,6 +63,9 @@ const BREW_ACTION:="tea_service_brew"
 const SIP_ACTION:="tea_service_sip"
 const ACTIONS:=[PLACE_ACTION,TAKE_ACTION,BREW_ACTION,SIP_ACTION]
 const STATE_KEY:="tea_service"
+const HOUSE_BREW:="tea_house_brew"
+const HOUSE_SIP:="tea_house_sip"
+const HOUSE_ACTIONS:=[HOUSE_BREW,HOUSE_SIP]
 const KIT:="tea_ware_kit"
 const KIT_NAME:="茶陶組"
 const STYLES:=["light","deep"]
@@ -116,8 +116,10 @@ static func lender_own(snapshot:Dictionary,token:String="") -> bool:
 	if record.has("lender_own"):return record.lender_own==true
 	return not token.is_empty() and record.get("lender") is String and record.lender==token
 
-static func current_round(snapshot:Dictionary) -> Dictionary:
-	var found:Variant=_record(snapshot).get("round")
+static func current_round(snapshot:Dictionary,key:String=STATE_KEY) -> Dictionary:
+	var record:Variant=snapshot.get(key,{})
+	if not record is Dictionary:return {}
+	var found:Variant=record.get("round")
 	if not found is Dictionary or not STYLES.has(found.get("style")):return {}
 	var raw:Variant=found.get("portions",0)
 	var left:int=int(raw) if (raw is int or raw is float) else 0
@@ -129,8 +131,8 @@ static func current_round(snapshot:Dictionary) -> Dictionary:
 static func today(snapshot:Dictionary) -> int:
 	return TEA_REVISIT.today(snapshot)
 
-static func portions(snapshot:Dictionary) -> int:
-	return int(current_round(snapshot).get("portions",0))
+static func portions(snapshot:Dictionary,key:String=STATE_KEY) -> int:
+	return int(current_round(snapshot,key).get("portions",0))
 
 static func style_name(style:String) -> String:
 	return str(STYLE_NAMES.get(style,"茶"))
@@ -245,25 +247,51 @@ static func apply(state:Dictionary,token:String,action:String,p:Vector2i,extra:S
 			return {"ok":true,"message":TAKEN_OK}
 		BREW_ACTION:
 			if not placed(state):return _fail(NOT_PLACED)
-			if portions(state)>0:return _fail(TEA_LEFT_BREW)
-			var item:String=TEA_ITEMS[extra]
-			var tea:=_count(inventory,item)
-			if tea<1:return _fail(NO_TEA%STYLE_NAMES[extra])
-			if tea==1:inventory.erase(item)
-			else:inventory[item]=tea-1
-			state[STATE_KEY]["round"]={"style":extra,"portions":CUPS,"claimed":{},"day":today(state)}
-			return {"ok":true,"message":BREWED_OK%STYLE_NAMES[extra]}
-	# SIP_ACTION
+			return brew_at(state,STATE_KEY,inventory,extra,BREWED_OK)
 	if not placed(state):return _fail(NOT_PLACED)
-	var record:Dictionary=state[STATE_KEY]
+	return sip_at(state,STATE_KEY,token)
+
+static func brew_at(state:Dictionary,key:String,inventory:Dictionary,style:String,notice:String) -> Dictionary:
+	if portions(state,key)>0:return _fail(TEA_LEFT_BREW)
+	var item:String=TEA_ITEMS[style]
+	var tea:=_count(inventory,item)
+	if tea<1:return _fail(NO_TEA%STYLE_NAMES[style])
+	if tea==1:inventory.erase(item)
+	else:inventory[item]=tea-1
+	state[key]["round"]={"style":style,"portions":CUPS,"claimed":{},"day":today(state)}
+	return {"ok":true,"message":notice%STYLE_NAMES[style]}
+
+static func sip_at(state:Dictionary,key:String,token:String) -> Dictionary:
+	var record:Dictionary=state[key]
 	var now:Variant=record.get("round")
 	if not now is Dictionary:return _fail(NO_ROUND)
 	if int(now.get("portions",0))<=0:return _fail(EMPTY)
-	if current_round(state).cold:return _fail(COLD)
+	if current_round(state,key).cold:return _fail(COLD)
 	if now.claimed.has(token):return _fail(SIPPED)
 	now.claimed[token]=true
 	now.portions=int(now.portions)-1
 	return {"ok":true,"message":SIP_OK%[STYLE_NAMES[now.style],int(now.portions)]}
+
+static func apply_house(state:Dictionary,token:String,action:String,p:Vector2i,extra:String,region:String) -> Dictionary:
+	if region!=TEA_REVISIT.FILL_REGION or p!=TEA_REVISIT.HOUSE_SITE:return _fail("請到貓空茶屋的展示桌旁。")
+	var key:=TEA_REVISIT.HOUSE_KEY
+	if not state.has(key) or not TEA_REVISIT.house_open(state):return _fail("先在展示桌擺一組茶陶。")
+	if action==HOUSE_BREW:
+		if extra not in STYLES:return _fail(BAD_STYLE)
+		return brew_at(state,key,state.players[token].inventory,extra,"%s泡好了，茶屋有六杯茶可以分享。")
+	if not extra.is_empty():return _fail(BAD_EXTRA)
+	return sip_at(state,key,token)
+
+static func public_house(state:Dictionary,token:String) -> Dictionary:
+	var key:=TEA_REVISIT.HOUSE_KEY
+	var record:Dictionary=state.get(key,{})
+	if record.is_empty():return {}
+	var out:={"occupied":true,"lender_own":record.lender==token}
+	var now:=current_round(state,key)
+	if not now.is_empty():
+		out.round={"style":now.style,"portions":now.left,"day":now.day}
+		out.sipped_own=record.round.claimed.has(token)
+	return out
 
 ## Save check for state.tea_service (absent is fine). Call ONCE at top level from
 ## save_schema.validate, next to table_warmer.valid (region projections replace
@@ -276,6 +304,9 @@ static func valid(s:Dictionary) -> bool:
 	if not players is Dictionary or not players.has(record.lender):return false
 	if s.get("picnic")!=true or COMMUNITY.table_cell(s)==COMMUNITY.NO_CELL:return false
 	if not TEA_REVISIT.completed(s):return false
+	return valid_round(s,record)
+
+static func valid_round(s:Dictionary,record:Dictionary) -> bool:
 	if record.size()==1:return true
 	if record.size()!=2 or not record.get("round") is Dictionary:return false
 	var now:Dictionary=record.round
@@ -287,7 +318,7 @@ static func valid(s:Dictionary) -> bool:
 	if not (left is int or left is float) or not claimed is Dictionary:return false
 	if left!=float(int(left)) or left<0 or left!=CUPS-claimed.size():return false
 	for who:Variant in claimed:
-		if not who is String or not players.has(who) or not claimed[who] is bool or claimed[who]!=true:return false
+		if not who is String or not s.players.has(who) or not claimed[who] is bool or claimed[who]!=true:return false
 	now.portions=int(left)
 	now.day=int(day)
 	return true

@@ -83,6 +83,7 @@ const PROPOSED_ITEMS := {}
 ## World.INDUSTRY.PROCESS[product].ingredients has item; via=freight → mine_freight.ITEMS;
 ## via=table_warmer → table_warmer.INSTALL_COST has item and product is its INSTALL_ACTION.
 const RESOURCE_USES := [
+	{"item":"iron_ore","via":"process","product":"iron_ingot"},
 	{"item":"warm_stone","via":"table_warmer","product":"warmer_install"},
 	{"item":"ochre_earth","via":"build","product":"glass_furnace"},
 	{"item":"vein_quartz","via":"process","product":"crystal_sand"},
@@ -116,7 +117,7 @@ const COMMISSIONS := {
 ## layout_template = index (1..5) into mine_layout.SIDE_CAVES to reuse; survey point
 ## is mine_survey.POINTS[layout_template]. exits never cost items or energy.
 const DEPTHS := {
-	6:{"zone":"rust_vein","title":"鏽紋岔道","ore":"copper_ore","yield":4,"finds":["stone","ochre_earth"],"proposed":[],
+	6:{"zone":"rust_vein","title":"鏽紋岔道","ore":"copper_ore","yield":4,"finds":["stone","ochre_earth","iron_ore"],"proposed":[],
 		"hazard":"drip","layout_template":1,"history":"",
 		"exits":{"up":"mine_5","down":"mine_7","lift":SURFACE},
 		"survey":{"title":"紅褐色的紋路","text":"岩面一道道紅褐色紋路，像淋過雨的舊鐵欄杆留下的鏽痕。","hint":"第 6 層北側支洞。","icon":"copper_ore"}},

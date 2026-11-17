@@ -75,6 +75,7 @@ func forecast_keyboard_checks()->void:
 	# Mine: current 洞內 but surface-labelled forecast, never implying rain waters caves.
 	var cave:Dictionary=app.session.snapshot.duplicate(true);cave.region_id="mine_1"
 	LifeShell.refresh_forecast(app,cave)
+	await settle()
 	var line:Label=app.hud.find_child("WeatherTomorrow",true,false)
 	expect(line.text.begins_with("地表明日") and badge.tooltip_text.begins_with("地表預報") and badge.tooltip_text.contains(Forecast.CAVE_RULE),"mine HUD forecast labelled 地表 (%d)"%width)
 	expect(root.get_visible_rect().encloses(line.get_global_rect()) and line.get_theme_font("font").get_string_size(line.text,HORIZONTAL_ALIGNMENT_LEFT,-1,line.get_theme_font_size("font_size")).x<=line.size.x,"mine surface line fits badge (%d)"%width)

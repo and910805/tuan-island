@@ -55,6 +55,9 @@ const WeatherForecast=preload("res://scripts/weather_forecast.gd")
 const LifeHome=preload("res://scripts/life_ui_home.gd")
 const IdentityEntry=preload("res://scripts/identity_entry.gd")
 const VersionUpdateChecker=preload("res://scripts/version_update_checker.gd")
+const WindowsUpdateStage=preload("res://scripts/windows_update_stage.gd")
+const WindowsUpdateLaunch=preload("res://scripts/windows_update_launch.gd")
+const WindowsUpdateDownload=preload("res://scripts/windows_update_download.gd")
 const LifeAlmanac=preload("res://scripts/life_ui_almanac.gd")
 const AutomationUI=preload("res://scripts/automation_ui.gd")
 const IndustryUI=preload("res://scripts/industry_ui.gd")
@@ -92,6 +95,10 @@ var hud:Control
 var modal:PanelContainer
 var map_view:Control
 var toast:Label
+var activity_caption:Label
+var region_subtitle:Label
+var activity_caption_time:=0.0
+var activity_caption_priority:=0
 var objective:Label
 var inventory_label:Label
 var status_label:Label
@@ -106,10 +113,14 @@ var crop:="radish"
 var building:="floor"
 var building_style:=""
 var controller_sticks:Dictionary={}
+var controller_device:=-1
+var controller_protected:=false
 var controller_aim:=false
 var controller_navigation:=false
 var mute_emotes:=false
 var mute_chat:=false
+var return_news_pending:=false
+var return_news_snapshot_received:=false
 var island_messages:Array[String]=[]
 var controller_offset:=Vector2i.DOWN
 const CONTROLLER_TOOLS:=["hoe","seed","water","harvest","axe","pick","build","remove","fish","move_object"]
@@ -117,9 +128,16 @@ const CONTROLLER_AIM_DIRECTIONS:={JOY_BUTTON_DPAD_UP:Vector2i.UP,JOY_BUTTON_DPAD
 	JOY_BUTTON_DPAD_LEFT:Vector2i.LEFT,JOY_BUTTON_DPAD_RIGHT:Vector2i.RIGHT}
 var target:=Vector2i.ZERO
 var playing:=false
+var voyage_return:Button
+var voyage_photo:Button
+var voyage_active:=false
 var tool_buttons:Array[Button]=[]
 var input_clock:=0.0
 var action_clock:=0.0
+const GATHER_MOUSE:=-2
+const GATHER_NONE:=-1
+const GATHER_INTERVAL:=0.36
+var gather_hold:Dictionary={}
 var ui_clock:=0.0
 var test_seconds:=0.0
 var local_mode:=false
@@ -144,12 +162,14 @@ var forestry_ui=ForestryUI.new()
 var logistics_ui=LogisticsUI.new()
 var modal_shade:ColorRect
 var modal_feedback:Label
+var settings_path:="user://settings.cfg"
 var preview_toolbar:PanelContainer
 var preview_top:HBoxContainer
 var coin_label:Label
 var inventory_hidden_controls:Array[Control]=[]
 var version_checker:Node
 var version_update_dialog:Control
+var room_update_dialog:Control
 var font_scale_refresh_pending:=false
 ## Blueprint client: controller owns data/state, overlay draws on the map,
 ## strip is the non-modal construction side panel. Client-only (not headless).
@@ -186,7 +206,10 @@ func _ready() -> void:
 			return
 		var port:=int(server_setting("port","PORT","28417"))
 		var save_file:=server_setting("save","GAME_SAVE_PATH","user://world-server.json")
-		var err:int=session.host(port,"",save_file,server_setting("room-key","GAME_ROOM_KEY",""),server_setting("bind","GAME_BIND","127.0.0.1"),true,server_setting("transport","GAME_TRANSPORT","enet"))
+		var err:int=session.host(port,"",save_file,server_setting("room-key","GAME_ROOM_KEY",""),server_setting("bind","GAME_BIND","127.0.0.1"),true,server_setting("transport","GAME_TRANSPORT","enet"),false,server_setting("mode","GAME_WORLD_MODE",""))
+		if err==OK:
+			var release:=_release_metadata()
+			print("SERVER_BUILD version=%s build=%d protocol=%d"%[release.get("version","unknown"),int(release.get("build",0)),Session.PROTOCOL])
 		if err!=OK:get_tree().quit(1)
 		test_seconds=float(arg_value("quit-after","0"))
 		return
@@ -197,18 +220,27 @@ func _ready() -> void:
 		get_window().min_size=Vector2i(1024,640)
 	sound=SoftAudio.new()
 	add_child(sound)
-	sound.load_preferences(arg_value("settings","user://settings.cfg"))
+	settings_path=arg_value("settings",settings_path)
+	sound.load_preferences(settings_path)
+	sound.set_title()
 	bindings.load_preferences(arg_value("bindings","user://input-bindings.cfg"))
 	view=View.new()
 	if village_art_preview:view.village_art_preview=true
 	add_child(view)
 	view.reduced_motion=sound.reduced_motion
 	view.zoom=float(sound.preferred_zoom)
+	view.fixed_area_camera=sound.fixed_area_camera
+	view.label_text_scale=font_scale_factor()
 	view.interaction_key_label=binding_label("interact")
 	ui=CanvasLayer.new()
 	add_child(ui)
 	get_tree().node_added.connect(_font_scale_node_added)
 	_make_menu()
+	menu.visibility_changed.connect(_focus_title.call_deferred)
+	if not Input.get_connected_joypads().is_empty():
+		controller_navigation=true
+		_focus_title.call_deferred()
+	toast.add_theme_font_override("font",preload("res://scripts/island_type.gd").regular())
 	if not village_art_preview:
 		var identity_button:=button("封測島嶼",_open_identity)
 		menu.add_child(identity_button)
@@ -220,27 +252,75 @@ func _ready() -> void:
 	if village_art_preview:get_viewport().size_changed.connect(_layout_preview)
 	else:get_viewport().size_changed.connect(_layout_blueprint_strip)
 	port_input.text=arg_value("port","28417")
-	_start_version_check()
-	if "--local" in args: _host(false)
+	if OS.get_name()=="Windows" and not OS.has_feature("editor") and args.is_empty():
+		_resume_installed_update.call_deferred()
+	else:
+		_start_version_check()
+	var startup_nonce:=arg_value("update-startup","")
+	if not startup_nonce.is_empty() and "--local" not in args and "--join" not in args:
+		_confirm_update_startup(startup_nonce)
+	if "--local" in args: _host(false,arg_value("mode","life"))
 	if "--join" in args:
 		address_input.text=arg_value("address","127.0.0.1")
 		port_input.text=arg_value("port","28417")
+		# Automated local launch may supply its test room key without putting a
+		# secret on the command line or saving it in the player's preferences.
+		if OS.has_environment("GAME_CLIENT_ROOM_KEY"):key_input.text=OS.get_environment("GAME_CLIENT_ROOM_KEY")
 		_join()
 	if arg_value("capture","")!="":_capture_frame()
+
+func _confirm_update_startup(nonce:String)->void:
+	await get_tree().process_frame
+	if is_instance_valid(menu) and menu.visible:
+		WindowsUpdateLaunch.accept_startup(nonce)
 
 func _start_version_check() -> void:
 	var manifest_url:=str(ProjectSettings.get_setting("application/config/update_manifest_url","")).strip_edges()
 	if manifest_url.is_empty():return
-	var release_file:=FileAccess.open("res://release.json",FileAccess.READ)
-	if release_file==null:return
-	var release:Variant=JSON.parse_string(release_file.get_as_text())
-	if not release is Dictionary:return
-	var current_version:=str(release.get("version",""))
+	var current_version:=_release_update_version()
 	if VersionUpdateChecker.version_parts(current_version).size()!=3:return
 	version_checker=VersionUpdateChecker.new()
 	add_child(version_checker)
 	version_checker.update_available.connect(_show_version_update)
 	version_checker.check.call_deferred(manifest_url,current_version)
+
+func _release_version()->String:
+	return str(_release_metadata().get("version",""))
+
+func _release_update_version()->String:
+	var release:=_release_metadata()
+	return VersionUpdateChecker.packaged_version(str(release.get("version","")),release.get("build"))
+
+func _release_metadata()->Dictionary:
+	var release_file:=FileAccess.open("res://release.json",FileAccess.READ)
+	if release_file==null:return {}
+	var release:Variant=JSON.parse_string(release_file.get_as_text())
+	return release if release is Dictionary else {}
+
+func title_build_label()->Label:
+	var release:=_release_metadata()
+	var version:=str(release.get("version","")).strip_edges()
+	var build:Variant=release.get("build")
+	var text:="版本 "+version if not version.is_empty() else "開發版本"
+	if (build is int or build is float) and is_finite(float(build)) and build>=1 and build<=999999 and build==floorf(float(build)):
+		text+=" r%d"%int(build)
+	var badge:=label(text,14)
+	badge.name="TitleBuild"
+	badge.add_theme_color_override("font_color",Color("4a5e48"))
+	return badge
+
+func _resume_installed_update()->void:
+	var key:=VersionUpdateChecker.installed_public_key()
+	var candidates:=WindowsUpdateLaunch.remembered(key,_release_update_version())
+	if not candidates.is_empty():
+		menu.hide()
+		for candidate in candidates:
+			if await WindowsUpdateLaunch.launch(get_tree(),candidate):
+				_quit()
+				return
+		menu.show()
+		_notice("已保留可用的遊戲版本。",false)
+	_start_version_check()
 
 func _show_version_update(info:Dictionary) -> void:
 	if not is_instance_valid(ui):return
@@ -256,15 +336,17 @@ func _show_version_update(info:Dictionary) -> void:
 	shade.color=Color(0.07,0.12,0.10,0.70)
 	overlay.add_child(shade)
 	var panel:=PanelContainer.new()
+	var archive:Dictionary=info.get("archive",{})
+	var half_height:=150 if archive.is_empty() else 195
 	panel.name="VersionUpdatePanel"
 	panel.anchor_left=0.5
 	panel.anchor_top=0.5
 	panel.anchor_right=0.5
 	panel.anchor_bottom=0.5
 	panel.offset_left=-245
-	panel.offset_top=-150
+	panel.offset_top=-half_height
 	panel.offset_right=245
-	panel.offset_bottom=150
+	panel.offset_bottom=half_height
 	panel.add_theme_stylebox_override("panel",LifeTheme.badge_style())
 	overlay.add_child(panel)
 	var content:=VBoxContainer.new()
@@ -280,7 +362,102 @@ func _show_version_update(info:Dictionary) -> void:
 		if error!=OK:_notice("無法開啟下載頁，請稍後從官方公告取得新版。",false)
 	)
 	content.add_child(download)
-	content.add_child(button("稍後再說",func():overlay.queue_free();version_update_dialog=null))
+	var dismiss:=button("稍後再說",func():overlay.queue_free();version_update_dialog=null)
+	if not archive.is_empty():
+		var status:=label("",15)
+		status.name="UpdateArchiveStatus"
+		var actions:=HBoxContainer.new()
+		actions.add_theme_constant_override("separation",8)
+		content.add_child(actions)
+		content.add_child(status)
+		var picker:=FileDialog.new()
+		picker.name="UpdateArchivePicker"
+		picker.title="選取已下載的《糰糰島》更新封包"
+		picker.access=FileDialog.ACCESS_FILESYSTEM
+		picker.file_mode=FileDialog.FILE_MODE_OPEN_FILE
+		picker.filters=PackedStringArray(["*.zip ; Windows 更新封包"])
+		overlay.add_child(picker)
+		var staged_folder:=button("開啟新版資料夾",func():
+			OS.shell_open(str(overlay.get_meta("prepared_update","")))
+		)
+		staged_folder.hide()
+		content.add_child(staged_folder)
+		var launch_new:=Button.new()
+		launch_new.text="啟動新版"
+		launch_new.custom_minimum_size.y=42
+		launch_new.hide()
+		content.add_child(launch_new)
+		launch_new.pressed.connect(func():
+			if not menu.visible or session.world!=null or not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
+				status.text="請先回到主選單，再啟動新版。"
+				return
+			launch_new.disabled=true
+			dismiss.disabled=true
+			status.text="正在等待新版啟動…"
+			var prepared:Dictionary=overlay.get_meta("prepared_release")
+			var persist:=func()->bool:
+				return WindowsUpdateLaunch.remember(prepared,info.signed_manifest,VersionUpdateChecker.installed_public_key(),_release_update_version())
+			var ok:=await WindowsUpdateLaunch.launch(get_tree(),prepared,WindowsUpdateStage.INSTALL_ROOT,WindowsUpdateLaunch.STARTUP_TIMEOUT,persist)
+			if ok:
+				_quit()
+				return
+			if not is_instance_valid(overlay):return
+			launch_new.disabled=false
+			dismiss.disabled=false
+			status.text="新版未能啟動，原版本可以繼續遊玩。"
+		)
+		var validate:=button("驗證下載的 ZIP",func():
+			picker.set_meta("prepare_update",false)
+			picker.popup_centered_ratio(0.7)
+		)
+		actions.add_child(validate)
+		var prepare:=button("準備新版",func():
+			picker.set_meta("prepare_update",true)
+			picker.popup_centered_ratio(0.7)
+		)
+		actions.add_child(prepare)
+		var apply_prepared:=func(result:Dictionary):
+			if not result.ok:
+				status.text=str(result.message)
+				return
+			overlay.set_meta("prepared_update",result.directory)
+			overlay.set_meta("prepared_release",result)
+			staged_folder.show()
+			var signed_binaries_match:bool=info.has("signed_manifest") and info.get("binary_hashes",{})==result.hashes
+			launch_new.visible=OS.get_name()=="Windows" and signed_binaries_match
+			prepare.disabled=true
+			status.text="新版已準備好。" if signed_binaries_match else "封包已驗證，但缺少相符的執行檔簽章資料。"
+		if OS.get_name()=="Windows" and archive.has("url"):
+			var transfer:=WindowsUpdateDownload.new()
+			overlay.add_child(transfer)
+			transfer.transfer_progress.connect(func(percent:int):status.text="正在下載新版 %d%%"%percent)
+			var fetch:=Button.new()
+			fetch.text="在遊戲內下載"
+			fetch.custom_minimum_size.y=42
+			content.add_child(fetch)
+			content.move_child(fetch,actions.get_index())
+			fetch.pressed.connect(func():
+				fetch.disabled=true
+				dismiss.disabled=true
+				validate.disabled=true
+				prepare.disabled=true
+				status.text="正在連接下載站…"
+				var result:=await transfer.fetch(archive)
+				if not is_instance_valid(overlay):return
+				fetch.disabled=result.ok
+				dismiss.disabled=false
+				validate.disabled=false
+				prepare.disabled=result.ok
+				apply_prepared.call(result)
+			)
+		picker.file_selected.connect(func(path:String):
+			if picker.get_meta("prepare_update",false):
+				apply_prepared.call(WindowsUpdateStage.prepare(path,archive))
+				return
+			var valid:=VersionUpdateChecker.verify_archive(path,archive)
+			status.text="驗證通過，檔案符合發行清單。" if valid else "驗證失敗，請從下載頁重新取得。"
+		)
+	content.add_child(dismiss)
 	version_update_dialog=overlay
 
 func _configure_identity_server() -> bool:
@@ -325,6 +502,7 @@ func _apply_font_scale_tree() -> void:
 	font_scale_refresh_pending=false
 	if not is_instance_valid(ui):return
 	var factor:=font_scale_factor()
+	if is_instance_valid(view):view.label_text_scale=factor
 	_apply_font_scale_node(ui,factor,{})
 	_layout_preview.call_deferred()
 
@@ -360,7 +538,27 @@ func _open_identity() -> void:
 func _identity_status(result:Dictionary) -> void:
 	match result.get("operation"):
 		"membership":
-			if result.get("ok",false):island_passport=result
+			if result.get("ok",false):
+				island_passport=result
+				if is_instance_valid(modal) and modal.has_meta("island_passport"):
+					var code := passport_code.text if is_instance_valid(passport_code) else ""
+					var concealed := not is_instance_valid(passport_code) or passport_code.secret
+					_passport_menu()
+					if is_instance_valid(passport_code):
+						passport_code.text=code
+						passport_code.secret=concealed
+		"admin_change","kick_member","block_member","public_builder":
+			if is_instance_valid(passport_feedback):
+				if not result.get("ok",false):
+					passport_feedback.text="操作未完成。請確認成員狀態與權限。"
+				elif result.operation=="kick_member":
+					passport_feedback.text="已請這位成員離開本次連線。"
+				elif result.operation=="block_member":
+					passport_feedback.text="已封鎖入島。" if result.enabled else "已解除入島封鎖。"
+				elif result.operation=="public_builder":
+					passport_feedback.text="已授予公共地塊施工權。" if result.enabled else "已收回公共地塊施工權。"
+				else:
+					passport_feedback.text="管理員權限已更新。"
 		"rotate","revoke":
 			if is_instance_valid(passport_feedback):
 				var success:bool=result.get("ok",false)
@@ -388,11 +586,13 @@ func _capture_frame() -> void:
 		"blueprints":_blueprint_menu()
 		"inventory":_inventory()
 		"help":_help()
+		"workshop-guide":_workshop_guide(int(arg_value("capture-lesson","0")))
 		"shop":_shop()
 		"shipping":_shipping_menu()
 		"chapter":_chapter_menu()
 		"community":_community_menu()
 		"animal":_animal_menu()
+		"livestock":LifeAlmanac.livestock_menu(self,arg_value("capture-animal","sheep"))
 		"map":_map_menu()
 		"journal":_journal(arg_value("capture-resident",""))
 		"resident":_resident_menu("aru")
@@ -406,7 +606,7 @@ func _capture_frame() -> void:
 		"seeds":_seed_menu()
 		"orders":_orders_menu()
 		"cook":_cook_menu(Vector2i(42,32))
-		"workbench":automation_ui.workbench(self,Vector2i(40,33))
+		"workbench":automation_ui.workbench(self,World.cell(arg_value("capture-cell","40,33")))
 		"sprinkler":automation_ui.sprinkler(self,World.cell(arg_value("capture-cell","43,34")))
 		"copper":automation_ui.copper(self)
 		"industry":industry_ui.device(self,World.cell(arg_value("capture-cell","42,36")))
@@ -416,6 +616,7 @@ func _capture_frame() -> void:
 		"seeder":_select_tool("seed_area")
 		"harvester":_select_tool("harvest_area")
 		"clean":
+			_close_modal()
 			hud.hide()
 			toast.hide()
 		"quests":
@@ -449,7 +650,8 @@ func _capture_frame() -> void:
 func _capture_farm_sequence() -> void:
 	# Opt-in local QA recording: execute the same authoritative action as a click.
 	var action:=arg_value("capture-action","")
-	if not local_mode or not playing or action not in ["till_area","seed_area","harvest_area"]:
+	var loopback_qa:bool="--capture-loopback" in OS.get_cmdline_user_args() and address_input.text.strip_edges()=="ws://127.0.0.1:%d"%int(port_input.text)
+	if not (local_mode or loopback_qa) or not playing or action not in ["till_area","seed_area","harvest_area","hoe","seed","water","harvest","livestock_brush","chicken_hug","observe_weather"]:
 		push_error("Farm sequence requires a local farm action")
 		get_tree().quit(1)
 		return
@@ -458,11 +660,27 @@ func _capture_farm_sequence() -> void:
 	if DirAccess.make_dir_recursive_absolute(directory)!=OK:
 		get_tree().quit(1)
 		return
+	await RenderingServer.frame_post_draw
 	var before:Dictionary=session.snapshot.duplicate(true)
-	session.perform(action,World.cell(arg_value("capture-cell","42,36")),crop if action=="seed_area" else "")
+	if action in ["livestock_brush","chicken_hug"]:
+		var button_name:="SheepBrush" if action=="livestock_brush" else "ChickenHug"
+		var brush:=modal.find_child(button_name,true,false) as Button if is_instance_valid(modal) else null
+		if brush==null or brush.disabled:
+			push_error("Local capture requires the available care button: "+button_name)
+			get_tree().quit(1)
+			return
+		get_viewport().get_texture().get_image().save_png(destination.get_basename()+"-before.png")
+		brush.pressed.emit()
+	else:
+		if modal:_close_modal()
+		if action in ["hoe","seed","water","harvest"]:
+			selected=action
+			view.selected=action
+		if action!="observe_weather":session.perform(action,World.cell(arg_value("capture-cell","42,36")),crop if action in ["seed_area","seed"] else "")
 	var records:Array=[]
 	var started:=Time.get_ticks_msec()
 	for index in range(clampi(int(arg_value("capture-frames","36")),12,80)):
+		if action=="chicken_hug" and index==int(arg_value("capture-release-frame","-1")):_interact()
 		await RenderingServer.frame_post_draw
 		var picture:=get_viewport().get_texture().get_image()
 		var filename:="%03d.png"%index
@@ -470,7 +688,12 @@ func _capture_farm_sequence() -> void:
 			get_tree().quit(1)
 			return
 		if index==6:picture.save_png(destination)
-		records.append({"file":filename,"ms":Time.get_ticks_msec()-started,"feedback":view.farm_feedback.active(session.own_id,view.elapsed).duplicate(true)})
+		var shelter_at:Vector2=view.sheep_shelter.offset(view.elapsed,view.reduced_motion or view.photograph_mode)
+		records.append({"file":filename,"ms":Time.get_ticks_msec()-started,"camera":view.camera,
+			"shelter_offset":[shelter_at.x,shelter_at.y],"chickens":view.chicken_draw_stats.duplicate(),
+			"tool_hint_visible":selected_label.visible,
+			"tool_pose":view.tool_action_plan(session.own_id),"animal_feedback":view.livestock_pet_feedback.duplicate(true),
+			"feedback":view.farm_feedback.active(session.own_id,view.elapsed).duplicate(true)})
 		await get_tree().create_timer(0.05).timeout
 	var evidence:=FileAccess.open(directory.path_join("sequence.json"),FileAccess.WRITE)
 	if evidence==null:
@@ -528,12 +751,13 @@ func _refresh_bound_controls(parent:Node) -> void:
 		_refresh_bound_controls(child)
 
 func _world_keyboard_allowed() -> bool:
+	if voyage_active:return false
 	if not playing or modal!=null or (menu and menu.visible):return false
 	var focus:=get_viewport().gui_get_focus_owner()
 	return not (focus is LineEdit or focus is TextEdit)
 
 func movement_direction() -> Vector2:
-	if not _world_keyboard_allowed():return Vector2.ZERO
+	if controller_protected or not _world_keyboard_allowed():return Vector2.ZERO
 	var keyboard:=Vector2(float(bindings.pressed("move_right"))-float(bindings.pressed("move_left")),
 		float(bindings.pressed("move_down"))-float(bindings.pressed("move_up")))
 	if keyboard!=Vector2.ZERO:return keyboard
@@ -545,7 +769,29 @@ func movement_direction() -> Vector2:
 	return strongest/magnitude*remap(minf(magnitude,1.0),0.22,1.0,0.0,1.0)
 
 func _controller_connection_changed(device:int,connected:bool) -> void:
-	if not connected:controller_sticks.erase(device)
+	if not connected:
+		if gather_hold.get("device",GATHER_NONE)==device:gather_hold.clear()
+		var stick:Vector2=controller_sticks.get(device,Vector2.ZERO)
+		controller_sticks.erase(device)
+		var was_active:=device==controller_device
+		if was_active:
+			controller_device=-1
+			controller_navigation=false
+			if controller_aim:area_drag=false
+			controller_aim=false
+		if playing and (was_active or stick.length()>0.22):
+			var remaining:=movement_direction()
+			if not local_mode and remaining.is_zero_approx():
+				controller_protected=true
+				session.perform("controller_hold",Vector2i.ZERO)
+			session.input_direction(remaining)
+			_notice("手把已斷線，角色留在原地。可用手把或鍵盤滑鼠繼續。" if controller_protected else "手把已斷線。可重新連接手把，或用鍵盤滑鼠繼續。",false)
+	elif not playing:
+		controller_navigation=true
+		_focus_title.call_deferred()
+
+func _focus_title() -> void:
+	if not playing and is_instance_valid(menu) and menu.is_visible_in_tree():_focus_controller_menu(menu)
 
 func area_modifier_held(event:InputEventWithModifiers) -> bool:
 	match int(bindings.keys.get("area_modifier",KEY_NONE)):
@@ -555,6 +801,7 @@ func area_modifier_held(event:InputEventWithModifiers) -> bool:
 	return false
 
 func _cancel_navigation() -> void:
+	if LifeTasks.achao_return_if_sailing(self):return
 	if is_instance_valid(bindings_panel) and bindings_panel.cancel_capture():return
 	if capture_drag:
 		capture_drag=false
@@ -563,12 +810,16 @@ func _cancel_navigation() -> void:
 	if area_drag or moving_object:
 		area_drag=false;moving_object=false;_select_tool(selected)
 	elif modal and undo_ui.cancel_confirmation():pass
+	elif modal and modal.has_meta("return_to_travel_ticket"):
+		var return_to_ticket:Callable=modal.get_meta("return_to_travel_ticket")
+		return_to_ticket.call()
 	elif modal:_close_modal()
 	elif _blueprint_mode() in BLUEPRINT_LOCAL_MODES:
 		# Only unsubmitted capture/placing is cancelled; sent work stays pending.
 		var word:="框選" if _blueprint_mode()=="capture" else "放置"
 		if blueprints.cancel():_notice("已取消藍圖%s，沒有施工也沒有扣除材料。"%word,true)
 	elif WanganUI.dismiss(self):pass # 望安下船卡：Esc 先收起卡片，再按一次才開選單。
+	elif TravelUI.dismiss_arrival(self):pass
 	else:_pause_menu()
 
 func _display_notice(message:String) -> String:
@@ -578,8 +829,8 @@ func _display_notice(message:String) -> String:
 		"這種種子用完了，按 C 換種子或到攤位購買":"這種種子用完了，按 {seeds} 換種子或到攤位購買",
 		"風鈴接力開始！跟著金色風鈴靠近按 E，共同收集 12 次。沒有失敗倒數。":"風鈴接力開始！跟著金色風鈴靠近按 {interact}，共同收集 12 次。沒有失敗倒數。",
 		"走到金色風鈴身邊，再按 E 接住":"走到金色風鈴身邊，再按 {interact} 接住",
-		"魚竿已經放好了，等魚咬鉤後按空白鍵":"魚竿已經放好了，咬鉤後點浮標或按 {fish_catch} 收竿",
-		"魚竿放好了。等提示出現，再按空白鍵收竿":"魚竿放好了。咬鉤後點浮標或按 {fish_catch} 收竿",
+		"魚竿已經放好了，等魚咬鉤後按空白鍵":"魚竿已經放好了，咬鉤後%s收竿"%_fishing_reel_hint(),
+		"魚竿放好了。等提示出現，再按空白鍵收竿":"魚竿放好了。咬鉤後%s收竿"%_fishing_reel_hint(),
 		"買到一棵樹苗，按 C 選樹苗，再點空地種下":"買到一棵樹苗，按 {seeds} 選樹苗，再點空地種下",
 		"完成居民委託就能取得這張圖樣，按 J 查看故事":"完成居民委託就能取得這張圖樣，按 {journal} 查看故事"}
 	return binding_text(messages.get(message,message))
@@ -669,6 +920,7 @@ func _make_menu() -> void:
 	col.add_child(label("糰糰島",48))
 	col.add_child(label("一起種一片田，慢慢蓋一個家。",22))
 	col.add_child(label("Windows 可玩原型 · 固定俯視角 · 多人連線",14))
+	col.add_child(title_build_label())
 	col.add_child(HSeparator.new())
 	var row:=HBoxContainer.new()
 	col.add_child(row)
@@ -681,7 +933,9 @@ func _make_menu() -> void:
 	name_input.max_length=12
 	name_input.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	row.add_child(name_input)
-	col.add_child(button("住進自己的小島  ·  本機保存",func():_host(false)))
+	var solo:=button("住進自己的小島  ·  本機保存",func():_host(false))
+	solo.name="TitleSolo"
+	col.add_child(solo)
 	col.add_child(button("開啟朋友房間  ·  區域網路",func():_host(true)))
 	col.add_child(label("朋友房間需由這台電腦持續開啟；雲端部署尚未設定。",13))
 	var connection:=HBoxContainer.new()
@@ -710,12 +964,41 @@ func _make_menu() -> void:
 	ui.add_child(toast)
 
 func _make_hud() -> void:
+	activity_caption=label("",17)
+	activity_caption.name="ActivityCaption"
+	activity_caption.add_theme_font_override("font",preload("res://scripts/island_type.gd").regular())
+	activity_caption.size=Vector2(400,32)
+	activity_caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	activity_caption.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	activity_caption.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	activity_caption.add_theme_stylebox_override("normal",LifeTheme.badge_style())
+	activity_caption.add_theme_color_override("font_color",Color("314c3b"))
+	activity_caption.hide()
+	ui.add_child(activity_caption)
 	hud=Control.new()
 	hud.theme=theme()
 	hud.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud.visible=false
 	ui.add_child(hud)
+	voyage_return=button("返回碼頭 · Esc",func():LifeTasks.achao_return_if_sailing(self))
+	voyage_return.name="VoyageReturn"
+	ui.add_child(voyage_return)
+	voyage_return.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	voyage_return.offset_left=-100
+	voyage_return.offset_right=100
+	voyage_return.offset_top=-63
+	voyage_return.offset_bottom=-18
+	voyage_return.hide()
+	voyage_photo=button("拍船上合照",LifeTasks.achao_take_photo.bind(self))
+	voyage_photo.name="VoyagePhoto"
+	ui.add_child(voyage_photo)
+	voyage_photo.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	voyage_photo.offset_left=-100
+	voyage_photo.offset_right=100
+	voyage_photo.offset_top=-113
+	voyage_photo.offset_bottom=-68
+	voyage_photo.hide()
 	if village_art_preview:
 		LifeShell.make_hud(self)
 		_select_tool("hoe")
@@ -753,7 +1036,9 @@ func _make_standard_hud() -> PanelContainer:
 	var title_panel:=panel(hud,Rect2(22,18,280,78))
 	var title_col:=VBoxContainer.new()
 	title_panel.add_child(title_col)
-	title_col.add_child(label("糰糰島  /  風鈴渡口",22))
+	var location_title:=label("風鈴渡口",22)
+	location_title.name="RegionTitle"
+	title_col.add_child(location_title)
 	status_label=label("世界剛剛甦醒",13)
 	title_col.add_child(status_label)
 	var objectives:=panel(hud,Rect2(22,112,260,210))
@@ -784,7 +1069,9 @@ func _make_preview_hud() -> PanelContainer:
 	var location:=panel(hud,Rect2(18,16,234,70))
 	var location_content:=VBoxContainer.new()
 	location.add_child(location_content)
-	location_content.add_child(label("風鈴渡口",17))
+	var location_title:=label("風鈴渡口",17)
+	location_title.name="RegionTitle"
+	location_content.add_child(location_title)
 	status_label=label("",13)
 	location_content.add_child(status_label)
 	var tracker:=panel(hud,Rect2(18,146,268,0))
@@ -847,7 +1134,7 @@ func _layout_preview() -> void:
 			modal.position=(bounds-modal.size)/2
 		match str(modal.get_meta("life_modal_layout","")):
 			"livestock_card":
-				modal.size=Vector2(minf(510,bounds.x-48),minf(415,bounds.y-48))
+				modal.size=Vector2(minf(510,bounds.x-48),minf(470 if modal.has_meta("sheep_brushing") else 415,bounds.y-48))
 				modal.position=Vector2(bounds.x-modal.size.x-24,bounds.y-modal.size.y-24)
 			"build_folio":
 				modal.size=Vector2(minf(920,bounds.x-40),minf(590,bounds.y-64))
@@ -895,6 +1182,16 @@ func _layout_preview() -> void:
 			"waterworks":
 				modal.size=Vector2(minf(900,bounds.x-48),minf(570,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
+			"keepsake_paper":
+				modal.size=Vector2(minf(690,bounds.x-48),minf(420,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"welcome_sign_read", "welcome_sign_edit":
+				var height:=460.0 if modal.get_meta("life_modal_layout")=="welcome_sign_edit" else 310.0
+				modal.size=Vector2(minf(520,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"inn_tea_table", "inn_wardrobe":
+				modal.size=Vector2(minf(520,bounds.x-48),minf(360,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
 			"station_dialogue":
 				modal.size=Vector2(minf(900,bounds.x-48),minf(320,bounds.y-48))
 				modal.position=Vector2((bounds.x-modal.size.x)/2,bounds.y-modal.size.y-24)
@@ -902,7 +1199,8 @@ func _layout_preview() -> void:
 				modal.size=Vector2(minf(820,bounds.x-48),minf(510,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
 			"history_memory":
-				modal.size=Vector2(minf(860,bounds.x-48),minf(580,bounds.y-48))
+				var mining_history:bool=modal.get_meta("history_mode","")=="jinguashi"
+				modal.size=Vector2(minf(670 if mining_history else 860,bounds.x-48),minf(510 if mining_history else 580,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
 			"lanyang_garden":
 				var clearing:bool=modal.get_meta("garden_mode","")=="clear"
@@ -913,7 +1211,7 @@ func _layout_preview() -> void:
 				# T067: entry lists hoist landings and deep service/lift cards carry zone notes.
 				# T067 table warmer: the rest card also lists the floor's extra finds.
 				var mine_tall:bool=str(modal.get_meta("mine_site","")) in ["service","entry","lift","rest"]
-				modal.size=Vector2(minf(480,bounds.x-48),minf(560 if mine_tall else 420,bounds.y-48))
+				modal.size=Vector2(minf(480,bounds.x-48),minf(592 if mine_tall else 420,bounds.y-48))
 				modal.position=Vector2(bounds.x-modal.size.x-24,bounds.y-modal.size.y-28)
 			"mine_survey":
 				var observing:bool=modal.get_meta("survey_observe")
@@ -958,15 +1256,22 @@ func _layout_preview() -> void:
 			"island_map":
 				modal.size=Vector2(minf(700,bounds.x-48),minf(592,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
+			"controller_shortcuts":
+				modal.size=Vector2(minf(600.0,bounds.x-48.0),minf(334.0,bounds.y-48.0))
+				modal.position=((bounds-modal.size)*0.5).floor()
 			"pause_drawer":
 				modal.size=Vector2(390,minf(600,bounds.y-48))
 				modal.position=Vector2(bounds.x-modal.size.x-24,(bounds.y-modal.size.y)/2)
 			"resident_dialogue":
-				modal.size=Vector2(minf(900,bounds.x-48),minf(360,bounds.y-80))
+				var dialogue_height:=376.0+320.0*maxf(0.0,font_scale_factor()-1.0)
+				modal.size=Vector2(minf(900,bounds.x-48),minf(dialogue_height,bounds.y-80))
 				modal.position=Vector2((bounds.x-modal.size.x)/2,bounds.y-modal.size.y-24)
 			"community_board":
 				modal.size=Vector2(minf(760,bounds.x-48),minf(560,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
+			"return_news", "night_rest":
+				modal.size=Vector2(minf(530,bounds.x-48),minf(350,bounds.y-64))
+				modal.position=((bounds-modal.size)/2).floor()
 			"orders_board":
 				# T055 cards add a status line and accept/cancel next to delivery.
 				modal.size=Vector2(minf(780,bounds.x-48),minf(540,bounds.y-64))
@@ -984,10 +1289,13 @@ func _layout_preview() -> void:
 				modal.size=Vector2(minf(900,bounds.x-48),minf(520,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
 			"industry_device":
-				modal.size=Vector2(minf(650,bounds.x-48),minf(410,bounds.y-64))
+				modal.size=Vector2(minf(520,bounds.x-48),minf(370,bounds.y-64))
+				modal.position=(bounds-modal.size)/2
+			"workshop_guide":
+				modal.size=Vector2(minf(940,bounds.x-48),minf(570,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
 			"forestry_device":
-				modal.size=Vector2(minf(820,bounds.x-48),minf(450,bounds.y-64))
+				modal.size=Vector2(minf(820,bounds.x-48),minf(560,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
 			"logistics_device":
 				modal.size=Vector2(minf(820,bounds.x-48),minf(490,bounds.y-64))
@@ -1030,18 +1338,21 @@ func _world_pointer_allowed(point:Vector2) -> bool:
 		if control.is_visible_in_tree() and control.get_global_rect().has_point(point):return false
 	return true
 
-func _host(lan:bool) -> void:
+func _host(lan:bool,mode:="life") -> void:
 	var port:=int(port_input.text)
 	if port<1024 or port>65535:_notice("連接埠請填 1024 到 65535。",false);return
 	if lan and key_input.text.length()<4:_notice("朋友房間請先填至少四個字的密碼。",false);return
 	local_mode=not lan
 	blueprint_join_scope=""
-	var path:=arg_value("save","user://world-local.json" if not lan else "user://world-friends.json")
-	session.host(port,name_input.text,path,key_input.text if lan else "","0.0.0.0" if lan else "127.0.0.1")
+	var profile_path:="user://world-friends" if lan else "user://world-local"
+	if mode=="adventure":profile_path+="-adventure"
+	var path:=arg_value("save",profile_path+".json")
+	session.host(port,name_input.text,path,key_input.text if lan else "","0.0.0.0" if lan else "127.0.0.1",false,"enet",not lan,mode)
 
 func _join() -> void:
 	var port:=int(port_input.text)
 	if port<1024 or port>65535 or address_input.text.strip_edges().is_empty():_notice("請填有效的位址與連接埠。",false);return
+	local_mode=false
 	_notice("正在連進朋友的小島…",true)
 	blueprint_join_scope=_blueprint_address_scope(address_input.text,port)
 	var err:int=session.join(address_input.text.strip_edges(),port,name_input.text,key_input.text)
@@ -1049,6 +1360,7 @@ func _join() -> void:
 
 func _entered() -> void:
 	playing=true
+	if sound:sound.set_world(session.snapshot,session.own_id)
 	# Scope must be read before join_result clears the identity world being joined.
 	_blueprint_setup()
 	if is_instance_valid(identity_entry) and identity_entry.joining:identity_entry.join_result(true,"已連入島嶼。")
@@ -1075,16 +1387,35 @@ func _entered() -> void:
 		# 望安開場：剛下船的新島民看到下船卡（取代一般提示），左上角接著帶路。
 		WanganUI.show_arrival(self)
 	else:
-		_notice("歡迎！先用鋤頭開田，再播種、澆水。也可以拿斧頭採木材。" if next.id=="grow" else "歡迎回來！"+str(next.action)+"。",true)
+		var crop_step:Dictionary=World.CHAPTER_ONE.first_crop_step(session.snapshot,session.own_id)
+		var return_hint:String=str(crop_step.get("text",next.action)).replace("\n","，")
+		_notice("歡迎回來！"+return_hint+"。",true)
 	get_viewport().gui_release_focus()
+	return_news_pending=true
+	if return_news_snapshot_received:_offer_return_news(session.snapshot)
+
+func _offer_return_news(snapshot:Dictionary) -> void:
+	if not return_news_pending or not snapshot.has("island_news"):return
+	return_news_pending=false
+	if not snapshot.island_news.get("returning",false) or modal!=null or voyage_active or WanganUI.card_open(self):return
+	if LifeTasks.has_return_news(snapshot):LifeTasks.return_news(self,snapshot)
 
 func _disconnected() -> void:
 	playing=false
+	gather_hold.clear()
+	return_news_pending=false
+	return_news_snapshot_received=false
+	session.local_paused=false
+	controller_protected=false
+	activity_caption_time=0.0
+	if activity_caption:activity_caption.hide()
 	# The controller observes the Session itself (unknown on disconnect) and keeps
 	# any pending record; Main only drops the local drag and refreshes the picture.
 	capture_drag=false
 	fishing_audio.reset()
-	if sound:sound.close()
+	if sound:
+		sound.stop_cues()
+		sound.set_title()
 	island_passport.clear()
 	if is_instance_valid(identity_entry) and identity_entry.joining:
 		identity_entry.join_result(false,"無法連上這座島，請確認地址或稍後重試。")
@@ -1094,6 +1425,9 @@ func _disconnected() -> void:
 		view.fishing_feedback.reset()
 	WanganUI.dismiss(self)
 	if hud:hud.hide()
+	voyage_active=false
+	if voyage_return:voyage_return.hide()
+	if voyage_photo:voyage_photo.hide()
 	if menu:menu.show()
 	_blueprint_sync()
 	if toast:
@@ -1105,11 +1439,31 @@ func _disconnected() -> void:
 			toast.vertical_alignment=VERTICAL_ALIGNMENT_TOP
 	_close_modal()
 
+func _sync_voyage_controls() -> void:
+	voyage_return.visible=voyage_active
+	var bond:Dictionary=session.snapshot.get("resident_bonds",{}).get("achao",{})
+	voyage_photo.visible=voyage_active and int(bond.get("stage",0))>=4
+
 func _state_changed(snapshot:Dictionary,id:String) -> void:
+	if snapshot.has("island_news"):return_news_snapshot_received=true
+	var ballot_id:=int(snapshot.get("night_vote",{}).get("id",0))
+	var old_ballot:=int(view.data.get("night_vote",{}).get("id",0)) if view else 0
+	if playing and modal==null and ballot_id>0 and ballot_id!=old_ballot:
+		_notice("有人提議休息到清晨。開啟遊戲選單即可投票。",true)
+	_refresh_night_vote(snapshot)
 	var previous_trade:Dictionary=view.data.get("own_trade",{}) if view else {}
 	var origin:=str(view.data.get("region_id","")) if view and not view.data.is_empty() else ""
 	var destination:=str(snapshot.get("region_id","home"))
+	if sound and playing:
+		var settled:bool=sound.music.world_region==destination
+		sound.set_world(snapshot,id)
+		if settled and view:sound.music.play_milestone(SoftAudio.Music.milestone_for(view.data,snapshot))
+	if view and playing and sound.activity_captions:
+		var finished:=SoftAudio.completed_batch(view.data,snapshot,id)
+		if not finished.is_empty():_caption("%s完工，可以領取成品。"%finished,1)
 	if view and not view.data.is_empty() and str(view.data.get("region_id","home"))!=str(snapshot.get("region_id","home")):
+		gather_hold.clear()
+		activity_caption_time=0.0
 		island_messages.clear()
 		_close_modal()
 		area_drag=false
@@ -1118,18 +1472,55 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 		target=Vector2i.ZERO
 		get_viewport().gui_release_focus()
 	if view:
-		view.update_snapshot(snapshot,id)
+		if playing and village_art_preview and origin==World.REGIONS.HOME and destination==origin:
+			var previous_crop_step:Dictionary=World.CHAPTER_ONE.first_crop_step(view.data,id)
+			var next_crop_step:Dictionary=World.CHAPTER_ONE.first_crop_step(snapshot,id)
+			if previous_crop_step.get("id")!=next_crop_step.get("id"):
+				# Pair the next hint with the confirmed field change in the next frame.
+				ui_clock=0.2
+		var previous_push:float=view.ore_cart_push_started
+		var fresh_tools:Array=view.update_snapshot(snapshot,id)
+		if sound and playing:
+			if is_finite(view.ore_cart_push_started) and previous_push!=view.ore_cart_push_started:
+				sound.play_cart_roll(view.ore_cart_travel_seconds(World.ORE_ROUTE.stage(snapshot)))
+			var listener:Dictionary=snapshot.get("players",{}).get(id,{})
+			if not listener.is_empty():
+				sound.play_nearby_tools(fresh_tools,view.tool_feedback.actions,id,Vector2(listener.x,listener.y))
+				if id in fresh_tools and view.tool_feedback.actions[id].tool=="harvest":_caption("採收完成，作物已收入背包。",1)
+	if playing and is_instance_valid(voyage_return):
+		var sailing:bool=snapshot.get("players",{}).get(id,{}).get("at_sea",false)
+		if sailing!=voyage_active:
+			voyage_active=sailing
+			_sync_voyage_controls()
+			hud.visible=not sailing
+			if sailing:_close_modal()
+		if sailing:toast.hide()
 	var incoming_trade:Dictionary=snapshot.get("own_trade",{})
 	if playing and not incoming_trade.is_empty() and incoming_trade.get("id")!=previous_trade.get("id") and incoming_trade.get("incoming",false):
 		_notice("收到島民交換邀請。可在遊戲選單開啟「島民交換」，或按手把 View。",true)
 	_blueprint_sync()
 	LifeTasks.refresh_island_notes(self)
+	LifeTasks.refresh_board_projects(self,snapshot)
+	if is_instance_valid(modal) and modal.has_meta("island_passport"):
+		var plot_status:=modal.find_child("PublicBuildPlotStatus",true,false) as Label
+		if plot_status:plot_status.text=_public_build_plot_status(snapshot)
+	if is_instance_valid(modal) and modal.has_meta("dock_project_status"):
+		if modal.get_meta("dock_project_status")!=LifeTasks.dock_project_status(snapshot):
+			LifeTasks.dock_project(self,modal.get_meta("dock_project_from_news",false))
 	if is_instance_valid(modal) and modal.has_meta("festival_opening"):
-		if modal.get_meta("festival_opening")!=snapshot.get("festival_story",{}):
-			LifeAlmanac.festival_story(self)
+		if modal.get_meta("festival_opening")!=[snapshot.get("festival_story",{}),snapshot.get("can_start_large_projects",true)]:
+			LifeAlmanac.festival_story(self,modal.get_meta("festival_from_journal",false))
 	preload("res://scripts/trade_ui.gd").refresh(self,snapshot)
+	if playing and selected=="fish" and is_instance_valid(selected_label):
+		var angler:Dictionary=snapshot.get("players",{}).get(id,{})
+		if not angler.is_empty():_refresh_fishing_hint(snapshot,angler)
 	for cue:String in fishing_audio.update(snapshot,id):
-		if sound and playing:sound.play_cue(cue)
+		if sound and playing:
+			sound.play_cue(cue)
+			if cue=="fish_bite":
+				var cast:Dictionary=snapshot.get("players",{}).get(id,{}).get("fishing",{})
+				_caption("魚咬鉤了！%s%s。"%[_fishing_reel_hint(),"對準魚影" if cast.has("band") else "收竿"],2)
+			if cue=="fish_catch":_caption("釣到了！魚已收入背包。",2)
 	if is_instance_valid(map_view):map_view.update_world(snapshot,id)
 	if modal is ShippingPanel:modal.refresh(snapshot,id)
 	MarketUI.refresh(self)
@@ -1172,19 +1563,44 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 	WaterworksUI.refresh(self)
 	MineDrillUI.refresh(self)
 	CookingQueueUI.refresh(self)
-	if not origin.is_empty() and origin!=destination:TravelUI.arrived(self,origin,destination)
+	LifeShell.refresh_location(self,snapshot,snapshot.get("players",{}).get(id,{}))
+	if not origin.is_empty() and origin!=destination:
+		WanganUI.dismiss(self)
+		TravelUI.arrived(self,origin,destination)
+	if playing:_offer_return_news(snapshot)
 
 func _action_completed(sequence:int,action:String,result:Dictionary) -> void:
+	if action=="night_vote" and is_instance_valid(modal) and int(modal.get_meta("night_vote_pending",0))==sequence:
+		modal.set_meta("night_vote_pending",0)
+		_refresh_night_vote(session.snapshot)
+		if modal.get_meta("night_vote_closing",false):
+			if modal.get_meta("night_vote_cancelling",false) and session.snapshot.get("night_vote",{}).get("mine",false):
+				modal.set_meta("night_vote_closing",false)
+			else:_close_modal()
+	if not gather_hold.is_empty() and sequence==gather_hold.pending and action==gather_hold.tool:
+		if result.get("ok",false) and result.get("gather_continue",false):
+			gather_hold.pending=0
+		else:gather_hold.clear()
+	if sound and playing and result.get("ok",false):
+		var cue:=SoftAudio.action_cue(action,str(result.get("animal","")))
+		if not cue.is_empty():sound.defer_action(cue)
 	if action=="undo_build":undo_ui.complete(result)
 	if action=="ship" and modal is ShippingPanel and modal.pending_sequence==sequence:
 		modal.complete(result)
 
 func _notice(message:String,success:bool) -> void:
+	if not success and not playing and message==session.VERSION_MISMATCH_NOTICE:
+		if not is_instance_valid(room_update_dialog):
+			room_update_dialog=IdentityEntry.make_update_prompt(ui,self)
 	message=_display_notice(message)
 	print(("OK " if success else "NOTICE ")+message)
 	if sound and playing:
 		var kind:="notice" if not success else "action"
 		if success and (message.contains("收成") or message.contains("完成") or message.contains("風鈴") or message.contains("獲得")):kind="reward"
+		if success and (message.begins_with("叮——紀念鐘") or message.contains("完成了〈不用等風來〉")):kind="memorial_bell"
+		if success and message.begins_with("叮——簷下陶風鈴"):kind="ceramic_chime"
+		if success and message.begins_with("叮——潮紋貝殼"):kind="shell_chime"
+		if success and message.begins_with("風鈴鹿垂下頭"):kind="shell_chime"
 		if success:sound.defer_action(kind)
 		else:sound.play_cue(kind)
 	if toast:
@@ -1198,13 +1614,31 @@ func _notice(message:String,success:bool) -> void:
 				modal_feedback.text=message
 				modal_feedback.add_theme_color_override("font_color",Color("3e664b") if success else Color("9c4b32"))
 
+func _caption(message:String,priority:int) -> void:
+	if not is_instance_valid(activity_caption) or not sound.activity_captions:return
+	if activity_caption_time>0.0 and priority<activity_caption_priority:return
+	activity_caption.text=binding_text(message)
+	activity_caption_priority=priority
+	activity_caption_time=3.8
+	_update_activity_caption(0.0)
+
+func _update_activity_caption(dt:float) -> void:
+	if not is_instance_valid(activity_caption):return
+	activity_caption_time=maxf(0.0,activity_caption_time-dt)
+	activity_caption.visible=playing and sound.activity_captions and activity_caption_time>0.0 and modal==null and not voyage_active
+	if not activity_caption.visible:return
+	var caption_width:=minf(toast.size.x,400.0)
+	activity_caption.size.x=caption_width
+	activity_caption.size.y=maxf(32,activity_caption.get_minimum_size().y)
+	activity_caption.position=Vector2(toast.position.x+(toast.size.x-activity_caption.size.x)*0.5,toast.position.y-activity_caption.size.y-6.0)
+
 func _process(dt:float) -> void:
 	if test_seconds>0:
 		test_seconds-=dt
 		if test_seconds<=0:get_tree().quit(0 if session.shutdown() else 2)
 	if not playing:return
+	_update_activity_caption(dt)
 	_update_world_label_obstacles()
-	view.hide_interaction_prompt=SaltUI.suppress_world_prompts(self)
 	toast_time-=dt
 	if toast_time<=0:
 		toast.text=binding_text("{movement} 移動  ·  滑鼠指向地面使用工具  ·  靠近公告板或攤位按 {interact}")
@@ -1227,13 +1661,17 @@ func _process(dt:float) -> void:
 	view.selected=selected
 	view.seed_kind=crop
 	view.building=building
+	view.placement_style=building_style
 	view.area_drag=area_drag
 	view.area_start=area_start
 	_blueprint_process(mouse)
 	action_clock=maxf(0,action_clock-dt)
+	_update_gather_hold(dt,mouse)
 
 func _update_world_label_obstacles() -> void:
 	if not is_instance_valid(view):return
+	var workshop_panel_open:bool=is_instance_valid(modal) and modal.is_visible_in_tree() and str(modal.get_meta("life_modal_layout","")) in ["forestry_device","automation_workbench","processing_queue","industry_device","automation_device","logistics_device","workshop_guide","livestock_card"]
+	view.hide_interaction_prompt=workshop_panel_open or modal is InventoryPanel or SaltUI.suppress_world_prompts(self) or TowerUI.is_open(self) or GateUI.is_open(self)
 	var regions:Array[Rect2]=[]
 	if is_instance_valid(hud) and hud.is_visible_in_tree():
 		for child in hud.get_children():
@@ -1245,12 +1683,42 @@ func _update_world_label_obstacles() -> void:
 	if arrival!=null and arrival.is_visible_in_tree():hide.append(arrival.get_global_rect())
 	view.label_hide_rects=hide
 
+func _fishing_reel_hint() -> String:
+	return "按手把 X " if controller_navigation else "點浮標或按 {fish_catch} "
+
+func _refresh_fishing_hint(snapshot:Dictionary,angler:Dictionary) -> void:
+	var cast:Dictionary=angler.get("fishing",{})
+	var now:=float(snapshot.time)
+	var hint:String
+	if not cast.is_empty():
+		if now<float(cast.ready):
+			hint="魚竿已放好…稍等魚咬鉤。移動會收回魚竿。"
+		elif cast.has("band") and World.FishingTracking.progress(cast,now)<World.FishingTracking.DURATION:
+			hint=_fishing_reel_hint()+"對準魚影，讓魚影留在亮帶內。"
+		else:
+			hint="魚咬鉤了！"+_fishing_reel_hint()+"收竿。"
+	else:
+		var water_edge:="靠近河岸，點水面拋竿。"
+		if snapshot.get("region_id","home")=="home":
+			var position:=Vector2(angler.x,angler.y)
+			if World.WANGAN_COAST.star_shore(Vector2i(position.floor())):
+				water_edge="站在石圈外，點潮池水面釣金邊蝦。"
+			elif World.WANGAN_COAST.VISITOR_AREA.has_point(position):
+				water_edge="沿南岸棧道走到底，點外海水面拋竿。"
+		if controller_navigation:water_edge="用十字鍵瞄準水面，按 X 拋竿。"
+		hint="釣魚（%s） · %s"%["標準" if sound.standard_fishing else "輕鬆",water_edge]
+	hint=binding_text(hint)
+	if selected_label.text!=hint:selected_label.text=hint
+
 func _refresh_hud() -> void:
 	_update_world_label_obstacles.call_deferred()
 	var s:Dictionary=session.snapshot
 	if not s.has("players") or not s.players.has(session.own_id):return
 	var p:Dictionary=s.players[session.own_id]
 	var inv:Dictionary=p.inventory
+	var highland_hint:=World.WARM_SPRINGS.highland_hint(s,p)
+	if is_instance_valid(region_subtitle):
+		region_subtitle.text=highland_hint if not highland_hint.is_empty() else "慢慢來，島上的日子還很長"
 	WanganUI.refresh(self)
 	automation_ui.refresh(self)
 	industry_ui.refresh(self)
@@ -1272,6 +1740,7 @@ func _refresh_hud() -> void:
 		if modal is InventoryPanel:modal.refresh(s,session.own_id)
 	var weather_text:String=WeatherArt.label(WeatherArt.current(s))
 	status_label.text="%s · %s · 第 %d 日 · %d / %d 位島民"%[World.WEATHER.season_label(float(s.time)),weather_text,1+int(s.time)/1440,int(s.get("room_population",s.players.size())),int(s.get("room_capacity",4))]
+	if not village_art_preview and not highland_hint.is_empty():status_label.text+="\n"+highland_hint
 	if not village_art_preview:
 		inventory_label.text="鈴幣  %d\n木材  %d     石材  %d\n纖維  %d\n種子  蘿蔔 %d / 萵苣 %d / 麥 %d"%[p.coins,inv.get("wood",0),inv.get("stone",0),inv.get("fiber",0),inv.get("radish_seed",0),inv.get("lettuce_seed",0),inv.get("wheat_seed",0)]
 	objective.text="① 種下並收成第一株作物 %s\n② 放置一件自己的家具 %s\n③ 一起修好渡口公告板\n木材 %d / 30   石材 %d / 10"%["✓" if p.harvests>0 else "", "✓" if p.builds>0 else "",s.donations.wood,s.donations.stone]
@@ -1279,16 +1748,11 @@ func _refresh_hud() -> void:
 	if s.board and not s.get("picnic",false):objective.text="河灣橋已經開通！\n再為大家準備一場野餐：\n蘿蔔湯 %d / 2\n麵包 %d / 1\n蓋小石灶，完成後交給公告板。"%[s.picnic_materials.soup,s.picnic_materials.bread]
 	if s.get("picnic",false):objective.text="渡口野餐準備好了！\n找阿榆與米露聊聊，\n解鎖長椅、花箱與沙發。\n\n{journal} 看故事，公告板交生活訂單。"
 	if s.festival.active:objective.text="風鈴接力  %d / 12\n靠近金色風鈴按 {interact} 接住，\n跟朋友接力完成十二枚。\n\n沒有失敗倒數；{festival} 看活動。"%int(s.festival.collected)
-	if selected=="fish":
-		if p.has("fishing"):
-			var cast:Dictionary=p.fishing
-			if float(s.time)<float(cast.ready):
-				selected_label.text="魚竿已放好…稍等魚咬鉤。移動會收回魚竿。"
-			elif cast.has("band") and World.FishingTracking.progress(cast,float(s.time))<World.FishingTracking.DURATION:
-				selected_label.text="點浮標或按 {fish_catch} 對準魚影，讓魚影留在亮帶內。"
-			else:
-				selected_label.text="魚咬鉤了！點浮標或按 {fish_catch} 收竿。"
-		else:selected_label.text="釣魚（%s） · 靠近河岸，點水面拋竿。"%("標準" if sound.standard_fishing else "輕鬆")
+	if selected=="fish":_refresh_fishing_hint(s,p)
+	if selected=="build":selected_label.text=_build_tool_hint()
+	if selected=="plant_tree":
+		var problem:String=view.tree_planting_preview(target) if view.show_target else ""
+		selected_label.text="樹苗 ×%d · %s"%[int(inv.get("sapling",0)),"點空地種植，不需澆水" if problem.is_empty() else problem]
 	if selected=="till_area":
 		if int(inv.get("tiller",0))<1:_select_tool("hoe")
 		else:
@@ -1327,9 +1791,6 @@ func _refresh_hud() -> void:
 	selected_label.text=binding_text(selected_label.text)
 	if village_art_preview:LifeShell.refresh_hud(self,s,p)
 	var current_region:=str(s.get("region_id","home"))
-	if current_region in World.TRANSIT.TEA_STOPS:
-		var title:=hud.find_child("RegionTitle",true,false) as Label
-		if title:title.text=World.REGIONS.label(current_region)
 	if (selected!="fish" or current_region!=SaltUI.REGION) and _apply_regional_tool_hint(current_region):
 		selected_label.set_meta("regional_tool_hint",true)
 	elif selected_label.get_meta("regional_tool_hint",false):
@@ -1339,6 +1800,14 @@ func _refresh_hud() -> void:
 		var heading:=hud.find_child("TrackerHeading",true,false) as Button
 		if heading:heading.text="茶陶合作手帳  ▾"
 		var next:=TeaGuidance.next_step(s,session.own_id)
+		if current_region=="home" and not s.get("tea_ceramics",{}).get("own_record",{}).get("intro",false):
+			next.text="靠近小栗按 %s，打開茶單收信。"%binding_label("interact")
+		elif current_region in ["toucheng","ruifang"]:
+			var route:=TravelUI.route_toward(s,session.own_id,str(next.region))
+			if not route.is_empty():
+				next.text="到%s轉乘\n下一站・%s"%[
+					World.TRANSIT.points(current_region)[route.station].label,
+					World.TRANSIT.STATIONS[route.selection].name]
 		objective.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		objective.text=str(next.title)+"\n"+str(next.text)
 		var button:=hud.find_child("TrackerNext",true,false) as Button
@@ -1364,6 +1833,16 @@ func _refresh_hud() -> void:
 	ShowcaseUI.refresh_hud(self,s)
 	var survey_hint:=MineSurveyUI.guidance(s)
 	if not survey_hint.is_empty():objective.text+="\n"+binding_text(survey_hint)
+	var personal_step:=WanganUI.personal_step(self)
+	if not personal_step.is_empty():
+		objective.text=WanganUI.tracker_text(self,personal_step)
+		var heading:=hud.find_child("TrackerHeading",true,false) as Button
+		var button:=hud.find_child("TrackerNext",true,false) as Button
+		if heading:heading.text="島民第一課  ▾"
+		if button:button.text="查看種田指引  →"
+	# The normal tool hint is irrelevant while both hands hold the hen. The
+	# actor label explains release, and the existing hint returns unchanged.
+	selected_label.visible=_tool_hint_visible()
 
 func _harvest_menu()->void:
 	HarvestUI.open(self)
@@ -1396,6 +1875,9 @@ func _tea_guidance_active()->bool:
 	if not TeaUI.unlocked(s):return false
 	var region:=str(s.get("region_id","home"))
 	if region in World.TRANSIT.TEA_STOPS:return true
+	if region in ["toucheng","ruifang"]:
+		var record:Dictionary=s.get("tea_ceramics",{}).get("own_record",{})
+		return record.get("intro",false) and not record.get("comparison_complete",false)
 	return region=="home" and not s.get("festival",{}).get("active",false)
 
 ## 第 40 章：家園追蹤卡上的一次性提示（kind: "gate"＝分流閘、"exhibit"＝地方記憶展）；沒有時回 {}。
@@ -1416,7 +1898,7 @@ func _tea_next_step()->void:
 	if not _tea_guidance_active():return
 	var next:=TeaGuidance.next_step(session.snapshot,session.own_id)
 	if str(next.region)!=str(session.snapshot.get("region_id","home")):
-		_travel_menu()
+		TravelUI.open_toward(self,str(next.region))
 	else:
 		TeaUI.open(self,str(next.site),next.cell)
 
@@ -1437,6 +1919,7 @@ static func dormant_crop_hint(snapshot:Dictionary,cell:Vector2i) -> String:
 ## keep_blueprint: label/binding refreshes re-select the current tool and must not
 ## cancel a blueprint mode the player is still working in.
 func _select_tool(action:String,keep_blueprint:=false) -> void:
+	if action!=selected:gather_hold.clear()
 	if not keep_blueprint and blueprints!=null:
 		var blueprint_mode:=_blueprint_mode()
 		if blueprint_mode in BLUEPRINT_SENT_MODES and action in ["build","remove","move_object"]:
@@ -1467,11 +1950,13 @@ func _select_tool(action:String,keep_blueprint:=false) -> void:
 	for i in range(tool_buttons.size()):tool_buttons[i].set_pressed_no_signal(actions[i]==action)
 	var descriptions:={"hoe":"鋤頭：點空地開田", "seed":"播種："+World.CROPS[crop].name+"（按 {seeds} 換種子）", "water":WeatherForecast.water_hint(session.snapshot if session else {}) if action=="water" else "", "harvest":"採收：點成熟作物收入背包", "axe":"斧頭：點附近樹木或雜草", "pick":"十字鎬：點附近岩石", "build":"建造："+World.BUILD[building].name+"（按 {build_menu} 選物件）", "remove":"拆除：退回材料；也能移回自己的樹苗、恢復空農田", "plant_tree":"種樹：點空地種樹苗，約三分鐘長成（不需澆水）"}
 	selected_label.text=descriptions.get(action,"釣魚：靠近河岸，點水面拋竿；咬鉤後點浮標或按 {fish_catch} 收竿。")
+	if action=="build":selected_label.text=_build_tool_hint()
+	if action in ["axe","pick"]:selected_label.text+=" · 可按住連續採集"
 	if action=="move_object":selected_label.text="搬家具：先點自己的家具，再點新位置；箱內物品一起搬，Esc 取消。"
 	if action=="till_area":selected_label.text="耕田機：點附近空地，一次最多 9 格 · 每次成功施工耗 1 木炭"
 	if action=="seed_area":selected_label.text="播種機：點自己的空農田 · 每格 1 種子、每次 1 木炭 · {seeds} 換種子"
 	if action=="harvest_area":selected_label.text="收割機：點有權採收的成熟作物 · 一次最多 9 格 · 成功耗 1 木炭"
-	if action=="build" and building in ["floor","path","roof"]:selected_label.text+=" · 按住 {area_modifier} 拖曳可成片施工"
+	if action=="build" and building in ["floor","path","spring_pebble_path","roof"]:selected_label.text+=" · 按住 {area_modifier} 拖曳可成片施工"
 	selected_label.text=binding_text(selected_label.text)
 	if session:
 		_apply_regional_tool_hint(str(session.snapshot.get("region_id","home")))
@@ -1489,23 +1974,47 @@ func _apply_regional_tool_hint(region:String) -> bool:
 	return true
 
 func _input(event:InputEvent) -> void:
-	if event is InputEventKey:bindings.observe(event)
+	if not gather_hold.is_empty():
+		var device:int=gather_hold.device
+		if event is InputEventMouseButton:
+			var mouse_released:bool=device==GATHER_MOUSE and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed
+			var cancelled:bool=event.button_index==MOUSE_BUTTON_RIGHT and event.pressed
+			if mouse_released or cancelled:gather_hold.clear()
+		elif event is InputEventJoypadButton and not event.pressed and event.button_index==JOY_BUTTON_X and event.device==device:
+			gather_hold.clear()
+	if controller_protected and not event.is_echo() and (event.is_pressed() or event is InputEventJoypadMotion and event.axis in [JOY_AXIS_LEFT_X,JOY_AXIS_LEFT_Y] and absf(event.axis_value)>0.22):
+		if event is InputEventKey or event is InputEventJoypadButton or event is InputEventJoypadMotion or event is InputEventMouseButton:
+			controller_protected=false
+			session.perform("controller_resume",Vector2i.ZERO)
+	if event is InputEventKey:
+		bindings.observe(event)
+		if event.pressed and not event.echo:controller_navigation=false
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		if controller_aim and area_drag:area_drag=false
 		controller_aim=false
 		controller_navigation=false
 	elif event is InputEventJoypadButton and event.pressed:
+		controller_device=event.device
 		controller_navigation=true
 		if not playing and is_instance_valid(menu) and menu.visible and get_viewport().gui_get_focus_owner()==null:
 			_focus_controller_menu(menu)
 			get_viewport().set_input_as_handled()
+			if event.button_index==JOY_BUTTON_A:
+				var solo:=get_viewport().gui_get_focus_owner() as Button
+				if solo!=null and solo.name=="TitleSolo" and not solo.disabled:solo.pressed.emit()
 			return
 	if event is InputEventJoypadMotion and event.axis in [JOY_AXIS_LEFT_X,JOY_AXIS_LEFT_Y]:
 		var stick:Vector2=controller_sticks.get(event.device,Vector2.ZERO)
 		stick[event.axis]=clampf(event.axis_value,-1.0,1.0)
 		controller_sticks[event.device]=stick
+		if stick.length()>0.22:
+			controller_device=event.device
+			controller_navigation=true
 	if not playing:return
 	if event is InputEventJoypadButton and event.pressed:
+		if is_instance_valid(modal) and modal.has_meta("controller_shortcuts") and LifeShell.shortcut_direction(self,event.button_index):
+			get_viewport().set_input_as_handled()
+			return
 		if preload("res://scripts/trade_ui.gd").navigate_editor(self,event.button_index):
 			get_viewport().set_input_as_handled()
 			return
@@ -1516,13 +2025,15 @@ func _input(event:InputEvent) -> void:
 				quantity.value+=quantity.step*(1 if event.button_index==JOY_BUTTON_DPAD_RIGHT else -1)
 				get_viewport().set_input_as_handled()
 				return
-		if is_instance_valid(modal) and (modal.has_meta("trade_view") or modal.find_child("PauseTrade",true,false)!=null or modal.find_child("SaveComfort",true,false)!=null):
+		var resident_controls:bool=is_instance_valid(modal) and (modal.get_meta("life_modal_layout","")=="resident_dialogue" or modal.has_meta("resident_gift_picker"))
+		if is_instance_valid(modal) and (resident_controls or modal.has_meta("trade_view") or modal.has_meta("pocket_guide") or modal.get_meta("life_modal_layout","")=="workshop_guide" or modal.find_child("PauseTrade",true,false)!=null or modal.find_child("SaveComfort",true,false)!=null):
 			if _controller_menu_direction(event.button_index):
 				get_viewport().set_input_as_handled()
 				return
 		if event.button_index==JOY_BUTTON_A and is_instance_valid(modal):
 			var focused:=get_viewport().gui_get_focus_owner() as BaseButton
-			if focused!=null and modal.is_ancestor_of(focused) and not focused.disabled and (focused is CheckBox or focused is CheckButton or focused.name in ["BuildPlace","SaveComfort","PauseTrade","PauseComfort"] or modal.has_meta("trade_view") and focused is Button):
+			if focused!=null and modal.is_ancestor_of(focused) and not focused.disabled and (focused is CheckBox or focused is CheckButton or focused.name in ["BuildPlace","SaveComfort","PauseTrade","PauseComfort","PauseHelp"] or (resident_controls or modal.has_meta("trade_view")) and focused is Button):
+				if focused.name=="BuildPlace":controller_aim=true
 				if focused.toggle_mode:focused.button_pressed=not focused.button_pressed
 				focused.pressed.emit()
 				get_viewport().set_input_as_handled()
@@ -1535,6 +2046,44 @@ func _input(event:InputEvent) -> void:
 				if scroll!=null:scroll.ensure_control_visible(place)
 				get_viewport().set_input_as_handled()
 				return
+		if event.button_index==JOY_BUTTON_X and is_instance_valid(modal) and modal.get_meta("life_modal_layout","")=="automation_workbench":
+			var craft:=modal.find_child("CraftRecipe",true,false) as Button
+			if is_instance_valid(craft) and not craft.disabled:
+				craft.grab_focus()
+				var scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
+				if scroll!=null:scroll.ensure_control_visible(craft)
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and preload("res://scripts/processing_queue_ui.gd").focus_primary(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and TravelUI.focus_departure(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and CommunityUI.focus_dish_action(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and preload("res://scripts/public_kitchen_ui.gd").focus_kitchen_action(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and CookingQueueUI.focus_primary(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and forestry_ui.focus_primary(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and TowerUI.focus_toggle(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and automation_ui.focus_sprinkler_action(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and WaterworksUI.focus_primary(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and logistics_ui.focus_primary(self):
+			get_viewport().set_input_as_handled()
+			return
 		if event.button_index in [JOY_BUTTON_B,JOY_BUTTON_START]:
 			_cancel_navigation()
 			get_viewport().set_input_as_handled()
@@ -1543,7 +2092,7 @@ func _input(event:InputEvent) -> void:
 			if not WanganUI.dismiss(self):_interact()
 			get_viewport().set_input_as_handled()
 			return
-		if _world_keyboard_allowed() and _controller_world_button(event.button_index):
+		if _world_keyboard_allowed() and _controller_world_button(event.button_index,event.device):
 			get_viewport().set_input_as_handled()
 			return
 	# The panel reads the binding identity itself (InputBindings.event_key); route the raw event.
@@ -1601,6 +2150,10 @@ func _unhandled_input(event:InputEvent) -> void:
 			_cancel_navigation()
 			get_viewport().set_input_as_handled()
 			return
+		if voyage_active:
+			if bindings.matches("interact",event):LifeTasks.achao_return_if_sailing(self)
+			get_viewport().set_input_as_handled()
+			return
 		if bindings.matches("map",event):
 			if is_instance_valid(map_view):_close_modal()
 			elif _world_keyboard_allowed():_map_menu()
@@ -1630,12 +2183,12 @@ func _unhandled_input(event:InputEvent) -> void:
 		elif bindings.matches("journal",event):_journal()
 		elif bindings.matches("festival",event):_festival_menu()
 		elif bindings.matches("collection",event):_collection_menu()
+		elif bindings.matches("social",event):_emote_menu()
 		elif bindings.matches("zoom",event):
 			view.zoom=1.0 if view.zoom==2.0 else 2.0
 			_notice("已切換"+("近景，角色與像素更清楚。" if view.zoom==2.0 else "遠景，可以看見更多島嶼。"),true)
 		elif bindings.matches("fish_catch",event) and selected=="fish":
-			var person:Dictionary=session.snapshot.players.get(session.own_id,{})
-			if person.has("fishing"):session.perform("fish_catch",Vector2i(person.fishing.x,person.fishing.y))
+			_reel_active_cast()
 	if modal:return
 	# Clicking the world closes the forecast focus tip; the click still acts normally.
 	if village_art_preview and event is InputEventMouseButton and event.pressed:LifeShell.release_forecast_focus(self)
@@ -1646,17 +2199,34 @@ func _unhandled_input(event:InputEvent) -> void:
 		if action_clock>0 or not (_world_pointer_allowed(event.position) if village_art_preview else view.show_target):return
 		action_clock=0.16
 		target=view.to_cell(event.position)
-		if selected=="build" and building in ["floor","path","roof"] and area_modifier_held(event):
+		if selected=="build" and building in ["floor","path","spring_pebble_path","roof"] and area_modifier_held(event):
 			area_drag=true;area_start=target
 			return
-		_use_selected_at(target)
+		_use_selected_at(target,GATHER_MOUSE)
 
 func _controller_target() -> Vector2i:
 	var person:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
 	if person.is_empty():return target
 	return Vector2i(floori(person.x),floori(person.y))+controller_offset
 
-func _controller_world_button(index:int) -> bool:
+func _build_tool_hint() -> String:
+	var name:String=World.BUILD[building].name
+	if is_instance_valid(view) and view.show_target:
+		var blocked:Dictionary=view.build_placement_blocks(view.target,building)
+		if not blocked.is_empty():
+			var reason:String=blocked.values()[0]
+			return "%s · %s"%[name,reason] if blocked.size()==1 else "%s · 有 %d 格受阻 · %s"%[name,blocked.size(),reason]
+	if controller_navigation:
+		return "%s · 十字鍵瞄準 · X 施工 · Y 選物件"%name
+	return "建造：%s（按 {build_menu} 選物件）"%name
+
+func _reel_active_cast() -> bool:
+	var cast:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{}).get("fishing",{})
+	if cast.is_empty():return false
+	session.perform("fish_catch",Vector2i(cast.x,cast.y))
+	return true
+
+func _controller_world_button(index:int,device:int=GATHER_NONE) -> bool:
 	if CONTROLLER_AIM_DIRECTIONS.has(index):
 		controller_aim=true
 		controller_offset+=CONTROLLER_AIM_DIRECTIONS[index]
@@ -1667,18 +2237,20 @@ func _controller_world_button(index:int) -> bool:
 			controller_aim=true
 			if action_clock<=0.0:
 				action_clock=0.16
+				if selected=="fish" and _reel_active_cast():return true
 				var cell:=_controller_target()
 				if area_drag:
 					area_drag=false
 					_perform_build_action("build_area",area_start,"%s|%d|%d"%[building,cell.x,cell.y])
-				else:_use_selected_at(cell)
+				else:_use_selected_at(cell,device)
 		JOY_BUTTON_RIGHT_STICK:
-			if selected!="build" or building not in ["floor","path","roof"]:return false
+			if selected!="build" or building not in ["floor","path","spring_pebble_path","roof"]:return false
 			controller_aim=true
 			area_start=_controller_target()
 			area_drag=true
 			_notice("十字鍵選擇範圍終點，X 施工，B 取消。",true)
 		JOY_BUTTON_Y:_build_menu()
+		JOY_BUTTON_LEFT_STICK:LifeShell.controller_shortcuts(self)
 		JOY_BUTTON_BACK:
 			if session.snapshot.get("own_trade",{}).is_empty():_inventory()
 			else:_trade_menu()
@@ -1701,7 +2273,10 @@ func controller_tool_cycle() -> Array:
 			at+=1
 	return cycle
 
-func _use_selected_at(cell:Vector2i) -> void:
+func _use_selected_at(cell:Vector2i,gather_device:int=GATHER_NONE) -> void:
+	if World.CHICKEN_CUDDLE.holder(session.snapshot)==session.own_id and not session.own_id.is_empty():
+		_notice(binding_text("雙手正抱著糯米雞，按 {interact} 讓牠回雞圈後再使用工具。"),false)
+		return
 	target=cell
 	# T071 家園布置題：已加入時點選（或手把 X）展示地塊格＝擺上／收起，不使用手上的工具。
 	if str(session.snapshot.get("region_id","home"))=="home" and ShowcaseUI.click(self,cell):return
@@ -1721,7 +2296,33 @@ func _use_selected_at(cell:Vector2i) -> void:
 		if cast.is_empty():session.perform("fish_start",target,"standard" if sound.standard_fishing else "")
 		elif target==Vector2i(cast.x,cast.y):session.perform("fish_catch",target)
 		return
+	if gather_device!=GATHER_NONE and selected in ["axe","pick"] and _world_keyboard_allowed():
+		gather_hold={"tool":selected,"cell":cell,"device":gather_device}
+		_send_gather_hit()
+		return
 	_perform_build_action(selected,target,crop if selected in ["seed","seed_area"] else (building if selected=="build" else ""))
+
+func _send_gather_hit() -> void:
+	gather_hold.pending=session.counter+1
+	gather_hold.timeout=3.0
+	gather_hold.delay=GATHER_INTERVAL
+	action_clock=0.16
+	if session.perform(gather_hold.tool,gather_hold.cell)==0:gather_hold.clear()
+
+func _update_gather_hold(dt:float,mouse:Vector2) -> void:
+	if gather_hold.is_empty():return
+	var by_mouse:bool=gather_hold.device==GATHER_MOUSE
+	var aim:Vector2i=view.to_cell(mouse) if by_mouse else _controller_target()
+	if not _world_keyboard_allowed() or controller_protected or aim!=gather_hold.cell or selected!=gather_hold.tool \
+		or (by_mouse and (controller_aim or not _world_pointer_allowed(mouse))) or (not by_mouse and not controller_aim):
+		gather_hold.clear()
+		return
+	gather_hold.delay=maxf(0.0,gather_hold.delay-dt)
+	if gather_hold.pending!=0:
+		gather_hold.timeout-=dt
+		if gather_hold.timeout<=0.0:gather_hold.clear()
+	elif gather_hold.delay==0.0 and action_clock==0.0:
+		_send_gather_hit()
 
 ## Single entry for world-click and area-release actions. Build/remove/build_area are
 ## quoted once (never per frame); only when automatic roofs would be added or removed
@@ -2013,12 +2614,17 @@ func _blueprint_applied(_result:Dictionary) -> void:
 	_refresh_hud()
 
 ## Strip visibility follows controller state; contents are owned by the strip.
+func _tool_hint_visible()->bool:
+	var holding:bool=not session.own_id.is_empty() and World.CHICKEN_CUDDLE.holder(session.snapshot)==session.own_id
+	var blueprint_active:bool=blueprints!=null and playing and modal==null and (_blueprint_mode()!="idle" or blueprints.busy())
+	return not holding and not blueprint_active
+
 func _blueprint_sync() -> void:
 	if blueprints==null:return
 	var mode:=_blueprint_mode()
 	var active:bool=playing and modal==null and (mode!="idle" or blueprints.busy())
 	if playing and modal==null and is_instance_valid(selected_label):
-		selected_label.visible=not active
+		selected_label.visible=_tool_hint_visible()
 	if is_instance_valid(blueprint_strip) and blueprint_strip.visible!=active:
 		blueprint_strip.visible=active
 		if active:_layout_blueprint_strip()
@@ -2093,11 +2699,18 @@ func _finish_capture_drag(point:Vector2) -> void:
 		_notice(str(result.reason),false)
 
 func _interact() -> void:
+	if World.CHICKEN_CUDDLE.holder(session.snapshot)==session.own_id and not session.own_id.is_empty():
+		session.perform(World.CHICKEN_CUDDLE.RELEASE,World.CHICKEN_CELL)
+		return
+	if LifeTasks.achao_return_if_sailing(self):return
 	var s:Dictionary=session.snapshot
 	if not s.has("players") or not s.players.has(session.own_id):return
 	var p:Dictionary=s.players[session.own_id]
 	var pos:=Vector2(p.x,p.y)
 	var region:=str(s.get("region_id","home"))
+	if region==World.MINES.MUD_REGION and World.MINES.mud_engaged(p,float(s.time)):
+		_mine_mud_menu(0)
+		return
 	if region=="home" and s.festival.active:
 		var bell:=Festival.target(s.festival)
 		if pos.distance_to(Vector2(bell)+Vector2(0.5,0.5))<=1.6:
@@ -2105,21 +2718,35 @@ func _interact() -> void:
 			return
 	# T071 家園布置題：已加入進行中的一輪且地塊格在手邊時，互動鍵擺上／收起布置道具。
 	if region=="home" and ShowcaseUI.interact(self):return
+	if region==World.REGIONS.HOME and selected=="build" and view.show_target and pos.distance_to(Vector2(target)+Vector2(0.5,0.5))<=3.2:
+		var floor_piece:Dictionary=s.ground.get(World.key(target),{})
+		if floor_piece.get("type")=="floor" and floor_piece.get("owner")==session.own_id:
+			_floor_placement_menu(target,floor_piece)
+			return
+	if region==World.REGIONS.HOME and selected=="remove" and view.show_target and pos.distance_to(Vector2(target)+Vector2(0.5,0.5))<=3.2:
+		var furniture:Dictionary=s.objects.get(World.key(target),{})
+		if furniture.get("owner")==session.own_id and furniture.get("type") in World.PLOT_PERMISSIONS.SHARED_REMOVAL_FURNITURE and not furniture.get("aru_public",false):
+			_furniture_removal_menu(target,furniture)
+			return
 	var closest:=""
 	var dist:=3.2
 	var points:Dictionary={}
-	points.merge(TeaUI.interaction_points(region))
+	if region==World.Fox.REGION:points.merge(World.Fox.points(p))
+	points.merge(TeaUI.interaction_points(region,s))
 	points.merge(FlowerUI.interaction_points(region))
 	points.merge(SaltUI.interaction_points(region))
 	# 第 40 章北門儲滷槽（工寮東側）：不在 SaltUI.interaction_points（那份與 salt_world_art.sites() 對應）。
 	if region==SaltBrineUI.Brine.REGION:points[SaltBrineUI.POINT]=Vector2(SaltBrineUI.Brine.TANK)+Vector2(0.5,0.5)
 	if region=="home":
 		points={"board":Vector2(40.5,29.5),"shop":Vector2(43.5,29.5),"animal":Vector2(45.7,33.8),"quarry":Vector2(54.5,25.5),"copper":Vector2(World.COPPER_CELL)+Vector2(0.5,0.5)}
+		if LifeTasks.bell_tree_available(s):points["lingpopo_tree"]=Vector2(World.Festival.TREE_CELL)+Vector2(0.5,0.5)
 		var shipping_cell:Vector2i=World.SHIPPING.cell_for(s)
 		if shipping_cell!=World.SHIPPING.NO_CELL:points["shipping"]=Vector2(shipping_cell)+Vector2(0.5,0.5)
 		var table_cell:Vector2i=World.COMMUNITY.table_cell(s)
 		if table_cell!=Vector2i(-1,-1):points["community"]=Vector2(table_cell)+Vector2(0.5,0.5)
 		if s.get("picnic",false):
+			points["companion_cat"]=Vector2(World.Cat.site(s))+Vector2(0.5,0.5)
+			points["companion_dog"]=Vector2(World.Dog.SITE)+Vector2(0.5,0.5)
 			for animal_id in World.LIVESTOCK.ANIMALS:
 				points["livestock:"+animal_id]=Vector2(World.LIVESTOCK.ANIMALS[animal_id].cell)+Vector2(0.5,0.5)
 		for resident in Village.ids_for_region(region):
@@ -2128,6 +2755,25 @@ func _interact() -> void:
 	for walk_id:String in World.RESIDENT_BOND.WALK_UP:
 		var walk_spot:Array=World.bond_place(s,walk_id)
 		if str(walk_spot[0])==region and World.RESIDENT_BOND.present(s,walk_id):points[walk_id]=Vector2(walk_spot[1])+Vector2(0.5,0.5)
+	if region==World.WARM_SPRINGS.REGION:
+		points[World.WARM_SPRINGS.BATH_ACTION]=Vector2(World.WARM_SPRINGS.BATH_ENTRANCE)+Vector2(0.5,0.5)
+		points[World.WARM_SPRINGS.INN_POINT]=Vector2(World.WARM_SPRINGS.INN_DOOR)+Vector2(0.5,0.5)
+		if World.WARM_SPRINGS.in_inn(p):World.WARM_SPRINGS.room_interactions(points)
+	if s.get("region_id","home")==World.REGIONS.HOME:points["aru_park"]=Vector2(World.RESIDENT_GOALS.ARU_PARK_VIEW)+Vector2(0.5,0.5)
+	if region=="home":points[World.WANGAN_MEMORY.POINT]=Vector2(World.WANGAN_MEMORY.SITE)+Vector2(0.5,0.5)
+	if region=="home" and World.WANGAN_MEMORY.courtyard_available(s):points[World.WANGAN_MEMORY.COURT_POINT]=Vector2(World.WANGAN_MEMORY.COURT_SIGN)+Vector2(0.5,0.5)
+	if region=="home":points[World.Hedgehog.POINT]=Vector2(World.Hedgehog.site(s))+Vector2(0.5,0.5)
+	if region=="home":points[World.Squirrel.POINT]=Vector2(World.Squirrel.SITE)+Vector2(0.5,0.5)
+	if region=="home":points[World.Seal.POINT]=Vector2(World.Seal.SITE)+Vector2(0.5,0.5)
+	if region=="home" and World.Deer.present(s):points[World.Deer.POINT]=Vector2(World.Deer.site(s))+Vector2(0.5,0.5)
+	if region=="home":points[World.WANGAN_MEMORY.WEIR_POINT]=Vector2(World.WANGAN_MEMORY.WEIR_SITE)+Vector2(0.5,0.5)
+	if region=="home":points[World.WANGAN_MEMORY.WEIR_LOOKOUT_POINT]=Vector2(World.WANGAN_MEMORY.WEIR_LOOKOUT)+Vector2(0.5,0.5)
+	if region=="home":points[World.SEAWEED_POINT]=Vector2(World.SEAWEED_CELL)+Vector2(0.5,0.5)
+	if region=="home":points[World.WANGAN_COAST.SHELL_POINT]=Vector2(World.WANGAN_COAST.SHELL_CELL)+Vector2(0.5,0.5)
+	if region=="home" and s.get("wangan_star_walk",false):
+		points[World.WANGAN_COAST.STAR_SAND_POINT]=Vector2(World.WANGAN_COAST.STAR_SAND)+Vector2(0.5,0.5)
+		points[World.WANGAN_COAST.DOCK_ORDERS_POINT]=Vector2(World.WANGAN_COAST.DOCK_ORDERS)+Vector2(0.5,0.5)
+	elif region=="home":points[World.WANGAN_COAST.STAR_REPAIR_POINT]=Vector2(World.WANGAN_COAST.STAR_REPAIR)+Vector2(0.5,0.5)
 	# T071：市集攤位（渡口野餐後），排在走近型居民之後、物件之前，與 world_view 相同。
 	var market_cell:Vector2i=MarketUI.Market.active_cell(s) if region=="home" else MarketUI.Market.NO_CELL
 	if market_cell!=MarketUI.Market.NO_CELL:points["market"]=Vector2(market_cell)+Vector2(0.5,0.5)
@@ -2169,9 +2815,16 @@ func _interact() -> void:
 			var stations:Dictionary={"up":World.MINES.UP,"down":World.MINES.DOWN,"rest":World.MINES.REST,"service":World.MINES.SERVICE}
 			points["mine_site:"+station]=Vector2(stations[station])+Vector2(0.5,0.5)
 		if World.MINES.depth_of(region)>World.MINES.SHALLOW_DEPTH:points["mine_site:lift"]=Vector2(World.MINES.LIFT)+Vector2(0.5,0.5)
+		if region==World.MINES.MUD_REGION and int(p.get("mud_alcove",0))<2:
+			var mud_site:=World.MINES.MUD_GATE if int(p.get("mud_alcove",0))==0 else World.MINES.MUD_REWARD
+			points["mine_mud"]=Vector2(mud_site)+Vector2(0.5,0.5)
 		for site in World.MINES.NODES:points["extract:"+World.key(site)]=Vector2(site)+Vector2(0.5,0.5)
 	for k in s.objects:
-		if s.objects[k].type in ["chest","private_chest","supply_box","bench","bed","door","stove","sprinkler","medium_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","sketch_easel","rope_rack","fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket"]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in World.RESIDENT_GOALS.FESTIVAL_BELL_KINDS:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type==World.WELCOME_SIGN.KIND:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type==World.INN_TEA_TABLE:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type==World.INDUSTRY.LUGGAGE_RACK:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in ["chest","private_chest","supply_box","bench","bed","inn_quilt_bed","inn_stone_footbath","door","stove","sprinkler","medium_sprinkler","large_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","small_smelter","clay_kiln","dye_table","assembly_table","animal_collector","sketch_easel","guest_wardrobe","inn_lattice_wardrobe","wood_mailbox","rope_rack","fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket","long_bench","master_bench","spring_stone_bench","sign"]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
 	if region!=World.FLOWER_NURSERY.REGION:
 		var sketches:Dictionary=s.get("own_crop_sketches",{})
 		var seek_sketches:bool=region==World.REGIONS.HOME and int(s.get("resident_bonds",{}).get("diandian",{}).get("stage",0))>=1 and sketches.size()<World.RESIDENT_GOALS.SKETCH_TARGET
@@ -2184,6 +2837,7 @@ func _interact() -> void:
 	for key in points:
 		var distance:=pos.distance_to(points[key])
 		if distance<dist:closest=key;dist=distance
+	if region==World.ORE_ROUTE.REGION:closest=World.ORE_ROUTE.preferred_interaction(s,pos,closest,points)
 	if not closest.is_empty():
 		if closest.begins_with("plot:"):
 			var plot_key:=closest.trim_prefix("plot:")
@@ -2191,6 +2845,14 @@ func _interact() -> void:
 			var crop:Dictionary=s.crops[plot_key]
 			var own_plot:bool=crop.get("owner","")==session.own_id
 			var body:=_open_modal("農田")
+			if own_plot:
+				var last_kind:=str(crop.get("last_harvest_kind",""))
+				var fertility:=int(crop.get("fertility",0))
+				body.add_child(label("土壤肥力 %d／2 · 上次收成 %s"%[fertility,World.CROPS.get(last_kind,{}).get("name","尚未收成")],16))
+				var planted_kind:=str(crop.get("kind",""))
+				if not planted_kind.is_empty() and World.harvest_fertility(crop)>=2:
+					var ripe:=float(crop.growth)>=float(World.CROPS[planted_kind].time)
+					body.add_child(label("這批作物可多收一件優良品。" if ripe else "這批作物成熟後可多收一件優良品。",15))
 			if region==World.REGIONS.HOME and int(s.get("resident_bonds",{}).get("diandian",{}).get("stage",0))>=1 and World.CROPS.has(crop.kind):
 				var sketches:Dictionary=s.get("own_crop_sketches",{})
 				var observed:=sketches.has(crop.kind)
@@ -2203,6 +2865,22 @@ func _interact() -> void:
 				body.add_child(sketch)
 				body.add_child(label("點點的速寫  %d／%d"%[sketches.size(),World.RESIDENT_GOALS.SKETCH_TARGET],15))
 			if not own_plot:return
+			LifeTasks.add_growth_observation(self,body,tile,crop)
+			if region==World.REGIONS.HOME:
+				for setting in [["播種","owner_sow","plot_sow_access","PlotSowAccess"],["澆水","owner_water","plot_water_access","PlotWaterAccess"]]:
+					var title:String=setting[0]
+					var owner_only:bool=crop.get(setting[1],false)
+					var request:String=setting[2]
+					var access_row:=HBoxContainer.new()
+					body.add_child(access_row)
+					var status:=label("手動%s · %s"%[title,"只限田主" if owner_only else "開放同島玩家"],16)
+					status.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+					access_row.add_child(status)
+					var access_button:=button(("開放同島玩家" if owner_only else "只限田主")+title,func():
+						session.perform(request,tile,"island" if owner_only else "owner")
+						_close_modal())
+					access_button.name=setting[3]
+					access_row.add_child(access_button)
 			body.add_child(label("採收權限",18))
 			var access:String=s.crops[plot_key].get("harvest_access","island")
 			var selected_friend:String=s.crops[plot_key].get("harvest_friend","")
@@ -2242,6 +2920,7 @@ func _interact() -> void:
 		if closest=="bobo_sort":_bobo_sort_menu();return
 		if closest=="travel":_travel_menu();return
 		if closest.begins_with("transit:"):_travel_menu(closest.trim_prefix("transit:"));return
+		if closest=="mine_mud":_mine_mud_menu(int(p.get("mud_alcove",0)));return
 		if closest.begins_with("mine_site:"):_mine_site_menu(closest.trim_prefix("mine_site:"));return
 		if closest=="mine_survey":MineSurveyUI.open(self,int(region.trim_prefix("mine_")),true);return
 		if closest.begins_with("extract:"):session.perform("mine_extract",World.cell(closest.trim_prefix("extract:")));return
@@ -2260,31 +2939,81 @@ func _interact() -> void:
 		if Village.NPCS.has(closest):_resident_menu(closest);return
 		if closest=="quarry":_quarry_menu();return
 		if closest=="copper":automation_ui.copper(self);return
+		if closest=="lingpopo_tree":LifeTasks.bell_inspection(self,"tree");return
 		if closest=="board":_board();return
 		if closest=="shop":_shop();return
 		if closest=="shipping":_shipping_menu();return
 		if closest=="community":_community_menu();return
 		if closest=="animal":_animal_menu();return
+		if closest=="companion_cat":_cat_menu();return
+		if closest=="companion_dog":_dog_menu();return
+		if closest=="companion_fox":_fox_menu();return
+		if closest.begins_with("fox_track:"):
+			session.perform("fox_track",World.cell(closest.trim_prefix("fox_track:")))
+			return
 		if closest.begins_with("livestock:"):LifeAlmanac.livestock_menu(self,closest.get_slice(":",1));return
 		if closest in World.RESIDENT_BOND.WALK_UP:_resident_bond_menu(closest);return
+		if closest==World.WARM_SPRINGS.BATH_ACTION:
+			session.perform(closest,World.WARM_SPRINGS.BATH_ENTRANCE)
+			return
+		if closest==World.WARM_SPRINGS.INN_POINT:LifeTasks.warm_springs_inn(self);return
+		if closest==World.WARM_SPRINGS.INN_PORTAL:
+			session.perform(closest,World.WARM_SPRINGS.INN_EXIT)
+			return
+		if closest.begins_with(World.WARM_SPRINGS.INN_USE+":"):
+			session.perform(World.WARM_SPRINGS.INN_USE,World.cell(closest.get_slice(":",1)))
+			return
 		if closest=="market":MarketUI.open(self);return
 		if closest.begins_with("harvest:"):HarvestUI.interact(self,closest.trim_prefix("harvest:"));return
 		if closest==FishMeetUI.POINT:_fishmeet_menu();return
 		if closest==ShowcaseUI.POINT:ShowcaseUI.open(self);return
 		if closest==SouvenirUI.POINT:SouvenirUI.open(self);return
+		if closest=="aru_park":LifeTasks.aru_park(self);return
+		if closest in [World.WANGAN_MEMORY.POINT,World.WANGAN_MEMORY.COURT_POINT]:HistoryUI.open(self,"wangan");return
+		if closest==World.Hedgehog.POINT:LifeAlmanac.hedgehog_menu(self);return
+		if closest==World.Squirrel.POINT:LifeAlmanac.squirrel_menu(self);return
+		if closest==World.Seal.POINT:LifeAlmanac.seal_menu(self);return
+		if closest==World.Deer.POINT:LifeAlmanac.deer_menu(self);return
+		if closest in [World.WANGAN_MEMORY.WEIR_POINT,World.WANGAN_MEMORY.WEIR_LOOKOUT_POINT]:
+			HistoryUI.open(self,"wangan_weir")
+			return
+		if closest==World.SEAWEED_POINT:session.perform(World.SEAWEED_POINT,World.SEAWEED_CELL);return
+		if closest==World.WANGAN_COAST.SHELL_POINT:
+			session.perform(World.WANGAN_COAST.SHELL_POINT,World.WANGAN_COAST.SHELL_CELL)
+			return
+		if closest==World.WANGAN_COAST.STAR_SAND_POINT:
+			session.perform(World.WANGAN_COAST.STAR_SAND_POINT,World.WANGAN_COAST.STAR_SAND)
+			return
+		if closest==World.WANGAN_COAST.STAR_REPAIR_POINT:
+			_star_walk_project()
+			return
+		if closest==World.WANGAN_COAST.DOCK_ORDERS_POINT:
+			LifeAlmanac.orders_menu(self,true)
+			return
 		if closest==MemoryExhibitUI.POINT:MemoryExhibitUI.open(self);return
 		var obj:Dictionary=s.objects[closest]
 		if obj.type in ["chest","private_chest","supply_box"]:
-			if obj.get("locked",false):_notice("這是另一位島民的私人箱，內容只有主人能查看。",false)
+			if obj.get("locked",false) and not (obj.get("guest_deposit",false) or obj.get("guest_withdraw",false)):_notice("這個私人箱尚未向你開放。",false)
 			else:_chest(World.cell(closest))
 		elif obj.type=="bench":automation_ui.workbench(self,World.cell(closest))
 		elif obj.type=="expedition_tent":
 			var content:=_open_modal(World.BUILD[obj.type].name)
 			content.add_child(label(str(obj.author)+" 的探險紀念",21))
 			content.add_child(label("從渡口的第一班船，到礦坑深處與北門海岸。這頂帳篷紀念搭建者走過的 14 個地區。",16))
+		elif obj.type in World.RESIDENT_GOALS.FESTIVAL_BELL_KINDS:session.perform(World.RESIDENT_GOALS.FESTIVAL_BELL_RING,World.cell(closest))
+		elif obj.type==World.WELCOME_SIGN.KIND:LifeTasks.welcome_sign(self,World.cell(closest),obj)
+		elif obj.type==World.INN_TEA_TABLE:LifeTasks.inn_tea_table(self,World.cell(closest),obj)
+		elif obj.type==World.INDUSTRY.LUGGAGE_RACK:
+			var anchor:=World.station_anchor(s.objects,World.cell(closest))
+			LifeTasks.luggage_rack(self,World.cell(closest),s.objects[World.key(anchor)])
+		elif obj.type in World.RESIDENT_GOALS.INSCRIPTION_KINDS or obj.type==World.RESIDENT_GOALS.STONE_BENCH:
+			var anchor:=World.master_bench_anchor(s.objects,World.cell(closest))
+			LifeTasks.aru_inscription(self,anchor,s.objects[World.key(anchor)])
 		elif obj.type in ["author_sign","author_shelf"]:
 			var content:=_open_modal(World.BUILD[obj.type].name)
 			content.add_child(label("建造者 · "+str(obj.get("author","")),21))
+		elif obj.type==World.RESIDENT_GOALS.MAILBOX_KIND:LifeTasks.address_letter(self)
+		elif obj.type in World.RESIDENT_GOALS.WARDROBES:LifeTasks.guest_wardrobe(self,World.cell(closest),obj.type)
 		elif obj.type=="sketch_easel":LifeAlmanac.collection_menu(self,1)
 		elif obj.type=="rope_rack":LifeTasks.bond_events(self,"achao")
 		elif obj.type=="fish_display":LifeAlmanac.collection_menu(self,2)
@@ -2299,18 +3028,24 @@ func _interact() -> void:
 		elif obj.type=="conveyor":logistics_ui.device(self,World.cell(closest))
 		elif obj.type=="waterworks":WaterworksUI.open(self,World.cell(closest))
 		elif obj.type=="mine_drill":MineDrillUI.open(self,World.cell(closest))
-		elif obj.type in ["water_tank","water_pump","sawmill","charcoal_kiln","mill","seed_maker","loom","glass_furnace","jam_pot"]:industry_ui.device(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.ANIMAL_COLLECTOR:automation_ui.animal_collector(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.ASSEMBLY_TABLE:automation_ui.assembly(self,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type in ["water_tank","water_pump","sawmill","charcoal_kiln","mill","seed_maker","loom","glass_furnace","small_smelter","jam_pot","clay_kiln","dye_table"]:industry_ui.device(self,World.station_anchor(s.objects,World.cell(closest)))
 		elif obj.type=="door":session.perform("door",World.cell(closest))
 		elif obj.type=="stove":_cook_menu(World.cell(closest))
-		else:_notice("這是你的落腳處。原型裡不必睡覺，隨時都可以繼續生活。",true)
+		elif obj.type=="bed" and session.solo_rest_enabled:_night_rest_menu()
+		elif obj.type==World.INDUSTRY.INN_BED:session.perform("inn_bed_rest",World.cell(closest))
+		elif obj.type==World.INDUSTRY.FOOT_BATH:LifeTasks.foot_bath(self,World.cell(closest),World.station_anchor(s.objects,World.cell(closest)))
+		else:_notice("這是你的落腳處。晚上可以繼續在島上活動。",true)
 	else:_notice("靠近箱子、工作台、公告板或種子攤，再按 {interact}。",false)
 
-func _open_modal(title:String) -> VBoxContainer:
+func _open_modal(title:String,epilogue_music:=false) -> VBoxContainer:
 	if playing:session.input_direction(Vector2.ZERO)
 	area_drag=false
 	capture_drag=false
 	moving_object=false
-	_close_modal()
+	_close_modal(epilogue_music)
+	if epilogue_music and sound:sound.music.set_epilogue(true)
 	if village_art_preview:
 		_hide_world_hud()
 		modal_shade=ColorRect.new()
@@ -2341,7 +3076,9 @@ func _open_modal(title:String) -> VBoxContainer:
 		content.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		content.add_theme_constant_override("separation",12)
 		scroll.add_child(content)
-		shell.add_child(HSeparator.new())
+		var footer_divider:=HSeparator.new()
+		footer_divider.name="ModalFooterDivider"
+		shell.add_child(footer_divider)
 		modal_feedback=label("Esc 回到島上",14)
 		modal_feedback.custom_minimum_size.y=24
 		shell.add_child(modal_feedback)
@@ -2368,6 +3105,16 @@ func _focus_controller_menu(scope:Control) -> void:
 	if not controller_navigation or not is_instance_valid(scope) or not scope.is_visible_in_tree():return
 	var current:=get_viewport().gui_get_focus_owner()
 	if is_instance_valid(current) and scope.is_ancestor_of(current):return
+	var solo:=scope.find_child("TitleSolo",true,false) as Button
+	if solo!=null and solo.is_visible_in_tree() and not solo.disabled:
+		solo.grab_focus()
+		return
+	var first_card:=scope.find_child("GuideCard0",true,false) as Control
+	if first_card!=null:
+		first_card.grab_focus()
+		var guide_scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
+		guide_scroll.set_deferred("scroll_vertical",0)
+		return
 	var controls:=scope.find_children("*","Control",true,false)
 	for control:Control in controls:
 		if control is BaseButton and control.is_visible_in_tree() and not control.disabled and control.focus_mode==Control.FOCUS_ALL:
@@ -2386,10 +3133,24 @@ func _controller_menu_direction(index:int) -> bool:
 	if next!=null and modal.is_ancestor_of(next):
 		next.grab_focus()
 		var scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
-		if scroll!=null and scroll.is_ancestor_of(next):scroll.ensure_control_visible(next)
+		if scroll!=null and not modal.has_meta("pocket_guide") and scroll.is_ancestor_of(next):scroll.ensure_control_visible(next)
 	return true
 
-func _close_modal() -> void:
+func _close_modal(keep_epilogue_music:=false) -> void:
+	if playing and is_instance_valid(modal) and modal.has_meta("night_vote_panel"):
+		if int(modal.get_meta("night_vote_pending",0))!=0:
+			modal.set_meta("night_vote_closing",true)
+			return
+		var ballot:Dictionary=session.snapshot.get("night_vote",{})
+		if ballot.get("mine",false):
+			modal.set_meta("night_vote_closing",true)
+			modal.set_meta("night_vote_cancelling",true)
+			_submit_night_vote("no:%d"%ballot.id)
+			return
+	gather_hold.clear()
+	if not keep_epilogue_music and sound and not sound.music.story_return_track.is_empty():
+		sound.music.set_epilogue(false)
+		if playing:sound.set_world(session.snapshot,session.own_id)
 	bindings_panel=null
 	if modal:modal.hide();modal.queue_free();modal=null
 	if is_instance_valid(modal_shade):modal_shade.hide();modal_shade.queue_free()
@@ -2402,6 +3163,10 @@ func _close_modal() -> void:
 	map_view=null
 	get_viewport().gui_release_focus()
 	if village_art_preview:_layout_preview.call_deferred()
+	if session.local_paused:_resume_island_when_ready.call_deferred()
+
+func _resume_island_when_ready() -> void:
+	if modal==null:session.local_paused=false
 
 func _hide_world_hud() -> void:
 	for child in hud.get_children():
@@ -2540,10 +3305,17 @@ func _greenhouse_letter() -> void:
 		return roof.get("type","")=="greenhouse_roof" and roof.get("owner","")==session.own_id)
 	progress.add_child(label("星禾的來信",21))
 	progress.add_child(label("冬天一到，花田就安靜下來了。我想留一小塊暖地，讓錯過花季的種子，也有機會慢慢長大。",16))
-	_greenhouse_step(progress,crafted,"製作溫室玻璃","到金瓜石第五層採晶砂，用工作臺加木炭製作。")
+	_greenhouse_step(progress,crafted,"製作溫室玻璃","到望安星砂海岸或金瓜石第五層採晶砂，再到工作台用晶砂 2、木炭 1 製作。")
 	_greenhouse_step(progress,covered or not completed.is_empty(),"在自己的農田搭玻璃棚","在家園工坊的「基礎」選溫室玻璃棚。玻璃擋雨，記得澆水。")
 	var ending:="挑一株當季會休眠的作物，在自己的棚內照顧到成熟。"
 	var reported:bool=person.get("greenhouse_reported",false)
+	if completed.is_empty():
+		var now:=float(session.snapshot.get("time",0.0))
+		var bag:Dictionary=person.get("inventory",{})
+		for crop_id:String in World.CROP_SEASONS:
+			if int(bag.get(crop_id+"_seed",0))<=0 or World.crop_grows_in_season(crop_id,World.REGIONS.HOME,Vector2i.ZERO,now):continue
+			ending="背包裡的%s種子目前不適合露天種植。可種進自己的玻璃棚，澆水後等它長大。"%World.NAMES[crop_id]
+			break
 	if not completed.is_empty():
 		ending="在棚裡收成了%s。" % World.NAMES.get(completed,completed)
 	_greenhouse_step(progress,not completed.is_empty(),"收成跨季作物",ending)
@@ -2575,6 +3347,7 @@ func _add_tea_chapter_link() -> void:
 
 func _community_menu() -> void:
 	CommunityUI.open(self)
+	LifeTasks.add_milu_recipe_page(self,"table")
 	_layout_preview.call_deferred()
 
 func _gardener_menu() -> void:
@@ -2584,8 +3357,8 @@ func _gardener_menu() -> void:
 func _history_menu() -> void:
 	HistoryUI.open(self)
 
-func _travel_menu(station_id:String="") -> void:
-	TravelUI.open(self,station_id)
+func _travel_menu(station_id:String="",selected:String="") -> void:
+	TravelUI.open(self,station_id,selected)
 	if station_id=="ferry":LifeTasks.add_achao_route_marker(self,"ferry")
 	_layout_preview.call_deferred()
 
@@ -2593,14 +3366,110 @@ func _station_resident_menu(region:String) -> void:
 	StationLifeUI.open(self,region)
 	_layout_preview.call_deferred()
 
-func _map_menu() -> void:
+func _floor_placement_menu(tile:Vector2i,floor_piece:Dictionary) -> void:
+	var column:=_open_modal("木地板 · 家園權限")
+	var current:=str(floor_piece.get("placement_access","legacy"))
+	for option in [["owner","只限地板主人"],["island","開放同島玩家"],["legacy","沿用預設規則"]]:
+		var mode:String=option[0]
+		var caption:String=option[1]
+		var choice:=button(caption,func():session.perform("floor_placement_access",tile,mode);_close_modal())
+		choice.disabled=mode==current
+		column.add_child(choice)
+	column.add_child(label("預設規則允許手動擺放，藍圖施工限地板主人。",15))
+	column.add_child(HSeparator.new())
+	var private_room:bool=floor_piece.get("owner_visit",false)
+	var guest_id:=str(floor_piece.get("visit_guest",""))
+	var room:=World.ROOM_ENCLOSURE.analyze(session.snapshot,tile)
+	var place:="房間" if room.sealed else "戶外地塊"
+	var preview:=World.new()
+	preview.state=session.snapshot
+	var restriction:=preview.visit_restriction_problem(session.own_id,room)
+	var can_restrict:=restriction.is_empty()
+	var visit_status:="僅屋主可進入" if private_room else "開放同島玩家"
+	if not guest_id.is_empty():
+		visit_status="屋主與 "+str(session.snapshot.players.get(guest_id,{}).get("name","指定島民"))
+	column.add_child(label(place+"參觀 · "+visit_status,18))
+	if not room.sealed:
+		column.add_child(label("相連木地板 %d 格 · 戶外最多 %d 格，公共通道需保持開放。"%[room.area,World.MAX_OUTDOOR_VISIT_TILES],15))
+	var access:=button("開放"+place+"參觀" if private_room else "將"+place+"設為僅屋主可進",func():
+		session.perform("room_visit_access",tile,"island" if private_room else "owner")
+		_close_modal())
+	access.disabled=not private_room and not can_restrict
+	column.add_child(access)
+	if not can_restrict:column.add_child(label(restriction,15))
+	if not guest_id.is_empty():
+		var revoke:=button("收回指定訪客權限",func():session.perform("room_visit_access",tile,"owner");_close_modal())
+		revoke.disabled=not can_restrict
+		column.add_child(revoke)
+	if can_restrict:
+		var players:Dictionary=session.snapshot.players
+		var names:Dictionary={}
+		for player in players.values():
+			names[player.name]=int(names.get(player.name,0))+1
+		for player_id:String in players:
+			if player_id==session.own_id:continue
+			var display_name:String=players[player_id].name
+			if names[display_name]>1:display_name+="（"+player_id.right(6)+"）"
+			var guest:=button("指定訪客 · "+display_name,func():
+				session.perform("room_visit_access",tile,"friend:"+player_id)
+				_close_modal())
+			guest.disabled=player_id==guest_id
+			column.add_child(guest)
+
+func _furniture_removal_menu(tile:Vector2i,furniture:Dictionary) -> void:
+	var column:=_open_modal(World.BUILD[furniture.type].name+" · 拆除權限")
+	var shared:bool=furniture.get("guest_remove",false)
+	column.add_child(label("同島玩家可拆除這件家具。" if shared else "目前只有物主可拆除。",18))
+	column.add_child(label("拆除時，建材會退回物主的背包。",16))
+	column.add_child(button("收回拆除權" if shared else "開放同島玩家拆除",func():
+		session.perform("furniture_remove_access",tile,"owner" if shared else "island")
+		_close_modal()))
+
+func _star_walk_project() -> void:
+	var column:=_open_modal("星砂海岸・修復步道")
+	column.add_child(label("把木棧道接回沙岸，屋裡做玻璃時就能到這裡找晶砂。",16))
+	var bag:Dictionary=session.snapshot.players[session.own_id].inventory
+	var available:=true
+	for material:String in World.WANGAN_COAST.STAR_COST:
+		var required:int=World.WANGAN_COAST.STAR_COST[material]
+		var held:=int(bag.get(material,0))
+		column.add_child(label("%s　%d／%d"%[World.NAMES[material],held,required],16))
+		available=available and held>=required
+	var repair:=button("交付材料並修好步道",func():
+		_close_modal()
+		session.perform(World.WANGAN_COAST.STAR_REPAIR_POINT,World.WANGAN_COAST.STAR_REPAIR))
+	repair.name="StarWalkRepair"
+	repair.disabled=not available
+	column.add_child(repair)
+
+func _map_menu(return_to_ticket:=Callable()) -> void:
 	var col:=_open_modal("周邊地圖  {map}")
 	modal.set_meta("life_modal_layout","island_map")
+	if return_to_ticket.is_valid():
+		modal.set_meta("return_to_travel_ticket",return_to_ticket)
 	map_view=IslandMap.new()
 	col.add_child(map_view)
 	map_view.update_world(session.snapshot,session.own_id)
 	var map_heading:Node=col.get_parent().get_parent().get_child(0) if village_art_preview else col.get_child(0)
-	map_heading.add_child(button("台灣旅圖",_travel_menu))
+	var trip_link:Button
+	if return_to_ticket.is_valid():
+		trip_link=map_heading.get_child(1) as Button
+		trip_link.text="返回旅途車票"
+		trip_link.pressed.disconnect(_close_modal)
+		trip_link.pressed.connect(return_to_ticket)
+		if controller_navigation:trip_link.grab_focus.call_deferred()
+	else:
+		trip_link=button("台灣旅圖",_travel_menu)
+		map_heading.add_child(trip_link)
+	trip_link.name="LocalMapTravel"
+	if session.snapshot.get("region_id")=="jinguashi":
+		var history_link:=button("礦山記憶",func():HistoryUI.open(self,"jinguashi",Vector2i(-1,-1),_map_menu))
+		history_link.name="JinguashiMapHistory"
+		map_heading.add_child(history_link)
+	elif session.snapshot.get("region_id")==SaltUI.REGION:
+		var salt_history:=button("鹽田記憶",func():SaltUI.open(self,"journal"))
+		salt_history.name="BeimenMapHistory"
+		map_heading.add_child(salt_history)
 	_layout_preview.call_deferred()
 
 func _build_menu() -> void:
@@ -2685,6 +3554,7 @@ func _open_inventory_grid() -> void:
 	hud.add_child(backpack)
 	backpack.close_requested.connect(_close_modal)
 	backpack.rice_ball_requested.connect(func():session.perform("eat_rice_ball",Vector2i.ZERO))
+	backpack.ginger_tea_requested.connect(func():session.perform("drink_ginger_tea",Vector2i.ZERO))
 	backpack.rope_requested.connect(func():session.perform("handcraft_rope",Vector2i.ZERO))
 	backpack.setup(session.snapshot,session.own_id,hud.theme,binding_label)
 	backpack.layout_for(get_viewport().get_visible_rect().size)
@@ -2720,9 +3590,13 @@ func _board() -> void:
 	if village_art_preview:
 		LifeTasks.board(self)
 		LifeTasks.add_achao_route_marker(self,"board")
+		LifeTasks.add_milu_recipe_page(self,"board")
+		LifeTasks.add_public_mural_link(self)
 		_add_freight_board_link()
 		return
 	var col:=_open_modal("渡口的共同工程")
+	LifeTasks.add_milu_recipe_page(self,"board")
+	LifeTasks.add_public_mural_link(self)
 	var s:Dictionary=session.snapshot
 	col.add_child(label("把公告板修好，河灣橋就能重新開放。\n大家可以各自採集，材料會累積在同一個工程裡。",19))
 	col.add_child(label("木材 %d / 30\n石材 %d / 10"%[s.donations.wood,s.donations.stone],26))
@@ -2749,6 +3623,41 @@ func _freight_menu() -> void:
 func _bobo_sort_menu() -> void:
 	BoboSortUI.open(self)
 
+func _mine_mud_menu(phase:int) -> void:
+	var snapshot:Dictionary=session.snapshot
+	var adventure:bool=snapshot.get("world_mode")=="adventure"
+	if phase==0 and adventure:
+		var person:Dictionary=snapshot.players.get(session.own_id,{})
+		var duel:Dictionary=person.get("mud_duel",{})
+		var now:=float(snapshot.get("time",0.0))
+		var strike_at:=float(duel.get("strike_at",-100.0))
+		if now<strike_at+World.MINES.MUD_RECOVERY:
+			if now>=strike_at:session.perform("mine_mud_duel",World.MINES.MUD_GATE,"strike")
+			else:_notice("牠正在準備衝刺，先側移。",false)
+			return
+	var column:=_open_modal("礦洞北側 · 小泥團")
+	if phase==0 and adventure:
+		column.add_child(label("小泥團會先蹲低再衝刺。看到提示後向左或右側移，等牠停下，再按 {interact} 反擊。",18))
+		var begin:=button("開始挑戰小泥團",func():
+			session.perform("mine_mud_duel",World.MINES.MUD_GATE,"start")
+			_close_modal())
+		begin.name="MineMudDuel"
+		column.add_child(begin)
+	elif phase==0:
+		column.add_child(label("小泥團趴在洞口。牠抬起頭，似乎聞到了蘿蔔的香味。",18))
+		var bait:=button("用一顆蘿蔔引開牠",func():
+			session.perform("mine_mud_lure",World.MINES.MUD_GATE)
+			_close_modal())
+		bait.name="MineMudLure"
+		column.add_child(bait)
+	else:
+		column.add_child(label("小泥團讓出通道，洞裡露出了四塊銅礦料。",18))
+		var claim:=button("拾取銅礦料",func():
+			session.perform("mine_mud_claim",World.MINES.MUD_REWARD)
+			_close_modal())
+		claim.name="MineMudClaim"
+		column.add_child(claim)
+
 func _mine_site_menu(site:String) -> void:
 	MineUI.open(self,site)
 
@@ -2767,6 +3676,7 @@ func _add_freight_board_link() -> void:
 func _shop() -> void:
 	if village_art_preview:
 		life_panels.shop(self)
+		LifeTasks.add_milu_recipe_page(self,"shop")
 		var content:=modal.find_child("ModalContent",true,false) as VBoxContainer
 		if content:
 			_add_tea_counter_link(content)
@@ -2774,6 +3684,7 @@ func _shop() -> void:
 			SaltUI.counter_link(self,content)
 		return
 	var col:=_open_modal("小栗的種子攤")
+	LifeTasks.add_milu_recipe_page(self,"shop")
 	col.add_child(button("和小栗聊聊",func():_resident_menu("xiaoli")))
 	if session.snapshot.has("own_shop_history"):
 		var trade_book:=button("翻開交易簿",life_panels.trade_book.bind(self))
@@ -2805,6 +3716,11 @@ func _shop() -> void:
 		var chosen:String=item
 		var price:int=World.FISH[item].price if World.FISH.has(item) else World.OTHER_SALES[item]
 		rows.add_child(button("出售全部 %s · 每個 %d 鈴幣"%[World.NAMES[item],price],func():session.perform("sell",Vector2i(43,29),chosen)))
+	var inventory:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{}).get("inventory",{})
+	for item:String in inventory:
+		if int(inventory[item])<=0 or not World.CROP_CATALOG.quality_item(item):continue
+		rows.add_child(button("出售全部 %s · 每個 %d 鈴幣"%[World.NAMES[item],World.CROP_CATALOG.quality_price(item)],
+			session.perform.bind("sell",Vector2i(43,29),item)))
 	rows.add_child(button("購買樹苗 · 每棵 20 鈴幣",func():session.perform("buy",Vector2i(43,29),"sapling")))
 	col.add_child(label("買一包種子會扣一次錢；出售前請留意按鈕會賣出該作物全部收成。",15))
 
@@ -2821,9 +3737,16 @@ func _tea_home()->void:
 
 func _chest(p:Vector2i) -> void:
 	if village_art_preview:life_panels.chest(self,p);return
-	var private_box:bool=session.snapshot.objects[World.key(p)].type in World.PRIVATE_BOXES
+	var box:Dictionary=session.snapshot.objects[World.key(p)]
+	var private_box:bool=box.type in World.PRIVATE_BOXES
+	var visitor:bool=box.get("locked",false)
+	var can_withdraw:bool=not visitor or box.get("guest_withdraw",false)
+	var can_deposit:bool=not visitor or box.get("guest_deposit",false)
 	var col:=_open_modal("私人箱" if private_box else "共用箱")
-	col.add_child(label("每次存取一個。"+("只有你可以查看與取放。" if private_box else "朋友可以一起取放。")+"裡面有物品時不能拆除。",15))
+	col.add_child(label("每次存取一個。裡面有物品時不能拆除。",15))
+	if box.type=="private_chest" and not visitor:
+		col.add_child(_chest_deposit_toggle(p,box))
+		col.add_child(_chest_withdraw_picker(p))
 	var scroll:=ScrollContainer.new()
 	scroll.custom_minimum_size.y=390
 	col.add_child(scroll)
@@ -2835,11 +3758,51 @@ func _chest(p:Vector2i) -> void:
 		var row:=HBoxContainer.new()
 		rows.add_child(row)
 		var obj:Dictionary=session.snapshot.objects[World.key(p)]
-		var l:=label("%s  箱內 %d"%[World.NAMES[item],obj.items.get(item,0)],16)
+		var l:=label("%s  箱內 %d"%[World.NAMES[item],obj.items.get(item,0)] if can_withdraw else World.NAMES[item],16)
 		l.custom_minimum_size.x=270
 		row.add_child(l)
-		row.add_child(button("存 1",func():session.perform("deposit",p,chosen);_close_modal()))
-		row.add_child(button("取 1",func():session.perform("withdraw",p,chosen);_close_modal()))
+		if can_deposit:row.add_child(button("存 1",func():session.perform("deposit",p,chosen);_close_modal()))
+		if can_withdraw:row.add_child(button("取 1",func():session.perform("withdraw",p,chosen);_close_modal()))
+
+func _chest_deposit_toggle(p:Vector2i,box:Dictionary) -> Button:
+	var open:bool=box.get("guest_deposit",false)
+	var toggle:=button("停止接受同島玩家存入" if open else "允許同島玩家存入",func():
+		session.perform("box_deposit_access",p,"owner" if open else "island")
+		_close_modal())
+	toggle.name="ChestGuestDeposit"
+	return toggle
+
+func _chest_withdraw_picker(p:Vector2i) -> Button:
+	var picker:=button("設定訪客取出權限",_chest_withdraw_menu.bind(p))
+	picker.name="ChestGuestWithdraw"
+	return picker
+
+func _chest_withdraw_menu(p:Vector2i) -> void:
+	var box:Dictionary=session.snapshot.objects.get(World.key(p),{})
+	if box.get("type")!="private_chest" or box.get("locked",false):return
+	var column:=_open_modal("私人箱 · 取出權限")
+	var current:=str(box.get("withdraw_guest",""))
+	column.add_child(label("指定一位在線島民查看與取出箱內物品。存入權限可另外設定。",16))
+	var revoke:=button("只限箱主取出",func():
+		session.perform("box_withdraw_access",p,"owner")
+		_close_modal())
+	revoke.disabled=current.is_empty()
+	column.add_child(revoke)
+	var people:Dictionary=session.snapshot.players
+	var names:Dictionary={}
+	for person in people.values():names[person.name]=int(names.get(person.name,0))+1
+	for player_id:String in people:
+		if player_id==session.own_id:continue
+		var display_name:String=people[player_id].name
+		if names[display_name]>1:display_name+="（"+player_id.right(6)+"）"
+		var choice:=button("開放給 "+display_name,func():
+			session.perform("box_withdraw_access",p,"friend:"+player_id)
+			_close_modal())
+		choice.disabled=player_id==current
+		column.add_child(choice)
+
+func _workshop_guide(topic:int=-1)->void:
+	load("res://scripts/workshop_guide.gd").open(self,topic)
 
 func _help() -> void:
 	if village_art_preview:LifeShell.help(self);return
@@ -2890,7 +3853,10 @@ func _resident_menu(resident:String) -> void:
 	else:col.add_child(label("「"+Village.QUESTS[resident][3].line+"」",22))
 	var bond_actions:=HFlowContainer.new()
 	LifeTasks.add_bond_controls(self,col,bond_actions,resident)
-	if resident=="milu":LifeTasks.add_milu_apron_button(self,bond_actions)
+	LifeTasks.add_address_delivery(self,bond_actions,resident)
+	if resident=="milu":
+		LifeTasks.add_milu_apron_button(self,bond_actions)
+		LifeTasks.add_milu_recipe_book(self,bond_actions)
 	col.add_child(bond_actions)
 	if not LifeTasks.bond_view(self,resident).is_empty():col.add_child(button("關係事件",LifeTasks.bond_events.bind(self,resident)))
 	col.add_child(button("打開故事手冊  {journal}",_journal))
@@ -2994,12 +3960,16 @@ func _animal_menu() -> void:
 	col.add_child(button("摸摸糯米雞",func():session.perform("pet",Vector2i(45,34));_close_modal()))
 	col.add_child(button("餵一份飼料",func():session.perform("feed",Vector2i(45,34));_close_modal()))
 	col.add_child(button("收取雞蛋",func():session.perform("egg",Vector2i(45,34));_close_modal()))
+	LifeAlmanac.add_chicken_cuddle(self,col)
 	col.add_child(label("沒餵食只會暫停產蛋，牠不會餓死，也不會因離線討厭你。",15))
+
+func _collection_gallery() -> void:
+	LifeAlmanac.collection_menu(self,6)
 
 func _collection_menu() -> void:
 	if village_art_preview:LifeAlmanac.collection_menu(self);return
 	var col:=_open_modal("小島生活圖鑑  {collection}")
-	col.add_child(label("記錄親手採收、釣到與領取的料理；出售或使用後仍會保留。",16))
+	col.add_child(label("記錄親手採收、釣魚、料理和海岸採集。出售或使用後仍會保留。",16))
 	var scroll:=ScrollContainer.new()
 	scroll.custom_minimum_size.y=425
 	col.add_child(scroll)
@@ -3019,9 +3989,12 @@ func _collection_menu() -> void:
 		var claim:=button("✓ 已領取" if claimed else ("領取里程碑獎勵" if progress>=int(milestone.target) else "再發現一些，慢慢來"),func():session.perform("claim_milestone",Vector2i.ZERO,request);_close_modal())
 		claim.disabled=claimed or progress<int(milestone.target)
 		rows.add_child(claim)
-	for category in ["crops","fish","meals"]:
-		rows.add_child(label({"crops":"菜園的收成","fish":"島岸的魚","meals":"親手領取的料理"}[category],22))
-		var entries:Dictionary=World.CROPS if category=="crops" else (World.FISH if category=="fish" else World.RECIPES)
+	var catalogs:={ "菜園的收成":["crops",World.CROPS], "島岸的魚":["fish",World.FISH],
+		"親手領取的料理":["meals",World.RECIPES], "望安海岸採集":["shore",Collections.SHORE_FINDS] }
+	for heading in catalogs:
+		rows.add_child(label(heading,22))
+		var category:String=catalogs[heading][0]
+		var entries:Dictionary=catalogs[heading][1]
 		for id in entries:
 			if category=="meals" and not World.Collections.is_meal(id):continue
 			var found:bool=collection.get(category,{}).get(id,false)
@@ -3033,13 +4006,8 @@ func _settings_menu() -> void:
 	var col:=_open_modal("音效與舒適設定")
 	if village_art_preview:modal.set_meta("life_modal_layout","settings");_layout_preview()
 	col.add_child(label("固定 2D 視角，沒有鏡頭旋轉、震動或動態模糊。",17))
-	var amount:=label("提示音音量  %d%%"%roundi(sound.volume*100),20)
-	col.add_child(amount)
-	var slider:=HSlider.new()
-	slider.min_value=0;slider.max_value=100;slider.step=5;slider.value=sound.volume*100
-	slider.custom_minimum_size.y=44
-	col.add_child(slider)
-	slider.value_changed.connect(func(value:float):amount.text="提示音音量  %d%%（0 為靜音）"%roundi(value))
+	var camera:=LifeShell.camera_setting(self,col)
+	var audio:=LifeShell.audio_settings(self,col)
 	var motion:=CheckButton.new()
 	motion.text="減少裝飾動態"
 	motion.tooltip_text="開啟時保留靜態提示；關閉可看見釣魚、料理與共餐動畫。兩種模式皆無鏡頭震動。"
@@ -3052,20 +4020,16 @@ func _settings_menu() -> void:
 	zoom.selected=0 if view.zoom==2.0 else 1
 	zoom.custom_minimum_size.y=44
 	col.add_child(zoom)
-	var text_scale:=OptionButton.new()
-	text_scale.name="TextScale"
-	for index in 4:text_scale.add_item(["小字","標準","大字","特大字"][index],index)
-	text_scale.selected=sound.preferred_text_scale
-	text_scale.custom_minimum_size.y=44
-	col.add_child(text_scale)
+	var text_scale:=LifeShell.text_scale_setting(self,col)
 	var fishing:=CheckBox.new()
 	fishing.text="標準釣魚 · 對準魚影"
 	fishing.button_pressed=sound.standard_fishing
 	fishing.tooltip_text="取消勾選可用輕鬆釣魚：咬鉤後按一次收竿，無倒數。"
 	col.add_child(fishing)
 	var save_button:=button("儲存設定並試聽",func():
-		if not sound.save_preferences(arg_value("settings","user://settings.cfg"),slider.value/100.0,motion.button_pressed,zoom.get_selected_id(),null,fishing.button_pressed,text_scale.get_selected_id()):_notice("設定保存失敗，原本設定仍保留。",false);return
+		if not sound.save_preferences(settings_path,audio.volume.value/100.0,motion.button_pressed,zoom.get_selected_id(),null,fishing.button_pressed,text_scale.get_selected_id(),audio.music_volume.value/100.0,LifeShell.audio_levels(audio),camera.selected==1):_notice("設定保存失敗，原本設定仍保留。",false);return
 		view.reduced_motion=sound.reduced_motion;view.zoom=float(sound.preferred_zoom)
+		view.fixed_area_camera=sound.fixed_area_camera
 		_apply_font_scale_tree()
 		_notice("設定已儲存，下次啟動會沿用。",true)
 		sound.play_cue("reward",true)
@@ -3079,8 +4043,12 @@ func _show_emote(actor:String,region:String,caption:String) -> void:
 		view.player_emotes[actor]={"region":region,"caption":caption,"until":Time.get_ticks_msec()+3000}
 
 func _emote_menu() -> void:
+	var aim:Vector2i=_controller_target() if controller_aim else view.to_cell(get_viewport().get_mouse_position())
 	var content:=_open_modal("島民招呼")
 	content.add_child(button("區域聊天",_chat_menu))
+	var marker:=button("地圖標記",_map_signal_menu.bind(aim))
+	marker.name="OpenMapSignals"
+	content.add_child(marker)
 	for id:String in session.EMOTES:
 		content.add_child(button(session.EMOTES[id],func():session.perform("emote",Vector2i.ZERO,id);_close_modal()))
 	content.add_child(button("顯示其他玩家的招呼" if mute_emotes else "隱藏玩家招呼",func():
@@ -3088,6 +4056,21 @@ func _emote_menu() -> void:
 		view.player_emotes.clear()
 		_emote_menu()
 	))
+
+func _map_signal_menu(cell:Vector2i) -> void:
+	var content:=_open_modal("給島民的地圖標記")
+	content.add_child(label("標記瞄準的位置，同區域的島民可在周邊地圖查看 30 秒。",16))
+	for kind:String in Session.MAP_SIGNALS:
+		var choice:=button(Session.MAP_SIGNALS[kind],_send_map_signal.bind(cell,kind))
+		choice.name="MapSignal_"+kind
+		content.add_child(choice)
+	var cancel:=button("取消我的標記",_send_map_signal.bind(cell,"cancel"))
+	cancel.name="MapSignal_cancel"
+	content.add_child(cancel)
+
+func _send_map_signal(cell:Vector2i,kind:String) -> void:
+	_close_modal()
+	session.perform("map_signal",cell,kind)
 
 func _receive_island_chat(region:String,sender:String,message:String) -> void:
 	if mute_chat or str(session.snapshot.get("region_id","home"))!=region:return
@@ -3128,10 +4111,97 @@ func _chat_menu() -> void:
 func _trade_menu() -> void:
 	preload("res://scripts/trade_ui.gd").open(self)
 
+func _night_rest_menu() -> void:
+	if not session.solo_rest_enabled:
+		_night_vote_menu()
+		return
+	var body:=_open_modal("休息到清晨")
+	if session.solo_rest_enabled and session.peers.size()==1:session.local_paused=true
+	modal.set_meta("life_modal_layout","night_rest")
+	var minute:=int(fposmod(float(session.snapshot.get("time",0.0)),World.WEATHER.DAY_SECONDS))
+	body.add_child(label("現在 %02d:%02d  →  清晨 06:00"%[minute/60,minute%60],20))
+	body.add_child(label("休息期間，農田與設備會照常運作。",16))
+	var reason:String=session.solo_rest_reason()
+	if not reason.is_empty():body.add_child(label(reason,16))
+	var confirm:=button("休息到 06:00",func():
+		_close_modal()
+		session.perform("night_rest",Vector2i.ZERO)
+	)
+	confirm.name="NightRestConfirm"
+	confirm.disabled=not reason.is_empty()
+	body.add_child(confirm)
+	_layout_preview.call_deferred()
+
+func _night_vote_menu() -> void:
+	var body:=_open_modal("休息到清晨")
+	modal.set_meta("life_modal_layout","night_rest")
+	modal.set_meta("night_vote_panel",true)
+	var status:=label("",20)
+	status.name="NightVoteStatus"
+	body.add_child(status)
+	body.add_child(label("所有在線島民都同意後，才會一起休息到 06:00。",16))
+	var yes:=button("提出投票並同意",func():
+		var number:=int(session.snapshot.get("night_vote",{}).get("id",0))
+		_submit_night_vote("yes:%d"%number if number>0 else "open")
+	)
+	yes.name="NightVoteYes"
+	body.add_child(yes)
+	var no:=button("暫不休息",func():
+		var number:=int(session.snapshot.get("night_vote",{}).get("id",0))
+		if number>0:_submit_night_vote("no:%d"%number)
+	)
+	no.name="NightVoteNo"
+	body.add_child(no)
+	_refresh_night_vote(session.snapshot)
+	_layout_preview.call_deferred()
+
+func _submit_night_vote(choice:String) -> void:
+	if not is_instance_valid(modal) or int(modal.get_meta("night_vote_pending",0))!=0:return
+	modal.set_meta("night_vote_pending",session.counter+1)
+	modal.set_meta("night_vote_cancelling",choice.begins_with("no:"))
+	_refresh_night_vote(session.snapshot)
+	if session.perform("night_vote",Vector2i.ZERO,choice)==0 and is_instance_valid(modal):
+		modal.set_meta("night_vote_pending",0)
+		_refresh_night_vote(session.snapshot)
+
+func _refresh_night_vote(snapshot:Dictionary) -> void:
+	if not is_instance_valid(modal) or not modal.has_meta("night_vote_panel"):return
+	var status:=modal.find_child("NightVoteStatus",true,false) as Label
+	var yes:=modal.find_child("NightVoteYes",true,false) as Button
+	var no:=modal.find_child("NightVoteNo",true,false) as Button
+	if status==null or yes==null or no==null:return
+	var vote:Dictionary=snapshot.get("night_vote",{})
+	var active:=int(vote.get("id",0))>0
+	var voted:=bool(vote.get("mine",false))
+	var waiting:=int(modal.get_meta("night_vote_pending",0))!=0
+	var building_pending:=_blueprint_mode() in BLUEPRINT_SENT_MODES
+	var minute:=int(fposmod(float(snapshot.get("time",0.0)),World.WEATHER.DAY_SECONDS))
+	status.text="%d／%d 位同意 · 剩 %d 秒"%[vote.yes,vote.total,vote.seconds] if active else "午夜 00:00 後可提出投票"
+	if not active and minute<World.REST_DAWN:status.text="目前 %02d:%02d · 可提出投票"%[minute/60,minute%60]
+	yes.text="已同意，等其他島民" if voted else ("同意休息" if active else "提出投票並同意")
+	if building_pending:status.text="請先確認藍圖施工結果，再同意休息。"
+	yes.disabled=waiting or voted or building_pending or minute>=World.REST_DAWN
+	no.visible=active
+	no.disabled=waiting
+
+func _rabbit_menu() -> void:
+	LifeAlmanac.companion_menu(self)
+
+func _cat_menu() -> void:
+	LifeAlmanac.companion_menu(self,"cat")
+
+func _dog_menu() -> void:
+	LifeAlmanac.companion_menu(self,"dog")
+
+func _fox_menu() -> void:
+	LifeAlmanac.fox_menu(self)
+
 func _pause_menu() -> void:
+	session.local_paused=local_mode and session.world!=null and session.peers.size()==1 and session.peers.has(1)
+	if session.local_paused:session.input_direction(Vector2.ZERO)
 	if village_art_preview:LifeShell.pause(self);return
 	var col:=_open_modal("島上生活選單")
-	col.add_child(label("多人世界在有人在線時繼續運行。",17))
+	col.add_child(label("單機島已暫停，回到島上繼續。" if session.local_paused else "多人世界在有人在線時繼續運行。",17))
 	var scroll:=ScrollContainer.new()
 	scroll.custom_minimum_size.y=400
 	col.add_child(scroll)
@@ -3140,6 +4210,7 @@ func _pause_menu() -> void:
 	rows.add_theme_constant_override("separation",8)
 	scroll.add_child(rows)
 	rows.add_child(button("回到遊戲",_close_modal))
+	if session.solo_rest_enabled or session.snapshot.has("night_vote"):rows.add_child(button("休息到清晨" if session.solo_rest_enabled else "夜間投票",_night_rest_menu))
 	if village_art_preview:
 		rows.add_child(button("選擇釣竿  {fish}",func():_close_modal();_select_tool("fish")))
 	rows.add_child(button("選擇作物種子",_seed_menu))
@@ -3163,18 +4234,49 @@ func _pause_menu() -> void:
 func _passport_menu() -> void:
 	if island_passport.is_empty():return
 	var column:=_open_modal("島嶼通行簿")
+	modal.set_meta("island_passport",true)
 	column.add_child(label(str(island_passport.get("world_name","封測島嶼")),23))
 	var members:Array=island_passport.get("members",[])
 	column.add_child(label("成員 %d／%d" % [members.size(),int(island_passport.get("capacity",4))],16))
+	if session.snapshot.has("can_build_public_plot"):
+		var plot_status:=label(_public_build_plot_status(session.snapshot),16)
+		plot_status.name="PublicBuildPlotStatus"
+		column.add_child(plot_status)
+	var scroll:=ScrollContainer.new()
+	scroll.custom_minimum_size.y=240
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	column.add_child(scroll)
+	var roster:=VBoxContainer.new()
+	roster.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	scroll.add_child(roster)
 	for member in members:
 		var row:=PanelContainer.new()
 		row.add_theme_stylebox_override("panel",LifeTheme.badge_style())
-		column.add_child(row)
+		roster.add_child(row)
 		var details:=VBoxContainer.new()
 		row.add_child(details)
-		details.add_child(label("%s  ·  %s" % [member.get("name","島民"),"島主" if member.get("role")=="owner" else "成員"],18))
+		var role_labels:={"owner":"島主","admin":"管理員","member":"成員"}
+		details.add_child(label("%s  ·  %s" % [member.get("name","島民"),role_labels.get(member.get("role"),"成員")],18))
 		var activity:=int(member.get("last_activity",0))
 		details.add_child(label("最後活動 %s（UTC）" % Time.get_datetime_string_from_unix_time(activity,true) if activity>0 else "尚無活動紀錄",14))
+		var target_id:=str(member.get("management_id",""))
+		if not target_id.is_empty():
+			var actions:=HBoxContainer.new()
+			details.add_child(actions)
+			if island_passport.get("can_manage",false):
+				var enable:bool=member.get("role")!="admin"
+				actions.add_child(button("設為管理員" if enable else "收回管理權",func():session.request_admin_change(target_id,enable)))
+			var display_name:=str(member.get("name","島民"))
+			var blocked:bool=member.get("blocked",false)
+			if not blocked:
+				actions.add_child(button("請離島",func():_confirm_member_removal(target_id,display_name,false)))
+			actions.add_child(button("解除封鎖" if blocked else "封鎖入島",func():
+				if blocked:session.request_member_block(target_id,false)
+				else:_confirm_member_removal(target_id,display_name,true)))
+			if member.get("role")=="member":
+				var grant:bool=not member.get("public_builder",false)
+				details.add_child(button("授予渡口公共地塊施工權" if grant else "收回渡口公共地塊施工權",
+					func():session.request_public_builder(target_id,grant)))
 	if island_passport.get("can_manage",false):
 		var invite_actions:=HBoxContainer.new()
 		column.add_child(invite_actions)
@@ -3193,12 +4295,55 @@ func _passport_menu() -> void:
 		reveal.text="顯示邀請碼"
 		reveal.toggled.connect(func(enabled:bool):passport_code.secret=not enabled)
 		column.add_child(reveal)
-		passport_feedback=label("",16)
-		column.add_child(passport_feedback)
+		column.add_child(button("查看管理紀錄",_passport_management_history))
+	passport_feedback=label("",16)
+	column.add_child(passport_feedback)
 	var back:=button("返回生活選單",_pause_menu)
 	back.flat=true
 	back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
 	column.add_child(back)
+
+func _public_build_plot_status(snapshot:Dictionary) -> String:
+	return "渡口北側公共地塊 · 可施工" if snapshot.get("can_build_public_plot",false) else "渡口北側公共地塊 · 向島主或管理員申請施工權"
+
+func _passport_management_history() -> void:
+	if not island_passport.get("can_manage",false):return
+	var column:=_open_modal("島嶼管理紀錄")
+	var history:Array=island_passport.get("management_history",[])
+	if history.is_empty():column.add_child(label("目前沒有管理紀錄。",17))
+	var scroll:=ScrollContainer.new()
+	scroll.custom_minimum_size.y=290
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	column.add_child(scroll)
+	var rows:=VBoxContainer.new()
+	rows.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	scroll.add_child(rows)
+	var titles:={"invite_rotate":"更新邀請","invite_revoke":"撤銷邀請","admin_grant":"指派管理員",
+		"admin_revoke":"收回管理權","block":"封鎖入島","unblock":"解除封鎖","kick":"請離島",
+		"public_build_grant":"授予公共地塊施工權","public_build_revoke":"收回公共地塊施工權"}
+	for index in range(history.size()-1,-1,-1):
+		var event:Dictionary=history[index]
+		var action:String=titles.get(event.get("action"),"")
+		if action.is_empty():continue
+		var target:=str(event.get("target",""))
+		if not target.is_empty():action+=" · "+target
+		rows.add_child(label(action,18))
+		var date:=Time.get_datetime_string_from_unix_time(int(event.at),true)
+		rows.add_child(label("%s · %s UTC" % [event.actor,date],14))
+		rows.add_child(HSeparator.new())
+	column.add_child(button("返回通行簿",_passport_menu))
+
+func _confirm_member_removal(target_id:String,display_name:String,block:bool) -> void:
+	var dialog:=ConfirmationDialog.new()
+	dialog.title="封鎖入島" if block else "請離島"
+	dialog.dialog_text=("封鎖 %s 進入這座島？對方將離開目前連線，直到解除封鎖才可再入島。" if block else "請 %s 中斷本次連線？對方仍可重新加入。") % display_name
+	dialog.confirmed.connect(func():
+		if block:session.request_member_block(target_id,true)
+		else:session.request_member_kick(target_id)
+		dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free)
+	modal.add_child(dialog)
+	dialog.popup_centered()
 
 func _exit_tree()->void:
 	# Blueprint nodes first: unhook Session signals and drop the overlay/strip
@@ -3224,6 +4369,7 @@ func _exit_tree()->void:
 
 func _notification(what:int) -> void:
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:_quit()
+	if what==NOTIFICATION_APPLICATION_FOCUS_OUT:gather_hold.clear()
 
 func _quit() -> void:
 	if session and not session.shutdown():

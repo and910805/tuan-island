@@ -143,6 +143,7 @@ func run()->void:
 	test_stock_take()
 	test_open_and_view()
 	test_settlement_counts()
+	test_quality_stock()
 	test_ranch_products()
 	test_theme_ordering()
 	test_multi_day_and_offline()
@@ -156,7 +157,7 @@ func run()->void:
 
 # 1. Pure rules: categories, prices, visitors, themes.
 func test_rules()->void:
-	var prices:Dictionary=World.SHIPPING.prices(World.CROPS,World.FISH,World.OTHER_SALES)
+	var prices:Dictionary=World.SHIPPING.prices(World.CROPS,World.FISH,World.OTHER_SALES,true)
 	expect(Market.sale_prices()==prices,"sale_prices equals the shipping price table")
 	expect(Market.ACTIONS==["market_stock","market_take","market_open","market_collect"],"Four market actions")
 	expect(Market.MAX_KINDS==4 and Market.MAX_STOCK==12,"Limits are 4 kinds / 12 pieces")
@@ -172,14 +173,14 @@ func test_rules()->void:
 	expect(Market.category_of("cotton")=="produce","Cotton (a fibre crop) is produce, not a flower")
 	for flower in ["bluebell","orange_blossom","chime_herb"]:expect(Market.category_of(flower)=="flower","%s is a flower"%flower)
 	for dish:String in World.OTHER_SALES:
-		if dish in Market.PRODUCE_EXTRA:continue
+		if World.CROP_CATALOG.base_kind(dish) in Market.PRODUCE_EXTRA:continue
 		expect(Market.category_of(dish)=="dish","%s is a dish"%dish)
 	for raw in ["wood","stone","fiber","resin","sapling","plank","sprinkler_kit","tea_light","sea_salt","sugar","blue_dye",""]:
 		expect(Market.category_of(raw)=="" and not Market.sellable(raw),"%s is not sellable"%raw)
 	for crop:String in World.CROPS:
 		expect(not Market.sellable(crop+"_seed"),"%s_seed is never sellable"%crop)
 	var items:Array=Market.sellable_items()
-	expect(items.size()==World.CROPS.size()+World.FISH.size()+World.OTHER_SALES.size(),"Every crop, fish and other sale is sellable (%d)"%items.size())
+	expect(items.size()==2*World.CROPS.size()+World.FISH.size()+World.OTHER_SALES.size(),"Both crop grades, fish and other goods are sellable (%d)"%items.size())
 	for item:String in items:expect(prices.has(item) and int(prices[item])>=1,"%s has a shipping price"%item)
 	# Price arithmetic (integer ceil) for every sellable item and all three themes.
 	for d in range(3):
@@ -448,6 +449,24 @@ func test_settlement_counts()->void:
 	settle_next_day(e)
 	expect(int(market_of(e,"full").report.stalls)==1 and int(market_of(e,"full").report.visitors)==8,"Only stocked stalls count")
 	expect(same(market_of(e,"empty").report,{"day":0,"visitors":0,"stalls":1,"theme":"produce","sold":{},"coins":0}) and market_of(e,"empty").pending==false,"Empty pending stall settles with nothing sold")
+
+func test_quality_stock()->void:
+	var w:=make_world(["grower"],0)
+	pl(w,"grower").inventory.quality_radish=2
+	expect(Market.category_of("quality_bluebell")=="flower","A quality flower keeps its category")
+	expect(int(view(w,"grower").prices.quality_radish.price)==39,"Produce day quotes 39 coins for a quality radish")
+	open_with(w,"grower",{"quality_radish":2,"radish":1})
+	expect(int(pl(w,"grower").inventory.quality_radish)==0,"Only the quality stack is moved for the two quality radishes")
+	var path:=temp_path("quality")
+	w.save_path=path
+	expect(w.save() and w.load_world(path),"Open quality stock survives reload")
+	settle_next_day(w)
+	var market:=market_of(w,"grower")
+	expect(same(market.report.sold,{"quality_radish":2,"radish":1}),"Settlement preserves both crop grades")
+	expect(int(market.till)==110,"Two quality radishes at 39 and one regular radish at 32 settle for 110")
+	expect(w.save() and w.load_world(path),"Settled quality report survives reload")
+	for file:String in [path,path+".bak"]:
+		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)
 
 # 8. Theme ordering and prices for all three themes (2 stalls -> 5 visitors).
 func test_theme_ordering()->void:

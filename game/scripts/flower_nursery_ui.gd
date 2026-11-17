@@ -524,16 +524,17 @@ static func seed_panel(ctx:Dictionary,page:VBoxContainer)->void:
 	var art:=SceneArt.prop_texture("seed_saving_table") if SceneArt.has_prop("seed_saving_table") else null
 	var head:=row(page,"FlowerSeedHead")
 	if art:head.add_child(Shell.picture(art,64))
-	label(app,head,"1 朵成花 → 1 包同種種子（%d 秒）"%int(Flower.SAVE_SECONDS),16)
+	label(app,head,"一株的收成 → 1 包同種種子（%d 秒）"%int(Flower.SAVE_SECONDS),16)
 	for kind in Flower.FLOWERS:
 		var seed:String=Flower.SEEDS[kind]
+		var cost:=Flower.save_flower_cost(kind)
 		var line:=row(page,"FlowerSeedRow_"+kind)
 		icon_into(line,kind,32)
 		var info:=VBoxContainer.new()
 		info.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		line.add_child(info)
 		label(app,info,item_name(kind)+("　✓ 已留過種" if saved.get(kind,false) else ""),16)
-		label(app,info,"成花 %d · 種子 %d"%[int(bag.get(kind,0)),int(bag.get(seed,0))],14).name="FlowerSeedCount_"+kind
+		label(app,info,"成花 %d／需 %d · 種子 %d"%[int(bag.get(kind,0)),cost,int(bag.get(seed,0))],14).name="FlowerSeedCount_"+kind
 		var buttons:=VBoxContainer.new()
 		buttons.custom_minimum_size.x=230
 		line.add_child(buttons)
@@ -549,7 +550,7 @@ static func seed_panel(ctx:Dictionary,page:VBoxContainer)->void:
 		if not ctx.intro:why=INTRO_REASON
 		elif not saving.is_empty():why="留種台正在處理另一包"
 		elif not record.get("harvested",{}).has(kind):why="先在田尾育苗床採收過%s"%item_name(kind)
-		elif int(bag.get(kind,0))<1:why="沒有%s成花"%item_name(kind)
+		elif int(bag.get(kind,0))<cost:why="留種需要 %d 份%s"%[cost,item_name(kind)]
 		act(ctx,buttons,"FlowerSave_"+kind,"留 1 包（%d 秒）"%int(Flower.SAVE_SECONDS),"flower_save",why,kind)
 	label(app,page,"出貨前每種至少留 1 包",14,Color("7a4e2b")).name="FlowerSeedHint"
 
@@ -1136,7 +1137,7 @@ static func plan_page(app,page:VBoxContainer,record:Dictionary)->void:
 	notes.add_child(choice)
 	var cookie:Dictionary=Flower.COOKIE.garden_cookie
 	var cookie_line:="花園餅乾： "+"＋".join(PackedStringArray(cookie.ingredients.keys().map(func(id):return "%s %d"%[item_name(id),int(cookie.ingredients[id])])))+" → %d 份，%d 秒。"%[int(cookie.yield),int(cookie.time)]
-	for entry in [[Flower.SEEDS[Flower.FLOWERS[0]],"FlowerDesignSave","留種方法： 1 朵成花 → 1 包同種種子，%d 秒。"%int(Flower.SAVE_SECONDS)],
+	for entry in [[Flower.SEEDS[Flower.FLOWERS[0]],"FlowerDesignSave","留種方法　一株收成換一包（%d 秒）"%int(Flower.SAVE_SECONDS)],
 			[str(Flower.DYE.item),"FlowerPlanDye","染料配方：鈴蘭藍花 %d → 藍色染料 %d。"%[int(Flower.DYE.ingredients.values()[0]),int(Flower.DYE.yield)]],
 			["garden_cookie","FlowerDesignCookie",cookie_line]]:
 		var recipe:=row(choice)

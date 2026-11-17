@@ -158,6 +158,7 @@ func earned_world() -> World:
 	if not earn_repair(w,ALPHA) or not earn_memory(w,ALPHA):return null
 	beside(w,ALPHA,Memory.SERVICE)
 	if not act(w,ALPHA,"memory_plaque",Memory.SERVICE).ok:return null
+	w.state.history_memory.players[ALPHA].erase("completed_day")  # Legacy record for the day-one fixture.
 	return w
 
 func gate(w:World,token:String,which:String,level:int,label:String) -> Dictionary:
@@ -229,6 +230,7 @@ func main_flow(w:World,path:String) -> bool:
 	refuse(w,ALPHA,Revisit.GATE_ACTION,Revisit.GATE_CELL,"a:3",Revisit.LOCKED,"gate with alpha's memory but no plaque yet")
 	beside(w,ALPHA,Memory.SERVICE)
 	ok(w,ALPHA,"memory_plaque",Memory.SERVICE,"","alpha sets the plaque")
+	w.state.history_memory.players[ALPHA].erase("completed_day")  # Legacy record for the day-one fixture.
 	expect(w.save(),"pre-revisit world saves")
 	var legacy_path:=temp_path("pre-revisit")
 	expect(DirAccess.copy_absolute(path,legacy_path)==OK,"copy the pre-revisit save")
@@ -290,6 +292,7 @@ func main_flow(w:World,path:String) -> bool:
 	refuse(w,ALPHA,Revisit.CHECK_ACTION,Revisit.FIELD_CELLS.middle,"",Revisit.NO_GATES_TODAY,"day rollover: gates must be set again")
 	# Late-comer catch-up: beta finishes her own memory first.
 	if not expect(earn_memory(w,BETA),"beta's first memory earned (catch-up path)"):return false
+	w.state.history_memory.players[BETA].erase("completed_day")  # Legacy record for the day-one fixture.
 	gate(w,BETA,"b",2,"beta re-confirms the middle gate on the new day (same level)")
 	expect(int(w.state[Revisit.STATE_KEY].day)==2 and same(w.state[Revisit.STATE_KEY].checked,[]),"re-confirm stamps day 2 and clears the stale check")
 	# Two players split the fields.

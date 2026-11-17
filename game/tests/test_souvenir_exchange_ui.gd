@@ -386,7 +386,7 @@ func main_flow(label:String)->void:
 	await stand(BOOTH_SPOT)
 	check(focus()==SouvUI.POINT,"Standing south of the booth focuses it (%s): %s"%[label,focus()])
 	var focused:=await world_label(SouvUI.POINT)
-	check(str(focused.get("title",""))=="紀念品交換攤・兌換裝飾","Focused booth prompt (%s): %s"%[label,str(focused)])
+	check(str(focused.get("title",""))=="兌換紀念品","Focused booth prompt keeps the action concise (%s): %s"%[label,str(focused)])
 	check(World.souvenir_cell(app.session.snapshot)==BOOTH and w.blocked(BOOTH) and w.protected(BOOTH),"Booth cell blocks and is protected (%s)"%label)
 	# Nothing affordable.
 	await interact_key()

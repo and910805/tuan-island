@@ -344,6 +344,14 @@ func test_permissions() -> void:
 	moved(w, "shared chest guest withdraw_half", "bob", "withdraw_half", CELL, "wood", 3)
 	moved(w, "shared chest guest deposit_all", "bob", "deposit_all", CELL, "wood", 6)
 	expect(total(w, "wood", ["alice", "bob"], [CELL, PRIVATE_CELL, SUPPLY_CELL]) == 3 + 4 + 5 + 5, "wood conserved across all permission cases")
+	set_held(w,"bob","wood",3)
+	refused(w,"guest cannot open access","bob","box_deposit_access",PRIVATE_CELL,"island","只有私人箱的主人能調整存入權限。")
+	refused(w,"supply box cannot grant access","alice","box_deposit_access",SUPPLY_CELL,"island","只有私人箱的主人能調整存入權限。")
+	expect(w.act("alice","allow-deposits","box_deposit_access",PRIVATE_CELL,"island").ok,"Owner can allow deposits")
+	moved(w,"guest can put half a stack into the private chest","bob","deposit_half",PRIVATE_CELL,"wood",2)
+	refused(w,"guest still cannot take the deposit back","bob","withdraw",PRIVATE_CELL,"wood",Perm.MSG_FOREIGN_BOX)
+	expect(w.act("alice","close-deposits","box_deposit_access",PRIVATE_CELL,"owner").ok,"Owner can close guest deposits")
+	refused(w,"guest cannot deposit after access closes","bob","deposit",PRIVATE_CELL,"wood",Perm.MSG_FOREIGN_BOX)
 
 func test_race() -> void:
 	var w = fresh()
@@ -450,6 +458,7 @@ func test_save_reload() -> void:
 	moved(w, "save: deposit_all stone", "alice", "deposit_all", PRIVATE_CELL, "stone", 3)
 	moved(w, "save: withdraw_half private stone 5", "alice", "withdraw_half", PRIVATE_CELL, "stone", 3)
 	moved(w, "save: guest withdraw_all fiber", "bob", "withdraw_all", CELL, "fiber", 4)
+	expect(w.act("alice","saved-deposit-access","box_deposit_access",PRIVATE_CELL,"island").ok,"Deposit access accepted before reload")
 	expect(FileAccess.file_exists(path), "accepted moves saved to disk")
 	expect(w.save(), "explicit save succeeds")
 	for c in [CELL, PRIVATE_CELL]:
@@ -475,6 +484,8 @@ func test_save_reload() -> void:
 		expect(held(loaded, "alice", "wood") == 3 and stored(loaded, CELL, "wood") == 4, "reloaded wood split 3/4")
 		expect(held(loaded, "alice", "stone") == 3 and stored(loaded, PRIVATE_CELL, "stone") == 2, "reloaded stone split 3/2")
 		expect(held(loaded, "bob", "fiber") >= 4 and stored(loaded, CELL, "fiber") == 0, "reloaded fiber with bob")
+		expect(Perm.can_deposit("bob",loaded.state.objects[World.key(PRIVATE_CELL)]).ok
+			and not Perm.can_take("bob",loaded.state.objects[World.key(PRIVATE_CELL)]).ok,"Reload retains only permission to deposit")
 		# Reloaded (JSON float) counts still move exactly and come back as ints.
 		loaded.save_path = ""
 		moved(loaded, "reloaded withdraw_all wood", "alice", "withdraw_all", CELL, "wood", 4)

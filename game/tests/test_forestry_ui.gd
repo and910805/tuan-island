@@ -23,6 +23,51 @@ func find_all(node: Node, type_name: String) -> Array[Control]:
 		matches.append_array(find_all(child, type_name))
 	return matches
 
+func tap_pad(id:JoyButton)->void:
+	for pressed in [true,false]:
+		var event:=InputEventJoypadButton.new()
+		event.button_index=id
+		event.pressed=pressed
+		root.push_input(event)
+	for frame in 4:await process_frame
+
+func check_controller(app)->void:
+	var path:="user://forestry-pad-%d.json"%OS.get_process_id()
+	var started:bool=app.session.host(0,"林務試玩",path)==OK
+	expect(started,"Local Session starts")
+	if not started:return
+	app.session.set_physics_process(false)
+	var world:World=app.session.world
+	var token:String=app.session.profile.token
+	var tile:=Vector2i(41,34)
+	var person:Dictionary=world.state.players[token]
+	person.x=41.5
+	person.y=35.5
+	person.inventory.forester_kit=1
+	person.inventory.charcoal=4
+	expect(world.act(token,"place-station","build",tile,"forester").ok,"Place the station through the actual build rules")
+	var station:Dictionary=world.state.objects.get(World.key(tile),{})
+	if not station.is_empty():
+		station.items={"wood":6,"fiber":2,"resin":1}
+		app.session._send_snapshot(1)
+		app.forestry_ui.device(app,tile)
+		for frame in 4:await process_frame
+		var current:int=app.session.counter
+		var wood:int=person.inventory.wood
+		await tap_pad(JOY_BUTTON_X)
+		expect(root.gui_get_focus_owner().name=="ForestryCollect" and app.session.counter==current,"X focuses collection without claiming")
+		await tap_pad(JOY_BUTTON_A)
+		expect(station.items.is_empty() and int(person.inventory.wood)==wood+6,"A claims the stored materials")
+		app.forestry_ui.refresh(app)
+		await tap_pad(JOY_BUTTON_X)
+		expect(root.gui_get_focus_owner().name=="ForestryLoad_charcoal","With no output, X focuses charcoal loading")
+		app.session.rates[1].clear()
+		await tap_pad(JOY_BUTTON_A)
+		expect(station.fuel==4 and int(person.inventory.get("charcoal",0))==0,"A loads the charcoal into the station")
+	app._close_modal()
+	app.session.shutdown()
+	for suffix in ["",".bak",".writer-lock"]:DirAccess.remove_absolute(path+suffix)
+
 func run() -> void:
 	var app = load("res://main.tscn").instantiate()
 	root.add_child(app)
@@ -34,6 +79,7 @@ func run() -> void:
 	var key: String = World.key(STATION)
 	var device: Dictionary = {"type": "forester", "owner": "tester", "items": {}}
 	device.merge(World.FORESTRY.fresh(0.0))
+	expect(World.FORESTRY.field_status(device)=="已停止","Stopped forest station reports stopped")
 	world.state.objects[key] = device
 	app.session.snapshot = world.state
 	app.session.own_id = "tester"
@@ -55,9 +101,11 @@ func run() -> void:
 	app.forestry_ui.refresh(app)
 	expect(not supply[0].disabled, "new charcoal enables the same supply control")
 	device.enabled = true
+	expect(World.FORESTRY.field_status(device)=="缺木炭及樹苗","An enabled station can run out of both supplies")
 	device.next_cycle = 12.0
 	device.fuel = 8
 	device.items.wood = 6
+	expect(World.FORESTRY.field_status(device)=="木炭 8 · 樹苗 0 · 木材 6 待領","Field prompt shows supplies and available wood together")
 	app.forestry_ui.refresh(app)
 	var values := find_all(app.modal, "Label").map(func(label): return label.text)
 	expect(values.has("下次檢查上方 · 12 秒") and values.has("6／48"), "timer and production counters update in place")
@@ -70,6 +118,31 @@ func run() -> void:
 	expect(app.forestry_ui.plot_summary(world, open_tile, device) == "有人站立 · 稍候", "visible player blocks an otherwise empty plot")
 	world.state.forest[World.key(open_tile)] = {"owner": "tester", "growth": World.TREE_TIME, "mature": false}
 	expect(app.forestry_ui.plot_summary(world, open_tile, device) == "等待讓出空間", "fully grown occupied tree has a useful status")
+	# Fixture-only obstruction cases: explain the actual reason, never recommend
+	# clearing another player's planted tree or a retained farm plot.
+	var open_key:=World.key(open_tile)
+	world.state.forest[open_key].owner="friend"
+	expect(app.forestry_ui.plot_summary(world,open_tile,device)=="他人樹木 · 保留不動","Foreign grove is preserved, not presented as a natural tree to cut")
+	world.state.forest.erase(open_key)
+	world.state.objects[open_key]={"type":"sawmill","owner":"tester"}
+	expect(app.forestry_ui.plot_summary(world,open_tile,device)=="鋸木台占格","Occupied plot identifies the actual machine")
+	world.state.objects.erase(open_key)
+	world.state.crops[open_key]={"owner":"tester","kind":"","growth":0,"wet":false}
+	expect(app.forestry_ui.plot_summary(world,open_tile,device)=="農田 · 保留不動","Farm obstruction has a useful preservation message")
+	world.state.crops.erase(open_key)
+	for resource in ["tree","rock","grass"]:
+		var found:=false
+		for y in range(10,48):
+			for x in range(10,54):
+				var tile:=Vector2i(x,y)
+				if world.protected(tile) or world.water(tile) or world.resource(tile)!=resource:continue
+				if World.FORESTRY.plot_status(world,tile,"tester")!="blocked":continue
+				var expected:String={"tree":"天然樹 · 先清理","rock":"石頭 · 先清理","grass":"雜草 · 先清理"}[resource]
+				expect(app.forestry_ui.plot_summary(world,tile,device)==expected,"Natural "+resource+" explicitly needs manual clearing")
+				found=true
+				break
+			if found:break
+		expect(found,"World contains a real obstruction source for "+resource)
 	device.owner = "other"
 	app.forestry_ui.refresh(app)
 	expect(buttons.filter(func(button): return button.text in ["停止", "補入", "退回供料", "領取產物"]).all(func(button): return button.disabled),
@@ -89,6 +162,7 @@ func run() -> void:
 				expect(scroll.get_global_rect().encloses(control.get_global_rect()), "five material recipe keeps build shortcut visible at %s" % extent)
 	app._close_modal()
 	app.forestry_ui.refresh(app)
+	await check_controller(app)
 	app.queue_free()
 	await process_frame
 	print("FORESTRY_UI_TESTS checks=%d failures=%d" % [checks, failures])

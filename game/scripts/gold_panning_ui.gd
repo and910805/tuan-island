@@ -224,6 +224,7 @@ static func build(app,body:VBoxContainer) -> void:
 	_text(app,col,"GpBag",13)
 	_wrapped(app,body,"GpBlurb",13,MUTED).text=Gold.BLURB
 	_wrapped(app,body,"GpDisclaimer",13,MUTED).text=Gold.DISCLAIMER
+	_button(app,body,"GpHistory","讀地方記憶",func():preload("res://scripts/history_ui.gd").open(app,"jinguashi",Gold.SITE,func():open(app)))
 
 # ------------------------------------------------------------------ actions --
 

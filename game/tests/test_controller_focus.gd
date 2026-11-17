@@ -21,6 +21,7 @@ extends SceneTree
 const World = preload("res://scripts/world.gd")
 const InventoryPanel = preload("res://scripts/inventory_panel.gd")
 const ShippingPanel = preload("res://scripts/shipping_panel.gd")
+const Bindings = preload("res://scripts/input_bindings.gd")
 
 var checks := 0
 var failures := 0
@@ -108,6 +109,16 @@ func has_joy_axis(action: String, axis: JoyAxis, sign_value: float) -> bool:
 func run() -> void:
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	root.size = Vector2i(1280, 800)
+	if "--title-controller-only" in OS.get_cmdline_user_args():
+		await check_title_start()
+		print("TITLE_CONTROLLER checks=%d failures=%d"%[checks,failures])
+		quit(int(failures>0 or checks==0))
+		return
+	if "--pocket-guide-only" in OS.get_cmdline_user_args():
+		await check_main_flow(true)
+		print("POCKET_GUIDE_CONTROLLER checks=%d failures=%d"%[checks,failures])
+		quit(int(failures>0 or checks==0))
+		return
 	check_input_map()
 	await check_inventory_panel()
 	await check_shipping_panel()
@@ -116,8 +127,7 @@ func run() -> void:
 		checks, failures, gaps, gaps_closed, strict, preview])
 	quit(1 if failures > 0 or checks == 0 else 0)
 
-## Godot's built-in ui_* actions are the only joypad bindings the game has; the
-## project.godot has no [input] section. These must keep their pad events.
+## UI confirmation and cancellation are project bindings. Direction uses the built-in UI actions.
 func check_input_map() -> void:
 	expect(has_joy_button("ui_accept", JOY_BUTTON_A), "ui_accept keeps joypad A (south)")
 	expect(has_joy_button("ui_cancel", JOY_BUTTON_B), "ui_cancel keeps joypad B (east)")
@@ -129,13 +139,12 @@ func check_input_map() -> void:
 	print("INFO ui_left/ui_right left-stick mapped=%s ui_up/ui_down=%s" % [
 		has_joy_axis("ui_left", JOY_AXIS_LEFT_X, -1.0) and has_joy_axis("ui_right", JOY_AXIS_LEFT_X, 1.0),
 		has_joy_axis("ui_up", JOY_AXIS_LEFT_Y, -1.0) and has_joy_axis("ui_down", JOY_AXIS_LEFT_Y, 1.0)])
-	# Slice C1: gameplay actions are keyboard-only (InputBindings stores physical keycodes).
-	gap("C1-actions", InputMap.has_action("interact") or InputMap.has_action("inventory") or InputMap.has_action("move_up"),
-		"no InputMap gameplay actions exist; InputBindings.matches() only accepts InputEventKey")
+	expect(Bindings.DEFAULTS.has("interact") and Bindings.DEFAULTS.has("inventory") and Bindings.DEFAULTS.has("move_up"),
+		"Gameplay actions are defined by InputBindings; the live probes below check joypad routing")
 
 ## InventoryPanel is the reference implementation: initial focus + explicit neighbours.
 func check_inventory_panel() -> void:
-	var snapshot := {"players": {"pad": {"coins": 7, "inventory": {"wood": 3, "stone": 2, "radish_seed": 4, "radish": 1}}}}
+	var snapshot := {"players": {"pad": {"coins": 7, "inventory": {"wood": 3, "stone": 2, "radish_seed": 4, "radish": 1, "fiber": 10}}}}
 	var panel = InventoryPanel.new()
 	root.add_child(panel)
 	panel.setup(snapshot, "pad", Theme.new())
@@ -182,6 +191,16 @@ func check_inventory_panel() -> void:
 	var landed := focus_owner()
 	expect(landed != null and landed == panel.slots.get(panel.selected_id) and InventoryPanel.category_for(panel.selected_id) == 2,
 		"inventory: d-pad down after a category switch lands on a slot of that category")
+	panel.select_category(0)
+	panel.slots["fiber"].grab_focus()
+	var crafted := [0]
+	panel.rope_requested.connect(func(): crafted[0]+=1)
+	await tap(JOY_BUTTON_X)
+	expect(focus_owner()==panel.craft_rope,"inventory: X moves from selected fiber to the craft action")
+	await tap(JOY_BUTTON_A)
+	expect(crafted[0]==1,"inventory: A on the action requests one craft")
+	await tap(JOY_BUTTON_DPAD_LEFT)
+	expect(focus_owner()==panel.slots["fiber"],"inventory: left returns to the selected slot")
 
 	# Close: A on the header button works; B relies on main's Escape-only routing.
 	var close_button: Button = null
@@ -203,7 +222,7 @@ func check_inventory_panel() -> void:
 	await process_frame
 	var before: int = closes[0]
 	await tap(JOY_BUTTON_B)
-	gap("C2-inv-cancel", closes[0] > before, "inventory panel: B (ui_cancel) does not request close")
+	expect(closes[0] == before+1, "inventory: B on a slot requests close once")
 	panel.queue_free()
 	await process_frame
 
@@ -216,47 +235,51 @@ func check_shipping_panel() -> void:
 	panel.layout_for(Vector2(1280, 800))
 	await settle()
 	var owner := focus_owner()
-	gap("C4-ship-initial", owner != null and panel.is_ancestor_of(owner),
-		"shipping: opens with no focused control (setup never calls grab_focus)")
+	expect(owner != null and panel.is_ancestor_of(owner),"shipping: opens with focus on a sellable item")
 	expect(not panel.selected_id.is_empty() and panel.slots.has(panel.selected_id), "shipping: a held item is preselected")
 	if panel.slots.has(panel.selected_id):
-		var start = panel.slots[panel.selected_id]
-		start.grab_focus()
-		await process_frame
-		# Walk down by d-pad (geometric neighbours only) and see whether ＋ is reachable.
 		var reached := false
 		for step in 6:
 			await tap(JOY_BUTTON_DPAD_DOWN)
 			if focus_owner() == panel.plus:
 				reached = true
 				break
-		gap("C4-ship-plus-reach", reached, "shipping: d-pad down from the slot grid does not reach ＋ within 6 steps")
+		expect(reached,"shipping: D-pad reaches ＋ from the slot grid")
 		var id: String = panel.selected_id
-		panel.plus.grab_focus()
-		await process_frame
 		await tap(JOY_BUTTON_A)
 		expect(int(panel.cart.get(id, 0)) == 1, "shipping: A on ＋ adds one %s to the cart" % id)
-		panel.confirm_button.grab_focus()
-		await process_frame
 		await tap(JOY_BUTTON_A)
-		expect(panel.reviewing, "shipping: first A on 核對出貨 enters the review step (no sale yet)")
+		await tap(JOY_BUTTON_DPAD_LEFT)
+		await tap(JOY_BUTTON_A)
+		expect(int(panel.cart.get(id,0)) == 1,"shipping: D-pad Left and A remove one from the basket")
+		await tap(JOY_BUTTON_DPAD_RIGHT)
+		await tap(JOY_BUTTON_DPAD_DOWN)
+		expect(focus_owner() == panel.confirm_button,"shipping: D-pad Down reaches review from the quantity controls")
+		var shipped: Array[String] = []
+		panel.shipment_requested.connect(func(payload:String):shipped.append(payload))
+		await tap(JOY_BUTTON_A)
+		expect(panel.reviewing and shipped.is_empty(), "shipping: first A opens review and does not ship")
 		var closes := [0]
 		panel.close_requested.connect(func(): closes[0] += 1)
 		await tap(JOY_BUTTON_B)
-		gap("C2-ship-cancel", closes[0] > 0, "shipping panel: B (ui_cancel) does not request close")
+		expect(closes[0]==1 and shipped.is_empty(),"shipping: B requests close from review without shipping")
+		await tap(JOY_BUTTON_A)
+		await tap(JOY_BUTTON_A)
+		expect(shipped.size()==1,"shipping: confirmation emits one shipment while subsequent A is ignored")
 	panel.queue_free()
 	await process_frame
 
 ## Main scene: title -> world -> menus. Session is in-memory; nothing is hosted or saved.
-func check_main_flow() -> void:
+func check_main_flow(guide_only:=false) -> void:
 	var app = load("res://main.tscn").instantiate()
 	root.add_child(app)
 	app.set_process(false)
 	await settle()
 	# Title screen (menu visible, not playing).
-	var title_focus := focus_owner()
-	gap("C3-title-focus", title_focus is BaseButton and app.menu.is_ancestor_of(title_focus),
-		"title: no button is focused on boot, so A does nothing until a mouse click")
+	if not guide_only:
+		app._controller_connection_changed(0,true)
+		await settle()
+		expect(focus_owner()!=null and focus_owner().name=="TitleSolo","Title focuses solo on controller connection")
 
 	# Enter the world without hosting (same fixture as test_input_routing.gd).
 	app.bindings.load_preferences("user://controller-focus-never-written-%d.cfg" % Time.get_ticks_usec())
@@ -273,6 +296,16 @@ func check_main_flow() -> void:
 	app.menu.hide()
 	app.hud.show()
 	await settle()
+	if guide_only:
+		for scale in [0,3]:
+			app.sound.preferred_text_scale=scale
+			app._apply_font_scale_tree()
+			for size in [Vector2i(1024,640),Vector2i(1280,800)]:
+				root.size=size
+				await check_pocket_guide(app)
+		app.queue_free()
+		await settle()
+		return
 
 	# Movement from the pad.
 	Input.parse_input_event(joy_axis(JOY_AXIS_LEFT_X, 1.0))
@@ -314,8 +347,103 @@ func check_main_flow() -> void:
 		app._close_modal()
 		await settle()
 		expect(focus_owner() == null, "%s: closing releases GUI focus (world input resumes)" % label)
+	if app.village_art_preview:
+		for size in [Vector2i(1024,640),Vector2i(1280,800)]:
+			root.size=size
+			await check_pocket_guide(app)
 
 	app.playing = false
 	app.life_panels.updates.clear()
 	app.queue_free()
 	await settle()
+
+func check_pocket_guide(app) -> void:
+	await tap(JOY_BUTTON_B)
+	await settle()
+	var opener := app.modal.find_child("PauseHelp",true,false) as Button if app.modal != null else null
+	if opener == null:
+		expect(false,"World B opens the pause menu with an 操作指南 entry")
+		return
+	for index in 3:await tap(JOY_BUTTON_DPAD_DOWN)
+	await tap(JOY_BUTTON_DPAD_RIGHT)
+	expect(focus_owner()==opener,"D-pad can reach 操作指南 from the first pause option")
+	await tap(JOY_BUTTON_A)
+	await settle()
+	if app.modal == null or not app.modal.has_meta("pocket_guide"):
+		expect(false,"A opens the pocket guide from pause")
+		app._close_modal()
+		return
+	var scroll := app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	for index in 10:
+		var owner := focus_owner()
+		expect(owner != null and owner.name == "GuideCard%d"%index,"D-pad Down reaches guide card %d"%index)
+		if owner != null:
+			var window:=scroll.get_global_rect()
+			var card:=owner.get_global_rect()
+			expect(window.grow(1.0).encloses(card),"Focused guide card %d scrolls into view (%s vs %s)"%[index,card,window])
+		if index<9:await tap(JOY_BUTTON_DPAD_DOWN)
+	await tap(JOY_BUTTON_DPAD_UP)
+	expect(focus_owner() != null and focus_owner().name == "GuideCard8","D-pad Up reads the previous topic")
+	await tap(JOY_BUTTON_B)
+	expect(app.modal == null and focus_owner() == null,"B closes the guide and releases focus")
+
+func check_title_start() -> void:
+	var app=load("res://main.tscn").instantiate()
+	root.add_child(app)
+	app.set_process(false)
+	var path:String=app.arg_value("save", "")
+	if not path.begins_with("user://qa-controller-title-") or FileAccess.file_exists(path):
+		expect(false,"Title test needs a fresh dedicated --save=user://qa-controller-title-*.json")
+		app.queue_free()
+		return
+	root.size=Vector2i(1024,640)
+	app.port_input.text=str(randi_range(49152,65000))
+	app._controller_connection_changed(0,true)
+	await settle()
+	expect(focus_owner()!=null and focus_owner().name=="TitleSolo","Starting focus is the solo button")
+	await tap(JOY_BUTTON_DPAD_DOWN)
+	await tap(JOY_BUTTON_DPAD_DOWN)
+	expect(focus_owner()!=null and focus_owner().name=="TitleFriends","D-pad reaches the friends panel without a mouse")
+	await tap(JOY_BUTTON_A)
+	expect(app.address_input.is_visible_in_tree(),"A opens the friends connection fields")
+	await tap(JOY_BUTTON_A)
+	expect(not app.address_input.is_visible_in_tree(),"A folds the friends panel again")
+	await tap(JOY_BUTTON_DPAD_UP)
+	await tap(JOY_BUTTON_DPAD_UP)
+	expect(focus_owner()!=null and focus_owner().name=="TitleSolo","D-pad returns to the solo button")
+	root.gui_release_focus()
+	await tap(JOY_BUTTON_A)
+	await settle(10)
+	expect(app.playing and app.local_mode and app.session.world!=null,"One A from an unfocused title starts the real local session")
+	if app.playing:
+		await check_local_pause(app)
+		expect(app.session.shutdown(),"Test island saves and closes normally")
+		app._disconnected() # Exercise the return screen used after a disconnected session.
+		await settle()
+		expect(focus_owner()!=null and focus_owner().name=="TitleSolo","Returning to title restores the solo focus")
+	app.queue_free()
+	await settle()
+	for file in [path,path+".bak",path+".tmp"]:
+		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)
+
+func check_local_pause(app) -> void:
+	var world:World=app.session.world
+	if preload("res://scripts/wangan_opening_ui.gd").card_open(app):await tap(JOY_BUTTON_A)
+	await tap(JOY_BUTTON_B)
+	expect(app.session.local_paused and app.modal_feedback.text.contains("單機島已暫停"),"B opens a true pause on the local island")
+	var stopped_at:=float(world.state.time)
+	await create_timer(0.25).timeout
+	expect(float(world.state.time)==stopped_at,"Simulation clock stops while the pause menu is open")
+	app._settings_menu()
+	await create_timer(0.25).timeout
+	expect(app.session.local_paused and float(world.state.time)==stopped_at,"Settings opened from pause keep the world clock frozen")
+	await tap(JOY_BUTTON_B)
+	await create_timer(0.25).timeout
+	expect(not app.session.local_paused and float(world.state.time)>stopped_at,"Closing the final panel resumes ticking")
+	app.local_mode=false
+	await tap(JOY_BUTTON_B)
+	var shared_time:=float(world.state.time)
+	await create_timer(0.25).timeout
+	expect(not app.session.local_paused and float(world.state.time)>shared_time,"The shared-room menu continues ticking")
+	await tap(JOY_BUTTON_B)
+	app.local_mode=true

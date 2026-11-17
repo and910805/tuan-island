@@ -250,6 +250,12 @@ static func layout(app,bounds:Vector2)->void:
 	var content:=modal.find_child("ModalContent",true,false) as Control
 	var height:=cap.y
 	if outer!=null and content!=null:
+		var shell:=outer.get_parent() as VBoxContainer
+		if shell!=null and shell.get_theme_constant("separation")!=3:
+			shell.add_theme_constant_override("separation",3)
+			var footer_divider:=shell.get_node_or_null("ModalFooterDivider") as HSeparator
+			if footer_divider!=null:footer_divider.hide()
+			if is_instance_valid(app.modal_feedback):app.modal_feedback.custom_minimum_size.y=0
 		var chrome:float=modal.get_combined_minimum_size().y-outer.get_combined_minimum_size().y
 		height=minf(cap.y,chrome+content.get_combined_minimum_size().y+2)
 	modal.size=Vector2(cap.x,height)

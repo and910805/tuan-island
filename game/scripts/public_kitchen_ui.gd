@@ -81,6 +81,16 @@ static func refresh(app)->void:
 	var controller:=_controller(app)
 	if controller:controller.refresh()
 
+static func focus_kitchen_action(app)->bool:
+	var controller:=_controller(app)
+	if controller==null:return false
+	for key in ["contribute","cook"]:
+		var action:=controller.refs.get(key) as Button
+		if is_instance_valid(action) and action.is_visible_in_tree() and not action.disabled:
+			action.grab_focus()
+			break
+	return true
+
 static func layout(app,_bounds:Vector2)->void:
 	var controller:=_controller(app)
 	if controller:controller.fit_now()
@@ -1186,7 +1196,7 @@ class Controller extends Node:
 		contribute.visible=not opened
 		contribute.set_meta("allowed",contribute_why.is_empty())
 		contribute.text="等待回應……" if not pending.is_empty() else ("把料理放上桌：" +"、".join(debit) if not debit.is_empty() else "放上開張餐點")
-		contribute.tooltip_text="只扣這些數量，不給獎勵。" if contribute_why.is_empty() else contribute_why
+		contribute.tooltip_text="只扣這些數量，不給獎勵。\n手把 X 選取 · A 確認" if contribute_why.is_empty() else contribute_why
 		var cook_why:=""
 		if not stove_present:cook_why="公共小石灶不在目前區域。"
 		elif not near:cook_why="走到公共小石灶身邊三格內才能做菜。"

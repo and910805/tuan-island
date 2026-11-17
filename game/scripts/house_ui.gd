@@ -320,6 +320,29 @@ static func open(app) -> void:
 	note_label.add_theme_color_override("font_color", NOTE_COLOR)
 	guide_column.add_child(note_label)
 
+	var snapshot:Dictionary=app.session.snapshot
+	var bond:Dictionary=snapshot.get("resident_bonds",{}).get("nuannuan",{})
+	if snapshot.get("region_id","home")=="home" and int(bond.get("stage",0))>=3:
+		var guest:=HouseRooms.guest_room(snapshot,result,result.at,app.session.own_id)
+		var guest_row:=HBoxContainer.new()
+		guest_row.add_theme_constant_override("separation",8)
+		content.add_child(guest_row)
+		var task:Label=app.label("暖暖的客房 · 床 %s　燈 %s　椅 %s"%[
+			"✓" if guest.furnished.bed else "○","✓" if guest.furnished.lamp else "○","✓" if guest.furnished.chair else "○"],15)
+		task.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		task.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		guest_row.add_child(task)
+		if snapshot.get("own_guest_room",false):
+			guest_row.add_child(app.label("已登記 · 回礁溪找暖暖",14))
+		else:
+			var register_room:Button=app.button("登記這間客房",func():
+				app.session.perform(World.RESIDENT_GOALS.GUEST_ROOM_ACTION,result.at)
+				app._close_modal())
+			register_room.name="GuestRoomRegister"
+			register_room.disabled=not guest.ready
+			register_room.tooltip_text="站在完整的小屋內，至少親手放一件客房家具。"
+			guest_row.add_child(register_room)
+
 	var actions := HBoxContainer.new()
 	actions.name = "HouseFooter"
 	actions.add_theme_constant_override("separation", 8)

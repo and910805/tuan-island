@@ -136,8 +136,16 @@ func run() -> void:
 	assert(fish_count(reopened.state.players[token]) == initial+1)
 	app.session.perform("fish_start", WATER)
 	assert(person.has("fishing"))
+	await create_timer(0.6).timeout
+	await capture(48,"before-cancel")
 	world.move_player(token,Vector2.LEFT,0.1)
 	assert(not person.has("fishing") and fish_count(person) == initial+1)
+	app.session._send_snapshot(1)
+	for i in range(49,57):
+		if i==56:await create_timer(0.2).timeout
+		await capture(i,"cancel")
+		await create_timer(0.04).timeout
+	assert(frames[49].actual_phase=="cancel" and frames[56].actual_phase=="")
 	var file := FileAccess.open(directory.path_join("sequence.json"),FileAccess.WRITE)
 	assert(file != null)
 	file.store_string(JSON.stringify({"scripted_position":[54.5,34.5],"target":[55,34],"reduced_motion":app.view.reduced_motion,"fish_before":initial,"fish_after":fish_count(person),"reload_preserved":true,"cancel_no_fish":true,"frames":frames}))

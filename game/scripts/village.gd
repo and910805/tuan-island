@@ -37,7 +37,9 @@ const ORDERS:=[
 	{"id":"radish","name":"渡口的家常湯","items":{"radish":3},"coins":90},
 	{"id":"fish","name":"小栗的魚貨籃","items":{"carp":1,"minnow":1},"coins":55},
 	{"id":"bread","name":"午后的麵包香","items":{"bread":2},"coins":120},
-	{"id":"market_jam","name":"市集的草莓果醬","items":{"strawberry_jam":2},"coins":135}
+	{"id":"market_jam","name":"市集的草莓果醬","items":{"strawberry_jam":2},"coins":135},
+	{"id":"dock_shrimp","channel":"dock","name":"出航前的潮池蝦籃","items":{"gold_shrimp":2,"seaweed":1},"coins":110},
+	{"id":"dock_glassmakers","channel":"dock","name":"送給修窗師傅的晶砂","items":{"crystal_sand":2,"seashell":1},"coins":92},
 ]
 static func ensure_player(p:Dictionary) -> void:
 	if not p.has("stories"):p.stories={"aru":0,"milu":0,"xiaoli":0,"bobo":0}
@@ -59,6 +61,8 @@ static func ids_for_region(region:String)->Array:
 	return NPCS.keys().filter(func(id):return npc_region(id)==region)
 
 static func unlocked(p:Dictionary,kind:String) -> bool:
+	if kind=="long_bench" and p.get("bond_goals",{}).get("aru",{}).has("2"):return true
+	if kind=="sign" and p.get("bond_goals",{}).get("aru",{}).has("3"):return true
 	var thresholds:={"long_bench":["aru",2],"sign":["aru",3],"sofa":["aru",4],"planter":["milu",2],"ore_display":["bobo",3]}
 	if not thresholds.has(kind):return true
 	var rule:Array=thresholds[kind]

@@ -34,6 +34,16 @@ func fish_count(person:Dictionary)->int:
 	for id in World.FISH:total+=int(person.inventory.get(id,0))
 	return total
 
+func tap_pad(button:JoyButton)->void:
+	var event:=InputEventJoypadButton.new()
+	event.button_index=button
+	event.pressed=true
+	root.push_input(event,true)
+	var release:=event.duplicate() as InputEventJoypadButton
+	release.pressed=false
+	root.push_input(release,true)
+	await process_frame
+
 func run()->void:
 	root.size=Vector2i(1280,800)
 	var path:=OS.get_environment("TEMP").path_join("fish-input-%s.json"%Crypto.new().generate_random_bytes(8).hex_encode())
@@ -66,8 +76,11 @@ func run()->void:
 	var sequence:int=app.session.counter
 	await click(WATER)
 	expect(app.session.counter==sequence+1 and person.has("fishing") and fish_count(person)==count and "還沒咬鉤" in app.toast.text,"Early click reaches the server and is rejected")
+	app.sound.master_volume=0.0
+	app.sound.refresh_gains()
 	world.state.time=person.fishing.ready
 	app.session._send_snapshot(1)
+	expect(app.activity_caption.visible and "魚咬鉤了" in app.activity_caption.text,"The bite caption is visible with all sound muted")
 	sequence=app.session.counter
 	await click(WATER+Vector2i.DOWN)
 	expect(app.session.counter==sequence and person.has("fishing"),"Different water tile never sends a catch")
@@ -79,13 +92,15 @@ func run()->void:
 	await process_frame
 	await click(WATER)
 	expect(app.session.counter==sequence+1 and not person.has("fishing") and fish_count(person)==count+1,"Ready click reels in exactly one fish")
+	expect(app.activity_caption.visible and "魚已收入背包" in app.activity_caption.text,"Catching the fish replaces the bite caption")
+	expect("點水面拋竿" in app.selected_label.text and not "魚咬鉤了" in app.selected_label.text,
+		"Catch snapshot immediately clears the old toolbar prompt with periodic refresh disabled")
 	await click(WATER)
 	expect(person.has("fishing") and fish_count(person)==count+1,"Another click starts a fresh cast without duplicating fish")
 	var binding:Dictionary=app.bindings.rebind("fish_catch",KEY_F9)
 	expect(binding.ok,"Catch binding can be changed")
 	world.state.time=person.fishing.ready
 	app.session._send_snapshot(1)
-	app._refresh_hud()
 	expect("點浮標或按 F9" in app.selected_label.text,"Mouse and remapped key appear in the live ready prompt")
 	var key:=InputEventKey.new()
 	key.keycode=KEY_F9
@@ -143,6 +158,25 @@ func run()->void:
 		await click(WATER)
 		expect(fish_count(person)==5+index,"Relaxed mode awards the same single catch after a long wait")
 	expect(person.collection.fish==standard_collection,"Both modes complete the same freshwater collection")
+	app.session.rates[1].clear()
+	app.controller_offset=Vector2i.DOWN
+	await tap_pad(JOY_BUTTON_DPAD_UP)
+	await tap_pad(JOY_BUTTON_DPAD_RIGHT)
+	app.action_clock=0
+	await tap_pad(JOY_BUTTON_X)
+	var cast:Dictionary=person.get("fishing",{})
+	expect(not cast.is_empty() and Vector2i(cast.get("x",0),cast.get("y",0))==WATER,"D-pad and X cast at the river tile")
+	expect("手把 X" in app.toast.text,"Cast feedback shows the button for the active input device")
+	if not cast.is_empty():
+		await tap_pad(JOY_BUTTON_DPAD_DOWN)
+		world.state.time=float(cast.ready)
+		app.session._send_snapshot(1)
+		expect("手把 X" in app.selected_label.text and "手把 X" in app.activity_caption.text,"The bite hint and caption show the controller button")
+		var previous_catch:=fish_count(person)
+		app.action_clock=0
+		await tap_pad(JOY_BUTTON_X)
+		expect(not person.has("fishing") and fish_count(person)==previous_catch+1,"X reels the active cast even after aiming elsewhere")
+		expect("十字鍵" in app.selected_label.text,"Controller hint immediately returns to cast guidance")
 	app.session.shutdown()
 	await create_timer(0.3).timeout
 	app.queue_free()

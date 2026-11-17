@@ -34,7 +34,7 @@ const LAYOUT:="processing_queue"
 const META:="processing_queue"
 
 ## Entry point (IndustryUI.device routes sawmill / charcoal_kiln here).
-static func open(app,cell:Vector2i)->void:
+static func open(app,cell:Vector2i,return_to:Callable=Callable(),return_label:String="")->void:
 	var obj:Dictionary=app.session.snapshot.get("objects",{}).get(World.key(cell),{})
 	var kind:=str(obj.get("type",""))
 	if not Controller.STATIONS.has(kind):return
@@ -48,6 +48,9 @@ static func open(app,cell:Vector2i)->void:
 				app.inventory_hidden_controls.append(child)
 				child.hide()
 	modal.set_meta("life_modal_layout",LAYOUT)
+	if return_to.is_valid():
+		modal.set_meta("workbench_return",return_to)
+		modal.set_meta("workbench_return_label",return_label)
 	modal.theme=Controller.make_theme(app.hud.theme if app.hud.theme else app.theme())
 	modal.add_theme_stylebox_override("panel",Pixel.frame_style())
 	modal.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
@@ -80,6 +83,17 @@ static func refresh(app)->void:
 	var controller:=_controller(app)
 	if controller:controller.refresh()
 
+static func focus_primary(app)->bool:
+	var controller:=_controller(app)
+	if controller==null:return false
+	var actions:=["collect","feed"] if controller.tab=="auto" else ["claim","enqueue"]
+	for action:String in actions:
+		var button:Button=controller.refs.get(action)
+		if is_instance_valid(button) and button.is_visible_in_tree() and not button.disabled:
+			button.grab_focus()
+			break
+	return true
+
 static func layout(app,bounds:Vector2)->void:
 	var controller:=_controller(app)
 	if controller:controller.fit(bounds)
@@ -91,6 +105,22 @@ static func _controller(app)->Controller:
 	return found
 
 ## Pure display model of one station. Never mutates `obj`.
+static func world_status(obj:Dictionary,now:float)->String:
+	var station:=model(obj,now,"")
+	var ready:int=station.ready.size()
+	var active:Dictionary=station.active
+	var working:=not active.is_empty() and float(active.get("finish",0))>now
+	if not active.is_empty() and not working:ready+=1
+	var automatic:Dictionary=station.auto_job
+	working=working or (not automatic.is_empty() and float(automatic.finish)>now)
+	var parts:=PackedStringArray()
+	var advice:Dictionary=Controller.automatic_advice(station,str(obj.get("type","")),now) if not working else {}
+	if working:parts.append("加工中")
+	if ready>0:parts.append("%d 批待領"%ready)
+	if int(station.stored)>0 and advice.get("reason","")!="full":parts.append("自動庫存 %d"%int(station.stored))
+	if not advice.is_empty():parts.append(str(advice.short))
+	return "" if parts.is_empty() else " · "+" · ".join(parts)
+
 static func model(obj:Dictionary,now:float,own:String)->Dictionary:
 	return Controller.model(obj,now,own)
 
@@ -101,9 +131,9 @@ class Controller extends Node:
 	const STATIONS:={"sawmill":{"kit":"sawmill_kit","output":"plank","input":"wood","field":"input_wood"},
 		"charcoal_kiln":{"kit":"kiln_kit","output":"charcoal","input":"wood","field":"input_wood"},
 		"mill":{"kit":"mill_kit","output":"flour","input":"wheat","field":"input_wheat"},
-		"seed_maker":{},"loom":{},"glass_furnace":{},"jam_pot":{}}
+		"seed_maker":{},"loom":{},"glass_furnace":{},"small_smelter":{},"jam_pot":{},"clay_kiln":{},"dye_table":{}}
 	## Owner-only manual stations: 10-slot queue, no conveyor/auto buffer section.
-	const MANUAL_ONLY:=["seed_maker","loom","glass_furnace","jam_pot"]
+	const MANUAL_ONLY:=World.INDUSTRY.MANUAL_STATIONS
 	const ACK_TIMEOUT_MS:=10000
 	const INK:=Color("3d422d")
 	const MUTED:=Color("76694c")
@@ -202,6 +232,23 @@ class Controller extends Node:
 
 	static func capacity()->int:
 		return int(World.COOKING_QUEUE.CAPACITY)
+
+	## Shared by the nearby world prompt and the automatic-processing page.
+	static func automatic_advice(station:Dictionary,kind:String,now:float)->Dictionary:
+		var job:Dictionary=station.get("auto_job",{})
+		if not job.is_empty() and float(job.finish)>now:return {}
+		if job.is_empty() and not station.get("auto_enabled",false):return {}
+		var config:Dictionary=STATIONS.get(kind,{})
+		if not config.has("output"):return {}
+		var recipe:Dictionary=World.INDUSTRY.PROCESS.get(config.output,{})
+		if recipe.is_empty():return {}
+		var material_name:=str(World.NAMES.get(config.input,config.input))
+		if int(station.stored)+int(recipe.yield)>int(World.LOGISTICS.PROCESS_OUTPUT_CAP):
+			return {"reason":"full","short":"庫滿，先領取","title":"產物庫已滿","hint":"產物庫空間不足，請先領取庫存。"}
+		if not job.is_empty():return {"reason":"commit","short":"等待入庫","title":"等待入庫","hint":"本批完成後會存入產物庫。"}
+		if int(station.input)<int(recipe.ingredients.get(config.input,0)):
+			return {"reason":"material","short":"待補"+material_name,"title":"等待"+material_name,"hint":"料槽%s不足，請補入%s或用輸送帶送料。"%[material_name,material_name]}
+		return {"reason":"ready","short":"待開始","title":"自動加工 · 待開始","hint":"等待開始下一批。"}
 
 	static func recipes_for(station:String)->Array:
 		return World.processing_recipes(station).keys()
@@ -338,7 +385,7 @@ class Controller extends Node:
 		status.autowrap_mode=TextServer.AUTOWRAP_OFF
 		status.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 		refs.status=status
-		_status("選好配方就能排入加工；材料預設只用背包。",true)
+		_status("材料預設用背包 · 手把 X 前往領取、排入或補料",true)
 		(refs.status as Label).add_theme_color_override("font_color",MUTED)
 		show_tab(tab)
 
@@ -347,11 +394,25 @@ class Controller extends Node:
 		header.name="ProcessingHeader"
 		header.add_theme_constant_override("separation",10)
 		body.add_child(header)
+		if app.modal.has_meta("workbench_return"):
+			var back:=_action(header,"ProcessingReturnRecipe","←",func():
+				if not pending.is_empty():return
+				var callback:Callable=app.modal.get_meta("workbench_return",Callable())
+				if callback.is_valid():callback.call())
+			back.custom_minimum_size.x=36
+			back.tooltip_text="返回「%s」配方"%str(app.modal.get_meta("workbench_return_label","工作台"))
+			back.set_meta("allowed",true)
+			gated.append(back)
 		var art:Texture2D=null
 		# Glass furnace shows its own pale-brick body; kiln kit only if that fails.
-		if kind=="glass_furnace":
+		if kind==World.INDUSTRY.SMELTER:
+			art=preload("res://assets/industry/small-smelter.png")
+		elif kind=="glass_furnace":
 			art=preload("res://scripts/glass_furnace_art.gd").texture()
 			if art==null:art=Items.icon("kiln_kit")
+		elif kind=="dye_table":art=preload("res://assets/bakery/dye-table-icon.png")
+		elif kind=="clay_kiln":art=preload("res://assets/bakery/clay-kiln-icon.png")
+		elif kind=="loom":art=preload("res://assets/bakery/loom.png")
 		elif kind=="jam_pot":art=preload("res://assets/bakery/jam-pot.png")
 		elif kind in MANUAL_ONLY:art=preload("res://assets/bakery/seed-maker.png")
 		else:art=Items.icon(str(STATIONS[kind].kit))
@@ -369,6 +430,11 @@ class Controller extends Node:
 		refs.header_owner=_text(info,"",14,MUTED)
 		refs.header_owner.autowrap_mode=TextServer.AUTOWRAP_OFF
 		refs.header_owner.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		if kind==World.INDUSTRY.DYE_TABLE:
+			var dye:Button=app.button("家具換色",func():app.industry_ui.dye_menu(app,cell))
+			dye.name="DyeFurnitureMenu"
+			header.add_child(dye)
+			refs.dye=dye
 		if kind in MANUAL_ONLY:return
 		var group:=ButtonGroup.new()
 		for spec in [["ProcessingManualTab","手動排程","manual"],["ProcessingAutoTab","自動緩衝","auto"]]:
@@ -417,13 +483,15 @@ class Controller extends Node:
 
 	func _build_recipe(column:VBoxContainer)->void:
 		_text(column,"加工配方",18)
+		if kind=="seed_maker":_text(column,"田尾花材請到花園留種台。",14,MUTED)
 		var footer:=column
 		column=_scroll(column,"ProcessingRecipeScroll",80)
+		if kind=="seed_maker":(column.get_parent() as ScrollContainer).follow_focus=true
 		var recipes:=recipes_for(kind)
 		if recipes.size()>1:
 			var grid:=GridContainer.new()
 			grid.name="ProcessingRecipes"
-			grid.columns=5 if kind=="seed_maker" else 4
+			grid.columns=7 if kind=="seed_maker" else 4
 			grid.add_theme_constant_override("h_separation",6)
 			column.add_child(grid)
 			var group:=ButtonGroup.new()
@@ -443,14 +511,15 @@ class Controller extends Node:
 				button.pressed.connect(func():select(recipe_id))
 				grid.add_child(button)
 				recipe_buttons[recipe_id]=button
+		var details:=footer if kind=="seed_maker" else column
 		var card:=PanelContainer.new()
 		card.name="ProcessingRecipeCard"
 		card.add_theme_stylebox_override("panel",Pixel.texture_style("normal",3,8))
-		column.add_child(card)
+		details.add_child(card)
 		var row:=HBoxContainer.new()
 		row.add_theme_constant_override("separation",10)
 		card.add_child(row)
-		var hero:=_picture(null,64)
+		var hero:=_picture(null,48 if kind=="seed_maker" else 64)
 		hero.name="ProcessingSelectedIcon"
 		row.add_child(hero)
 		refs.hero=hero
@@ -459,11 +528,12 @@ class Controller extends Node:
 		row.add_child(info)
 		refs.hero_name=_text(info,"",19)
 		refs.hero_info=_text(info,"",14,MUTED)
-		_text(column,"所需材料（背包持有／需要）",14,MUTED)
-		var materials:=VBoxContainer.new()
+		_text(details,"所需材料（背包持有／需要）",14,MUTED)
+		var materials:BoxContainer=HBoxContainer.new() if kind=="seed_maker" else VBoxContainer.new()
 		materials.name="ProcessingMaterials"
 		materials.add_theme_constant_override("separation",4)
-		column.add_child(materials)
+		details.add_child(materials)
+		if kind=="seed_maker":footer.move_child(column.get_parent(),-1)
 		refs.materials=materials
 		# Material source (backpack only by default; one adjacent box on explicit choice).
 		# Its status / refund lines replace the old "backpack only, no boxes" note.
@@ -589,7 +659,8 @@ class Controller extends Node:
 			bar.custom_minimum_size.y=12
 			info.add_child(bar)
 			refs[lane+"_bar"]=bar
-		_text(left,"自動產物會先存進產物庫，需要時再領回背包；手動排程的成品不會進入產物庫。",13,MUTED)
+		_text(left,"自動成品存進產物庫，可以直接領取。也能把輸送帶設為「%s」，將成品送進私人箱。"%item_name(output),13,MUTED)
+		_text(left,"把工作台放在箱子相鄰的一格，再選箱子當材料來源，就能直接使用箱內成品。",13,MUTED)
 		var supply:=HBoxContainer.new()
 		supply.add_theme_constant_override("separation",8)
 		footer.add_child(supply)
@@ -779,11 +850,15 @@ class Controller extends Node:
 	func _update_header(s:Dictionary,own:String)->void:
 		var title:Label=refs.header_title
 		var owner_label:Label=refs.header_owner
+		if refs.has("dye"):(refs.dye as Button).disabled=not last.mine or not last.present
 		if not last.present:
 			title.text="加工台已移除"
 			owner_label.text="這台設備已經不在目前區域。"
 			return
 		var mode:="自動加工中" if last.auto_enabled else ("手動排程" if last.total>0 else "閒置")
+		if last.auto_enabled or not (last.auto_job as Dictionary).is_empty():
+			var advice:=automatic_advice(last,kind,float(s.get("time",0)))
+			mode=str(advice.get("title","自動加工中"))
 		title.text="%s · %s"%[World.BUILD[kind].name,mode]
 		owner_label.text="擁有者：%s%s"%[who(s,own,str(last.owner)),"" if last.mine else " · 只有擁有者可以操作"]
 
@@ -811,19 +886,21 @@ class Controller extends Node:
 		var signature:=JSON.stringify(counts)
 		if signature==material_signature:return
 		material_signature=signature
-		var list:VBoxContainer=refs.materials
+		var list:BoxContainer=refs.materials
 		_clear(list)
 		for item in recipe.ingredients:
 			var need:=int(recipe.ingredients[item])
 			var held:=int(bag.get(item,0))
 			var row:=HBoxContainer.new()
 			row.name="ProcessingMaterial_"+str(item)
+			if kind=="seed_maker":row.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			row.add_theme_constant_override("separation",8)
 			list.add_child(row)
 			row.add_child(_picture(Items.icon(str(item)),32))
 			var title:=_text(row,item_name(str(item)),15)
 			title.size_flags_vertical=Control.SIZE_SHRINK_CENTER
-			var amount:=_text(row,"背包 %d／需 %d"%[held,need],15,GOOD if held>=need else WARN)
+			var count_format:="持有 %d／需 %d" if kind=="seed_maker" else "背包 %d／需 %d"
+			var amount:=_text(row,count_format%[held,need],15,GOOD if held>=need else WARN)
 			amount.autowrap_mode=TextServer.AUTOWRAP_OFF
 			amount.size_flags_horizontal=Control.SIZE_SHRINK_END
 			amount.size_flags_vertical=Control.SIZE_SHRINK_CENTER
@@ -1051,6 +1128,11 @@ class Controller extends Node:
 			(refs.auto_title as Label).text="等待入庫" if remaining<=0.0 else "自動加工中 · 約剩 %d 秒"%ceili(remaining)
 			status.text="本批完成後會存入產物庫。"
 			status.add_theme_color_override("font_color",LIGHT)
+			var advice:=automatic_advice(last,kind,now)
+			if advice.get("reason","")=="full":
+				(refs.auto_title as Label).text=advice.title
+				status.text=advice.hint
+				status.add_theme_color_override("font_color",Color("ffd59c"))
 			return
 		gauge.value=0
 		var color:=PALE
@@ -1060,17 +1142,11 @@ class Controller extends Node:
 		elif not enabled:
 			(refs.auto_title as Label).text="自動加工已停用"
 			status.text="手動排程使用中，領完或取消全部工作後才能啟用自動加工。" if queue_busy else "啟用後，料槽裡的%s會自動加工並存入產物庫。"%material_name
-		elif stored+int(recipe.yield)>output_cap:
-			(refs.auto_title as Label).text="產物庫已滿"
-			status.text="產物庫空間不足，請先領取庫存。"
-			color=Color("ffd59c")
-		elif input<batch:
-			(refs.auto_title as Label).text="等待"+material_name
-			status.text="料槽%s不足，請補入%s或用輸送帶送料。"%[material_name,material_name]
-			color=Color("ffd59c")
 		else:
-			(refs.auto_title as Label).text="自動加工 · 待開始"
-			status.text="等待開始下一批。"
+			var advice:=automatic_advice(last,kind,now)
+			(refs.auto_title as Label).text=str(advice.get("title",""))
+			status.text=str(advice.get("hint",""))
+			if advice.get("reason","") in ["full","material"]:color=Color("ffd59c")
 		status.add_theme_color_override("font_color",color)
 
 	func _sync_buttons()->void:

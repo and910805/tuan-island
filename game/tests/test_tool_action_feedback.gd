@@ -60,6 +60,10 @@ func events_for(region:String)->Array:
 func run()->void:
 	await server_events()
 	client_observer()
+	interrupted_targets()
+	resource_reactions()
+	resource_finishes()
+	watered_plant_response()
 	tool_plans()
 	await view_draw_path()
 	print("TOOL_ACTION_FEEDBACK_TESTS checks=%d failures=%d"%[checks,failures])
@@ -83,7 +87,7 @@ func server_events()->void:
 	session.sequences={1:0,2:0,3:0}
 	session.rates={1:[],2:[],3:[]}
 	expect(not session.tool_action_epoch.is_empty(),"server session has a random tool-action epoch")
-	expect(Session.PROTOCOL==45,"multiplayer protocol version unchanged")
+	expect(Session.PROTOCOL==47,"tool events use the current chicken-care protocol")
 	me().inventory.wood=100
 	me().inventory.stone=50
 	var plot:=Vector2i(38,34)
@@ -301,7 +305,148 @@ func client_observer()->void:
 
 # --------------------------------------------------------- 3. plans --
 
+func interrupted_targets()->void:
+	var fb:=Feedback.new()
+	var actor:=public_id(ALPHA)
+	var base:=snap("home","tail-epoch",[],[actor])
+	fb.observe({},base,actor,0.0)
+	var first:=snap("home","tail-epoch",[ev(1,actor,"hoe",38,34)],[actor])
+	fb.observe(base,first,actor,1.0)
+	var second:=snap("home","tail-epoch",[ev(1,actor,"hoe",38,34),ev(2,actor,"hoe",39,34)],[actor])
+	fb.observe(first,second,actor,1.16)
+	expect(fb.active(actor,1.28).n==2,"Rapid action immediately uses the newest held pose")
+	var tails:=fb.target_tails(actor,1.28)
+	expect(tails.size()==1 and tails[0].n==1 and tails[0].cell==Vector2i(38,34),"Interrupted confirmed impact retains its original tile and time")
+	expect(not Feedback.plan("hoe",(1.28-float(tails[0].started))/Feedback.DURATION,false).particles.is_empty(),"First impact can appear while the second swing is winding up")
+	fb.observe(second,second,actor,1.30)
+	expect(fb.target_tails(actor,1.30).size()==1,"Repeated snapshots do not duplicate impact tails")
+	expect(fb.target_tails(actor,1.56).is_empty() and not fb.active(actor,1.56).is_empty(),"Old target effect expires independently of the newer held pose")
+	for n in range(3,45):
+		fb.observe({},snap("home","tail-epoch",[ev(n,actor,"hoe")],[actor]),actor,1.16+n*0.001)
+	expect(fb.tails.size()==Feedback.MAX_TAILS,"Interrupted effects have a strict memory bound")
+	fb.observe({},snap("home","tail-epoch",[],[]),actor,1.3)
+	expect(fb.target_tails(actor,1.3).is_empty(),"Leaving actors remove their pending target effects")
+	fb.observe({},snap("home","tail-epoch",[ev(45,actor,"hoe")],[actor]),actor,2.0)
+	fb.observe({},snap("home","tail-epoch",[ev(46,actor,"hoe")],[actor]),actor,2.1)
+	expect(not fb.target_tails(actor,2.1).is_empty(),"Precondition: pending effect before changing regions")
+	fb.observe({},snap("jinguashi","tail-epoch",[ev(46,actor,"hoe")],[actor]),actor,2.2)
+	expect(fb.tails.is_empty(),"Region changes clear interrupted effects without replay")
+	fb.reset()
+	expect(fb.tails.is_empty(),"Disconnect reset clears interrupted effects")
+
+func resource_reactions()->void:
+	var fb:=Feedback.new()
+	var actor:=public_id(ALPHA)
+	var cell:=Vector2i(38,34)
+	fb.observe({},snap("home","resource",[],[actor]),actor,0.0)
+	fb.observe({},snap("home","resource",[ev(1,actor,"axe",38,34)],[actor]),actor,1.0)
+	expect(fb.resource_pose(cell,"axe",1.1,false).angle==0.0,"Tree waits until confirmed swing contact")
+	expect(absf(fb.resource_pose(cell,"axe",1.35,false).angle)>0.001,"Confirmed contact shakes the struck tree")
+	expect(fb.resource_pose(cell+Vector2i.RIGHT,"axe",1.35,false).angle==0.0,"Neighbouring trees do not shake")
+	expect(fb.resource_pose(cell,"axe",1.35,true).angle==0.0,"Reduced motion leaves trees still")
+	fb.observe({},snap("home","resource",[ev(2,actor,"pick",39,34)],[actor]),actor,1.16)
+	expect(absf(fb.resource_pose(cell,"axe",1.35,false).angle)>0.001,"Interrupted confirmed swing still reaches its original tree")
+	var stone:=fb.resource_pose(cell+Vector2i.RIGHT,"pick",1.48,false)
+	expect(stone.shift!=Vector2.ZERO and stone.angle==0.0,"Rock contact uses a small pixel jolt without rotation")
+	expect(fb.resource_pose(cell+Vector2i.RIGHT,"pick",1.48,true).shift==Vector2.ZERO,"Reduced motion leaves rocks still")
+	expect(fb.resource_pose(cell,"axe",1.56,false).angle==0.0,"Tree settles even without another snapshot")
+	expect(fb.resource_pose(cell,"water",1.35,false).angle==0.0,"Non-gathering tools do not shake resources")
+	fb.reset()
+	expect(fb.resource_pose(cell,"axe",1.35,false).angle==0.0,"Reset cancels resource reaction")
+
+func resource_finishes()->void:
+	var fb:=Feedback.new()
+	var actor:=public_id(ALPHA)
+	var cell:=Vector2i(38,34)
+	var key:=World.key(cell)
+	var before:=snap("home","finish",[],[actor])
+	before.forest={key:{"mature":true}}
+	# A planted tree can stand on a formerly cleared natural-resource cell.
+	before.removed={key:true}
+	fb.observe({},before,actor,0.0)
+	var partial:Dictionary=before.duplicate(true)
+	partial.tool_actions.events=[ev(1,actor,"axe",cell.x,cell.y)]
+	fb.observe(before,partial,actor,0.5)
+	expect(fb.finishes.is_empty(),"Partial tree hit does not start felling")
+	var after:Dictionary=partial.duplicate(true)
+	after.forest={}
+	after.tool_actions.events=[ev(2,actor,"axe",cell.x,cell.y)]
+	fb.observe(partial,after,actor,1.0)
+	var start:=fb.resource_finish(cell,1.0,false)
+	expect(start.kind=="tree" and start.progress==0.0 and start.alpha==1.0,"Final planted-tree hit keeps original art until swing contact")
+	expect(fb.resource_finish(cell,1.2,false).progress==0.0,"Felling waits for the tool contact")
+	var middle:=fb.resource_finish(cell,1.5,false)
+	expect(middle.progress>0.0 and middle.alpha<1.0 and middle.alpha>0.0,"Final-hit sprite moves and fades")
+	expect(fb.resource_finish(cell,1.5,true).is_empty(),"Still mode suppresses final-hit art")
+	fb.observe(after,after,actor,1.3)
+	expect(float(fb.finishes[key].started)==1.0,"Repeated snapshot cannot restart felling")
+	expect(fb.resource_finish(cell,1.76,false).is_empty(),"Final-hit sprite finishes without another snapshot")
+	var newcomer:=Feedback.new()
+	newcomer.observe({},after,actor,1.0)
+	expect(newcomer.finishes.is_empty(),"Joining after removal does not replay old felling")
+	fb.observe({},snap("home","restart",[],[actor]),actor,1.4)
+	expect(fb.finishes.is_empty(),"Server epoch change clears final-hit art")
+	var rock:=Vector2i(-1,-1)
+	for y in range(20,40):
+		for x in range(28,55):
+			if World.base_resource(Vector2i(x,y))=="rock":rock=Vector2i(x,y);break
+		if rock.x>=0:break
+	expect(rock.x>=0,"Natural stone fixture exists")
+	var stone_before:=snap("home","restart",[],[actor])
+	var stone_after:=snap("home","restart",[ev(1,actor,"pick",rock.x,rock.y)],[actor])
+	stone_after.removed={World.key(rock):true}
+	fb.observe(stone_before,stone_after,actor,2.0)
+	expect(fb.resource_finish(rock,2.0,false).get("kind")=="rock","Only an actual natural-rock removal starts breaking")
+	fb.reset()
+	expect(fb.finishes.is_empty(),"Disconnect clears final-hit art")
+
+func watered_plant_response()->void:
+	var fb:=Feedback.new()
+	var actor:=public_id(ALPHA)
+	var baseline:=snap("home","water-care",[],[actor])
+	var watering:=snap("home","water-care",[ev(1,actor,"water")],[actor])
+	fb.observe({},baseline,actor,0.0)
+	fb.observe(baseline,watering,actor,1.0)
+	var plot:=Vector2i(38,34)
+	expect(fb.crop_press(plot,1.0,false)==0,"Plant waits until the water reaches it")
+	expect(fb.crop_press(plot,1.0+Feedback.DURATION*0.6,false)==2,"Watered plant gives a two-pixel settling nod")
+	expect(fb.crop_press(plot,1.0+Feedback.DURATION,false)==0,"Plant returns to its exact rest height")
+	expect(fb.crop_press(plot,1.3,true)==0 and fb.crop_press(plot+Vector2i.RIGHT,1.3,false)==0,"Quiet mode and neighbouring crops stay still")
+	fb.observe(watering,watering,actor,1.1)
+	expect(fb.crop_press(plot,1.0+Feedback.DURATION,false)==0,"Repeated snapshot cannot restart the crop response")
+	var next:=snap("home","water-care",[ev(1,actor,"water"),ev(2,actor,"seed",39,34)],[actor])
+	fb.observe(watering,next,actor,1.1)
+	expect(fb.crop_press(plot,1.3,false)>0,"Interrupted pour finishes its crop response")
+	fb.reset()
+	fb.observe({},watering,actor,2.0)
+	expect(fb.crop_press(plot,2.3,false)==0,"Joining with an old watering event does not nod the plant")
+	for facing in [Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT]:
+		var pose:=Feedback.plan("water",0.4,false,facing)
+		pose.facing=facing
+		var foot:=Vector2(80,90)
+		var shoulder:=(Vector2(facing)*float(pose.body_lean)).round()
+		expect(Feedback.hand_grip(foot,pose)==(foot+pose.hand+pose.lunge).round()+Vector2(shoulder.x,absf(shoulder.y)),"Water trail follows the same hand as the PNG: "+str(facing))
+
 func tool_plans()->void:
+	var impact_colors:Dictionary={}
+	for tool in ["hoe","seed","water"]:
+		var first:=Feedback.soil_impact(tool,0.70,false)
+		var later:=Feedback.soil_impact(tool,0.91,false)
+		expect(Feedback.soil_impact(tool,0.35,false).is_empty(),"soil cue waits for contact: "+tool)
+		expect(not first.is_empty() and not later.is_empty() and first.spread<later.spread and first.color.a>later.color.a,
+			"soil cue travels outward and fades: "+tool)
+		if not first.is_empty():impact_colors[first.color.to_html(false)]=true
+		expect(Feedback.soil_impact(tool,0.75,true).is_empty() and Feedback.soil_impact(tool,1.0,false).is_empty(),
+			"soil cue respects reduced motion and expires: "+tool)
+	expect(impact_colors.size()==3 and Feedback.soil_impact("pick",0.75,false).is_empty(),
+		"soil cues distinguish the three farm actions and leave mining alone")
+	var grip:=Vector2(8,6)
+	var cell:=Vector2(56,12)
+	for tool in ["seed","water"]:
+		var early:=Feedback.farm_trail(tool,0.06,grip,cell)
+		var late:=Feedback.farm_trail(tool,0.16,grip,cell)
+		expect(early.size()==1 and late.size()>1 and early[0].x<late[0].x,"%s travels from the hand toward the tile in a staggered arc"%tool)
+		expect(Feedback.farm_trail(tool,0.7,grip,cell).is_empty(),"%s trail ends after arrival"%tool)
 	for tool in Feedback.TOOLS:
 		var particles:=0
 		var motion:={}
@@ -309,16 +454,18 @@ func tool_plans()->void:
 		var reduced_particles:=0
 		var reduced_motion:={}
 		var reduced_lunge:=0
+		var body_poses:={}
 		for facing in [Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP]:
 			for step in 21:
 				var t:=step/20.0
 				var normal:=Feedback.plan(tool,t,false,facing)
+				body_poses[normal.body_lean]=true
 				particles+=normal.particles.size()
 				motion["%s|%s|%s"%[snappedf(normal.angle,0.01),normal.lift,normal.lunge]]=true
 				if normal.lunge!=Vector2.ZERO:lunges+=1
 				var calm:=Feedback.plan(tool,t,true,facing)
 				reduced_particles+=calm.particles.size()
-				if calm.lunge!=Vector2.ZERO or calm.lift!=0.0:reduced_lunge+=1
+				if calm.lunge!=Vector2.ZERO or calm.lift!=0.0 or calm.body_lean!=0.0:reduced_lunge+=1
 				reduced_motion["%s|%s"%[facing,snappedf(calm.angle,0.01)]]=true
 		expect(particles>0,"%s draws target particles with normal motion"%tool)
 		expect(motion.size()>4,"%s pose changes over the action with normal motion"%tool)
@@ -327,6 +474,9 @@ func tool_plans()->void:
 		expect(reduced_motion.size()<=4,"%s reduced motion keeps one fixed pose per facing"%tool)
 		if tool in ["hoe","axe","pick","plant_tree"]:expect(lunges>0,"%s body leans into the action with normal motion"%tool)
 		expect(Feedback.held_icon(tool)!=null,"%s held icon comes from existing PNG art"%tool)
+		if tool in ["hoe","axe","pick","seed","water","harvest"]:
+			expect(body_poses.size()>=3,"%s has readable torso anticipation and recovery"%tool)
+			expect(Feedback.plan(tool,0.0,false).body_lean==0 and Feedback.plan(tool,1.0,false).body_lean==0,"%s starts and ends at the standing pose"%tool)
 	expect(Feedback.held_icon("seed","carrot_seed")!=null,"seed icon follows the sown crop")
 	expect(Feedback.held_icon("fish")==null,"fishing keeps its own art (no hand-tool icon)")
 	expect(Feedback.facing_toward(Vector2(39.5,33.5),Vector2i(41,33),Vector2i.DOWN)==Vector2i.RIGHT,"actor turns toward the target cell")
@@ -345,26 +495,42 @@ func view_draw_path()->void:
 	host.rates={1:[]}
 	var plot:=Vector2i(38,34)
 	var seq:=0
-	seq+=1
-	host._action(1,seq,"hoe",plot,"")
+	var original_ground:Dictionary=host.world.state.ground.duplicate(true)
+	var original_position:=Vector2(host.world.state.players[ALPHA].x,host.world.state.players[ALPHA].y)
+	host._send_snapshot(1)
 	var view=View.new()
 	root.add_child(view)
 	view.update_snapshot(host.snapshot,host.own_id)
 	var results:={}
-	for reduced in [false,true]:
+	for step in [["hoe","",false],["seed","radish",false],["water","",false],["water","",true]]:
+		var tool:String=step[0]
+		var reduced:bool=step[2]
 		view.reduced_motion=reduced
 		view.tool_draw_stats={"held":0,"particles":0,"lunge":0,"angles":{}}
 		host.rates[1]=[]
 		seq+=1
-		host._action(1,seq,"water",plot,"")
+		host._action(1,seq,tool,plot,step[1])
 		view.update_snapshot(host.snapshot,host.own_id)
 		var started:float=view.elapsed
-		expect(not view.tool_action_plan(host.own_id).is_empty(),"view starts the confirmed water action (reduced=%s)"%reduced)
+		expect(view.tool_action_plan(host.own_id).get("tool")==tool,"view starts the confirmed %s action (reduced=%s)"%[tool,reduced])
+		if not reduced:
+			view.elapsed=started+Feedback.DURATION*0.4
+			view.photograph_mode=true
+			var still:Dictionary=view.tool_action_plan(host.own_id)
+			expect(still.reduced and still.body_lean==0.0 and still.particles.is_empty(),"Photo mode freezes the complete farm pose: "+tool)
+			view.photograph_mode=false
+			view.elapsed=started
 		var deadline:=Time.get_ticks_msec()+3000
 		while view.elapsed-started<Feedback.DURATION+0.05 and Time.get_ticks_msec()<deadline:
 			await process_frame
-		results[reduced]=view.tool_draw_stats.duplicate(true)
-		expect(view.tool_action_plan(host.own_id).is_empty(),"view animation ends after its duration (reduced=%s)"%reduced)
+		if tool=="water":results[reduced]=view.tool_draw_stats.duplicate(true)
+		expect(int(view.tool_draw_stats.held)>0,"view renders the confirmed "+tool)
+		expect(view.tool_action_plan(host.own_id).is_empty(),"view animation ends after "+tool)
+	var planted:Dictionary=host.world.state.crops.get(World.key(plot),{})
+	expect(planted.get("kind")=="radish" and planted.get("wet")==true,"the same hoed tile contains a watered radish")
+	var person:Dictionary=host.world.state.players[ALPHA]
+	expect(Vector2(person.x,person.y)==original_position and host.world.state.ground==original_ground,
+		"confirmed farm actions preserve the player and base ground coordinates")
 	var normal:Dictionary=results[false]
 	var calm:Dictionary=results[true]
 	print("TOOL_ACTION_DRAW normal=%s reduced=%s"%[normal,calm])

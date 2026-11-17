@@ -2,8 +2,11 @@ extends SceneTree
 ## Runs a dedicated host and isolated client MultiplayerAPIs over real loopback WS.
 const Session=preload("res://scripts/session.gd")
 const World=preload("res://scripts/world.gd")
+const Industry=preload("res://scripts/industry.gd")
 const HEN:=World.CHICKEN_CELL
 const BENCH:=HEN+Vector2i.LEFT
+const COLLECTOR_SITE:=HEN+Vector2i.DOWN
+const COLLECTOR_KEY:="animal_collector_kit"
 const ROOM:="basket-test"
 const GROWER:="egg-network-grower"
 const FRIEND:="egg-network-friend"
@@ -53,14 +56,16 @@ func finish(code:int) -> void:
 func seeded_world() -> bool:
 	var world:=World.new()
 	world.save_path=path
+	world.state.picnic=true
 	for token in [GROWER,FRIEND]:
 		world.add_player(token,"Farmer")
 		world.state.players[token].x=HEN.x+0.5
 		world.state.players[token].y=HEN.y+0.5
 	var bag:Dictionary=world.state.players[GROWER].inventory
-	bag.wood=8
-	bag.fiber=6
-	bag.feed=1
+	bag.wood=16
+	bag.fiber=12
+	bag.feed=2
+	bag[COLLECTOR_KEY]=1
 	world.state.objects[World.key(BENCH)]={"type":"bench","owner":GROWER,"items":{}}
 	return world.save()
 
@@ -69,6 +74,10 @@ func eggs(session:Session) -> int:
 
 func stored(session:Session) -> int:
 	return int(session.snapshot.get("animal",{}).get("basket_eggs",-1))
+
+func machine_count(session:Session) -> int:
+	var obj:Dictionary=session.snapshot.get("objects",{}).get(World.key(COLLECTOR_SITE),{})
+	return int(obj.get("collector_count",-1))
 
 func action(session:Session,name:String,cell:Vector2i,extra:String="") -> bool:
 	var seen:int=notices[session].size()
@@ -110,4 +119,25 @@ func run() -> void:
 	if not check(notices[returned].back().ok!=notices[friend].back().ok,"Exactly one player won the claim"):return
 	var saved:=World.new()
 	if not check(saved.load_world(path) and int(saved.state.animal.basket_eggs)==0 and int(saved.state.players[GROWER].inventory.get("egg",0))+int(saved.state.players[FRIEND].inventory.get("egg",0))==1,"The room save contains precisely one awarded egg"):return
+	if not check(await action(returned,"craft",BENCH,"egg_basket"),"Craft another basket for the new machine"):return
+	if not check(await action(returned,"build",COLLECTOR_SITE,Industry.ANIMAL_COLLECTOR),"Place the collector remotely"):return
+	if not check(await action(returned,"collector_bind",COLLECTOR_SITE,"chicken"),"Bind the chicken remotely"):return
+	if not check(await wait_for(func():return machine_count(friend)==0),"Friend sees the installed empty basket"):return
+	var feed_confirmations:={"owner":0,"guest":0}
+	returned.action_completed.connect(func(_sequence:int,name:String,result:Dictionary):
+		if name=="feed" and result.ok:feed_confirmations.owner+=1)
+	friend.action_completed.connect(func(_sequence:int,name:String,result:Dictionary):
+		if name=="feed" and result.ok:feed_confirmations.guest+=1)
+	if not check(await action(returned,"feed",HEN),"Feed the chicken for the new collector"):return
+	if not check(await wait_for(func():return feed_confirmations.owner==1),"Feeding sends the actor an authoritative cue confirmation"):return
+	Engine.time_scale=10.0
+	if not check(await wait_for(func():return machine_count(friend)==1 and machine_count(returned)==1,15.0),"Both clients see the new egg reach the machine"):return
+	Engine.time_scale=1.0
+	if not check(stored(friend)==0,"The legacy basket did not receive a duplicate egg"):return
+	if not check(feed_confirmations.guest==0 and feed_confirmations.owner==1,"The direct feeding cue is not broadcast or repeated"):return
+	if not check(not await action(friend,"collector_collect",COLLECTOR_SITE) and machine_count(friend)==1,"A guest cannot take the owner's egg"):return
+	if not check(await action(returned,"collector_collect",COLLECTOR_SITE),"Owner takes the egg through the remote action"):return
+	if not check(await wait_for(func():return machine_count(friend)==0 and machine_count(returned)==0 and eggs(returned)+eggs(friend)==2),"Both clients agree exactly two eggs were awarded in total"):return
+	if not check(saved.load_world(path) and int(saved.state.objects[World.key(COLLECTOR_SITE)].collector_count)==0
+		and int(saved.state.players[GROWER].inventory.get("egg",0))+int(saved.state.players[FRIEND].inventory.get("egg",0))==2,"The room save agrees with both clients"):return
 	finish(0)

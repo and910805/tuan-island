@@ -112,8 +112,11 @@ func test_expanded_crop_catalog() -> void:
 			expect(w.act(A,"rewater-%d"%cycle,"water",cell).ok and w.step(duration,true),kind+": regrows after watering")
 			expect(w.act(A,"reharvest-%d"%cycle,"harvest",cell).ok and p.inventory.get(kind,0)==int(spec[4])*(cycle+1),kind+": regrowth yields another harvest")
 		expect(w.state.crops[World.key(cell)].kind=="",kind+": final harvest clears the plant")
-		var recipe:Dictionary=World.SEED_MAKER.recipes(World.CROPS)[seed_id]
-		expect(recipe.ingredients=={kind:int(spec[4])*int(spec[5]),"charcoal":1} and recipe.yield==1,kind+": seed maker consumes the lifetime harvest plus charcoal")
+		var recipe:Dictionary=World.SEED_MAKER.recipes(World.CROPS).get(seed_id,{})
+		if kind in World.SEED_MAKER.NURSERY_CROPS:
+			expect(recipe.is_empty(),kind+": nursery flower uses the nursery seed bench")
+		else:
+			expect(recipe.ingredients=={kind:int(spec[4])*int(spec[5]),"charcoal":1} and recipe.yield==1,kind+": seed maker consumes the lifetime harvest plus charcoal")
 		if kind=="watermelon":
 			var stove:=Vector2i(40,33)
 			p.inventory.merge({"wood":12,"stone":15},true)
@@ -565,6 +568,11 @@ func test_no_new_fields() -> void:
 	var fresh:=World.new()
 	var f:=farm(day_start(3)-5.0)
 	water(f,"pa")
+	var crop_fields:Dictionary={}
+	for name in PLOTS:
+		var fields:Array=plot(f,name).keys()
+		fields.sort()
+		crop_fields[name]=fields
 	var root_before:Array=f.w.state.keys()
 	root_before.sort()
 	f.w.step(DAY+20.0,true)
@@ -572,10 +580,10 @@ func test_no_new_fields() -> void:
 	root_after.sort()
 	expect(root_after==root_before,"weather adds no root save fields")
 	expect(f.w.state.version==fresh.state.version and int(fresh.state.version)==int(SAVE_SCHEMA.VERSION),"save version untouched by weather")
-	var allowed:=["kind","growth","wet","owner","remaining"]
 	for name in PLOTS:
-		for field in plot(f,name).keys():
-			expect(field in allowed,"crop record has no new field (%s.%s)"%[name,field])
+		var fields:Array=plot(f,name).keys()
+		fields.sort()
+		expect(fields==crop_fields[name],"weather preserves existing crop record fields (%s)"%name)
 	for region in [LANYANG,MINE]:
 		var layer_keys:Array=f.w.state.regions[region].keys()
 		layer_keys.sort()

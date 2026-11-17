@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 
 WORLD_CAPACITY = 8
+STATUS_TTL = 35
 
 
 class Denied(Exception):
@@ -48,7 +49,7 @@ class IdentityStore:
         self.clock = clock
         with self.transaction() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3):
+            if version not in (0, 1, 2, 3, 4):
                 raise ValueError("unsupported identity schema")
             # Never silently reinterpret an unrelated existing database.
             tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -63,6 +64,8 @@ class IdentityStore:
             if version >= 3:
                 expected["directory"] = {"world", "revision", "payload", "seen"}
                 expected["directory_members"] = {"world", "account"}
+            if version >= 4:
+                expected["world_storage"] = {"world", "state", "last_saved", "seen"}
             if version:
                 if {row[0] for row in tables} != set(expected):
                     raise ValueError("incomplete identity database")
@@ -77,9 +80,10 @@ class IdentityStore:
                 "CREATE TABLE IF NOT EXISTS admissions (id TEXT PRIMARY KEY, session TEXT NOT NULL REFERENCES sessions(hash) ON DELETE CASCADE, world TEXT NOT NULL REFERENCES servers(world), issued REAL NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS directory (world TEXT PRIMARY KEY REFERENCES servers(world), revision INTEGER NOT NULL, payload TEXT NOT NULL, seen REAL NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS directory_members (world TEXT NOT NULL REFERENCES directory(world) ON DELETE CASCADE, account TEXT NOT NULL REFERENCES accounts(id), PRIMARY KEY(world,account))",
+                "CREATE TABLE IF NOT EXISTS world_storage (world TEXT PRIMARY KEY REFERENCES servers(world), state TEXT NOT NULL, last_saved INTEGER NOT NULL, seen REAL NOT NULL)",
             ):
                 db.execute(statement)
-            db.execute("PRAGMA user_version=3")
+            db.execute("PRAGMA user_version=4")
 
     @contextmanager
     def transaction(self):
@@ -124,6 +128,7 @@ class IdentityStore:
             db.execute("DELETE FROM tickets WHERE world=?", (world,))
             db.execute("DELETE FROM admissions WHERE world=?", (world,))
             db.execute("UPDATE directory SET seen=0 WHERE world=?", (world,))
+            db.execute("UPDATE world_storage SET seen=0 WHERE world=?", (world,))
         return secret
 
     def login(self, account, credential):
@@ -256,7 +261,7 @@ class IdentityStore:
             IdentityStore._text(data[key], limit)
         IdentityStore._integer(data["revision"], 1)
         IdentityStore._integer(data["protocol"], 1, 100000)
-        if data["mode"] != "生活":
+        if data["mode"] not in ("生活", "冒險"):
             raise ValueError("unsupported play mode")
         address = data["address"]
         parsed = urlsplit(address)
@@ -277,7 +282,7 @@ class IdentityStore:
             IdentityStore._text(member["account_id"], 128)
             IdentityStore._text(member["name"], 24)
             IdentityStore._integer(member["last_activity"])
-            if member["account_id"] in accounts or member["role"] not in ("owner", "member"):
+            if member["account_id"] in accounts or member["role"] not in ("owner", "admin", "member"):
                 raise ValueError("invalid member identity")
             owners += member["role"] == "owner"
             accounts.add(member["account_id"])
@@ -325,12 +330,53 @@ class IdentityStore:
     @staticmethod
     def _world_card(row, account, now):
         data = json.loads(row["payload"])
-        fresh = 0 <= now - row["seen"] < 35
+        fresh = 0 <= now - row["seen"] < STATUS_TTL
         members = [{"name": m["name"], "role": m["role"], "online": fresh and m["account_id"] in data["online"]} for m in data["members"]]
         me = next((m for m in data["members"] if m["account_id"] == account), None)
         return {"world_id": data["world_id"], "name": data["name"], "address": data["address"], "protocol": data["protocol"], "mode": data["mode"],
                 "online": len(data["online"]) if fresh else 0, "capacity": WORLD_CAPACITY, "members_count": len(members), "role": me["role"] if me else "guest",
                 "last_activity": max(m["last_activity"] for m in data["members"]), "status": "online" if fresh else "offline", "members": members}
+
+    def report_world_storage(self, credential, data):
+        if not isinstance(data, dict) or set(data) != {"world_id", "state", "last_saved"}:
+            raise ValueError("invalid storage report")
+        world = data["world_id"]
+        self._text(world, 64)
+        if data["state"] not in ("running", "save_failed", "paused", "recovery_required"):
+            raise ValueError("invalid storage state")
+        self._integer(data["last_saved"])
+        with self.transaction() as db:
+            self._server(db, world, credential)
+            db.execute("""INSERT INTO world_storage VALUES(?,?,?,?)
+                          ON CONFLICT(world) DO UPDATE SET state=excluded.state,
+                          last_saved=excluded.last_saved, seen=excluded.seen""",
+                       (world, data["state"], data["last_saved"], self.clock()))
+        return {}
+
+    def operator_worlds(self, world=None):
+        if world is not None:
+            self._text(world, 64)
+        with self.transaction() as db:
+            rows = db.execute("""SELECT s.world, w.state, w.last_saved, w.seen
+                                 FROM servers s LEFT JOIN world_storage w ON w.world=s.world
+                                 WHERE (? IS NULL OR s.world=?) ORDER BY s.world""", (world, world)).fetchall()
+            now = self.clock()
+        results = []
+        for row in rows:
+            if row["seen"] is None:
+                alert = "no_report"
+            elif not 0 <= now - row["seen"] < STATUS_TTL:
+                alert = "unreachable"
+            elif row["state"] != "running":
+                alert = row["state"]
+            elif not row["last_saved"] or not -STATUS_TTL < now - row["last_saved"] < STATUS_TTL:
+                alert = "save_unverified"
+            else:
+                alert = None
+            results.append({"world_id": row["world"], "reported_state": row["state"],
+                            "last_saved": row["last_saved"] or None, "last_report": int(row["seen"]) if row["seen"] else None,
+                            "alert": alert})
+        return results
 
     def list_worlds(self, session, cursor=0):
         self._integer(cursor, 0, 1000000)

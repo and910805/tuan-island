@@ -99,7 +99,7 @@ func _apply(record: Variant, world: String, member: String, world_id: String) ->
 	return true
 
 static func safe_pair(world: String, member: String) -> bool:
-	var paths := [world, world + ".bak", world + ".tmp", member, journal_path(member)]
+	var paths := [world, world + ".bak", world + ".bak.staged", world + ".tmp", member, journal_path(member)]
 	var seen := {}
 	for path: String in paths:
 		var comparison := path.to_lower() if OS.get_name() == "Windows" else path

@@ -55,6 +55,7 @@ static func cell_prompt(s:Dictionary,cell:Vector2i) -> String:
 	if not available(s):return ""
 	var id:=Revisit.field_at(cell)
 	if Revisit.completed(s):return "旱日分流・已完成" if cell==Revisit.GATE_CELL else "%s・水已配好"%_field_name(id)
+	if Revisit.waiting_for_return(s):return "蘭陽水圳・明天再來"
 	if cell==Revisit.GATE_CELL:return "岔口分流閘・今天有雨" if Revisit.raining(s) else "調整岔口分流閘"
 	if id.is_empty():return ""
 	return "%s・已巡看"%_field_name(id) if id in Revisit.checked_today(s) else "巡看"+_field_name(id)
@@ -69,6 +70,7 @@ static func tracker_text(s:Dictionary) -> String:
 	if not Revisit.player_ready(s):return "回訪・旱日分流\n先完成自己的第一次分水"
 	if Revisit.completed(s):
 		return "旱日分流完成\n工作台可做分流閘了" if Revisit.claimed_own(s) else "旱日分流完成\n到橋邊找星禾領木牌"
+	if Revisit.waiting_for_return(s):return "回訪・旱日分流\n明天起找個晴天再來"
 	if Revisit.raining(s):return "回訪・旱日分流\n今天有雨，等放晴再來"
 	var need:=Revisit.demand(s)
 	if not Revisit.gates_today(s) or Revisit.shares(s)!=need:
@@ -114,7 +116,7 @@ static func gate_reason(s:Dictionary,person:Dictionary) -> String:
 ## the server's own WRONG_SHARE / OTHER_WRONG / NO_GATES_TODAY reply is shown.
 static func check_state(s:Dictionary,person:Dictionary) -> Array:
 	var common:=Revisit.gate_block(s)
-	if common in [Revisit.LOCKED,Revisit.NOT_READY]:return [false,common]
+	if common in [Revisit.LOCKED,Revisit.NOT_READY,Revisit.RETURN_TOMORROW]:return [false,common]
 	var field:=standing_field(person)
 	if field.is_empty():
 		if Revisit.completed(s):return [false,Revisit.ALREADY_DONE]
@@ -143,7 +145,7 @@ static func open(app,cell:Vector2i=Revisit.SERVICE) -> void:
 	app.modal.set_meta("life_modal_layout",LAYOUT)
 	app.modal.set_meta("revisit_body",body)
 	app.modal.set_meta("revisit_cell",cell)
-	body.add_theme_constant_override("separation",8)
+	body.add_theme_constant_override("separation",4)
 	build(app,body)
 	refresh(app)
 	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="Esc 回到島上"
@@ -154,7 +156,7 @@ static func open(app,cell:Vector2i=Revisit.SERVICE) -> void:
 static func layout(app,bounds:Vector2) -> void:
 	var modal:Control=app.modal
 	var width:=minf(820,bounds.x-48)
-	var cap:=bounds.y-32
+	var cap:=bounds.y-16
 	var height:=minf(cap,600)
 	modal.size.x=width
 	var outer:=modal.find_child("ModalScroll",true,false) as Control
@@ -332,21 +334,25 @@ static func refresh(app,force:=false) -> void:
 	var person:=_person(app)
 	var ready:=available(s)
 	var done:=Revisit.completed(s)
+	var waiting:=ready and Revisit.waiting_for_return(s)
 	var raining:=Revisit.raining(s)
 	var focus_before:=_focus_owner(app)
 	var season:=Revisit.season(s)
 	var weather:Dictionary=Weather.at(float(s.get("time",0.0)),Revisit.REGION)
 	_put(app,"RevisitDay","%s季・第 %d 日・宜蘭%s"%[str(Weather.SEASON_LABELS.get(season,"")),Revisit.today(s),str(weather.label)])
-	_put(app,"RevisitReason","星禾　「"+(DONE_LINE if done else Revisit.reason(s))+"」")
-	var weather_line:=Revisit.RAINY if raining and ready and not done else ""
+	var line:=DONE_LINE if done else Revisit.reason(s)
+	if waiting:line="剛才我們練的是怎麼分水。等田地喝過一晚，下一次就到真正的水口試試看。"
+	_put(app,"RevisitReason","星禾　「"+line+"」")
+	var weather_line:=Revisit.RAINY if raining and ready and not done and not waiting else ""
 	_put(app,"RevisitWeather",weather_line)
 	var hold_text:=""
 	if not Revisit.unlocked(s):hold_text=Revisit.LOCKED
 	elif not Revisit.player_ready(s):hold_text=Revisit.NOT_READY
+	elif waiting:hold_text=Revisit.RETURN_TOMORROW
 	(_node(app,"RevisitHold") as Control).visible=not hold_text.is_empty()
 	_put(app,"RevisitHoldText",hold_text)
 	(_node(app,"RevisitMemory") as Control).visible=hold_text==Revisit.NOT_READY
-	for id in ["RevisitFields","RevisitGates","RevisitActions"]:(_node(app,id) as Control).visible=ready
+	for id in ["RevisitFields","RevisitGates","RevisitActions"]:(_node(app,id) as Control).visible=ready and not waiting
 	# Fields.
 	var here:=standing_field(person)
 	for row:Dictionary in Revisit.fields(s):

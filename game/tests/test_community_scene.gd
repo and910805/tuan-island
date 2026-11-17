@@ -30,6 +30,12 @@ func expect(ok:bool,message:String)->void:
 	if not ok:failures+=1;push_error(message)
 func settle(frames:=5)->void:
 	for i in frames:await process_frame
+func heard(kind:String)->bool:
+	var deadline:=Time.get_ticks_msec()+800
+	while Time.get_ticks_msec()<deadline:
+		if app.sound.player.playing and app.sound.player.stream==app.sound.sounds[kind]:return true
+		await process_frame
+	return false
 func art_frame(cue:Dictionary,t:float,reduced:bool)->Image:
 	table.cue=cue;table.elapsed=t;table.reduced=reduced;table.queue_redraw()
 	await process_frame
@@ -104,12 +110,28 @@ func run()->void:
 	expect(world.state==before,"all scene presentation frames leave authoritative state unchanged")
 	var public_table:=World.COMMUNITY.table_cell(world.state)
 	world.state.players[GUEST].inventory["trout_hotpot"]=4
+	app.sound.stop_cues()
 	app.session.perform("serve_hotpot",public_table)
 	expect(int(app.view.data.community.get("hotpot",{}).get("portions",0))==4,"WorldView receives the served pot")
+	expect(await heard("meal_serve"),"Setting a dish on the table plays the ceramic cue")
 	await capture("hotpot-four",26.0)
+	app.sound.stop_cues()
 	app.session.perform("claim_hotpot",public_table)
 	expect(int(app.view.data.community.get("hotpot",{}).get("portions",0))==3,"WorldView receives the remaining portions")
+	expect(await heard("meal_claim"),"Receiving a portion plays a distinct cue")
+	var taken:Dictionary=app.view.community_feedback.sample_claims(26.2,false)
+	expect(taken.keys()==["trout_hotpot"],"Only the plate taken animates")
+	app.session._send_snapshot(1)
+	expect(app.view.community_feedback.sample_claims(26.2,false)==taken,"Duplicate snapshots do not restart portion feedback")
+	expect(app.view.community_feedback.sample_claims(26.2,true).is_empty(),"Reduced motion hides portion feedback")
+	expect(app.view.community_feedback.sample_claims(27.0,false).is_empty(),"Portion feedback expires")
+	preload("res://scripts/wangan_opening_ui.gd").dismiss(app)
+	await capture("hotpot-portion-taken",26.2)
 	await capture("hotpot-three",27.0,true)
+	app.sound.stop_cues()
+	app.session.perform("claim_hotpot",public_table)
+	await create_timer(0.18).timeout
+	expect(app.sound.player.stream!=app.sound.sounds.meal_claim and int(app.view.data.community.hotpot.portions)==3,"A denied second claim does not use the successful claim cue")
 	world.state.players[GUEST].inventory["watermelon_platter"]=4
 	app.session.perform("serve_watermelon",public_table)
 	expect(int(app.view.data.community.get("watermelon",{}).get("portions",0))==4,"WorldView receives the platter")
@@ -156,19 +178,25 @@ func run()->void:
 	var caretaker:Dictionary=world.state.players[GUEST]
 	caretaker.x=49.5
 	caretaker.y=35.5
-	caretaker.inventory.feed=2
+	caretaker.inventory.feed=World.LIVESTOCK.ANIMALS.size()
 	app.session._send_snapshot(1)
 	app.view.display_positions[app.session.own_id]=Vector2(49.5,35.5)
 	await capture("livestock-idle",0.0,true)
 	for id:String in World.LIVESTOCK.ANIMALS:
-		app.session.perform("livestock_feed",World.LIVESTOCK.ANIMALS[id].cell,id)
-		expect(int(app.view.data.livestock.get(id,{}).get("feed",0))==1,"Animal feed state reaches the live renderer")
+		var station:Vector2i=World.LIVESTOCK.ANIMALS[id].cell
+		caretaker.x=station.x+0.5
+		caretaker.y=station.y+0.5
+		app.session.perform("livestock_feed",station,id)
+		expect(int(app.view.data.livestock.get(id,{}).get("feed",0))==1,"Animal feed state reaches the live renderer: "+id)
+	caretaker.x=49.5
+	caretaker.y=35.5
+	app.session._send_snapshot(1)
 	await capture("livestock-fed",0.0,false)
 	await capture("livestock-fed-frame-2",0.7,false)
 	expect(world.step(World.LIVESTOCK.DAY*2,true),"Animal products mature through world time")
 	app.session._send_snapshot(1)
 	for id:String in World.LIVESTOCK.ANIMALS:
-		expect(int(app.view.data.livestock[id].ready)==1,"Animal product state reaches the live renderer")
+		expect(int(app.view.data.livestock.get(id,{}).get("ready",0))==1,"Animal product state reaches the live renderer: "+id)
 	await capture("livestock-produce",0.0,true)
 	root.size=Vector2i(1024,640)
 	preload("res://scripts/life_ui_almanac.gd").livestock_menu(app,"cow")
@@ -199,15 +227,19 @@ func run()->void:
 	var art=preload("res://scripts/livestock_scene_art.gd")
 	expect(art.pet_heart_origin(Vector2.ZERO,0.0,false).y>art.pet_heart_origin(Vector2.ZERO,0.7,false).y,"The heart rises on whole pixels")
 	expect(art.pet_heart_origin(Vector2.ZERO,0.0,true)==art.pet_heart_origin(Vector2.ZERO,0.7,true),"Low-motion heart stays still")
+	app._close_modal()
 	await capture("livestock-pet-heart",pet_started+0.7,false)
 	# Seed the three storage states to check the device at a fixed camera position.
 	var equipment_frames:Array[PackedByteArray]=[]
+	app.WanganUI.dismiss(app)
+	app.view.hide_interaction_prompt=true
 	for count in [0,3,World.LIVESTOCK.COLLECTOR_CAPACITY]:
 		world.state.livestock.cow.collector=count
 		app.session._send_snapshot(1)
 		expect(int(app.view.data.livestock.cow.collector)==count,"Collector storage reaches the scene")
 		await capture("livestock-collector-%d"%count,pet_started+2.0,true)
 		equipment_frames.append(root.get_texture().get_image().get_data())
+	app.view.hide_interaction_prompt=false
 	expect(equipment_frames[0]!=equipment_frames[1] and equipment_frames[1]!=equipment_frames[2],"Collector storage states change native scene pixels")
 	var cow:Vector2i=World.LIVESTOCK.ANIMALS.cow.cell
 	caretaker=world.state.players[GUEST]

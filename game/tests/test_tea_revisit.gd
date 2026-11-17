@@ -676,6 +676,12 @@ func check_seasons() -> void:
 		for k in int(need[second]):fill(w,ALPHA,second,"%s: fill %s %d"%[season,second,k+1])
 		ok(w,ALPHA,TR.SEND_ACTION,TR.PACKER,"","%s: send"%season)
 		expect(TR.completed(w.state) and int(w.state[TR.STATE_KEY].day)==int(SEASON_DAYS[season])+1 and same(TR.filled(w.state),need),"%s: completed with the season's mix"%season)
+		var tea_news_bit:=8<<World.ISLAND_NOTES.PROJECTS.size()
+		expect((w.island_news_project_mask() & tea_news_bit)==0,"%s: the tea order alone does not announce the tea house"%season)
+		var after_opening:=World.new()
+		after_opening.state=w.state.duplicate(true)
+		after_opening.state.festival_story_open=true
+		expect((after_opening.island_news_project_mask() & tea_news_bit)!=0,"%s: once the festival opens, the tea house appears in the news"%season)
 		put(w,ALPHA,HOME_SPOT,"home")
 		expect(validates(w.state),"%s: the state validates"%season)
 

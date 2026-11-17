@@ -50,10 +50,9 @@ const CHIPS:=[
 ## Hand-written expected button captions per stage.
 const CAPTION_TABLE:=["裝一車礦料","往前推一段（還剩 6 段）","往前推一段（還剩 5 段）","往前推一段（還剩 4 段）",
 	"往前推一段（還剩 3 段）","往前推一段（還剩 2 段）","往前推一段（還剩 1 段）","卸下礦料"]
-## Hand-written expected away_text per stage (the cart's cell).
-const AWAY_TABLE:=["請走到台車旁（31,20）再操作。","請走到台車旁（31,20）再操作。","請走到台車旁（28,21）再操作。",
-	"請走到台車旁（26,23）再操作。","請走到台車旁（23,23）再操作。","請走到台車旁（20,23）再操作。",
-	"請走到台車旁（16,23）再操作。","請走到台車旁（14,21）再操作。"]
+const AWAY_TABLE:=["請沿軌道到裝礦台找台車。","請沿軌道到裝礦台找台車。","請沿軌道到1 號停靠點找台車。",
+	"請沿軌道到2 號停靠點找台車。","請沿軌道到3 號停靠點找台車。","請沿軌道到4 號停靠點找台車。",
+	"請沿軌道到5 號停靠點找台車。","請沿軌道到卸礦台找台車。"]
 var app
 var w
 var id:=""
@@ -601,8 +600,7 @@ func pure_checks()->void:
 			var chip:String=UI.chip_text(stage,i)
 			check(chip==CHIPS[stage][i],"chip_text(%d,%d) 「%s」: %s"%[stage,i,CHIPS[stage][i],chip])
 		var away:String=UI.away_text(stage)
-		var cell:=Route.cart_cell(stage)
-		check(away==AWAY_TABLE[stage] and away=="請走到台車旁（%d,%d）再操作。"%[cell.x,cell.y],"away_text(%d): %s"%[stage,away])
+		check(away==AWAY_TABLE[stage],"away_text(%d): %s"%[stage,away])
 	var counted:String=UI.count_text(fake(2,1,7))
 	check(counted=="今天 1／2 車・累計 7 車","count_text: %s"%counted)
 	var empty_count:String=UI.count_text({"region_id":Route.REGION})

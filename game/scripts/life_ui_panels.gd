@@ -13,6 +13,7 @@ const BUILD_NOTES := {
 	"author_shelf":"展示工匠製作的樣品，靠近可讀取署名。",
 	"fish_display":"靠近按互動鍵查看漁獲圖鑑與全島首位釣獲者。",
 	"master_flower_bed":"農耕十級的紀念花圃，可以擺在田邊或庭院。",
+	"large_sprinkler":"每天可澆灌自己種植的周圍二十四格。可手動補水或接水管，不穿牆。",
 	"medium_sprinkler":"澆灌自己種植的周圍八格。可手動補水，或接水管從儲水桶供水。",
 	"greenhouse_rack":"星禾送的雙層花架，可以擺在家裡或農田旁。",
 	"greenhouse_roof":"蓋在自己的農田上，讓作物跨季生長。玻璃隔雨；仍需澆水。",
@@ -32,14 +33,19 @@ const BUILD_NOTES := {
 	"water_pump":"放在河水兩格內的陸地。E 啟用；需接通自己的儲水桶。",
 	"sawmill":"E 加工木材成木板。完成後領取；取消退回原料。",
 	"charcoal_kiln":"E 將木材燒成木炭。加工中不可搬動或拆除。",
-	"loom":"靠近按 E，用棉球花或羊毛織布。",
+	"loom":"占地 2×2。靠近按 E，用棉球花或羊毛織布。",
+	"animal_collector":"放在動物四格內，裝上收集籃後自動接取雞蛋、牛奶或羊毛。",
+	"assembly_table":"占地 2×1。可把材料裝成灑水器組件，帶到選好的地點放置。",
+	"dye_table":"占地 2×1，能從花材提染，也能替附近的床、桌、椅和沙發換色。",
+	"clay_kiln":"占地 2×2。用鶯歌陶土和木炭燒製花盆和紅磚。",
 	"jam_pot":"靠近按 E，用 3 份草莓和 1 份糖熬製果醬。",
+	"small_smelter":"占用 2×2 格。用銅礦、鐵礦與木炭熔煉，可排入 10 筆加工。",
 	"glass_furnace":"靠近按 E，把晶砂燒成玻璃，或把脈石英熔碎成晶砂。",
-	"seed_maker":"靠近按 E，把成熟作物和木炭加工成種子。成品可領回背包。",
+	"seed_maker":"把指定作物的整株收成與一份木炭加工成種子。田尾花材請到花園留種台。",
 	"mill":"公共廚房開張後解鎖。E 把小麥磨成麵粉，可排程或自動加工；輸送帶可送入小麥、帶出麵粉。"
 }
-const FOUNDATIONS := ["floor", "path", "wall", "door", "window", "roof", "greenhouse_roof"]
-const FURNITURE := ["bed", "lamp", "table", "chair", "long_bench", "sofa", "planter", "sketch_easel", "rope_rack", "flower_pot", "greenhouse_rack", "master_flower_bed", "fish_display", "author_sign", "author_shelf", "expedition_tent", "sign", "ore_display"]
+const FOUNDATIONS := ["floor", "path", "spring_pebble_path", "wall", "door", "window", "roof", "greenhouse_roof"]
+const FURNITURE := ["bed", "inn_quilt_bed", "inn_stone_footbath", "lamp", "table", "chair", "long_bench", "master_bench", "spring_stone_bench", "sofa", "planter", "guest_wardrobe", "inn_lattice_wardrobe", "inn_fabric_screen", "basic_tea_set", "festival_memorial_bell", "ceramic_eave_chime", "shell_chime", "acorn_ornament", "warm_lamp_niche", "wood_mailbox", "sketch_easel", "rope_rack", "towel_rack", "inn_welcome_sign", "inn_tea_table", "inn_luggage_rack", "flower_pot", "greenhouse_rack", "master_flower_bed", "fish_display", "author_sign", "author_shelf", "expedition_tent", "sign", "ore_display"]
 const ItemArt = preload("res://scripts/inventory_item_art.gd")
 const PixelTheme = preload("res://scripts/inventory_pixel_theme.gd")
 const BuildThumbnail = preload("res://scripts/pixel_build_thumbnail.gd")
@@ -118,11 +124,20 @@ func card(app, parent: GridContainer, title: String, crop_id: String = "", stage
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	panel.add_child(row)
-	var index := Crops.ROWS.find(Crops.PREVIEW_ROWS.get(crop_id,crop_id))
-	if crop_id in ["pumpkin","watermelon"]:
+	var index := Crops.ROWS.find(crop_id)
+	var garden_row:=Crops.KITCHEN_GARDEN_ROWS.find(crop_id)
+	var regional_row:=Crops.REGIONAL_ROWS.find(crop_id)
+	var harvest_row:=Crops.HARVEST_ROWS.find(crop_id)
+	if crop_id=="pumpkin":
 		add_icon(row,preload("res://scripts/bakery_art.gd").growth_texture(stage))
-	elif FlowerArt.has_crop(crop_id) or crop_id=="cotton":
-		add_icon(row, FlowerArt.crop_texture("bluebell" if crop_id=="cotton" else crop_id, stage))
+	elif FlowerArt.has_crop(crop_id):
+		add_icon(row, FlowerArt.crop_texture(crop_id, stage))
+	elif garden_row>=0:
+		add_icon(row,LifeTheme.atlas_region(Crops.KITCHEN_GARDEN_PATH,Rect2(stage*32,garden_row*32,32,32)))
+	elif regional_row>=0:
+		add_icon(row,LifeTheme.atlas_region(Crops.REGIONAL_PATH,Rect2(stage*32,regional_row*32,32,32)))
+	elif harvest_row>=0:
+		add_icon(row,LifeTheme.atlas_region(Crops.HARVEST_PATH,Rect2(stage*32,harvest_row*32,32,32)))
 	elif index >= 0:
 		add_icon(row, LifeTheme.atlas_region(Crops.ATLAS_PATH, Rect2(stage * 32, index * 32, 32, 32)))
 	var details := VBoxContainer.new()
@@ -178,6 +193,9 @@ func shop(app) -> void:
 	var catalog := catalog_shell(app, content, ["買種子", "出售"], ["radish_seed", "coins"])
 	app.modal.set_meta("shop_catalog", true)
 	var products := [World.CROPS.keys() + ["sapling"], World.CROPS.keys() + World.FISH.keys() + World.OTHER_SALES.keys()]
+	var inventory:Dictionary=app.session.snapshot.get("players",{}).get(app.session.own_id,{}).get("inventory",{})
+	for id:String in inventory:
+		if int(inventory[id])>0 and World.CROP_CATALOG.quality_item(id):products[1].append(id)
 	var offer: Button = app.button("", func():
 		var buying: bool = catalog.page == 0
 		app.session.perform("buy" if buying else "sell", STALL, catalog.selected)
@@ -313,22 +331,23 @@ static func item_icon(id: String) -> Texture2D:
 	return ItemArt.icon(id)
 
 static func shop_sale_price(id: String) -> int:
+	if World.CROP_CATALOG.quality_item(id):return World.CROP_CATALOG.quality_price(id)
 	if World.CROPS.has(id):return World.CROPS[id].price
 	if World.FISH.has(id):return World.FISH[id].price
 	return World.OTHER_SALES[id]
 
-func build_menu(app) -> void:
+func build_menu(app, preferred_piece:String="") -> void:
 	# Dedicated builder folio (BuildFolio / BuildShelf / BuildRecipe / BuildPlace);
 	# the shared catalog_shell below stays as-is for shop, seeds, cooking and chests.
 	var catalog: Dictionary = BuildFolio.open(self, app, {"notes": BUILD_NOTES,
 		"foundations": FOUNDATIONS, "furniture": FURNITURE, "materials": BUILD_MATERIALS})
-	var capture_build: String = app.arg_value("capture-build", "")
-	if World.BUILD.has(capture_build):
+	var selected_piece: String = preferred_piece if not preferred_piece.is_empty() else app.arg_value("capture-build", "")
+	if World.BUILD.has(selected_piece):
 		for page in range(1, catalog.pages.size()):
-			if catalog.entries[page].has(capture_build):
-				select_entry(app, catalog, page, capture_build)
+			if catalog.entries[page].has(selected_piece):
+				select_entry(app, catalog, page, selected_piece)
 				var scroll: ScrollContainer = catalog.pages[page].get_parent().get_parent()
-				scroll.call_deferred("ensure_control_visible", catalog.entries[page][capture_build])
+				scroll.call_deferred("ensure_control_visible", catalog.entries[page][selected_piece])
 				break
 
 func catalog_shell(app, parent: VBoxContainer, labels: Array, tab_icons: Array = []) -> Dictionary:
@@ -433,7 +452,9 @@ func select_entry(app, catalog: Dictionary, page: int, id: String) -> void:
 			var caption: Label = entry.get_child(0)
 			caption.add_theme_color_override("font_color", lit if item == id else dim)
 	refresh(app)
-	if catalog.has("build_scroll"):
+	if catalog.has("reveal_slot"):
+		catalog.reveal_slot.call_deferred(catalog.entries[page][id])
+	elif catalog.has("build_scroll"):
 		catalog.build_scroll.call_deferred("ensure_control_visible",catalog.entries[page][id])
 
 func add_entry(app, catalog: Dictionary, page: int, id: String, title: String, texture: Texture2D = null) -> Button:
@@ -448,13 +469,13 @@ func add_entry(app, catalog: Dictionary, page: int, id: String, title: String, t
 	catalog.entries[page][id] = entry
 	var caption := Label.new()
 	caption.text = title
-	caption.add_theme_font_size_override("font_size", 14)
+	caption.add_theme_font_size_override("font_size", 15)
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	entry.add_child(caption)
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	caption.offset_top = -27
+	caption.offset_top = -31
 	if texture != null:
 		var picture := item_picture(texture, 64)
 		entry.add_child(picture)
@@ -529,7 +550,20 @@ func chest(app, cell: Vector2i) -> void:
 	var private_box: bool = initial.get("type") in World.PRIVATE_BOXES
 	var content := begin(app, "私人箱" if private_box else "共用箱")
 	var catalog := catalog_shell(app, content, ["箱內物品"])
-	for id in World.NAMES:
+	var stored_items: Dictionary = initial.get("items", {})
+	var inventory: Dictionary = app.session.snapshot.get("players", {}).get(app.session.own_id, {}).get("inventory", {})
+	var stocked: Array[String] = []
+	var carried: Array[String] = []
+	var empty: Array[String] = []
+	for id: String in World.NAMES:
+		if int(stored_items.get(id, 0)) > 0:
+			stocked.append(id)
+		elif int(inventory.get(id, 0)) > 0:
+			carried.append(id)
+		else:
+			empty.append(id)
+	var ordered_items := stocked + carried + empty
+	for id: String in ordered_items:
 		add_entry(app, catalog, 0, id, World.NAMES[id], item_icon(id))
 	# T014: one row per direction, [1] [半數] [全部]. Same height as the former two
 	# stacked buttons. The server recomputes the amount from its own counts; the
@@ -556,24 +590,39 @@ func chest(app, cell: Vector2i) -> void:
 			moves[action] = move
 	moves.deposit.tooltip_text = "存入 1 件"
 	moves.withdraw.tooltip_text = "取出 1 件"
+	if initial.get("type")=="private_chest" and not initial.get("locked",false):
+		catalog.details.add_child(app._chest_deposit_toggle(cell,initial))
+		catalog.details.add_child(app._chest_withdraw_picker(cell))
 	updates.append(func(person):
 		var id: String = catalog.selected
 		var box: Dictionary = app.session.snapshot.get("objects", {}).get(key, {})
 		var stored: int = int(box.get("items", {}).get(id, 0))
 		var held: int = int(person.get("inventory", {}).get(id, 0))
-		var accessible: bool = box.get("type") in ["chest", "private_chest", "supply_box"] and not box.get("locked", false)
+		var exists:bool=box.get("type") in ["chest","private_chest","supply_box"]
+		var locked:bool=box.get("locked",false)
+		var guest_deposit:bool=box.get("type")=="private_chest" and box.get("guest_deposit",false)
+		var guest_withdraw:bool=box.get("type")=="private_chest" and box.get("guest_withdraw",false)
 		catalog.title.text = World.NAMES[id]
 		catalog.icon.texture = item_icon(id)
-		catalog.description.text = "背包 %d · 箱內 %d\n%s" % [held, stored, "僅主人可存取" if private_box else "島民可共同存取"]
+		if locked and not guest_withdraw:
+			catalog.description.text="背包 %d\n訪客可存入，內容由箱主查看。" % held if guest_deposit else "只有箱主可以存取。"
+		else:
+			var rule:="島民可共同存取"
+			if locked:rule="你可存入與取出" if guest_deposit else "你可取出箱內物品"
+			elif private_box:
+				var deposit_label:="同島可存入" if guest_deposit else "僅箱主可存入"
+				var withdraw_label:="指定島民可取出" if not str(box.get("withdraw_guest","")).is_empty() else "僅箱主可取出"
+				rule=deposit_label+" · "+withdraw_label
+			catalog.description.text="背包 %d · 箱內 %d\n%s" % [held,stored,rule]
 		for action: String in moves:
 			var storing := action.begins_with("deposit")
 			var have: int = held if storing else stored
 			var move: Button = moves[action]
-			move.disabled = have <= 0 or not accessible
+			move.disabled=have<=0 or not exists or (locked and not (guest_deposit if storing else guest_withdraw))
 			var amount := World.chest_move_amount(action, have)
 			if action.ends_with("_half"):
 				move.tooltip_text = ("存入半數 %d 件" if storing else "取出半數 %d 件") % amount
 			elif action.ends_with("_all"):
 				move.tooltip_text = ("全部存入 %d 件" if storing else "全部取出 %d 件") % amount
 	)
-	select_entry(app, catalog, 0, World.NAMES.keys()[0])
+	select_entry(app, catalog, 0, ordered_items[0])

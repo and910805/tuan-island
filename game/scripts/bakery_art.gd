@@ -91,7 +91,9 @@ static func draw_mill_runtime(canvas:CanvasItem,at:Vector2,obj:Dictionary,world_
 		var edge:=Color("f2c14e") if manual else (Color("b4553a") if badge.full else Color("4a3426"))
 		canvas.draw_rect(box.grow(1),edge)
 		canvas.draw_rect(box,Color("fff4dc") if manual else Color("d9c7a3"))
-		if flour:canvas.draw_texture_rect(flour,box.grow(-1),false)
+		var product:Texture2D=flour
+		if badge.get("item","")=="feed":product=load("res://scripts/inventory_item_art.gd").icon("feed")
+		if product:canvas.draw_texture_rect(product,box.grow(-1),false)
 		for index in mini(int(badge.count),MillFeedback.MAX_PIPS):
 			canvas.draw_rect(Rect2(box.position+Vector2(index*3,box.size.y+2),Vector2(2,2)),edge)
 	return status

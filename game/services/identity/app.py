@@ -149,6 +149,8 @@ def create_app(database, allow_test_loopback=False):
                 result = await run_in_threadpool(store.issue_ticket, bearer(request), data["world_id"])
             elif operation == "publish":
                 result = await run_in_threadpool(store.publish_directory, bearer(request), data, allow_test_loopback)
+            elif operation == "world-storage":
+                result = await run_in_threadpool(store.report_world_storage, bearer(request), data)
             elif operation == "worlds":
                 if set(data) not in (set(), {"cursor"}):
                     raise BadRequest()
@@ -182,11 +184,11 @@ def create_app(database, allow_test_loopback=False):
         try:
             with store.transaction() as db:
                 db.execute("SELECT COUNT(*) FROM accounts").fetchone()
-            return reply({"ok": True, "service": "tuan-identity", "schema": 3})
+            return reply({"ok": True, "service": "tuan-identity", "schema": 4})
         except (sqlite3.Error, OSError):
             return error("STORAGE_UNAVAILABLE", 503)
 
-    routes = [Route("/v1/" + name, endpoint, methods=["POST"]) for name in ("login", "logout", "refresh", "profile", "tickets", "redeem", "validate", "publish", "worlds", "resolve")]
+    routes = [Route("/v1/" + name, endpoint, methods=["POST"]) for name in ("login", "logout", "refresh", "profile", "tickets", "redeem", "validate", "publish", "worlds", "resolve", "world-storage")]
     routes.append(Route("/healthz", health, methods=["GET"]))
     app = Starlette(routes=routes, debug=False)
     app.state.store = store

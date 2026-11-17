@@ -7,7 +7,7 @@ const DEFAULTS := {
 	"till_area": KEY_U, "seed_area": KEY_I, "harvest_area": KEY_O, "move_object": KEY_R,
 	"build_menu": KEY_B, "inventory": KEY_TAB, "interact": KEY_E, "seeds": KEY_C,
 	"journal": KEY_J, "festival": KEY_G, "collection": KEY_L, "map": KEY_M, "zoom": KEY_Z,
-	"fish_catch": KEY_SPACE, "area_modifier": KEY_SHIFT,
+	"fish_catch": KEY_SPACE, "area_modifier": KEY_SHIFT, "social": KEY_Q,
 }
 const LABELS := {
 	"move_up": "向上移動", "move_down": "向下移動", "move_left": "向左移動", "move_right": "向右移動",
@@ -16,13 +16,13 @@ const LABELS := {
 	"till_area": "手推耕田機", "seed_area": "手推播種機", "harvest_area": "手推收割機", "move_object": "搬移家具",
 	"build_menu": "建造目錄", "inventory": "背包", "interact": "互動", "seeds": "選種子",
 	"journal": "島民手帳", "festival": "風鈴接力", "collection": "生活圖鑑", "map": "地圖", "zoom": "切換視野",
-	"fish_catch": "收竿", "area_modifier": "成片施工修飾鍵",
+	"fish_catch": "收竿", "area_modifier": "成片施工修飾鍵", "social": "招呼與地圖標記",
 }
 const GROUPS := {
 	"移動與互動": ["move_up", "move_down", "move_left", "move_right", "interact", "zoom"],
 	"工具": ["hoe", "seed", "water", "harvest", "axe", "pick", "build", "remove", "fish", "fish_catch",
 		"plant_tree", "till_area", "seed_area", "harvest_area", "move_object", "area_modifier"],
-	"選單": ["inventory", "build_menu", "seeds", "journal", "festival", "collection", "map"],
+	"選單": ["inventory", "build_menu", "seeds", "journal", "festival", "collection", "map", "social"],
 }
 const MODIFIERS := [KEY_SHIFT, KEY_CTRL, KEY_ALT]
 const PUNCTUATION := [KEY_MINUS, KEY_EQUAL, KEY_BRACKETLEFT, KEY_BRACKETRIGHT, KEY_BACKSLASH,
@@ -43,7 +43,11 @@ func load_preferences(file_path: String) -> bool:
 	if config.load(path) != OK or config.get_value("input", "version", 0) != VERSION:
 		return false
 	var candidate = config.get_value("input", "keys", {})
-	if not candidate is Dictionary or candidate.size() != DEFAULTS.size():
+	if not candidate is Dictionary:
+		return false
+	if candidate.size() == DEFAULTS.size()-1 and not candidate.has("social"):
+		candidate.social = KEY_NONE if KEY_Q in candidate.values() else KEY_Q
+	if candidate.size() != DEFAULTS.size():
 		return false
 	var seen := {}
 	for action in DEFAULTS:

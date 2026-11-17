@@ -25,6 +25,7 @@ static func make_menu(app) -> void:
 	app.menu.add_child(scroll)
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus=true
 	var margin:=MarginContainer.new()
 	margin.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_left",56)
@@ -51,12 +52,16 @@ static func make_menu(app) -> void:
 	app.name_input.max_length=12
 	content.add_child(app.name_input)
 	var enter:Button=app.button("住進自己的小島",func():app._host(false))
+	enter.name="TitleSolo"
 	enter.custom_minimum_size.y=52
 	enter.add_theme_stylebox_override("normal",PixelTheme.texture_style("button_pressed",3,8))
 	enter.add_theme_stylebox_override("hover",PixelTheme.texture_style("button_pressed",3,8))
 	for color in ["font_color","font_hover_color","font_focus_color"]:
 		enter.add_theme_color_override(color,Color("fff3cf"))
 	content.add_child(enter)
+	var adventure:Button=app.button("開啟冒險小島",func():app._host(false,"adventure"))
+	adventure.name="TitleAdventure"
+	content.add_child(adventure)
 	var identity:Button=app.button("封測島嶼",app._open_identity)
 	identity.icon=Shell.icon("letter")
 	content.add_child(identity)
@@ -71,10 +76,17 @@ static func make_menu(app) -> void:
 	room.add_theme_constant_override("separation",7)
 	room.hide()
 	var toggle:Button=app.button("朋友房間  ▸",func():room.visible=not room.visible)
+	toggle.name="TitleFriends"
 	toggle.icon=Shell.icon("letter")
 	toggle.toggle_mode=true
 	toggle.custom_minimum_size.y=44
 	mail.add_child(toggle)
+	enter.focus_neighbor_bottom=enter.get_path_to(adventure)
+	adventure.focus_neighbor_top=adventure.get_path_to(enter)
+	adventure.focus_neighbor_bottom=adventure.get_path_to(identity)
+	identity.focus_neighbor_top=identity.get_path_to(adventure)
+	identity.focus_neighbor_bottom=identity.get_path_to(toggle)
+	toggle.focus_neighbor_top=toggle.get_path_to(identity)
 	mail.add_child(room)
 	room.add_child(app.label("房間密碼",15))
 	app.key_input=field("","至少四個字")
@@ -84,11 +96,13 @@ static func make_menu(app) -> void:
 	app.port_input=field("28417","連接埠")
 	room.add_child(app.port_input)
 	room.add_child(app.button("開啟區域網路房間",func():app._host(true)))
+	room.add_child(app.button("開啟冒險房間",func():app._host(true,"adventure")))
 	room.add_child(app.label("朋友的伺服器位址",15))
 	app.address_input=field("127.0.0.1","IP 或完整 wss:// 網址")
 	room.add_child(app.address_input)
 	room.add_child(app.button("加入朋友的小島",app._join))
 	room.visibility_changed.connect(func():toggle.text="朋友房間  ▾" if room.visible else "朋友房間  ▸")
+	content.add_child(app.title_build_label())
 
 	app.toast=app.label("歡迎來到糰糰島。",16)
 	app.ui.add_child(app.toast)

@@ -47,6 +47,7 @@ func _initialize() -> void:
 		return
 	test_timer_boundaries(day)
 	test_bond_bonus(day)
+	test_quality_routes(day)
 	test_seven_slot_capacity(day)
 	test_full_box(day)
 	test_full_equipment(day)
@@ -78,6 +79,59 @@ func test_bond_bonus(day:float)->void:
 	expect(not L.step(records,5*day),"Retrying the completed tick grants nothing")
 	cow.collector=0
 	expect(L.collect_into_equipment(records,5*day) and cow.collector==L.LIMIT and cow.ready==0,"Bonus and regular output share the same collector")
+	expect(int(cow.collector_quality)==1,"Station collector preserves the quality grade")
+	expect(L.perform(records,bag,"cow","livestock_empty",5*day).ok and int(bag.quality_milk)==1 and int(bag.milk)==8,
+		"Emptying the station collector grants one premium and six ordinary units")
+
+func test_quality_routes(day:float)->void:
+	var world:=World.new()
+	var token:="quality-ranch"
+	world.add_player(token,"牧場")
+	world.state.picnic=true
+	var actor:Dictionary=world.state.players[token]
+	var cow:=rec(4,0,day)
+	cow.bond=L.BONUS_BOND
+	cow.last_pet=0.0
+	world.state.livestock.cow=cow
+	var sheep:=rec(4,0,day*2)
+	sheep.bond=L.BONUS_BOND
+	sheep.last_pet=0.0
+	world.state.livestock.sheep=sheep
+	var site:=L.collector_cell("cow")
+	var box_key:=World.key(L.collector_cell("sheep"))
+	world.state.objects[box_key]={"type":"chest","owner":token,"items":{}}
+	var key:=World.key(site)
+	world.state.objects[key]={"type":"animal_collector","owner":token,"items":{},"collector_animal":"cow","collector_count":0}
+	world.state.time=day*8
+	expect(L.step(world.state.livestock,float(world.state.time)),"Both bonded animals produce four ordinary products and their quality bonus")
+	expect(World.AnimalCollector.step(world)==[key] and int(world.state.objects[key].collector_count_quality)==1,
+		"The buildable collector drains both grades")
+	expect(L.collect_into_chests(world)==[box_key] and int(world.state.objects[box_key].items.quality_wool)==1
+		and int(world.state.objects[box_key].items.wool)==4,"Shared box receives ordinary and premium wool separately")
+	var path:=temp_path("quality-routes")
+	_cleanup.append(path)
+	world.save_path=path
+	expect(world.save() and world.load_world(path),"Mixed-grade chest and collector survive reloading")
+	actor=world.state.players[token]
+	actor.x=site.x+0.5
+	actor.y=site.y+0.5
+	actor.inventory.quality_milk=CAP
+	expect(world.act(token,"ordinary","collector_collect",site).ok and int(actor.inventory.milk)==4
+		and int(world.state.objects[key].collector_count)==1,"A full quality stack leaves only the quality product in the machine")
+	actor.inventory.quality_milk=0
+	expect(world.act(token,"premium","collector_collect",site).ok and int(actor.inventory.quality_milk)==1
+		and int(world.state.objects[key].collector_count)==0,"The second pickup gives the retained quality milk exactly once")
+	var stall:=Vector2i(43,29)
+	actor.x=stall.x+0.5
+	actor.y=stall.y+0.5
+	var coins:=int(actor.coins)
+	expect(world.act(token,"sell-quality","sell",stall,"quality_milk").ok and int(actor.coins)==coins+45,
+		"Quality milk sells for 45 at the seed stall")
+	var records:Dictionary={"sheep":rec(0,2,-1)}
+	records.sheep.ready_quality=1
+	var bag:Dictionary={}
+	expect(L.perform(records,bag,"sheep","livestock_collect",8*day).ok and int(bag.get("quality_wool",0))==1
+		and int(records.sheep.ready_quality)==0 and int(records.sheep.ready)==1,"Manual collection preserves the grade and leaves ordinary wool behind")
 
 func test_timer_boundaries(day: float) -> void:
 	expect(L.fresh() == rec(0, 0, -1.0), "Fresh record is idle")
@@ -134,7 +188,7 @@ func test_full_box(day: float) -> void:
 	world.state.time = 2000.0
 	var cow_key := World.key(L.collector_cell("cow"))
 	var sheep_key := World.key(L.collector_cell("sheep"))
-	expect(L.collector_cell("cow") == L.ANIMALS.cow.cell + Vector2i.DOWN, "Collector sits directly below the pen")
+	expect(L.collector_cell("cow") == L.ANIMALS.cow.cell + Vector2i.DOWN and not world.protected(L.collector_cell("cow")), "The collector remains below the cow pen and outside public reservations")
 	world.state.livestock = {"cow":rec(3, 7, -1.0), "sheep":rec(1, 4, 9000.0)}
 	world.state.objects[cow_key] = {"type":"chest", "items":{"milk":CAP - 2}}
 	world.state.objects[sheep_key] = {"type":"fence", "items":{}}

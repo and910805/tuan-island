@@ -72,6 +72,20 @@ static func refresh(app)->void:
 	var controller:=_controller(app)
 	if controller:controller.refresh()
 
+static func focus_primary(app)->bool:
+	var controller:=_controller(app)
+	if controller==null:return false
+	for key in ["claim","enqueue"]:
+		var action:=controller.refs.get(key) as Button
+		if is_instance_valid(action) and action.is_visible_in_tree() and not action.disabled:
+			action.grab_focus()
+			var parent:=action.get_parent()
+			while parent!=null and parent!=app.modal:
+				if parent is ScrollContainer:parent.ensure_control_visible(action)
+				parent=parent.get_parent()
+			break
+	return true
+
 ## Called from main._layout_preview (preview HUD) and on viewport resize.
 static func layout(app,bounds:Vector2)->void:
 	var controller:=_controller(app)
@@ -299,6 +313,7 @@ class Controller extends Node:
 		column.add_child(grid)
 		var group:=ButtonGroup.new()
 		for id in World.RECIPES:
+			if id==World.RESIDENT_GOALS.SEAFOOD_RICE and app.session.snapshot.get("resident_goals",{}).get("achao",{}).get("3",{}).get("state")!="done":continue
 			var kind:String=id
 			var button:=Button.new()
 			button.name="CookingRecipe_"+kind

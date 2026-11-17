@@ -28,6 +28,16 @@ func shot(name:String)->void:
 	if arrival:arrival.hide()
 	await RenderingServer.frame_post_draw
 	check(root.get_texture().get_image().save_png(output.path_join(name+".png"))==OK,"Save "+name)
+func tea_map(expected_cell:Vector2i,travelling:bool,name:String)->void:
+	app._map_menu()
+	await settle()
+	if not is_instance_valid(app.map_view):
+		check(false,"Tea workshop local map opens")
+		return
+	var guide:Dictionary=app.map_view.tea_map_guide(app.map_view.data,app.session.own_id)
+	check(guide.get("target")==expected_cell and guide.get("travelling")==travelling,"The map marks the correct navigation point for "+name)
+	await shot(name)
+	app._close_modal()
 func working_frames()->void:
 	if output.is_empty():return
 	var old_motion:bool=app.view.reduced_motion
@@ -53,6 +63,8 @@ func run()->void:
 	app.session.set_physics_process(false)
 	world=app.session.world
 	actor=app.session.peers[1]
+	# This fixture starts after the player's own introductory harvest and sale.
+	world.state.players[actor][World.CHAPTER_ONE.PERSONAL_START]=false
 	world.state.chapter_one.shipped=true
 	world.state.chapter_one.watered=true
 	world.state.board=true
@@ -60,7 +72,7 @@ func run()->void:
 	place("home",Tea.RECEIVER)
 	world.state.chapter_one.watered=false
 	await settle()
-	check(not app._tea_guidance_active() and app.objective.text.contains("灑水"),"Early picnic does not hide unfinished irrigation")
+	check(not app._tea_guidance_active() and app.objective.text.contains("找阿榆"),"Early picnic does not hide unfinished irrigation")
 	var tracker:Button=app.hud.find_child("TrackerNext",true,false)
 	tracker.pressed.emit()
 	await settle()
@@ -91,6 +103,42 @@ func run()->void:
 	tracker.pressed.emit()
 	await settle()
 	check(app.modal.has_meta("travel_body"),"Cross-region next step opens real travel UI")
+	check(app.modal.get_meta("travel_station")=="ferry" and app.modal.get_meta("travel_selected")=="toucheng",
+		"Pottery guidance chooses the first boat leg to Toucheng")
+	await shot("pottery-first-leg")
+	app._close_modal()
+	place("home",World.TRANSIT.STATIONS.home.cell)
+	await settle()
+	app._tea_next_step()
+	await settle()
+	var depart:Button=app.modal.find_child("TravelDepart",true,false)
+	check(depart!=null and not depart.disabled,"At the ferry the guided first leg can depart")
+	if depart!=null:depart.pressed.emit()
+	await settle()
+	check(world.state.players[actor].region=="toucheng","The selected first leg actually arrives at Toucheng")
+	for route in [["toucheng","rail","ruifang"],["ruifang","rail","maokong"],["maokong","transfer","yingge"]]:
+		place(route[0],World.TRANSIT.points(route[0])[route[1]].cell)
+		await settle()
+		check(app._tea_guidance_active(),"Tea guidance continues at "+route[0])
+		if route[0] in ["toucheng","ruifang"]:
+			check(app.objective.text.contains(World.TRANSIT.points(route[0])[route[1]].label),
+				"Tracker names the correct station at "+route[0])
+			await shot("onward-"+route[0])
+		tracker.pressed.emit()
+		await settle()
+		check(app.modal.get_meta("travel_station")==route[1] and app.modal.get_meta("travel_selected")==route[2],
+			"The route uses the correct departure point in "+route[0])
+		depart=app.modal.find_child("TravelDepart",true,false)
+		check(depart!=null and not depart.disabled,"The onward guided leg can depart from "+route[0])
+		if depart!=null:depart.pressed.emit()
+		await settle()
+		check(world.state.players[actor].region==route[2],"The actual journey arrives at "+route[2])
+	place("home",Tea.RECEIVER)
+	world.state.players[actor].travel_book.visited.yingge=true
+	await settle()
+	preload("res://scripts/travel_ui.gd").open_toward(app,"yingge")
+	await settle()
+	check(app.modal.get_meta("travel_selected")=="yingge","An already visited workshop can use its through ticket")
 	app._close_modal()
 	place("yingge",Tea.POTTER)
 	app.session.perform("tea_potter",Tea.POTTER)
@@ -102,6 +150,7 @@ func run()->void:
 	world.step(Tea.KILN_SECONDS,true)
 	await settle()
 	check(app.objective.text.contains("取出陶罐"),"Actual completed kiln updates HUD")
+	await tea_map(Tea.KILN,false,"yingge-kiln-map")
 	await shot("kiln-ready-hud")
 	tracker.pressed.emit()
 	await settle()
@@ -117,12 +166,15 @@ func run()->void:
 	world.step(Tea.ROAST_SECONDS.light,true)
 	await settle()
 	check(app.objective.text.contains("取出淺焙茶"),"Roast completion becomes next action")
+	await tea_map(Tea.ROASTER,false,"maokong-roaster-map")
 	await shot("roast-ready-hud")
 	app.session.perform("tea_take",Tea.ROASTER)
 	place("maokong",Tea.PACKER)
 	app.session.perform("tea_pack",Tea.PACKER,"light:jar")
 	app.session.perform("tea_ship",Tea.PACKER)
 	world.step(Tea.SHIPPING_SECONDS,true)
+	await settle()
+	await tea_map(World.TRANSIT.STATIONS.maokong.cell,true,"maokong-delivery-map")
 	place("home",Tea.RECEIVER)
 	await settle()
 	check(app.objective.text.contains("收款"),"Delivered parcel updates home HUD")

@@ -547,6 +547,7 @@ func earn_lanyang(w:World,token:String) -> bool:
 		if not act(w,token,"memory_gate",Memory.SERVICE,"b:%d"%pair[1]).ok:return false
 		if not act(w,token,"memory_flow",Memory.SERVICE).ok:return false
 	if not act(w,token,"memory_plaque",Memory.SERVICE).ok:return false
+	w.state.history_memory.players[token].erase("completed_day")  # Legacy record for the day-one fixture.
 	put(w,token,Vector2(Revisit.GATE_CELL.x-0.5,Revisit.GATE_CELL.y+0.5),"lanyang")
 	if not act(w,token,Revisit.GATE_ACTION,Revisit.GATE_CELL,"a:3").ok:return false
 	if not act(w,token,Revisit.GATE_ACTION,Revisit.GATE_CELL,"b:2").ok:return false

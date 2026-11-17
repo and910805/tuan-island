@@ -358,6 +358,18 @@ func open_at(spot:Vector2,region:String,entry_shot:String="")->void:
 	await press("TeaRevisitEntry")
 	check(layout_name()==UI.LAYOUT,"Revisit page opens (%s)"%tag)
 
+func order_map(expected_cell:Vector2i,action:String,step:String)->void:
+	app._map_menu()
+	await settle()
+	if not is_instance_valid(app.map_view):
+		check(false,"The local map opens (%s)"%tag)
+		return
+	var guide:Dictionary=app.map_view.tea_map_guide(app.map_view.data,app.session.own_id)
+	check(guide.get("target")==expected_cell and guide.get("title")==action,"The local map points to %s (%s)"%[action,tag])
+	await shot(step)
+	app._close_modal()
+	await settle()
+
 func tea_flow()->void:
 	# Not ready.
 	await open_at(POTTER_SPOT,"yingge")
@@ -397,6 +409,7 @@ func tea_flow()->void:
 	await stand(PACKER_SPOT,"maokong")
 	check(str(app.objective.text)=="茶罐大單・空罐 3／6\n帶回收空罐到鶯歌交給陶師","Tracker in 貓空 (%s): %s"%[tag,str(app.objective.text)])
 	await shot("maokong_tracker")
+	await order_map(World.TRANSIT.STATIONS.maokong.cell,"交回收空罐","map_return_jars")
 	# Back to 鶯歌 for the last three jars.
 	bag().tea_worn_jar=3  # PRESET
 	await open_at(POTTER_SPOT,"yingge")
@@ -410,16 +423,23 @@ func tea_flow()->void:
 	check(label_text("TrFillReason")==TR.QUOTA_FULL%["淺焙",4,4,"深焙"],"Quota full (%s)"%tag)
 	await shot("page_quota_full")
 	page_fits("quota full "+tag)
+	app._close_modal()
+	await order_map(TR.PACKER,"裝罐・深焙","map_fill_order")
+	await open_at(PACKER_SPOT,"maokong")
 	await press("Tr_deep")
 	await press("Tr_deep")
 	check(not (control("TrSend") as Button).disabled,"Ready to send (%s)"%tag)
 	await shot("page_ready_to_send")
 	page_fits("ready to send "+tag)
+	app._close_modal()
+	await order_map(TR.PACKER,"寄出茶罐大單","map_send_order")
+	await open_at(PACKER_SPOT,"maokong")
 	await press("TrSend")
 	check(TR.completed(w.state),"Completed (%s)"%tag)
 	await shot("page_completed")
 	page_fits("completed "+tag)
 	app._close_modal()
+	await order_map(World.TRANSIT.STATIONS.maokong.cell,"領茶陶組","map_claim_teaware")
 	await open_at(POTTER_SPOT,"yingge")
 	await press("TrClaim")
 	check(int(bag().get(TR.TEAWARE_ITEM,0))==1,"Tea ware claimed (%s)"%tag)
@@ -431,6 +451,109 @@ func tea_flow()->void:
 	check(label_text("TeaRevisitLine").begins_with("✓ 茶罐大單寄出了"),"Notebook line (%s)"%tag)
 	await shot("journal_line")
 	page_fits("journal "+tag,"tea_ceramics")
+	app._close_modal()
+
+func tea_house_flow()->void:
+	var stand_at:=Vector2(TR.HOUSE_SITE)+Vector2(-0.5,1.5)
+	await stand(stand_at,"maokong")
+	check(not w.act(id,"house-before-"+tag,TR.HOUSE_DISPLAY,TR.HOUSE_SITE).ok,"The unfinished festival keeps the tea house project locked (%s)"%tag)
+	w.state.festival_story_open=true  # PRESET: this suite starts after the festival.
+	var table_center:=Vector2(TR.HOUSE_SITE)+Vector2(0.5,0.5)
+	person().x=table_center.x
+	person().y=table_center.y
+	w.move_player(id,Vector2.DOWN,0.05)
+	check(Vector2(person().x,person().y).distance_to(table_center)>0.75,
+		"A player on the newly reserved site can move away (%s)"%tag)
+	await stand(stand_at,"maokong")
+	await refresh()
+	await interact()
+	check(app.modal.get_meta("tea_site","")=="house","Interacting at the table opens the tea house panel (%s)"%tag)
+	await press("TeaHouseDisplay")
+	check(int(bag().get(TR.TEAWARE_ITEM,0))==0 and w.state.get(TR.HOUSE_KEY,{}).get("lender")==id,
+		"Loaning moves the earned tea ware to the shared display (%s)"%tag)
+	var saved:=World.new()
+	check(saved.load_world(path) and saved.state.get(TR.HOUSE_KEY,{}).get("lender")==id,"The tea house loan survives reload (%s)"%tag)
+	var guest:="tea-house-visitor-"+tag
+	w.add_player(guest,"來訪島民")
+	w.state.players[guest].region="maokong"
+	w.state.players[guest].x=stand_at.x
+	w.state.players[guest].y=stand_at.y
+	check(not w.act(guest,"house-take-"+tag,TR.HOUSE_RECLAIM,TR.HOUSE_SITE).ok
+		and w.state.get(TR.HOUSE_KEY,{}).get("lender")==id,"Visitors cannot take another player's tea ware (%s)"%tag)
+	bag().tea_light=1  # PRESET: one portion of roast tea for the tea house.
+	await refresh()
+	await press("TeaHouseBrew_light")
+	check(int(bag().get("tea_light",0))==0 and w.state[TR.HOUSE_KEY].round.portions==6,"One roast makes six cups (%s)"%tag)
+	check(not w.act(id,"house-hot-take-"+tag,TR.HOUSE_RECLAIM,TR.HOUSE_SITE).ok,"Hot tea keeps the tray on the table (%s)"%tag)
+	await press("TeaHouseSip")
+	check((control("TeaHouseSip") as Button).disabled and w.state[TR.HOUSE_KEY].round.portions==5,"The lender can sip once per pot (%s)"%tag)
+	check(w.act(guest,"house-sip-"+tag,World.TEA_SERVICE.HOUSE_SIP,TR.HOUSE_SITE).ok and w.state[TR.HOUSE_KEY].round.portions==4,
+		"A second islander shares the same pot (%s)"%tag)
+	check(not w.act(guest,"house-sip-again-"+tag,World.TEA_SERVICE.HOUSE_SIP,TR.HOUSE_SITE).ok,"A second sip from the same islander is refused (%s)"%tag)
+	await refresh()
+	var public_display:Dictionary=app.session.snapshot[TR.HOUSE_KEY]
+	check(public_display.round.portions==4 and not public_display.round.has("claimed") and public_display.sipped_own,
+		"The client sees cups and its own sip without other islanders' IDs (%s)"%tag)
+	check(saved.load_world(path) and saved.state[TR.HOUSE_KEY].round.portions==4,"The shared pot survives reload (%s)"%tag)
+	await shot("tea_house_panel")
+	app._close_modal()
+	await settle()
+	var view:Node=app.view
+	var had_motion:bool=not app.view.reduced_motion
+	var was_processing:=view.is_processing()
+	view.set_process(false)
+	app.view.reduced_motion=false
+	app.view.elapsed=0.0
+	await refresh()
+	var steam_box:=pixel_box(Rect2(cell_rect(TR.HOUSE_SITE).position+Vector2(17,-24),Vector2(16,23)))
+	var hot:=await shot("tea_house_display")
+	app.view.elapsed=0.5
+	await refresh()
+	var drifting:=await grab()
+	check(box_difference(hot,drifting,steam_box)>0.01,"Tea steam visibly rises during normal motion (%s)"%tag)
+	app.view.reduced_motion=true
+	await refresh()
+	var still:=await grab()
+	app.view.elapsed=0.9
+	await refresh()
+	check(box_difference(still,await grab(),steam_box)==0.0,"Reduced motion keeps the steam still (%s)"%tag)
+	var extra_guests:=PackedStringArray()
+	for i in 4:
+		var visitor:="tea-house-cup-%s-%d"%[tag,i]
+		w.add_player(visitor,"試茶島民",stand_at)
+		w.state.players[visitor].region="maokong"  # PRESET: additional guests arrive at the table.
+		w.state.players[visitor].x=stand_at.x
+		w.state.players[visitor].y=stand_at.y
+		extra_guests.append(visitor)
+		check(w.act(visitor,"sip-"+tag,World.TEA_SERVICE.HOUSE_SIP,TR.HOUSE_SITE).ok,"An arriving islander can drink the next cup (%s)"%tag)
+	await refresh()
+	var empty_pot:=await grab()
+	check(w.state[TR.HOUSE_KEY].round.portions==0 and box_difference(still,empty_pot,steam_box)>0.01,
+		"The finished pot stops steaming (%s)"%tag)
+	bag().tea_deep=1  # PRESET: a second pot to verify overnight cooling.
+	await refresh()
+	await interact()
+	await press("TeaHouseBrew_deep")
+	for visitor:String in extra_guests:
+		w.state.players.erase(visitor)
+		w.active_tokens.erase(visitor)
+	app._close_modal()
+	await refresh()
+	var hot_again:=await grab()
+	var original_time:float=w.state.time
+	w.state.time=original_time+World.WEATHER.DAY_SECONDS  # PRESET: observe the pot on the next world day.
+	await refresh()
+	check(box_difference(hot_again,await grab(),steam_box)>0.01,"Overnight cooling removes the visible steam (%s)"%tag)
+	app.view.reduced_motion=not had_motion
+	view.set_process(was_processing)
+	await interact()
+	check((control("TeaHouseSip") as Button).disabled and not (control("TeaHouseReclaim") as Button).disabled,
+		"Yesterday's pot cools and the lender can take back the tray (%s)"%tag)
+	await press("TeaHouseReclaim")
+	check(int(bag().get(TR.TEAWARE_ITEM,0))==1 and not w.state.has(TR.HOUSE_KEY),"The lender can take the same set back (%s)"%tag)
+	w.state.time=original_time
+	w.state.players.erase(guest)
+	w.active_tokens.erase(guest)
 	app._close_modal()
 
 func home_flow()->void:
@@ -554,6 +677,7 @@ func size_flow()->void:
 	reset()
 	await refresh()
 	await tea_flow()
+	await tea_house_flow()
 	await home_flow()
 	await exhibit_flow()
 

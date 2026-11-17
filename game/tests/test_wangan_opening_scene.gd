@@ -17,6 +17,10 @@ extends SceneTree
 ##    wood/stone by writing their inventory, and fill plot cells with their
 ##    World.act hoe / build floor actions;
 ##  * the shipment is sent with session.perform("ship", …) like the shipping panel.
+##  * after shipment, bridge/starter/stove materials and second-batch seeds and
+##    cooking ingredients are provided. Devices use build actions. Refill,
+##    enable, cook, collect and picnic delivery use the actual panel buttons.
+##    Irrigation and cooking timers advance through World.step.
 ## REALLY EXERCISED: Session.host -> main._entered -> arrival card; my farm
 ##  actions through session.perform (hoe / seed / water / harvest / ship).
 ## SHOTS per size (11): arrival, plot_empty, plot_tilled, plot_sown, plot_watered,
@@ -126,6 +130,11 @@ func view_to_pixels(rect:Rect2)->Rect2:
 	var b:Vector2=xf*(rect.end*zoom)
 	return Rect2(a,b-a)
 
+func step_corner_visible(image:Image,cell:Vector2i)->bool:
+	var corner:Vector2=app.view.screen(Vector2(cell)).round()+Vector2(6,3)
+	var position:=Vector2i(view_to_pixels(Rect2(corner,Vector2.ONE)).position)
+	return Rect2i(Vector2i.ZERO,image.get_size()).has_point(position) and image.get_pixelv(position).is_equal_approx(Color("fff0ad"))
+
 func plot_world_rect()->Rect2:
 	var cells:=Opening.plot_rect()
 	return Rect2(app.view.screen(Vector2(cells.position)),Vector2(cells.size)*32.0)
@@ -190,6 +199,7 @@ func open_world()->bool:
 	path=OS.get_environment("TEMP").path_join("wangan-scene-%s.json"%Crypto.new().generate_random_bytes(8).hex_encode())
 	paths.append(path)
 	app=preload("res://main.tscn").instantiate();app.village_art_preview=true;root.add_child(app)
+	app.sound.reduced_motion=root.size.x>=1280
 	app.set_process(false);app.session.set_physics_process(false)
 	if app.session.host(0,"望安旅人",path)!=OK:
 		check(false,"Host starts")
@@ -219,6 +229,15 @@ func size_flow(size:Vector2i)->void:
 	var card:=WanganUI.card(app)
 	check(card!=null and card.is_visible_in_tree(),"Arrival card shown (%s)"%tag)
 	await shot("arrival")
+	var illustration:Control=card.find_child("ArrivalIllustration",true,false) if card else null
+	check(illustration!=null and illustration.is_visible_in_tree(),"Arrival shows the landing illustration (%s)"%tag)
+	if illustration and illustration.motion:
+		check(illustration.elapsed<illustration.ARRIVAL_SECONDS,"The boat begins its approach (%s)"%tag)
+		await create_timer(illustration.ARRIVAL_SECONDS).timeout
+		check(is_equal_approx(illustration.elapsed,illustration.ARRIVAL_SECONDS) and not illustration.is_processing(),"Landing finishes and stops animating (%s)"%tag)
+		await shot("arrival_disembarked")
+	elif illustration:
+		check(is_equal_approx(illustration.elapsed,illustration.ARRIVAL_SECONDS) and not illustration.is_processing(),"Reduced motion uses the landed frame (%s)"%tag)
 	if card!=null:
 		for panel:Dictionary in hud_panels():
 			if panel.name!=WanganUI.CARD:check(not card.get_global_rect().intersects(panel.rect),"Card clear of HUD %s (%s)"%[panel.name,tag])
@@ -240,16 +259,47 @@ func size_flow(size:Vector2i)->void:
 	await stand(VIEW_SPOT)
 	check(step_id()=="sow","Tilled (%s)"%tag)
 	marker_ok(await shot("plot_tilled"),"tilled "+tag,true)
+	var bag:Dictionary=person().inventory
+	for item in bag.keys():
+		if str(item).ends_with("_seed"):bag.erase(item)
+	await refresh()
+	check(step_id()=="buy_seed","Empty seed pouch points to the shop (%s)"%tag)
+	var stall:Vector2i=World.Village.resident_cell(w.state,"xiaoli")
+	var coins:=int(person().coins)
+	await stand(Vector2(stall)+Vector2(0.5,1.5))
+	await shot("restock_seeds")
+	var shop_cue:Rect2=app.view.first_crop_cue_rect
+	check(shop_cue.has_point(app.view.screen(Vector2(stall)+Vector2(0.5,0.5))),
+		"The gold cue surrounds Xiaoli's stand (%s)"%tag)
+	app._interact()
+	await settle()
+	var seed:Button=app.modal.find_child("StallBuy_radish",true,false) if is_instance_valid(app.modal) else null
+	var offer:Button=app.modal.find_child("StallOffer",true,false) if is_instance_valid(app.modal) else null
+	check(is_instance_valid(seed) and is_instance_valid(offer),"The interaction opens the real seed shop (%s)"%tag)
+	if seed!=null and offer!=null:
+		seed.pressed.emit()
+		offer.pressed.emit()
+	app._close_modal()
+	await refresh()
+	check(step_id()=="sow" and int(bag.get("radish_seed",0))==1 and int(person().coins)==coins-int(World.CROPS.radish.seed_price),
+		"Buying one seed returns the cue to the tilled plot (%s)"%tag)
 	await stand(WORK_SPOT)
 	await perform("seed",WORK_CELL,"radish")
 	await stand(VIEW_SPOT)
 	check(step_id()=="water","Sown (%s)"%tag)
-	marker_ok(await shot("plot_sown"),"sown "+tag,true)
+	var sown:=await shot("plot_sown")
+	marker_ok(sown,"sown "+tag,true)
+	check(step_corner_visible(sown,WORK_CELL),"The water cue marks the planted tile (%s)"%tag)
+	var cue:Rect2=app.view.first_crop_cue_rect
+	check(cue.has_area() and placements().all(func(entry):return not entry.rect.intersects(cue)),
+		"World labels leave the marked crop visible (%s)"%tag)
 	await stand(WORK_SPOT)
 	await perform("water",WORK_CELL)
 	await stand(VIEW_SPOT)
 	check(step_id()=="wait","Watered (%s)"%tag)
-	marker_ok(await shot("plot_watered"),"watered "+tag,true)
+	var watered:=await shot("plot_watered")
+	marker_ok(watered,"watered "+tag,true)
+	check(not step_corner_visible(watered,WORK_CELL),"The cue clears while the plant grows (%s)"%tag)
 	for i in 30:
 		if float(w.state.crops[World.key(WORK_CELL)].growth)>=float(World.CROPS.radish.time):break
 		w.step(5.0,true)
@@ -266,6 +316,147 @@ func size_flow(size:Vector2i)->void:
 	check(bool(w.state.chapter_one.shipped),"Shipped (%s)"%tag)
 	await stand(VIEW_SPOT)
 	marker_ok(await shot("after_ship"),"after ship "+tag,false)
+	check(str(app.objective.text).contains("到公告板按") and app.view.first_crop_cue_rect.has_point(
+		app.view.screen(Vector2(40.5,29.5))),"First shipment points to the board and shows how to contribute (%s)"%tag)
+	await stand(Vector2(40.5,30.5))
+	await shot("bridge_board")
+	person().inventory.merge({"wood":30,"stone":10},true)
+	await refresh()
+	app._interact()
+	await settle()
+	var donate:Button=null
+	if is_instance_valid(app.modal):
+		for button:Button in app.modal.find_children("*","Button",true,false):
+			if button.text=="捐入背包裡需要的材料":donate=button
+	check(donate!=null,"Board interaction opens the donation button (%s)"%tag)
+	if donate!=null:donate.pressed.emit()
+	await refresh()
+	var aru:Vector2i=Chapter.STARTER_CELL
+	check(w.state.board and str(app.objective.text).contains("找阿榆") and app.view.first_crop_cue_rect.has_point(
+		app.view.screen(Vector2(aru)+Vector2(0.5,0.5))),"Completing the bridge moves the cue to Aru (%s)"%tag)
+	await stand(Vector2(aru)+Vector2(0.5,1.5))
+	await shot("irrigation_aru")
+	person().inventory.merge(Chapter.STARTER_COST,true)
+	await refresh()
+	app._interact()
+	await settle()
+	var controls:Dictionary=app.modal.get_meta("chapter_starter_controls",{}) if is_instance_valid(app.modal) else {}
+	var claim:Button=controls.get("claim")
+	check(claim!=null and claim.is_visible_in_tree() and not claim.disabled,
+		"Aru opens directly to the available starter kit (%s)"%tag)
+	if claim!=null:claim.pressed.emit()
+	app._close_modal()
+	await refresh()
+	check(w.state.chapter_one.starter_claims.has(me) and int(person().inventory.get("sprinkler_kit",0))==1
+		and not app.view.first_crop_cue_rect.has_area() and str(app.objective.text).contains("補滿水桶"),
+		"After the trade the cue switches to connecting the kit (%s)"%tag)
+	await stand(Vector2(46.5,28.5))
+	for entry in [[Vector2i(45,26),"water_tank"],[Vector2i(46,26),"water_pipe"],
+		[Vector2i(47,26),"water_pipe"],[Vector2i(48,26),"sprinkler"]]:
+		await perform("build",entry[0],entry[1])
+	check(int(person().inventory.tank_kit)==0 and int(person().inventory.pipe_kit)==0
+		and int(person().inventory.sprinkler_kit)==0,"The whole supplied kit is placed (%s)"%tag)
+	person().inventory.radish_seed=1
+	await stand(Vector2(48.5,28.5))
+	await perform("hoe",Vector2i(48,27))
+	await perform("seed",Vector2i(48,27),"radish")
+	await stand(Vector2(44.5,26.5))
+	app._interact()
+	await settle()
+	var refill:Button=null
+	if is_instance_valid(app.modal):
+		for button:Button in app.modal.find_children("*","Button",true,false):
+			if button.text=="補滿儲水桶":refill=button
+	check(refill!=null,"The installed tank can be filled through its panel (%s)"%tag)
+	if refill!=null:refill.pressed.emit()
+	app._close_modal()
+	await stand(Vector2(49.5,26.5))
+	app._interact()
+	await settle()
+	var enable:Button=null
+	if is_instance_valid(app.modal):
+		for button:Button in app.modal.find_children("*","Button",true,false):
+			if button.text=="啟用":enable=button
+	check(enable!=null,"The installed sprinkler can be enabled through its panel (%s)"%tag)
+	if enable!=null:enable.pressed.emit()
+	app._close_modal()
+	check(w.step(8.0,true),"Advance the real irrigation schedule (%s)"%tag)
+	await refresh()
+	check(w.state.crops.get("48,27",{}).get("wet",false) and w.state.chapter_one.watered
+		and Chapter.phase(w.state)=="meal","Network irrigation completes and advances to the picnic (%s)"%tag)
+	await shot("irrigation_complete")
+	var stove:=Vector2i(46,28)
+	person().inventory.merge({"wood":12,"stone":15,"radish":2,"wheat":2},true)
+	await stand(Vector2(46.5,29.5))
+	await perform("build",stove,"stove")
+	for dish in ["soup","bread"]:
+		app._cook_menu(stove)
+		await settle()
+		var recipe:Button=app.modal.find_child("CookingRecipe_"+dish,true,false)
+		var enqueue:Button=app.modal.find_child("CookingEnqueue",true,false)
+		check(recipe!=null and enqueue!=null,"Recipe and cook action are present (%s, %s)"%[dish,tag])
+		if recipe!=null:recipe.pressed.emit()
+		await settle()
+		if enqueue!=null:enqueue.pressed.emit()
+		await refresh()
+		if dish=="soup":
+			check(str(app.objective.text).contains("小石灶料理中"),"The tracker identifies the cooking stage (%s)"%tag)
+			app._close_modal()
+			await shot("picnic_soup_cooking")
+		check(w.step(float(World.RECIPES[dish].time)+0.2,true),"Advance cooking time (%s, %s)"%[dish,tag])
+		await refresh()
+		if dish=="soup":
+			check(str(app.objective.text).contains("料理好了"),"The tracker reminds the player to collect (%s)"%tag)
+			await shot("picnic_soup_ready")
+			app._cook_menu(stove)
+			await settle()
+		var collect:Button=app.modal.find_child("CookingClaim",true,false)
+		check(collect!=null and not collect.disabled,"Cooked dish is ready to collect (%s, %s)"%[dish,tag])
+		if collect!=null:collect.pressed.emit()
+		await refresh()
+		app._close_modal()
+		check(int(person().inventory.get(dish,0))==int(World.RECIPES[dish].yield),
+			"Collected the recipe's exact yield (%s, %s)"%[dish,tag])
+	preload("res://scripts/chapter_ui.gd").open(app)
+	await settle()
+	var meal_step:Dictionary=app.modal.get_meta("chapter_step",{})
+	check(meal_step.get("meal_counts",{}).get("soup")==2 and meal_step.get("meal_counts",{}).get("bread")==1
+		and meal_step.get("meal_counts",{}).get("radish")==0 and meal_step.get("meal_counts",{}).get("wheat")==0,
+		"The letter reads the consumed ingredients and collected dishes (%s)"%tag)
+	await shot("picnic_dishes_ready")
+	app._close_modal()
+	await stand(Vector2(40.5,30.5))
+	check(str(app.objective.text).contains("到公告板按") and app.view.first_crop_cue_rect.has_point(
+		app.view.screen(Vector2(40.5,29.5))),"Prepared dishes guide the player to the delivery board (%s)"%tag)
+	await shot("picnic_delivery_cue")
+	app._interact()
+	await settle()
+	var serve:Button=app.modal.find_child("BoardServePicnic",true,false) if is_instance_valid(app.modal) else null
+	check(serve!=null and not serve.disabled,"The board accepts the cooked dishes (%s)"%tag)
+	if serve!=null:serve.pressed.emit()
+	await refresh()
+	check(w.state.picnic and w.state.picnic_materials.soup==2 and w.state.picnic_materials.bread==1,
+		"The first picnic opens with exactly the requested portions (%s)"%tag)
+	await shot("picnic_complete")
+	check(str(app.objective.text).contains("收下小栗的介紹信") and app.view.first_crop_cue_rect.has_area(),
+		"Picnic completion points to Xiaoli's next chapter (%s)"%tag)
+	await stand(Vector2(43.5,30.5))
+	app._interact()
+	await settle()
+	var tea_link:Button=app.modal.find_child("XiaoliTeaOrder",true,false) if is_instance_valid(app.modal) else null
+	check(tea_link!=null,"Xiaoli's shop exposes the tea order entry (%s)"%tag)
+	if tea_link!=null:tea_link.pressed.emit()
+	await settle()
+	var intro:Button=app.modal.find_child("TeaIntro",true,false) if is_instance_valid(app.modal) else null
+	check(intro!=null and not intro.disabled,"Xiaoli offers the next chapter's letter (%s)"%tag)
+	if intro!=null:intro.pressed.emit()
+	await refresh()
+	check(app.session.snapshot.get("tea_ceramics",{}).get("own_record",{}).get("intro",false),
+		"The real letter action starts the tea and pottery chapter (%s)"%tag)
+	app._close_modal()
+	await refresh()
+	check(not app.view.first_crop_cue_rect.has_area(),"Reading the letter clears Xiaoli's cue (%s)"%tag)
+	await shot("tea_letter_read")
 	await close_world()
 	# Occupied plot (another player's soil and floors).
 	if not await open_world():return

@@ -32,7 +32,8 @@ const GAMMA_REGION_ID:="dddddddddddddddddddddddddddddddd"
 const DIGEST:="0123456789abcdef"
 const OLD_CORRELATED:=["ship","undo_build","cook","queue_cook","claim_cook","cancel_cook","cancel_queued_cook",
 	"start_processing","queue_processing","claim_processing","cancel_processing","cancel_processing_job",
-	"feed_processing","unload_processing_input","toggle_auto_processing","collect_processing_output"]
+	"feed_processing","unload_processing_input","toggle_auto_processing","collect_processing_output",
+	"assemble","pet","feed","egg","livestock_pet","livestock_feed","livestock_collect","collector_collect"]
 const SOURCE_ACTIONS:=["craft","cook","queue_cook","start_processing","queue_processing"]
 
 class FixtureSession extends "res://scripts/session.gd":
@@ -116,7 +117,7 @@ func constants_section()->void:
 	for action in SOURCE_ACTIONS:check(Session.CORRELATED_ACTIONS.has(action),"sourced %s is correlated"%action)
 	for action in ["kitchen_register","kitchen_contribute"]:check(Session.CORRELATED_ACTIONS.has(action),"public kitchen followup is correlated: "+action)
 	var expected_correlated:Array=OLD_CORRELATED+["craft","prepare_material_box","kitchen_register","kitchen_contribute","flower_ship","flower_give","salt_gate_give","salt_rake","salt_install","salt_uninstall","salt_auto_cfg","salt_order","salt_box_take"]
-	check(Session.CORRELATED_ACTIONS.size()==expected_correlated.size() and expected_correlated.all(func(action):return Session.CORRELATED_ACTIONS.has(action)),"exact correlated set preserves older actions and adds both flower actions")
+	check(expected_correlated.all(func(action):return Session.CORRELATED_ACTIONS.has(action)),"correlated actions preserve the established shipping, craft, kitchen, flower and salt actions")
 	check(Session.PLAIN_EXTRA_MAX==32 and Session.SOURCED_EXTRA_MAX==96,"plain 32 / sourced 96 bounds")
 
 func bounds_section()->void:

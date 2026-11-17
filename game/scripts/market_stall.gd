@@ -33,7 +33,8 @@ extends RefCounted
 ## World 另有 World.market_cell(snapshot) 與 World.market_view(token) 包裝。
 const SHIPPING=preload("res://scripts/shipping.gd")
 const WEATHER=preload("res://scripts/weather.gd")
-const CROPS=preload("res://scripts/crop_catalog.gd").CROPS
+const CropCatalog=preload("res://scripts/crop_catalog.gd")
+const CROPS=CropCatalog.CROPS
 const FISH=preload("res://scripts/collections.gd").FISH
 
 const ACTIONS:=["market_stock","market_take","market_open","market_collect"]
@@ -57,7 +58,7 @@ const CATEGORY_NAMES:={"produce":"農漁產","dish":"料理","flower":"花"}
 const THEMES:=["produce","dish","flower"]
 const FLOWERS:=["bluebell","orange_blossom","chime_herb"]
 ## 有出貨價、但不屬於作物或魚的農牧產品。
-const PRODUCE_EXTRA:=["egg","milk","wool"]
+const PRODUCE_EXTRA:=["egg","milk","wool","duck_egg"]
 ## 原料不上市集（只能出貨）。
 const RAW:=["wood","stone","fiber","resin"]
 const MAX_KINDS:=4
@@ -73,7 +74,7 @@ static var _prices_cache:Dictionary={}
 static func sale_prices() -> Dictionary:
 	if _prices_cache.is_empty():
 		var world_script=load("res://scripts/world.gd")
-		_prices_cache=SHIPPING.prices(world_script.CROPS,world_script.FISH,world_script.OTHER_SALES)
+		_prices_cache=SHIPPING.prices(world_script.CROPS,world_script.FISH,world_script.OTHER_SALES,true)
 	return _prices_cache
 
 static func _table(prices:Dictionary) -> Dictionary:
@@ -84,8 +85,9 @@ static func _table(prices:Dictionary) -> Dictionary:
 static func category_of(item:String,prices:Dictionary={}) -> String:
 	if item.is_empty() or item.ends_with("_seed") or item in RAW:return ""
 	if not SHIPPING.integer_in(_table(prices).get(item),1,SHIPPING.MAX_COINS):return ""
-	if item in FLOWERS:return "flower"
-	if CROPS.has(item) or FISH.has(item) or item in PRODUCE_EXTRA:return "produce"
+	var base_item:=CropCatalog.base_kind(item)
+	if base_item in FLOWERS:return "flower"
+	if CROPS.has(base_item) or FISH.has(item) or base_item in PRODUCE_EXTRA:return "produce"
 	return "dish"
 
 static func sellable(item:String,prices:Dictionary={}) -> bool:

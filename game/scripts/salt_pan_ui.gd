@@ -60,7 +60,7 @@ const STATUS_IDS:=["unset","off","invalid","owner","full","rain","waiting","runn
 const STATUS_ICONS:={"unset":"chest","off":"bell","invalid":"sign","owner":"home","full":"chest","rain":"weather","waiting":"calendar","running":"harvest","wheel_only":"water","reserve":"hoe","manual":"hoe"}
 const STATUS_TINTS:={"running":Color("dfeccf"),"waiting":Color("e8eef0"),"wheel_only":Color("e8eef0"),"manual":Color("efe4cb"),"rain":Color("dde6ef"),"reserve":Color("efe4cb")}
 ## Paraphrased from work/salt/geography-evidence.json verified_sources (root browse 2026-11-14).
-const FACTS:=["井仔腳是北門一帶最早的鹽田，1818年遷至現址。",
+const FACTS:=["井仔腳前身是清代的瀨東鹽場，因水患於1818年遷至現址，成為北門的第一座鹽田。",
 	"今日保存下來的瓦盤鹽田，讓人參觀並體驗傳統的日曬收鹽。",
 	"遊戲裡的引海水、日曬、收鹽三步驟是簡化的玩法；水量、天數與產量都不是真實的工法或產量。"]
 const SOURCES:=[["交通部觀光署雲嘉南濱海國家風景區管理處","https://www.swcoast-nsa.gov.tw/zh-tw/attraction/details/369"],
@@ -1299,6 +1299,8 @@ static func route_page(ctx:Dictionary,left:VBoxContainer)->void:
 	# 第 40 章臺南北門回訪：鹽籃批次的進度一行（閘門修好之後）。
 	var basket_line:=Revisit.journal_line(ctx.snapshot)
 	if not basket_line.is_empty():label(app,left,basket_line,12,OK_TINT if basket_line.begins_with("✓") else BROWN).name="SaltRevisitLine"
+	if int(ctx.record.get("raked",0))>0:
+		label(app,left,"✓ 親手收過海鹽・瓦盤鹽田已收入手冊",12,OK_TINT).name="SaltFieldwork"
 
 static func memory_page(ctx:Dictionary,page:VBoxContainer)->void:
 	var app=ctx.app
@@ -1314,9 +1316,13 @@ static func memory_page(ctx:Dictionary,page:VBoxContainer)->void:
 	tight(app,page,"資料來源",12,FADED)
 	for index in SOURCES.size():
 		var entry:Array=SOURCES[index]
-		var source:=label(app,page,"%s　%s"%[entry[0],entry[1]],10,FADED)
+		var source:=LinkButton.new()
+		source.text=entry[0]
+		source.uri=entry[1]
+		source.add_theme_font_size_override("font_size",12)
+		source.add_theme_color_override("font_color",OK_TINT)
 		source.name="SaltSource_%d"%index
-		source.autowrap_mode=TextServer.AUTOWRAP_ARBITRARY
+		page.add_child(source)
 	if site_kind(ctx.site)=="heritage":
 		var line:=row(page,"SaltNoteRow",6)
 		if bool(ctx.record.get("note",false)):

@@ -67,6 +67,21 @@ func _initialize() -> void:
 		expect(not reopened.act("alice","jam-repeat","order",Board,"market_jam").ok,"Jam cannot pay again")
 		var after_jam:=World.new()
 		expect(after_jam.load_world(path) and "market_jam" in after_jam.state.players.alice.orders.done,"Completed market commission survives reload")
+		var dock:=World.WANGAN_COAST.DOCK_ORDERS
+		expect(not reopened.act("alice","dock-wrong-board","order_accept",Board,"dock_glassmakers").ok,"Coastal orders cannot be accepted at the village board")
+		alice.x=dock.x+0.5
+		alice.y=dock.y+0.5
+		expect(not reopened.act("alice","dock-closed","order_accept",dock,"dock_glassmakers").ok,"The dock orders require a repaired coastal route")
+		reopened.state.wangan_star_walk=true
+		expect(reopened.order_board("alice","dock").rows.size()==2 and reopened.order_board("alice").rows.size()==4,"The dock and village retain distinct sets of orders")
+		expect(reopened.act("alice","dock-accept","order_accept",dock,"dock_glassmakers").ok,"The repaired dock dispatches the crystal sand commission")
+		expect(not reopened.act("alice","dock-missing","order",dock,"dock_glassmakers").ok,"Missing supplies leave the order active")
+		alice.inventory.crystal_sand=2
+		alice.inventory.seashell=1
+		var coastal_coins:=int(alice.coins)
+		expect(reopened.act("alice","dock-deliver","order",dock,"dock_glassmakers").ok and int(alice.coins)==coastal_coins+92,"The coastal commission pays once")
+		expect(not reopened.act("alice","dock-duplicate","order",dock,"dock_glassmakers").ok,"The dock refuses duplicate delivery")
+		expect(after_jam.load_world(path) and "dock_glassmakers" in after_jam.state.players.alice.orders.done,"Coastal completion survives reload with the existing order book")
 	for suffix in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)

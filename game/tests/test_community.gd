@@ -81,7 +81,8 @@ func _initialize() -> void:
 		p.inventory["feed"]=1
 		p.inventory["wood"]=20
 		var collector:=World.LIVESTOCK.collector_cell(id)
-		expect(world.act(token,"box-"+id,"build",collector,"chest").ok,"Build the regional collector chest")
+		var built:=world.act(token,"box-"+id,"build",collector,"chest")
+		expect(built.ok,"Build the regional collector chest for %s (%s)"%[id,built.message])
 		expect(world.act(token,"refill-"+id,"livestock_feed",spec.cell,id).ok,"Feed an animal with a collector")
 		expect(world.step(World.LIVESTOCK.DAY*int(spec.days),true),"Advance livestock production")
 		expect(world.state.livestock[id].ready==0 and world.state.objects.get(World.key(collector),{}).get("items",{}).get(spec.item,0)==1,"The product is in the box only")

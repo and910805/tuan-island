@@ -1,0 +1,20 @@
+{$TUAN_PUBLIC_HOST} {
+	@island {
+		path /island /island/
+		method GET
+		header_regexp island_upgrade Upgrade (?i)^websocket$
+		header_regexp island_connection Connection (?i)(^|,)[[:space:]]*upgrade[[:space:]]*(,|$)
+	}
+	handle @island {
+		reverse_proxy {$TUAN_WORLD_UPSTREAM:127.0.0.1:8080}
+	}
+
+	@identity path /healthz /v1/*
+	handle @identity {
+		reverse_proxy {$TUAN_IDENTITY_UPSTREAM:127.0.0.1:8081}
+	}
+
+	handle {
+		respond 404
+	}
+}

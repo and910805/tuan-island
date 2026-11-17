@@ -38,6 +38,16 @@ func feed(events: Array) -> void:
 	Input.flush_buffered_events()
 	await process_frame
 
+func tap_joy(index:JoyButton)->void:
+	var event:=InputEventJoypadButton.new()
+	event.button_index=index
+	event.pressed=true
+	root.push_input(event,true)
+	var release:=event.duplicate() as InputEventJoypadButton
+	release.pressed=false
+	root.push_input(release,true)
+	await process_frame
+
 func run() -> void:
 	app = load("res://main.tscn").instantiate()
 	root.add_child(app)
@@ -51,10 +61,15 @@ func run() -> void:
 	app.session.own_id = "tester"
 	app.session.world = world
 	app.session.peers[1] = "tester"
+	app.session.sequences[1] = 0
+	app.session.rates[1] = []
 	app.session.set_physics_process(false)
 	var path := "user://input-routing-%d.cfg" % Time.get_ticks_usec()
 	app.bindings.load_preferences(path)
-	expect(app.bindings.rebind("inventory", KEY_Q).ok and app.bindings.rebind("map", KEY_H).ok, "test binds new inventory and map keys")
+	app._unhandled_input(key(KEY_Q))
+	expect(app.modal!=null and app.modal.find_child("OpenMapSignals",true,false)!=null,"Q opens island greetings and marks")
+	app._close_modal()
+	expect(app.bindings.rebind("inventory", KEY_Q,true).ok and app.bindings.rebind("map", KEY_H).ok, "test binds new inventory and map keys")
 	app._unhandled_input(key(KEY_TAB))
 	expect(app.modal == null, "old inventory key does not open")
 	app._unhandled_input(key(KEY_Q))
@@ -163,12 +178,31 @@ func run() -> void:
 	app._inventory()
 	expect(app.movement_direction()==Vector2.ZERO,"Inventory blocks stick movement")
 	var back:=InputEventJoypadButton.new()
+	back.device=7
 	back.button_index=JOY_BUTTON_B
 	back.pressed=true
 	app._input(back)
 	expect(app.modal==null,"Controller back closes inventory")
+	app.controller_aim=true
+	app.area_drag=true
+	app.session.input_direction(app.movement_direction())
+	expect(app.session.directions[1].x>0.6,"The local server has the last live stick direction")
 	app._controller_connection_changed(7,false)
 	expect(app.movement_direction()==Vector2.ZERO,"Disconnect clears latched direction")
+	expect(app.controller_protected and app.session.controller_holds.has(1),"Shared host is protected on both client and server")
+	expect(app.session.directions[1]==Vector2.ZERO,"Disconnect dispatches zero movement without waiting for a frame")
+	expect(not app.area_drag and not app.controller_aim and "手把已斷線" in app.toast.text,
+		"Disconnect drops the unfinished controller gesture and shows a recovery hint")
+	stick.device=8
+	app._input(stick)
+	expect(not app.controller_protected and not app.session.controller_holds.has(1),"Intentional movement on a second controller resumes the protected host")
+	app.session.input_direction(app.movement_direction())
+	app._controller_connection_changed(7,false)
+	expect(app.session.directions[1].x>0.6 and app.controller_navigation,"A stale disconnect leaves the other controller working")
+	app._controller_connection_changed(8,false)
+	await feed([native(KEY_D,NATIVE_PHYSICAL)])
+	expect(app.movement_direction()==Vector2.RIGHT,"Keyboard movement remains available after disconnect")
+	await feed([native(KEY_D,NATIVE_PHYSICAL,false)])
 	var direction:=InputEventJoypadButton.new()
 	direction.button_index=JOY_BUTTON_DPAD_RIGHT
 	direction.pressed=true
@@ -183,6 +217,44 @@ func run() -> void:
 	expect(focused is BaseButton and app.modal.is_ancestor_of(focused),"Controller-opened construction catalog assigns focus")
 	app._input(back)
 	expect(app.modal==null,"B returns from construction catalog")
+	await tap_joy(JOY_BUTTON_LEFT_STICK)
+	expect(app.modal!=null and app.modal.has_meta("controller_shortcuts"),"Clicking the left stick opens the quick menu")
+	await tap_joy(JOY_BUTTON_DPAD_UP)
+	await tap_joy(JOY_BUTTON_A)
+	expect(is_instance_valid(app.map_view),"D-pad Up and A open the local map")
+	await tap_joy(JOY_BUTTON_B)
+	await tap_joy(JOY_BUTTON_LEFT_STICK)
+	await tap_joy(JOY_BUTTON_DPAD_LEFT)
+	await tap_joy(JOY_BUTTON_A)
+	expect(app.modal!=null and app.modal.get_meta("life_modal_layout", "")=="travel_map","D-pad Left and A open the travel map")
+	await tap_joy(JOY_BUTTON_B)
+	await tap_joy(JOY_BUTTON_LEFT_STICK)
+	await tap_joy(JOY_BUTTON_DPAD_RIGHT)
+	await tap_joy(JOY_BUTTON_A)
+	var greeting_focus:=root.gui_get_focus_owner() as Button
+	expect(greeting_focus!=null and greeting_focus.text=="區域聊天","D-pad Right and A open greetings with a focused action")
+	await tap_joy(JOY_BUTTON_B)
+	var marker_target:Vector2i=app._controller_target()
+	await tap_joy(JOY_BUTTON_LEFT_STICK)
+	await tap_joy(JOY_BUTTON_DPAD_DOWN)
+	await tap_joy(JOY_BUTTON_A)
+	expect(app.modal!=null and app.modal.find_child("MapSignal_wood",true,false)!=null,"D-pad Down and A open the marker choices")
+	await tap_joy(JOY_BUTTON_A)
+	expect(app.modal==null and app.session.map_signals.get(1,{}).get("cell")==marker_target,"Confirming a marker sends the captured aim through Session")
+	app.session._send_snapshot(1)
+	app._map_menu()
+	expect(app.map_view.data.get("map_signals",[]).size()==1,"Reopening the map shows the shared marker from Session")
+	var preview_path:String=app.arg_value("map-signal-preview","")
+	if not preview_path.is_empty() and DisplayServer.get_name()!="headless":
+		await process_frame
+		await RenderingServer.frame_post_draw
+		expect(root.get_texture().get_image().save_png(preview_path)==OK,"Map marker preview saved")
+	app._close_modal()
+	app._map_signal_menu(marker_target)
+	var cancel_marker:Button=app.modal.find_child("MapSignal_cancel",true,false)
+	cancel_marker.grab_focus()
+	await tap_joy(JOY_BUTTON_A)
+	expect(app.modal==null and app.session.map_signals.is_empty(),"The controller can cancel an existing marker")
 	click.ctrl_pressed = true
 	app._unhandled_input(click)
 	expect(app.area_drag, "rebound held Ctrl starts an area drag")
@@ -198,6 +270,7 @@ func run() -> void:
 	world.state.players.tester.inventory.wood=20
 	world.state.players.tester.x=39.5
 	world.state.players.tester.y=34.5
+	app.session._send_snapshot(1)
 	app.controller_offset=Vector2i.ZERO
 	app.action_clock=0
 	var pad:=InputEventJoypadButton.new()
@@ -293,6 +366,22 @@ func run() -> void:
 	pad.button_index=JOY_BUTTON_A
 	app._input(pad)
 	await process_frame
+	var camera_choice:=app.modal.find_child("CameraMode",true,false) as OptionButton
+	expect(camera_choice!=null and camera_choice.item_count==2,"Settings expose both camera modes")
+	if camera_choice!=null:
+		camera_choice.select(1)
+	var camera_preview:String=app.arg_value("camera-settings-preview","")
+	if not camera_preview.is_empty() and DisplayServer.get_name()!="headless":
+		var original_size:=root.size
+		for window_size:Vector2i in [Vector2i(1280,720),Vector2i(1920,1080)]:
+			root.size=window_size
+			await create_timer(0.30).timeout
+			await RenderingServer.frame_post_draw
+			expect(root.get_visible_rect().encloses(camera_choice.get_global_rect()),"Camera choice stays visible at "+str(window_size))
+			if window_size==Vector2i(1280,720):
+				expect(root.get_texture().get_image().save_png(camera_preview)==OK,"Camera settings preview saved")
+		root.size=original_size
+		await process_frame
 	var motion:CheckBox
 	for box:CheckBox in app.modal.find_children("*","CheckBox",true,false):
 		if box.text.contains("減少"):
@@ -324,11 +413,98 @@ func run() -> void:
 				var saved:=ConfigFile.new()
 				expect(saved.load(settings_path)==OK and saved.get_value("comfort","reduced_motion",initial)==not initial,"Controller A saves the changed comfort preference")
 				expect(app.view.reduced_motion==not initial,"Saved motion setting is applied immediately")
+				expect(saved.get_value("comfort","fixed_area_camera",false) and app.view.fixed_area_camera,"Saving settings applies and persists the chosen camera mode")
 	app._input(back)
 	expect(app.modal==null,"Controller B closes comfort settings")
+	await verify_gather_hold()
 	app.playing = false
+	app.sound.close()
+	await create_timer(0.15).timeout
 	DirAccess.remove_absolute(path)
 	app.queue_free()
 	await process_frame
 	print("INPUT_ROUTING_TESTS checks=%d failures=%d" % [checks, failures])
 	quit(int(failures > 0))
+
+func verify_gather_hold() -> void:
+	var world=app.session.world
+	var actor:Dictionary=world.state.players.tester
+	actor.x=40.5
+	actor.y=36.5
+	var tree:=Vector2i(41,37)
+	var tile:=World.key(tree)
+	world.state.forest[tile]={"growth":World.TREE_TIME,"mature":true,"owner":"tester"}
+	app.session.rates[1]=[]
+	app.session._send_snapshot(1)
+	app.view.update_camera(Vector2(actor.x,actor.y),true)
+	app._select_tool("axe")
+	var mouse:=InputEventMouseButton.new()
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.pressed=true
+	mouse.position=app.view.screen(Vector2(tree)+Vector2(0.5,0.5))*app.view.view_zoom()
+	app.action_clock=0.0
+	app._input(mouse)
+	app._unhandled_input(mouse)
+	expect(world.state.damage.get(tile,0)==1,"A mouse press takes the first swing")
+	var release:=mouse.duplicate() as InputEventMouseButton
+	release.pressed=false
+	release.position=Vector2(0,0)
+	app._input(release)
+	app.action_clock=0.0
+	app._update_gather_hold(1.0,mouse.position)
+	expect(app.gather_hold.is_empty() and world.state.damage.get(tile,0)==1,"Releasing over the HUD stops repeated hits")
+	app._input(mouse)
+	app._unhandled_input(mouse)
+	app.action_clock=0.0
+	app._update_gather_hold(0.1,mouse.position)
+	expect(world.state.damage.get(tile,0)==2,"A held click waits for the next stroke")
+	app._update_gather_hold(0.3,mouse.position)
+	expect(app.gather_hold.is_empty() and not world.state.forest.has(tile),"Keeping the button down finishes the tree and releases the action")
+	var used:int=app.session.counter
+	app._update_gather_hold(2.0,mouse.position)
+	expect(app.session.counter==used,"Holding after depletion sends no further request")
+	var next_tree:=tree+Vector2i.RIGHT
+	var next_key:=World.key(next_tree)
+	world.state.forest[next_key]={"growth":World.TREE_TIME,"mature":true,"owner":"tester"}
+	app.session._send_snapshot(1)
+	mouse.position=app.view.screen(Vector2(next_tree)+Vector2(0.5,0.5))*app.view.view_zoom()
+	app.action_clock=0.0
+	app._input(mouse)
+	app._unhandled_input(mouse)
+	app.action_clock=0.0
+	app._update_gather_hold(1.0,mouse.position-Vector2(32.0*app.view.view_zoom(),0.0))
+	expect(app.gather_hold.is_empty() and world.state.damage.get(next_key,0)==1,"Moving the aim off a held tile cancels further hits")
+	app._input(mouse)
+	app._unhandled_input(mouse)
+	app._inventory()
+	expect(app.gather_hold.is_empty() and world.state.damage.get(next_key,0)==2,"Opening a menu cancels the hold immediately")
+	app._close_modal()
+	actor=world.state.players.tester
+	actor.x=52.5
+	actor.y=25.5
+	world.state.board=true
+	app.session.rates[1]=[]
+	app.session._send_snapshot(1)
+	app._select_tool("pick")
+	app.controller_offset=Vector2i.RIGHT*2
+	app.action_clock=0.0
+	var controller:=InputEventJoypadButton.new()
+	controller.device=7
+	controller.button_index=JOY_BUTTON_X
+	controller.pressed=true
+	app._input(controller)
+	expect(int(world.state.quarry.hits)==1,"The controller X press starts the quarry stroke")
+	app.action_clock=0.0
+	app._update_gather_hold(0.36,Vector2.ZERO)
+	expect(int(world.state.quarry.hits)==2,"Holding controller X advances the quarry")
+	app.action_clock=0.0
+	app._update_gather_hold(0.36,Vector2.ZERO)
+	expect(app.gather_hold.is_empty() and int(world.state.quarry.hits)==0 and float(world.state.quarry.ready)>float(world.state.time),"Quarry depletion cleanly ends the hold")
+	world.state.quarry.ready=0.0
+	app.session.rates[1]=[]
+	app.action_clock=0.0
+	app.set_process(true)
+	app._input(controller)
+	await create_timer(1.05).timeout
+	app.set_process(false)
+	expect(app.gather_hold.is_empty() and float(world.state.quarry.ready)>float(world.state.time),"The normal frame loop completes the quarry hold in real time")

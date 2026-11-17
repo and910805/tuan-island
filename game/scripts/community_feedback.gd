@@ -7,6 +7,9 @@ extends RefCounted
 ##   {"kind":"contribute"|"opened", "age":float, "meals":Array[String]}
 
 const PK := preload("res://scripts/public_kitchen.gd")
+const Shared := preload("res://scripts/community.gd")
+const SHARED_DURATION := 1.35
+const CLAIM_DURATION := 0.8
 
 const DURATION_CONTRIBUTE := 2.0
 const DURATION_OPENED := 4.0
@@ -17,10 +20,14 @@ const OPENED := "opened"
 var _last: Dictionary = {}
 ## Active cue: {kind, start, meals} or {}.
 var _event: Dictionary = {}
+var _shared_starts: Dictionary = {}
+var _claim_starts: Dictionary = {}
 
 func reset() -> void:
 	_last = {}
 	_event = {}
+	_shared_starts.clear()
+	_claim_starts.clear()
 
 static func _valid_time(now: float) -> bool:
 	return is_finite(now) and now >= 0.0
@@ -45,10 +52,12 @@ func observe(previous: Dictionary, next: Dictionary, now: float) -> void:
 	if not _valid_time(now):
 		reset()
 		return
+	_observe_shared(previous,next,now)
 	var after := _kitchen(next)
 	if after.is_empty():
 		# Region switch, unregistered/reset or malformed kitchen: clear everything.
-		reset()
+		_last = {}
+		_event = {}
 		return
 	if previous.is_empty():
 		# Initial snapshot, join or reconnect: adopt silently.
@@ -87,6 +96,40 @@ func observe(previous: Dictionary, next: Dictionary, now: float) -> void:
 	if increased.is_empty():return  # repeated/replayed snapshot: keep original start
 	if _active_kind(now) == OPENED:return  # opening wins while it is still playing
 	_event = {"kind":CONTRIBUTE, "start":now, "meals":increased}
+
+func _observe_shared(previous:Dictionary,next:Dictionary,now:float)->void:
+	var before:Dictionary=previous.get("community",{})
+	var after:Dictionary=next.get("community",{})
+	if previous.get("region_id","home")!="home" or next.get("region_id","home")!="home" or Shared.table_cell(next)==Shared.NO_CELL or before.get("table")!=after.get("table") or float(next.get("time",0))<float(previous.get("time",0)):
+		_shared_starts.clear()
+		_claim_starts.clear()
+		return
+	for dish:String in Shared.DISHES:
+		var plate:String=Shared.DISHES[dish]
+		var old_count:=int(before.get(dish,{}).get("portions",0))
+		var latest:Dictionary=after.get(dish,{})
+		var new_count:=int(latest.get("portions",0))
+		if old_count==0 and new_count>0:
+			_shared_starts[plate]=now
+			_claim_starts.erase(plate)
+		elif new_count<old_count and not latest.is_empty():
+			_claim_starts[plate]=now
+			_shared_starts.erase(plate)
+
+func sample_shared(now:float,reduced:bool)->Dictionary:
+	return _sample_plates(_shared_starts,SHARED_DURATION,now,reduced)
+
+func sample_claims(now:float,reduced:bool)->Dictionary:
+	return _sample_plates(_claim_starts,CLAIM_DURATION,now,reduced)
+
+func _sample_plates(starts:Dictionary,duration:float,now:float,reduced:bool)->Dictionary:
+	if reduced or not _valid_time(now):return {}
+	var progress:Dictionary={}
+	for plate:String in starts:
+		var age:=now-float(starts[plate])
+		if age>=0.0 and age<duration:
+			progress[plate]=age/duration
+	return progress
 
 func _duration(kind: String) -> float:
 	return DURATION_OPENED if kind == OPENED else DURATION_CONTRIBUTE

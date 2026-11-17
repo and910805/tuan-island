@@ -415,6 +415,33 @@ func rainy_flow(label:String)->void:
 	set_day(0)
 	await refresh()
 
+func waiting_flow(label:String)->void:
+	set_day(0)
+	w.state.history_memory.players[id].completed_day=0  # PRESET: practice finished today.
+	await stand(GATE_SPOT,"lanyang")
+	check("明天起" in tracker(),"The tracker says when to return (%s)"%label)
+	await interact_key()
+	if not page_open():
+		check(false,"The waiting page opens (%s)"%label)
+		return
+	var waiting_modal:Node=app.modal
+	check(shown("RevisitHold") and label_text("RevisitHoldText")==Revisit.RETURN_TOMORROW
+		and not shown("RevisitGates"),"Waiting shows Xinghe's invitation without gate controls (%s)"%label)
+	layout_ok("waiting "+label)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--wait-shot-dir=") and DisplayServer.get_name()!="headless":
+			await RenderingServer.frame_post_draw
+			var path_for_image:=arg.trim_prefix("--wait-shot-dir=").path_join("waiting-"+label+".png")
+			check(root.get_texture().get_image().save_png(path_for_image)==OK,"Capture the waiting invitation (%s)"%label)
+	set_day(1)
+	await refresh()
+	check(app.modal==waiting_modal and shown("RevisitGates") and not shown("RevisitHold"),
+		"The open page unlocks after midnight (%s)"%label)
+	await close_page()
+	w.state.history_memory.players[id].erase("completed_day")
+	set_day(0)
+	await refresh()
+
 func dry_flow(label:String)->void:
 	# 星禾 / 中段 before anyone set the gates.
 	await stand(MID_SPOT,"lanyang")
@@ -536,6 +563,7 @@ func dry_flow(label:String)->void:
 	check(tracker().begins_with("旱日分流完成\n工作台可做分流閘了"),"Tracker points to the workbench (%s): %s"%[label,tracker()])
 	await interact_key()
 	check(layout_name()=="lanyang_garden" and shown("RevisitOpen"),"After claiming, 星禾 opens the canal notes with the revisit link (%s): %s"%[label,layout_name()])
+	check("田尾也聽得到水聲了" in texts(),"Xinghe acknowledges the finished work after the plaque is claimed (%s)"%label)
 	await close_page()
 
 func gate_flow(label:String)->void:
@@ -651,6 +679,7 @@ func size_flow(label:String)->void:
 	await reset()
 	await bench_recipe("locked "+label,true)
 	await not_ready_flow(label)
+	await waiting_flow(label)
 	await rainy_flow(label)
 	await dry_flow(label)
 	await bench_recipe("unlocked "+label,false)

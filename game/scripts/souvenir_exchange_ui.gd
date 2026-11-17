@@ -12,7 +12,7 @@ extends RefCounted
 ## 48×56 stall (souvenir_art.booth(): navy-and-gold awning, bunting, three tiny
 ## souvenirs, a yellow ticket on the counter) — clearly different from the green-and-
 ## cream 市集攤位 five tiles south and 小栗's red-and-cream shop. World label 「紀念品交換攤」, focused
-## 「紀念品交換攤・兌換裝飾」 + the interact-key badge. Interaction point order in
+## 「兌換紀念品」 + the interact-key badge. Interaction point order in
 ## main._interact / world_view.interaction_focus: existing residents → walk-up
 ## residents → market → harvest → fishing meet → showcase sign → this booth → objects.
 ##
@@ -81,7 +81,7 @@ static func near_booth(s:Dictionary,id:String)->bool:
 
 ## World label of the booth: the short name, or what the interact key does.
 static func booth_title(focused:bool)->String:
-	return TITLE+"・兌換裝飾" if focused else TITLE
+	return "兌換紀念品" if focused else TITLE
 
 static func entry_caption(unlocked:bool)->String:
 	return ENTRY_OPEN if unlocked else ENTRY_LOCKED

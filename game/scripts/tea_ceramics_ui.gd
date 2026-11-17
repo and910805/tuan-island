@@ -8,7 +8,8 @@ const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
 const Shell=preload("res://scripts/life_ui_shell.gd")
 const Helpers=preload("res://scripts/freight_ui.gd")
 const Revisit=preload("res://scripts/tea_revisit_ui.gd")
-const TITLES:={"home":"小栗的茶單與回收","journal":"第二章・茶陶合作手帳","host":"茶茶的合作茶園","potter":"陶師的工作桌","clay":"備土台","kiln":"製罐窯","pick":"茶叢","roast":"茶葉烘焙台","pack":"包裝與寄運"}
+const TeawareArt=preload("res://scripts/tea_revisit_art.gd")
+const TITLES:={"home":"小栗的茶單與回收","journal":"第二章・茶陶合作手帳","host":"茶茶的合作茶園","potter":"陶師的工作桌","clay":"備土台","kiln":"製罐窯","pick":"茶叢","roast":"茶葉烘焙台","pack":"包裝與寄運","house":"貓空茶屋・茶陶展示桌"}
 const JAR_NAMES:={"tea_jar":"新罐","tea_returned_jar":"回收罐","tea_worn_jar":"磨損罐","tea_spent_jar":"待修罐"}
 const JAR_ORDER:=["tea_worn_jar","tea_returned_jar","tea_jar"]
 const WORKSHOP_ART=preload("res://assets/tea-ceramics/buildings.png")
@@ -19,9 +20,9 @@ const GOLD:=Color("f0bb72")
 static func unlocked(snapshot:Dictionary)->bool:
 	return World.CHAPTER_ONE.phase(snapshot)=="complete"
 
-static func interaction_points(region:String)->Dictionary:
+static func interaction_points(region:String,snapshot:Dictionary={})->Dictionary:
 	var points:Dictionary={}
-	var sites:=View.tea_points(region)
+	var sites:=View.tea_points(region,snapshot)
 	for cell:Vector2i in sites:points["tea:"+sites[cell]]=Vector2(cell)+Vector2(0.5,0.5)
 	return points
 
@@ -56,7 +57,7 @@ static func refresh(app)->void:
 	var now:=float(snapshot.get("time",0))
 	var tea=World.TEA_CERAMICS
 	var site:String=app.modal.get_meta("tea_site")
-	var cell:Vector2i={"home":tea.RECEIVER,"host":tea.TEA_NPC,"potter":tea.POTTER,"clay":tea.CLAY,"kiln":tea.KILN,"roast":tea.ROASTER,"pack":tea.PACKER}.get(site,app.modal.get_meta("tea_cell"))
+	var cell:Vector2i={"home":tea.RECEIVER,"host":tea.TEA_NPC,"potter":tea.POTTER,"clay":tea.CLAY,"kiln":tea.KILN,"roast":tea.ROASTER,"pack":tea.PACKER,"house":World.TEA_REVISIT.HOUSE_SITE}.get(site,app.modal.get_meta("tea_cell"))
 	var region:="home" if site=="home" else ("yingge" if site in ["potter","clay","kiln"] else "maokong")
 	var nearby:bool=str(snapshot.get("region_id","home"))==region and not actor.is_empty() and Vector2(actor.x,actor.y).distance_to(Vector2(cell)+Vector2(0.5,0.5))<=3.2
 	var bag:Dictionary=actor.get("inventory",{})
@@ -68,17 +69,20 @@ static func refresh(app)->void:
 	remaining.clay=maxi(0,ceili(float(record.clay_ready)-now))
 	remaining.pick=maxi(0,ceili(float(record.harvest_ready.get(str(tea.TEA_NODES.find(cell)),0))-now))
 	var choice:String=app.modal.get_meta("tea_choice","")
-	var fingerprint:=JSON.stringify([record,bag,remaining,nearby,chapter_complete,choice,snapshot.get("resident_memories",[]), snapshot.get("resident_participation",{}),snapshot.get("tea_revisit",{})])
+	var display:Dictionary=snapshot.get(World.TEA_REVISIT.HOUSE_KEY,{})
+	var house_round:=World.TEA_SERVICE.current_round(snapshot,World.TEA_REVISIT.HOUSE_KEY) if site=="house" else {}
+	var fingerprint:=JSON.stringify([record,bag,remaining,nearby,chapter_complete,choice,snapshot.get("resident_memories",[]), snapshot.get("resident_participation",{}),snapshot.get("tea_revisit",{}),display,house_round])
 	if app.modal.get_meta("tea_fingerprint","")==fingerprint:return
 	app.modal.set_meta("tea_fingerprint",fingerprint)
 	var height:=318.0
-	if site=="journal":height=530.0 if record.get("comparison_complete",false) else 475.0  # 第 40 章：完成比較後多一行茶罐大單進度
+	if site=="journal":height=568.0 if record.get("comparison_complete",false) else 475.0  # 完成比較後保留茶罐大單進度與路線按鈕。
 	elif site=="home" and intro:height=430.0
 	elif site=="kiln":height=418.0 if intro and record.kiln.is_empty() else 278.0
 	elif site=="pack":height=520.0 if not record.returning.is_empty() else 410.0
-	elif site=="host":height=(310.0 if record.get("comparison_complete",false) else 334.0) if intro else 294.0
+	elif site=="host":height=(310.0 if record.get("comparison_complete",false) else 334.0) if intro else 302.0
 	elif site=="potter":height=296.0
 	elif site=="roast" and record.roast.is_empty():height=410.0
+	elif site=="house":height=340.0
 	app.modal.set_meta("tea_height",height)
 	# 第 40 章：包裝台頁底部多了「茶罐大單」入口，加寬一點讓整列按鈕放得下。
 	if site=="pack" and intro:app.modal.set_meta("tea_width",600.0)
@@ -108,6 +112,27 @@ static func refresh(app)->void:
 		app._resident_story_dialogue(page,"chacha" if site=="host" else "yingge_potter")
 	elif site=="kiln":
 		kiln(app,page,actions,record,bag,remaining.kiln,nearby,cell)
+	elif site=="house":
+		var lender:=bool(display.get("lender_own",false))
+		var occupied:=bool(display.get("occupied",false))
+		var state_text:="來客都看得到這組鶯歌茶陶。" if occupied else "帶著完成茶罐大單後領到的茶陶組，替茶屋布置一席茶。"
+		item_line(app,page,World.TEA_REVISIT.TEAWARE_ITEM,"茶屋展示",state_text)
+		if occupied:
+			var cups:=int(house_round.get("portions",0))
+			var note:="用一份焙茶泡一壺，每位島民可喝一杯。"
+			if cups>0:
+				note="%s・剩 %d／6 杯"%[World.TEA_SERVICE.style_name(house_round.style),cups]
+				if display.get("sipped_own",false):note+="・你已喝過這一壺"
+			elif house_round.get("cold",false):note="昨天的茶已放涼，可以重新泡一壺。"
+			Helpers.text(app,page,note,16)
+			for style:String in World.TEA_SERVICE.STYLES:
+				var caption:="泡淺焙" if style=="light" else "泡深焙"
+				perform.call("TeaHouseBrew_"+style,caption,World.TEA_SERVICE.HOUSE_BREW,cups==0 and int(bag.get(World.TEA_SERVICE.TEA_ITEMS[style],0))>0,style)
+			perform.call("TeaHouseSip","喝一杯",World.TEA_SERVICE.HOUSE_SIP,cups>0 and not display.get("sipped_own",false))
+			if lender:
+				perform.call("TeaHouseReclaim","收回茶陶組",World.TEA_REVISIT.HOUSE_RECLAIM,cups==0 and int(bag.get(World.TEA_REVISIT.TEAWARE_ITEM,0))<World.TEA_REVISIT.MAX_ITEM)
+		else:
+			perform.call("TeaHouseDisplay","借展茶陶組",World.TEA_REVISIT.HOUSE_DISPLAY,int(bag.get(World.TEA_REVISIT.TEAWARE_ITEM,0))>0)
 	elif not intro:
 		item_line(app,page,"wrapped_jar","小栗的介紹信","還記得我說想借陶罐帶湯嗎？先請鶯歌陶師教你製罐，再從貓空寄一批茶來。空罐回到茶園後，我們就知道下次怎麼用同一只罐帶湯了。")
 		if site=="home":perform.call("TeaIntro","收下介紹信","tea_intro",chapter_complete)
@@ -392,7 +417,7 @@ static func item_line(app,parent:Control,item:String,title:String,detail:String)
 	var row:=HBoxContainer.new()
 	row.add_theme_constant_override("separation",12)
 	parent.add_child(row)
-	var texture:=Art.icon(item)
+	var texture:=TeawareArt.teaware_texture() if item==World.TEA_REVISIT.TEAWARE_ITEM else Art.icon(item)
 	if not texture:texture=Shell.icon("journal")
 	row.add_child(Shell.picture(texture,32))
 	var words:=VBoxContainer.new()

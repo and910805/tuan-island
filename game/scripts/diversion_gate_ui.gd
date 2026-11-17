@@ -129,6 +129,10 @@ static func open(app,cell:Vector2i) -> void:
 		b.expand_icon=true
 		b.add_theme_constant_override("icon_max_width",24)
 		modes.add_child(b)
+	for index in modes.get_child_count():
+		var button:=modes.get_child(index) as Button
+		button.focus_neighbor_left=button.get_path_to(modes.get_child(maxi(0,index-1)))
+		button.focus_neighbor_right=button.get_path_to(modes.get_child(mini(modes.get_child_count()-1,index+1)))
 	var help:=_paper(body,"GateHelp")
 	for mode:String in Industry.GATE_MODES:_text(app,help,"GateHelp_"+mode,str(MODE_HELP[mode]),14,MUTED)
 	var zones:=_paper(body,"GateZoneCard")

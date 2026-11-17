@@ -254,12 +254,16 @@ func bk_harvest(keys: Array, label: String) -> void:
 		bk_step(duration, label + ": " + kind)
 	for k in keys:
 		if failed:return
-		var kind: String = world.state.crops[k].kind
+		var plot:Dictionary=world.state.crops[k]
+		var kind:String=plot.kind
 		var snap := bag().duplicate(true)
+		var gain:=int(World.CROPS[kind]["yield"])
+		var delta:Dictionary={kind:gain}
+		var quality:=World.quality_crop(plot,World.has_crop_guarantee(person()))
+		if not quality.is_empty():delta[quality]=1
 		bk_run("harvest", World.cell(k))
 		if failed:return
-		var gain := int(World.CROPS[kind]["yield"])
-		expect_delta(snap, {kind:gain}, "Harvesting " + kind)
+		expect_delta(snap,delta,"Harvesting "+kind)
 		bk_count(bk_harvested, kind, gain)
 
 func bk_gather(item: String, minimum: int, kinds: Array) -> void:
@@ -580,19 +584,36 @@ func bk_flour() -> void:
 func bk_pie() -> void:
 	var pie: Dictionary = World.RECIPES[BK_PIE]
 	var snap := bag().duplicate(true)
-	bk_run("cook", stove, BK_PIE)
+	bk_run("queue_cook", stove, BK_PIE)
 	if failed:return
 	expect_delta(snap, negate(pie.ingredients), "Cooking pumpkin pie consumed pumpkin, flour and egg")
+	var active:Dictionary=bk_obj(stove).cooking.active
+	var job_id:String=active.id
 	bk_probe("claim_cook", stove, "", "Claiming pumpkin pie before 120 s", "秒")
-	bk_step(float(pie.time), "cook pumpkin pie")
+	bk_step(float(pie.time)*0.5, "pumpkin pie half baked")
+	var paid_bag:=bag().duplicate(true)
+	var saved_time:=float(world.state.time)
+	expect(world.save(),"Graceful shutdown saves the current cooking clock")
+	var reopened:=World.new()
+	expect(reopened.load_world(world.save_path) and not reopened.recovered_from_backup,"Mid-bake reload opens the primary save")
+	if failed:return
+	world=reopened
+	expect(is_equal_approx(float(world.state.time),saved_time),"Mid-bake reload restores the saved world time")
+	var restored:Dictionary=bk_obj(stove).cooking.active
+	expect(restored.get("id")==job_id and is_equal_approx(float(restored.get("finish",0)),float(active.finish)),"Mid-bake reload preserves the queued pie and deadline")
+	expect(same_inventory(bag(),paid_bag),"Mid-bake reload does not debit ingredients again")
+	bk_step(float(pie.time)*0.5, "finish pumpkin pie after reload")
+	var ready:Array=bk_obj(stove).cooking.ready
+	expect(ready.size()==1 and ready[0].id==job_id,"Exactly one pie batch is ready after the original deadline")
 	snap = bag().duplicate(true)
-	bk_run("claim_cook", stove)
+	bk_run("claim_cook", stove, job_id)
 	if failed:return
 	expect_delta(snap, {BK_PIE:int(pie["yield"])}, "Claiming pumpkin pie")
 	bk_count(bk_made, BK_PIE, int(pie["yield"]))
 	expect(held(BK_PIE) == 4, "Exactly 4 pumpkin pies held (got %d)" % held(BK_PIE))
 	expect(person().collection.meals.has(BK_PIE), "Pumpkin pie recorded in the meal collection")
-	expect(not bk_obj(stove).has("job") and PK.is_site_cell(world.state, stove) and world.kitchen_opened(), "Donated stove free again and still donated; kitchen open")
+	expect(bk_obj(stove).cooking.active.is_empty() and bk_obj(stove).cooking.ready.is_empty() and PK.is_site_cell(world.state, stove) and world.kitchen_opened(), "Donated stove free again and still donated; kitchen open")
+	bk_probe("claim_cook", stove, job_id, "Claiming the same pie batch twice", "沒有料理")
 
 func bk_persist() -> void:
 	checkpoint(BK_FINAL_STAGE)
@@ -631,3 +652,18 @@ func bk_persist() -> void:
 	expect(PK.stage(view) == "open", "Late member's view shows the kitchen open")
 	expect(FileAccess.get_file_as_string(path) == file_before, "Late join without actions did not write the save")
 	print("BAKERY late_join member=%s in_process_world=true network=not_exercised mill_visible=%s" % [BK_LATE, mill_view.get("type","") == "mill"])
+	if failed:return
+
+	var bag_before:=bag().duplicate(true)
+	var coins_before:=int(person().coins)
+	var price:=int(World.OTHER_SALES[BK_PIE])
+	bk_run("ship",World.SHIPPING.cell_for(world.state),JSON.stringify([[[BK_PIE,1]],price]))
+	if failed:return
+	expect_delta(bag_before,{BK_PIE:-1},"Ship exactly one home-baked pie")
+	expect(int(person().coins)==coins_before+price,"Shipping one pie pays its displayed price")
+	var shipped_world:=World.new()
+	expect(shipped_world.load_world(path) and not shipped_world.recovered_from_backup,"Packed pie reloads from the primary save")
+	if failed:return
+	var shipped:Dictionary=shipped_world.state.players[TOKEN]
+	expect(same_inventory(shipped.inventory,bag()) and int(shipped.coins)==coins_before+price,"Shipped pie and payment persist")
+	expect(shipped.collection.meals.has(BK_PIE),"Shipping a pie preserves its collection entry")

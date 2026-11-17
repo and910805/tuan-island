@@ -32,6 +32,7 @@ const Items=preload("res://scripts/inventory_item_art.gd")
 const Souvenir=preload("res://scripts/souvenir_art.gd")
 const InventoryPanel=preload("res://scripts/inventory_panel.gd")
 const WanganUI=preload("res://scripts/wangan_opening_ui.gd")
+const IslandMap=preload("res://scripts/island_map.gd")
 const OTHER:="revisit-scene-neighbour-41aa"
 const DAY:=1440.0
 const GATE_SPOT:=Vector2(32.5,25.5)
@@ -193,6 +194,17 @@ func close()->void:
 func set_day(day_index:int)->void:
 	w.state.time=float(day_index)*DAY+30.0  # PRESET
 
+func open_local_map()->void:
+	await close()
+	for down in [true,false]:
+		var event:=InputEventKey.new()
+		event.keycode=KEY_M
+		event.physical_keycode=KEY_M
+		event.pressed=down
+		root.push_input(event)
+	await settle()
+	check(is_instance_valid(app.map_view) and app.map_view.is_visible_in_tree(),"M opens the local map (%s)"%tag)
+
 func write_unlock(ready:bool)->void:
 	var life:Dictionary=w.state.lanyang_life
 	for cell:Vector2i in World.LANYANG_LIFE.BLOCKAGES:life.cleared[k(cell)]=true
@@ -338,6 +350,22 @@ func lanyang_flow()->void:
 	page_fits("not ready "+tag)
 	await close()
 	write_unlock(true)
+	set_day(0)
+	w.state.history_memory.players[id].completed_day=0  # PRESET: the practice ended today.
+	await stand(GATE_SPOT,"lanyang")
+	await open_local_map()
+	var guide:=IslandMap.canal_revisit(app.session.snapshot)
+	check("明天起" in guide.note and guide.markers.all(func(entry):return entry.state=="idle"),"The map shows the next-day invitation (%s)"%tag)
+	await shot("map_waiting")
+	set_day(1)
+	await refresh()
+	if not is_instance_valid(app.map_view):return
+	guide=IslandMap.canal_revisit(app.map_view.data)
+	check(guide.markers[0].state=="next" and guide.markers[0].cell==Revisit.GATE_CELL,
+		"The open map highlights the fork after the day changes (%s)"%tag)
+	await shot("map_find_gate")
+	await close()
+	w.state.history_memory.players[id].erase("completed_day")
 	# Rainy day at the fork.
 	set_day(2)
 	await stand(GATE_SPOT,"lanyang")
@@ -350,7 +378,8 @@ func lanyang_flow()->void:
 	# Dry day: prompts at the fork, the field and 星禾.
 	await stand(GATE_SPOT,"lanyang")
 	prompt_ok("memory:33,25","調整岔口分流閘","fork "+tag)
-	await shot("lanyang_gate_prompt")
+	var fork_before:=await shot("lanyang_gate_prompt")
+	var upstream_box:=cell_box(Revisit.GATE_CELL)
 	await stand(TAIL_SPOT,"lanyang")
 	prompt_ok("memory:33,32","巡看田尾的田","tail "+tag)
 	await shot("lanyang_field_prompt")
@@ -368,6 +397,9 @@ func lanyang_flow()->void:
 	check(Revisit.gates(w.state)==[3,0],"Gate a 3 (%s)"%tag)
 	await shot("page_gate_set")
 	page_fits("gate set "+tag)
+	await close()
+	var fork_after:=await shot("lanyang_gate_raised")
+	check(box_difference(fork_before,fork_after,upstream_box)>0.1,"The actual upstream gate changes visibly when raised (%s)"%tag)
 	await stand(MID_SPOT,"lanyang")
 	await open_here()
 	await press("RevisitCheck")
@@ -382,6 +414,17 @@ func lanyang_flow()->void:
 	check(Revisit.checked_today(w.state)==["upstream"],"Upstream checked (%s)"%tag)
 	await shot("page_one_checked")
 	page_fits("one checked "+tag)
+	await close()
+	var fork_balanced:=await shot("lanyang_gate_balanced")
+	var middle_box:=cell_box(Revisit.GATE_CELL+Vector2i.RIGHT)
+	check(box_difference(fork_after,fork_balanced,middle_box)>0.1,"The middle gate also changes after its own control is used (%s)"%tag)
+	await open_local_map()
+	guide=IslandMap.canal_revisit(app.session.snapshot)
+	check(guide.markers[0].state=="idle" and guide.markers[1].state=="checked"
+		and guide.markers[2].state=="next" and guide.markers[3].state=="next" and "1／3" in guide.note,
+		"The map leads to the unvisited middle and tail fields (%s)"%tag)
+	await shot("map_canals_in_progress")
+	await close()
 	await stand(MID_SPOT,"lanyang")
 	await open_here()
 	await press("RevisitCheck")
@@ -391,6 +434,12 @@ func lanyang_flow()->void:
 	check(Revisit.completed(w.state),"Completed (%s)"%tag)
 	await shot("page_complete")
 	page_fits("complete "+tag)
+	await open_local_map()
+	guide=IslandMap.canal_revisit(app.session.snapshot)
+	check(guide.markers[2].state=="next" and guide.markers[2].cell==Revisit.SERVICE and "領木牌" in guide.markers[2].label,
+		"The completed round points to Xinghe at the wooden bridge (%s)"%tag)
+	await shot("map_collect_plaque")
+	await close()
 	await stand(MID_SPOT,"lanyang")
 	await open_here()
 	await press("RevisitClaim")

@@ -14,7 +14,6 @@ const Transit=preload("res://scripts/transit.gd")
 const TravelUI=preload("res://scripts/travel_ui.gd")
 const Map=preload("res://scripts/taiwan_map.gd")
 const Outline=preload("res://scripts/taiwan_outline.gd")
-const Shell=preload("res://scripts/life_ui_shell.gd")
 const Art=preload("res://scripts/transit_art.gd")
 const IslandMap=preload("res://scripts/island_map.gd")
 const Opening=preload("res://scripts/wangan_opening.gd")
@@ -110,31 +109,31 @@ func map_layout(map:Control,tag:String,current:bool)->void:
 	var edge:=west_edge(at.y)
 	check(edge>-INF and at.x<edge-8.0,"Home marker west of the island's western edge (%s) x=%.1f edge=%.1f"%[tag,at.x,edge])
 	var box:=Rect2(Vector2.ZERO,map.size)
-	check(box.has_point(at) and box.encloses(home.inset),"Home marker and inset inside the map control (%s)"%tag)
-	var truth:Vector2=home.true_position
-	check(not box.has_point(truth) or Map.NORTH_PANEL.has_point(truth),"Projected Wang'an really is off-map or under the route panel, so an inset is needed (%s) %s"%[tag,str(truth)])
+	check(box.has_point(at),"The real projected marker is inside the map control (%s)"%tag)
+	check(at.is_equal_approx(Map.project(Vector2(119.4966,23.3733))) and not Map.NORTH_PANEL.has_point(at),"The marker uses the published Wangan coordinate and clears the route panel (%s)"%tag)
+	var beimen:=Map.project(Map.BEIMEN_LONLAT)
+	check(at.x<beimen.x and at.y<beimen.y and beimen.y-at.y<15.0,"Wangan is west and slightly north of Beimen on the same projection (%s)"%tag)
 	check(str(home.label)==("澎湖・望安・目前" if current else "澎湖・望安"),"Home label (%s): %s"%[tag,home.label])
-	check(str(home.caption).contains("位置示意"),"Inset caption says 位置示意 (%s)"%tag)
+	check(str(home.caption).contains("渡海轉乘"),"The map explains the boat transfer (%s)"%tag)
 	for flowers in [false,true]:
 		for salt in [false,true]:
 			map.set_meta("flower_open",flowers);map.set_meta("salt_open",salt);map.queue_redraw()
 			var state:="%s flowers=%s salt=%s"%[tag,flowers,salt]
 			var rects:Dictionary=map.layout_rects()
-			check(rects.has("home") and rects.has("home_caption") and rects.has("home_inset") and rects.has("lanyang"),"Layout has home and Lanyang rects (%s)"%state)
+			check(rects.has("home") and rects.has("home_caption") and rects.has("home_icon") and rects.has("lanyang"),"Layout has home and Lanyang rects (%s)"%state)
 			check(rects.has("tianwei")==flowers or str(map.get_meta("current_region",""))=="tianwei","Tianwei label follows flower flag (%s)"%state)
 			check(rects.has("beimen"),"Beimen label present (%s)"%state)
 			var labels:Array=map.labels()
 			var texts:=labels.map(func(l):return str(l.text))
 			check(not texts.any(func(t):return t.contains("渡口")),"No map label calls a Yilan spot 渡口 (%s): %s"%[state,str(texts)])
 			check(texts.has("宜蘭・蘭陽") or texts.has("宜蘭・蘭陽・目前"),"Yilan end reads 宜蘭・蘭陽 (%s)"%state)
-			for own in ["home","home_caption","home_inset","lanyang"]:
+			for own in ["home","home_caption","home_icon","lanyang"]:
 				var r:Rect2=rects.get(own,Rect2())
 				check(box.encloses(r),"%s inside the map (%s) %s"%[own,state,str(r)])
 				for other in rects:
 					if other==own:continue
 					if own.begins_with("home") and str(other).begins_with("home"):continue
 					check(not r.intersects(rects[other]),"%s does not overlap %s (%s) %s vs %s"%[own,other,state,str(r),str(rects[other])])
-			check(Map.HOME_INSET.encloses(rects.home) and Map.HOME_INSET.encloses(rects.home_caption),"Home label and caption inside the inset (%s)"%state)
 	map.set_meta("flower_open",false);map.set_meta("salt_open",false);map.queue_redraw()
 
 func no_yilan_home()->void:
@@ -151,10 +150,10 @@ func no_yilan_home()->void:
 	check(TravelUI.HOME_LANYANG_MODE=="交通船","Home<->Lanyang mode constant is 交通船")
 	check(Transit.HOME_FERRY_MODE=="交通船・轉乘" and Transit.POINTS.home.ferry.mode==Transit.HOME_FERRY_MODE and Transit.POINTS.toucheng.street.mode==Transit.HOME_FERRY_MODE,"Home<->Toucheng ferry links use the boat transfer mode")
 	check(Transit.POINTS.home.ferry.cell==Vector2i(47,30) and Transit.POINTS.home.ferry.links==["toucheng"] and Transit.POINTS.toucheng.street.cell==Vector2i(12,25) and Transit.POINTS.toucheng.street.links==["home"],"Ferry and street cells/links unchanged")
-	var map_icon:=Shell.icon("map") as AtlasTexture
 	for mode in ["交通船","交通船・轉乘","合作小船"]:
 		var art:=TravelUI.arrival_art(mode) as AtlasTexture
-		check(art!=null and map_icon!=null and art.atlas==map_icon.atlas and art.region==map_icon.region,"Boat trip %s shows the map icon, not a bus"%mode)
+		var expected:=Rect2(48 if mode=="合作小船" else 0,0,48,48)
+		check(art!=null and art.atlas==Art.VOYAGE_ART and art.region==expected,"Boat trip %s shows its own hull"%mode)
 	check(TravelUI.arrival_art("火車")==Art.icon("train") and TravelUI.arrival_art("公車")==Art.icon("bus") and TravelUI.arrival_art("接駁")==Art.icon("bus"),"Land trips keep train/bus art")
 
 ## 合作小船的車票說明依交通方式改寫：讀起來是渡海，不是「從頭城搭車」。
@@ -181,19 +180,31 @@ func boat_notes()->void:
 				var text:=TravelUI.note(origin,str(option.region),str(option.mode))
 				check(text.contains("合作小船") and not text.contains("搭車"),"Boat option %s->%s gets a boat ticket note: %s"%[origin,option.region,text])
 
-## 周邊地圖的來信標記：第一株作物引導進行中時指向「小栗留的田」的中心，而不是小栗本人。
+## 周邊地圖的來信標記跟隨目前玩家的開場步驟。
 func letter_marker()->void:
-	var center:=Vector2(46.5,27.0)
+	var step:=Chapter.first_crop_step(app.session.snapshot,str(app.session.own_id))
+	var center:=Vector2(step.cell)+Vector2(0.5,0.5)
 	var own:Dictionary=IslandMap.letter_target(app.session.snapshot,str(app.session.own_id))
 	check(Vector2(own.at)==center and str(own.text).contains(Opening.PLOT_TAG) and own.plot==true,"Snapshot letter marker points at the starter plot: %s"%str(own))
 	var server:Dictionary=IslandMap.letter_target(w.state,id)
 	check(server==own,"Server state and snapshot agree on the letter marker")
+	var restock:Dictionary=w.state.duplicate(true)
+	restock.crops["45,26"]={"owner":id,"kind":""}
+	for item in restock.players[id].inventory.keys():
+		if str(item).ends_with("_seed"):restock.players[id].inventory.erase(item)
+	var stall:=IslandMap.letter_target(restock,id)
+	check(stall.personal and not stall.plot and stall.at==Vector2(World.Village.resident_cell(restock,"xiaoli"))+Vector2(0.5,0.5),
+		"An empty seed pouch moves the marker to Xiaoli's stall")
+	restock.players[id].inventory.radish_seed=1
+	var sow:=IslandMap.letter_target(restock,id)
+	check(sow.personal and sow.plot and sow.at==Vector2(45.5,26.5),"A bought seed moves the marker back to the tilled cell")
 	var taken:Dictionary=w.state.duplicate(true)
 	for cell in Chapter.STARTER_PLOT:taken.ground["%d,%d"%[cell.x,cell.y]]={"owner":"someone_else"}
 	var full:Dictionary=IslandMap.letter_target(taken,id)
 	check(Vector2(full.at)==Vector2(Chapter.STEPS.grow.cell)+Vector2(0.5,0.5) and not str(full.text).contains(Opening.PLOT_TAG) and full.plot==false,"Fully occupied plot: marker falls back to 小栗: %s"%str(full))
 	var shipped:Dictionary=w.state.duplicate(true)
 	shipped.chapter_one.shipped=true;shipped.board=false
+	shipped.players[id].erase(Chapter.PERSONAL_START)
 	var works:Dictionary=IslandMap.letter_target(shipped,id)
 	check(Vector2(works.at)==Vector2(Chapter.STEPS.works.cell)+Vector2(0.5,0.5) and str(works.text)=="來信標記："+str(Chapter.STEPS.works.action),"After shipping the marker follows the chapter step: %s"%str(works))
 	check(w.state.chapter_one.shipped==false and not w.state.ground.has("45,26"),"letter_target does not change the world")

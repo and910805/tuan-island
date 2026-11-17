@@ -30,6 +30,12 @@ func run() -> void:
 	var app:=Main.new()
 	app.village_art_preview=true
 	root.add_child(app)
+	var badge:Label=app.menu.find_child("TitleBuild",true,false)
+	var release:=app._release_metadata()
+	check(is_instance_valid(badge) and badge.text=="版本 %s r%d"%[release.version,int(release.build)],
+		"Title shows the version and the installer build")
+	check(app._release_version()==release.version and app._release_update_version()!=release.version,
+		"The visible version keeps its label while update comparison includes the build")
 	app._open_identity()
 	var entry:Control=app.identity_entry
 	check(entry.login_page.visible and not entry.world_page.visible,"Starts at identity")
@@ -75,6 +81,25 @@ func run() -> void:
 	check(is_instance_valid(entry.update_dialog) and entry.update_dialog.visible,"Protocol rejection opens update prompt")
 	check(has_button_text(entry.update_dialog,"前往下載新版"),"Configured update page is offered")
 	if is_instance_valid(entry.update_dialog):entry.update_dialog.queue_free();entry.update_dialog=null
+	app.session.receive_notice("房間密碼不正確，無法加入。",false)
+	check(not is_instance_valid(app.room_update_dialog),"Wrong room password does not suggest an update")
+	app.session.receive_notice(Main.Session.VERSION_MISMATCH_NOTICE,false)
+	check(is_instance_valid(app.room_update_dialog) and has_button_text(app.room_update_dialog,"前往下載新版"),
+		"Direct room protocol rejection uses the same update prompt")
+	var room_prompt:Control=app.room_update_dialog
+	app.session.receive_notice(Main.Session.VERSION_MISMATCH_NOTICE,false)
+	check(app.room_update_dialog==room_prompt,"Repeated room rejection keeps one prompt")
+	app._disconnected()
+	check(is_instance_valid(room_prompt) and room_prompt.is_visible_in_tree(),"Disconnect does not erase the reason")
+	if DisplayServer.get_name()!="headless" and not OS.get_environment("TUAN_UPDATE_CAPTURE").is_empty():
+		root.size=Vector2i(1024,640)
+		await process_frame
+		await RenderingServer.frame_post_draw
+		check(root.get_texture().get_image().save_png(OS.get_environment("TUAN_UPDATE_CAPTURE"))==OK,"Capture room update prompt")
+	for control in room_prompt.find_children("*","Button",true,false):
+		if control.text=="稍後再說":control.pressed.emit()
+	await process_frame
+	check(not is_instance_valid(app.room_update_dialog) and app.menu.visible,"Dismiss returns to the title")
 	listed.status="offline"
 	check(entry.world_state(listed)=="世界離線","Offline world disabled")
 	listed.status="online"
@@ -106,6 +131,23 @@ func run() -> void:
 	probe.reply={"expired":true}
 	probe._process(30.0)
 	check(probe.requests==3 and probe.token.is_empty() and probe.expires==0.0 and probe.status.text.contains("到期"),"Unauthorized clears identity and asks for login")
+	app.island_passport={"can_manage":true,"world_name":"測試島","members":[],"management_history":[
+		{"action":"block","actor":"阿糰","target":"小栗","at":0}]}
+	app._passport_menu()
+	check(has_button_text(app.modal,"查看管理紀錄"),"Owner passport links to management history")
+	app._passport_management_history()
+	var labels:=app.modal.find_children("*","Label",true,false)
+	check(labels.any(func(entry_label):return entry_label.text=="封鎖入島 · 小栗") and has_button_text(app.modal,"返回通行簿"),
+		"History shows localized action, affected resident and back button")
+	app.island_passport={"can_manage":false,"world_name":"測試島","members":[]}
+	app._passport_menu()
+	check(not has_button_text(app.modal,"查看管理紀錄"),"Member passport hides management history")
+	app.island_passport.members=[{"name":"小栗","role":"member","management_id":"fixture","public_builder":false}]
+	app._passport_menu()
+	check(has_button_text(app.modal,"授予渡口公共地塊施工權"),"Manager sees the public construction grant")
+	app.island_passport.members[0].public_builder=true
+	app._passport_menu()
+	check(has_button_text(app.modal,"收回渡口公共地塊施工權"),"Manager sees the revoke action after granting access")
 	app.queue_free()
 	await process_frame
 	print("IDENTITY_ENTRY_UI_TEST checks=%d failures=%d" % [checks,failures])

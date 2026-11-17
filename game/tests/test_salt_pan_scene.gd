@@ -559,7 +559,9 @@ func run()->void:
 	var floor_tl:=Vector2(20,36)*32
 	expect(error_to(shot,floor_tl,SaltArt.terrain_texture("heritage_floor"))<0.2,"heritage tile-pan floor drawn")
 	var sign_tl:=Vector2(Salt.HERITAGE_SIGN.x+0.5,Salt.HERITAGE_SIGN.y+1)*32+Vector2(0,-2)-Vector2(SaltArt.structure_anchor("sign"))
-	expect(error_to(shot,sign_tl,SaltArt.structure_texture("sign"))<0.25,"heritage sign drawn")
+	var sign_error:=error_to(shot,sign_tl,SaltArt.structure_texture("sign"))
+	expect(sign_error<0.25,"heritage sign drawn (err %.3f)"%sign_error)
+	shot.save_png(out_dir+"/beimen-heritage-sign.png")
 	expect(view.interaction_focus()=="salt:heritage","standing at the heritage sign focuses it")
 
 	# ---------------------------------------------- rain: diluted / covered

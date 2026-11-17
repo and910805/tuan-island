@@ -195,6 +195,20 @@ func act_key(code:Key)->void:
 	await key(code)
 	await refresh()
 
+func pad(id:JoyButton)->void:
+	for pressed in [true,false]:
+		var e:=InputEventJoypadButton.new()
+		e.button_index=id
+		e.pressed=pressed
+		root.push_input(e)
+	await settle()
+
+func act_pad(id:JoyButton)->void:
+	app.action_clock=0
+	app.session.rates[1].clear()
+	await pad(id)
+	await refresh()
+
 func interact_key()->void:
 	app.session.rates[1].clear()
 	await key(KEY_E)
@@ -255,7 +269,7 @@ func write_unlock(done:bool)->void:
 	var seen:=[]
 	for cell:Vector2i in World.HISTORY_MEMORY.OBSERVATIONS:seen.append(k(cell))
 	w.state.history_memory={"players":{id:{"seen":seen,"round":3,"gates":[0,0],"completed":true}},"plaque":true}
-	if done:w.state[Revisit.STATE_KEY]={"gates":[3,2],"day":0,"checked":["upstream","middle","tail"],"completed":true,"claimed":{}}
+	if done:w.state[Revisit.STATE_KEY]={"gates":[3,2],"day":1,"checked":["upstream","middle","tail"],"completed":true,"claimed":{}}
 	else:w.state.erase(Revisit.STATE_KEY)
 
 func sprinkler()->Dictionary:
@@ -409,8 +423,16 @@ func owner_flow(label:String)->void:
 	check(top!=null and top.text.contains("關閉"),"KEY_UP from the toggle reaches 關閉 (%s): %s"%[label,top.text if top else "none"])
 	await key(KEY_DOWN)
 	check(focused_name()=="TowerToggle","KEY_DOWN back to the toggle (%s): %s"%[label,focused_name()])
-	await act_key(KEY_ENTER)
-	check(obj(TOWER).get("enabled")==false,"KEY_ENTER sets 只蓄水 through the server (%s)"%label)
+	await key(KEY_UP)
+	var before_shortcut:int=app.session.counter
+	await pad(JOY_BUTTON_X)
+	check(focused_name()=="TowerToggle" and app.session.counter==before_shortcut,"X focuses the tower toggle without changing its setting (%s)"%label)
+	await act_pad(JOY_BUTTON_A)
+	check(obj(TOWER).get("enabled")==false,"A sets 只蓄水 through the server (%s)"%label)
+	var saved=JSON.parse_string(FileAccess.get_file_as_string(w.save_path))
+	check(saved is Dictionary and saved.objects.get(k(TOWER),{}).get("enabled",true)==false,"Tower setting is written to the save file (%s)"%label)
+	var reloaded:=World.new()
+	check(reloaded.load_world(w.save_path) and not reloaded.recovered_from_backup and reloaded.state.objects.get(k(TOWER),{}).get("enabled",true)==false,"Tower setting survives loading the primary save (%s)"%label)
 	check(feedback()=="水塔已設為「只蓄水」","Server reply at the bottom (%s): %s"%[label,feedback()])
 	check(label_text("TowerMode")=="目前：只蓄水" and button("TowerToggle").text=="改為出水" and label_text("TowerModeHelp")==TowerUI.MODE_HELP[false],"Page shows 只蓄水 (%s): %s"%[label,label_text("TowerMode")])
 	check(icon.texture==Art.tower_texture(Art.level_of(stored),false),"Icon switches to the 只蓄水 look (%s)"%label)
@@ -456,6 +478,13 @@ func owner_flow(label:String)->void:
 			if (node as Label).text.contains("水塔 1 座"):supply=node
 	var expected:="接通 1 桶 · 管網水量 %d／48\n水塔 1 座 · 存水 %d／96"%[int(obj(TANK).water),int(obj(TOWER).water)]
 	check(supply!=null and supply.text==expected and supply.is_visible_in_tree() and not_cut(supply),"Sprinkler page tower line (%s): %s"%[label,supply.text if supply else texts().replace("\n"," | ")])
+	await perform(Industry.TOWER_ACTION,TOWER)
+	await perform(Industry.GATE_ACTION,GATE,"closed")
+	check(supply!=null and supply.text.ends_with("此處被分流閘隔開") and not_cut(supply),"Sprinkler explains the closed gate (%s)"%label)
+	await perform(Industry.GATE_ACTION,GATE,"low")
+	check(supply!=null and supply.text.ends_with("此處只接收餘水") and not_cut(supply),"Sprinkler explains the surplus-water gate (%s)"%label)
+	await perform(Industry.GATE_ACTION,GATE,"open")
+	await perform(Industry.TOWER_ACTION,TOWER)
 	await key(KEY_ESCAPE)
 
 func gate_flow(label:String)->void:
@@ -466,16 +495,19 @@ func gate_flow(label:String)->void:
 	if layout_name()!=GateUI.LAYOUT:return
 	check(shown("GateTowerTitle") and label_text("GateTower_0")=="水塔（46,24）・優先補水","Gate page lists the tower (open) (%s): %s"%[label,label_text("GateTower_0")])
 	layout_ok("gate with tower open "+label,GateUI.LAYOUT)
-	await key(KEY_RIGHT)
-	await act_key(KEY_ENTER)
+	await pad(JOY_BUTTON_DPAD_RIGHT)
+	check(focused_name()=="GateMode_low" and str(obj(GATE).mode)=="open","D-pad selects the next mode without switching it (%s)"%label)
+	await act_pad(JOY_BUTTON_A)
 	check(str(obj(GATE).mode)=="low" and label_text("GateTower_0")=="水塔（46,24）・餘水才補","Tower row follows 餘水 (%s): %s"%[label,label_text("GateTower_0")])
 	await key(KEY_RIGHT)
 	await act_key(KEY_ENTER)
 	check(str(obj(GATE).mode)=="closed" and label_text("GateTower_0")=="水塔（46,24）・補不到水","Tower row follows 關閉 (%s): %s"%[label,label_text("GateTower_0")])
+	var reloaded:=World.new()
+	check(reloaded.load_world(w.save_path) and not reloaded.recovered_from_backup and reloaded.state.objects.get(k(GATE),{}).get("mode","")=="closed","Gate mode survives loading the primary save (%s)"%label)
 	layout_ok("gate with tower closed "+label,GateUI.LAYOUT)
 	await perform(Industry.GATE_ACTION,GATE,"open")
-	await key(KEY_ESCAPE)
-	check(not is_instance_valid(app.modal),"Esc closes the gate page (%s)"%label)
+	await pad(JOY_BUTTON_B)
+	check(not is_instance_valid(app.modal),"B closes the gate page (%s)"%label)
 
 func visitor_flow(label:String)->void:
 	await stand(OTHER_SPOT)

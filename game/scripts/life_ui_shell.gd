@@ -78,17 +78,20 @@ static func text(app,value:String,size:int=16) -> Label:
 
 static func make_hud(app) -> void:
 	var location:=VBoxContainer.new()
+	location.name="LocationBadge"
 	location.position=Vector2(22,18)
 	location.size=Vector2(230,60)
 	location.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	app.hud.add_child(location)
+	location.minimum_size_changed.connect(app._layout_preview.call_deferred)
 	var title:=text(app,"風鈴渡口",24)
 	title.name="RegionTitle"
 	title.add_theme_color_override("font_color",Color("fff4d6"))
 	title.add_theme_color_override("font_outline_color",Color("3c4c36"))
 	title.add_theme_constant_override("outline_size",6)
 	location.add_child(title)
-	var subtitle:=text(app,"慢慢來，島上的日子還很長",13)
+	var subtitle:=text(app,"慢慢來，島上的日子還很長",15)
+	app.region_subtitle=subtitle
 	subtitle.add_theme_color_override("font_color",Color("fff4d6"))
 	subtitle.add_theme_color_override("font_outline_color",Color("3c4c36"))
 	subtitle.add_theme_constant_override("outline_size",4)
@@ -106,20 +109,22 @@ static func make_hud(app) -> void:
 	var heading:=HBoxContainer.new()
 	note.add_child(heading)
 	heading.add_child(picture(icon("letter"),24))
-	var toggle:Button=app.button("渡口的一封信  ▾",func():
+	var toggle:Button=app.button("渡口的一封信  ▼",func():
 		app.objective.visible=not app.objective.visible
 		tracker.size.y=0
 	)
 	toggle.name="TrackerHeading"
 	toggle.flat=true
 	toggle.custom_minimum_size.y=28
-	toggle.add_theme_font_size_override("font_size",14)
+	toggle.add_theme_font_size_override("font_size",15)
 	heading.add_child(toggle)
-	app.objective=app.label("",14)
+	app.objective=app.label("",15)
 	app.objective.custom_minimum_size.x=202
 	note.add_child(app.objective)
 	var open:Button=app.button("看看下一步  →",func():
-		if app._harvest_tracking():app._harvest_menu() # T071 豐收接力（已加入進行中的一輪）
+		var onboarding=preload("res://scripts/wangan_opening_ui.gd")
+		if not onboarding.personal_step(app).is_empty():onboarding.show_personal_help(app)
+		elif app._harvest_tracking():app._harvest_menu() # T071 豐收接力（已加入進行中的一輪）
 		elif app._fishmeet_tracking():app._fishmeet_menu() # T071 河岸釣魚會（已加入進行中的一輪）
 		elif app._showcase_tracking():app._showcase_menu() # T071 家園布置題（已加入進行中的一輪）
 		elif str(app.session.snapshot.get("region_id","home"))=="home" and app.session.snapshot.get("festival",{}).get("active",false):app._festival_menu()
@@ -139,20 +144,21 @@ static func make_hud(app) -> void:
 	)
 	open.name="TrackerNext"
 	open.custom_minimum_size.y=26
-	open.add_theme_font_size_override("font_size",12)
+	open.add_theme_font_size_override("font_size",15)
 	open.flat=true
 	note.add_child(open)
 	# T071 豐收接力：手上有模型蔬菜時才顯示（harvest_relay_ui.refresh_hud 控制）。
 	var relay_pass:Button=app.button("傳給身旁的夥伴  →",app._harvest_pass)
 	relay_pass.name="TrackerHarvestPass"
 	relay_pass.custom_minimum_size.y=26
-	relay_pass.add_theme_font_size_override("font_size",12)
+	relay_pass.add_theme_font_size_override("font_size",15)
 	relay_pass.flat=true
 	relay_pass.hide()
 	note.add_child(relay_pass)
 	var top:=HBoxContainer.new()
 	app.preview_top=top
 	app.hud.add_child(top)
+	top.minimum_size_changed.connect(app._layout_preview.call_deferred)
 	var calendar:=PanelContainer.new()
 	calendar.name="WeatherBadge"
 	calendar.custom_minimum_size=Vector2(222,0)
@@ -169,6 +175,7 @@ static func make_hud(app) -> void:
 	calendar.focus_previous=NodePath(".")
 	var day:=VBoxContainer.new()
 	calendar.add_child(day)
+	calendar.minimum_size_changed.connect(func():app._layout_preview.call_deferred())
 	var sky:=HBoxContainer.new()
 	sky.add_theme_constant_override("separation",10)
 	day.add_child(sky)
@@ -182,10 +189,9 @@ static func make_hud(app) -> void:
 	var wallet:=HBoxContainer.new()
 	wallet.alignment=BoxContainer.ALIGNMENT_END
 	# Compact tomorrow line shares the existing coin row so the badge keeps its height.
-	var tomorrow:=text(app,"",13)
+	var tomorrow:=text(app,"",15)
 	tomorrow.name="WeatherTomorrow"
 	tomorrow.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	tomorrow.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	tomorrow.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	tomorrow.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	wallet.add_child(tomorrow)
@@ -240,7 +246,7 @@ static func make_hud(app) -> void:
 	harvester.name="HarvesterSlot"
 	harvester.hide()
 	row.add_child(harvester)
-	app.selected_label=app.label("",14)
+	app.selected_label=app.label("",15)
 	app.selected_label.name="ToolHint"
 	app.selected_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	app.selected_label.add_theme_color_override("font_color",Color("fff7e5"))
@@ -274,18 +280,22 @@ static func refresh_binding_hints(app) -> void:
 		node.tooltip_text="%s [%s]"%[node.get_meta("binding_title"),key]
 
 static func layout_hud(app,bounds:Vector2) -> void:
+	var location:Control=app.hud.get_node("LocationBadge")
+	app.preview_tracker.position.y=maxf(92.0,location.position.y+location.get_combined_minimum_size().y+6.0)
 	var tiller:=app.preview_toolbar.find_child("TillerSlot",true,false) as Button
 	var seeder:=app.preview_toolbar.find_child("SeederSlot",true,false) as Button
 	var harvester:=app.preview_toolbar.find_child("HarvesterSlot",true,false) as Button
 	var toolbar_width:=700 + 76 * (int(tiller != null and tiller.visible) + int(seeder != null and seeder.visible) + int(harvester != null and harvester.visible))
 	app.preview_toolbar.size=Vector2(toolbar_width,92)
 	app.preview_toolbar.position=Vector2(floor((bounds.x-toolbar_width)/2),bounds.y-106)
-	app.preview_top.position=Vector2(bounds.x-244,18)
-	app.preview_top.size=Vector2(222,100)
+	var calendar:Control=app.preview_top
+	calendar.size=calendar.get_combined_minimum_size().max(Vector2(222,100))
+	var calendar_inset:=16.0 if bounds.x<=1024.0 else 22.0
+	calendar.position=Vector2(bounds.x-calendar.size.x-calendar_inset,18.0)
 	# Focus tip sits left of the calendar badge (never over toolbar/shortcuts) and is hidden unless focused.
 	var tip:=app.hud.get_node_or_null("WeatherForecastTip") as Control
 	if tip:
-		tip.position=Vector2(maxf(8.0,bounds.x-244-8-FORECAST_TIP_WIDTH),18)
+		tip.position=Vector2(maxf(8.0,calendar.position.x-8.0-FORECAST_TIP_WIDTH),18.0)
 		tip.size=Vector2(FORECAST_TIP_WIDTH,0)
 	app.selected_label.position=Vector2((bounds.x-740)/2,bounds.y-142)
 	app.selected_label.size=Vector2(740,32)
@@ -293,26 +303,42 @@ static func layout_hud(app,bounds:Vector2) -> void:
 	shortcuts.position=Vector2(bounds.x-180,bounds.y-66)
 	shortcuts.size=Vector2(156,48)
 	if bounds.x<toolbar_width+368:
-		shortcuts.position=Vector2(bounds.x-180,132)
+		shortcuts.position=Vector2(bounds.x-180,maxf(132.0,calendar.position.y+calendar.size.y+8.0))
+
+static func region_display_name(region:String) -> String:
+	if region.begins_with("mine_"):return "金瓜石合作礦場・地下第 %d 層"%int(region.trim_prefix("mine_"))
+	var qualified:Dictionary={"lanyang":"宜蘭・蘭陽試作田","jinguashi":"新北・金瓜石山城"}
+	var stations:Dictionary=preload("res://scripts/transit_art.gd").NAMES
+	return str(qualified.get(region,stations.get(region,World.REGIONS.label(region))))
+
+static func refresh_location(app,s:Dictionary,p:Dictionary) -> void:
+	var region_title:Label=app.hud.find_child("RegionTitle",true,false) as Label
+	if not region_title:return
+	var region:=str(s.get("region_id","home"))
+	var title:=region_display_name(region)
+	if region==World.WARM_SPRINGS.REGION and World.WARM_SPRINGS.in_inn(p):
+		title="暖泉旅舍"
+	elif region==World.REGIONS.HOME and not p.is_empty():
+		var position:=Vector2(float(p.x),float(p.y))
+		if World.WANGAN_COAST.star_shore(Vector2i(position.floor())):
+			title="望安・星砂海岸"
+		elif World.WANGAN_COAST.VISITOR_AREA.has_point(position):
+			title="望安・南岸"
+	region_title.text=title
 
 static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
-	var region_title:Label=app.hud.find_child("RegionTitle",true,false) as Label
-	if region_title:region_title.text={"home":"風鈴渡口","lanyang":"宜蘭・蘭陽試作田","jinguashi":"新北・金瓜石山城"}.get(s.get("region_id","home"),World.REGIONS.label(str(s.get("region_id","home"))))
 	var depth_region:=str(s.get("region_id","home"))
 	var station_name:String=preload("res://scripts/transit_art.gd").NAMES.get(depth_region,"")
-	if region_title and not station_name.is_empty():region_title.text=station_name
 	var tracker_heading:Button=app.hud.find_child("TrackerHeading",true,false) as Button
 	var tracker_next:Button=app.hud.find_child("TrackerNext",true,false) as Button
-	if tracker_heading:tracker_heading.text="礦務隨身記  ▾" if depth_region.begins_with("mine_") else "渡口的一封信  ▾"
+	if tracker_heading:tracker_heading.text="礦務隨身記  ▼" if depth_region.begins_with("mine_") else "渡口的一封信  ▼"
 	if tracker_next:tracker_next.text="查看出入口  →" if depth_region.begins_with("mine_") else "看看下一步  →"
 	if not station_name.is_empty():
-		if tracker_heading:tracker_heading.text="北部旅程  ▾"
+		if tracker_heading:tracker_heading.text="北部旅程  ▼"
 		if tracker_next:tracker_next.text="查看轉乘  →"
 	if depth_region=="jinguashi":
-		if tracker_heading:tracker_heading.text="波波的礦樣桌  ▾"
+		if tracker_heading:tracker_heading.text="波波的礦樣桌  ▼"
 		if tracker_next:tracker_next.text="翻開波波的故事  →"
-	if region_title and depth_region.begins_with("mine_"):
-		region_title.text="金瓜石合作礦場・地下第 %d 層"%int(depth_region.trim_prefix("mine_"))
 	app.coin_label.text=str(p.get("coins",0))
 	var minutes:=int(s.get("time",0))%1440
 	var weather:Dictionary=WeatherArt.current(s)
@@ -334,8 +360,23 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 	if not first_crop.is_empty():app.objective.text=preload("res://scripts/wangan_opening_ui.gd").tracker_text(app,first_crop)
 	elif step.id=="grow":app.objective.text="第一件事・種一株蘿蔔\n開田、播種、澆水，再採收"
 	elif step.id=="ship":app.objective.text+="\n✓ 第一批收成準備好了"
-	if step.id=="works":app.objective.text+="\n木 %d/30 · 石 %d/10"%[s.donations.wood,s.donations.stone]
-	if step.id=="meal":app.objective.text+="\n蘿蔔湯 %d/2 · 麵包 %d/1"%[s.picnic_materials.soup,s.picnic_materials.bread]
+	if depth_region=="home" and step.id=="works" and first_crop.is_empty():
+		app.objective.text="一起修河灣橋\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[
+			app.binding_label("interact"),s.donations.wood,s.donations.stone]
+	if depth_region=="home" and step.id=="water" and first_crop.is_empty():
+		if World.CHAPTER_ONE.needs_starter_kit(s,app.session.own_id):
+			var cost:=World.CHAPTER_ONE.STARTER_COST
+			app.objective.text="讓農田自己喝水\n找阿榆按 %s 換入門設備\n木材 %d · 石材 %d · 纖維 %d"%[
+				app.binding_label("interact"),cost.wood,cost.stone,cost.fiber]
+		else:
+			app.objective.text="讓農田自己喝水\n用水管接起水桶和灑水器\n補滿水桶，再啟用灑水器"
+	if step.id=="meal":
+		if depth_region=="home" and first_crop.is_empty() and World.CHAPTER_ONE.can_serve_picnic(s,app.session.own_id):
+			app.objective.text="帶料理去野餐\n到公告板按 %s 交料理"%app.binding_label("interact")
+		elif depth_region=="home" and first_crop.is_empty():
+			var cooking_hint:=picnic_cooking_hint(s,app.session.own_id)
+			if not cooking_hint.is_empty():app.objective.text="準備渡口野餐\n"+cooking_hint
+		app.objective.text+="\n蘿蔔湯 %d/2 · 麵包 %d/1"%[s.picnic_materials.soup,s.picnic_materials.bread]
 	if s.get("festival",{}).get("active",false):app.objective.text="風鈴接力 %d / 12\n靠近金色風鈴按 %s"%[int(s.festival.collected),app.binding_label("interact")]
 	if str(s.get("region_id","home"))=="lanyang":
 		app.objective.text="星禾的水圳手記\n"+str(World.LANYANG_LIFE.next_step(s).get("action","找橋邊的星禾聊聊"))+"\nM 查看標記與回程"
@@ -358,7 +399,7 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 		var jg_line:String=preload("res://scripts/jinguashi_revisit_ui.gd").tracker_text(s)
 		if not jg_line.is_empty():
 			app.objective.text=jg_line+"\n%s 查看礦點與回程"%app.binding_label("map")
-			if tracker_heading:tracker_heading.text="金瓜石回訪  ▾"
+			if tracker_heading:tracker_heading.text="金瓜石回訪  ▼"
 			if tracker_next:tracker_next.text="打開礦料調度  →"
 	elif not station_name.is_empty():
 		var onward:String={"toucheng":"往東北走到頭城月台。","ruifang":"穿過廣場，往東南找公車站。","jiufen":"沿石板街往東北走到接駁站。"}.get(depth_region,"")
@@ -377,11 +418,11 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 			var exhibit_hint:String=preload("res://scripts/memory_exhibit_ui.gd").tracker_text(s)
 			if not exhibit_hint.is_empty():app.objective.text=exhibit_hint
 	if depth_region=="home" and s.get("festival",{}).get("active",false):
-		if tracker_heading:tracker_heading.text="風鈴接力  ▾"
+		if tracker_heading:tracker_heading.text="風鈴接力  ▼"
 		if tracker_next:tracker_next.text="查看風鈴接力  →"
 	if depth_region=="tianwei":
 		var flower_step:Dictionary=preload("res://scripts/flower_nursery_ui.gd").next_step(s,app.session.own_id)
-		if tracker_heading:tracker_heading.text="花圃手記  ▾"
+		if tracker_heading:tracker_heading.text="花圃手記  ▼"
 		if tracker_next:tracker_next.text="翻開花圃手帳  →"
 		app.objective.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		app.objective.text=str(flower_step.get("title","田尾合作花圃"))+"\n"+str(flower_step.get("detail","和花農聊聊，認識花圃。"))
@@ -389,7 +430,7 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 		# 北門鹽田：手記卡片顯示自己的下一步（只讀快照中的 salt_pan.own.guidance）。
 		var salt_step:Dictionary=preload("res://scripts/salt_pan_ui.gd").next_step(s)
 		var salt_titles:={"intro":"認識阿曬","gates":"修好三道閘門","first_salt":"第一次曬鹽","claim":"認領鹽田區","wheel":"裝上鹽田水車","rake":"做一座收鹽台","automate":"讓鹽自己進箱子","order":"帶鹽回渡口","report":"回報阿曬","complete":"北門這一段完成了"}
-		if tracker_heading:tracker_heading.text="鹽田手記  ▾"
+		if tracker_heading:tracker_heading.text="鹽田手記  ▼"
 		if tracker_next:tracker_next.text="翻開鹽田手帳  →"
 		app.objective.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		app.objective.text=str(salt_titles.get(str(salt_step.get("phase","")),"北門鹽風合作鹽田"))+"
@@ -399,7 +440,7 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 		var basket_line:String=preload("res://scripts/salt_revisit_ui.gd").tracker_text(s,str(app.session.own_id))
 		if not basket_line.is_empty():
 			app.objective.text=basket_line
-			if tracker_heading:tracker_heading.text="臺南北門回訪  ▾"
+			if tracker_heading:tracker_heading.text="臺南北門回訪  ▼"
 			if tracker_next:tracker_next.text="打開鹽籃批次  →"
 	var forest_skin:bool=app.sound.forest_tools and World.gathering_level(p)==10
 	for action in FOREST_TOOLS:
@@ -473,10 +514,40 @@ static func toggle_forecast_focus(app) -> bool:
 	sync_forecast_tip(app)
 	return badge.has_focus()
 
+const SHORTCUT_DIRECTIONS:={JOY_BUTTON_DPAD_UP:"ShortcutMap",JOY_BUTTON_DPAD_LEFT:"ShortcutTravel",
+	JOY_BUTTON_DPAD_RIGHT:"ShortcutEmotes",JOY_BUTTON_DPAD_DOWN:"ShortcutSignal"}
+
+static func shortcut_direction(app,index:int) -> bool:
+	if not SHORTCUT_DIRECTIONS.has(index):return false
+	var choice:=app.modal.find_child(SHORTCUT_DIRECTIONS[index],true,false) as Button
+	if choice!=null:choice.grab_focus()
+	return true
+
+static func controller_shortcuts(app) -> void:
+	var body:VBoxContainer=app._open_modal("島上快捷選單")
+	app.modal.set_meta("life_modal_layout","controller_shortcuts")
+	app.modal.set_meta("controller_shortcuts",true)
+	for options:Array in [[ ["ShortcutMap","↑  周邊地圖","map",app._map_menu] ],
+		[ ["ShortcutTravel","←  台灣旅圖","sign",func():app._travel_menu()], ["ShortcutEmotes","島民招呼  →","bell",app._emote_menu] ],
+		[ ["ShortcutSignal","↓  地圖標記","sign",app._map_signal_menu.bind(app._controller_target())] ]]:
+		var row:=HBoxContainer.new()
+		row.alignment=BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation",12)
+		body.add_child(row)
+		for option:Array in options:
+			var choice:Button=app.button(option[1],option[3])
+			choice.name=option[0]
+			choice.icon=icon(option[2])
+			choice.add_theme_constant_override("icon_max_width",24)
+			choice.custom_minimum_size=Vector2(176,44)
+			row.add_child(choice)
+	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="十字鍵選擇 · 手把 A 開啟 · B 返回"
+	app._layout_preview.call_deferred()
+
 static func pause(app) -> void:
 	var content:VBoxContainer=app._open_modal("歇一會兒")
 	app.modal.set_meta("life_modal_layout","pause_drawer")
-	var intro:=text(app,"今天也在島上留下了一點回憶。",14)
+	var intro:=text(app,"今天也在島上留下了一點回憶。",15)
 	content.add_child(intro)
 	var grid:=GridContainer.new()
 	grid.columns=3
@@ -487,6 +558,17 @@ static func pause(app) -> void:
 	var entries=[ ["map","島嶼地圖",app.binding_label("map"),app._map_menu], ["journal","島民手帳",app.binding_label("journal"),app._journal], ["trophy","生活收藏",app.binding_label("collection"),app._collection_menu], ["bell","風鈴接力",app.binding_label("festival"),app._festival_menu], ["seed","作物種子",app.binding_label("seeds"),app._seed_menu], ["settings","舒適設定","",app._settings_menu], ["settings","鍵盤設定","",app._bindings_menu], ["fish","拿起釣竿",app.binding_label("fish"),func():app._close_modal();app._select_tool("fish")], ["letter","共同工程","",app._board], ["letter","島民交換","",app._trade_menu], ["sign","操作指南","",app._help] ]
 	if not app.island_passport.is_empty():entries.append(["letter","島嶼通行簿","",app._passport_menu])
 	entries.append(["bell","島民招呼","",app._emote_menu])
+	if app.session.snapshot.get("players",{}).get(app.session.own_id,{}).has(World.Rabbit.FIELD):
+		entries.append(["home","棉球兔","",app._rabbit_menu])
+	if app.session.snapshot.get("players",{}).get(app.session.own_id,{}).has(World.Cat.FIELD):
+		entries.append(["home","圍巾貓","",app._cat_menu])
+	if app.session.snapshot.get("players",{}).get(app.session.own_id,{}).has(World.Dog.FIELD):
+		entries.append(["home","小柴犬","",app._dog_menu])
+	if app.session.snapshot.get("players",{}).get(app.session.own_id,{}).has(World.Fox.FIELD):
+		entries.append(["home","葉耳狐","",app._fox_menu])
+	if app.session.solo_rest_enabled or app.session.snapshot.has("night_vote"):
+		entries.append(["calendar","休息到清晨" if app.session.solo_rest_enabled else "夜間投票","",app._night_rest_menu])
+	var shortcuts:Array[Button]=[]
 	for entry in entries:
 		var cell:=VBoxContainer.new()
 		cell.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -495,11 +577,21 @@ static func pause(app) -> void:
 		var b:=icon_button(app,entry[0],entry[1],"—" if entry[2]=="未設定" else entry[2],entry[3],72)
 		if entry[1]=="島民交換":b.name="PauseTrade"
 		if entry[1]=="舒適設定":b.name="PauseComfort"
+		if entry[1]=="操作指南":b.name="PauseHelp"
+		if entry[1] in ["休息到清晨","夜間投票"]:b.name="PauseNightRest"
 		b.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 		cell.add_child(b)
-		var caption:=text(app,entry[1],14)
+		shortcuts.append(b)
+		var caption:=text(app,entry[1],15)
 		caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		cell.add_child(caption)
+	for index in shortcuts.size():
+		var button:=shortcuts[index]
+		if index>=grid.columns:button.focus_neighbor_top=button.get_path_to(shortcuts[index-grid.columns])
+		if index+grid.columns<shortcuts.size():button.focus_neighbor_bottom=button.get_path_to(shortcuts[index+grid.columns])
+		if index%grid.columns>0:button.focus_neighbor_left=button.get_path_to(shortcuts[index-1])
+		if index%grid.columns<grid.columns-1 and index+1<shortcuts.size():
+			button.focus_neighbor_right=button.get_path_to(shortcuts[index+1])
 	var footer:=HBoxContainer.new()
 	footer.add_theme_constant_override("separation",6)
 	var shell:VBoxContainer=content.get_parent().get_parent()
@@ -507,14 +599,14 @@ static func pause(app) -> void:
 	shell.move_child(footer,shell.get_child_count()-3)
 	var rescue:Button=app.button("迷路了？回到渡口",func():app.session.perform("rescue",Vector2i.ZERO);app._close_modal())
 	rescue.flat=true
-	rescue.add_theme_font_size_override("font_size",13)
+	rescue.add_theme_font_size_override("font_size",15)
 	rescue.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	footer.add_child(rescue)
 	var save:Button=app.button("儲存今天 · 離開小島",app._quit)
-	save.add_theme_font_size_override("font_size",13)
+	save.add_theme_font_size_override("font_size",15)
 	save.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	footer.add_child(save)
-	app.modal_feedback.text="Esc 返回 · 多人世界仍繼續運作"
+	app.modal_feedback.text="Esc／手把 B 返回 · 單機島已暫停" if app.session.local_paused else "Esc 返回 · 多人世界仍繼續運作"
 	app._layout_preview()
 
 static func reveal(app,control:Control) -> void:
@@ -523,8 +615,35 @@ static func reveal(app,control:Control) -> void:
 		var tween:=control.create_tween()
 		tween.tween_property(control,"modulate:a",1.0,0.16).set_trans(Tween.TRANS_SINE)
 
+static func help_card(app,parent:Container,symbol:String,title:String,guide:String) -> PanelContainer:
+	var card:=PanelContainer.new()
+	card.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	card.focus_mode=Control.FOCUS_ALL
+	card.set("accessibility_name",title)
+	card.add_theme_stylebox_override("panel",Art.compact_style())
+	card.focus_entered.connect(card.queue_redraw)
+	card.focus_exited.connect(card.queue_redraw)
+	card.draw.connect(func():
+		if card.has_focus():card.draw_rect(Rect2(Vector2.ONE*2.0,card.size-Vector2.ONE*4.0),Color("527248"),false,3.0)
+	)
+	parent.add_child(card)
+	var body:=VBoxContainer.new()
+	card.add_child(body)
+	var heading:=HBoxContainer.new()
+	body.add_child(heading)
+	heading.add_child(picture(icon(symbol),40))
+	heading.add_child(app.label(title,18))
+	var description:Label=app.label(guide,15)
+	description.custom_minimum_size.x=290
+	body.add_child(description)
+	return card
+
 static func help(app) -> void:
 	var content:VBoxContainer=app._open_modal("第一天的口袋指南")
+	app.modal.set_meta("pocket_guide",true)
+	var scroll:=content.get_parent() as ScrollContainer
+	app.modal_feedback.add_theme_font_size_override("font_size",15)
+	app.modal_feedback.text="↑ ↓ 閱讀 · Esc／手把 B 返回"
 	var grid:=GridContainer.new()
 	grid.columns=2
 	grid.add_theme_constant_override("h_separation",16)
@@ -533,51 +652,107 @@ static func help(app) -> void:
 	var lessons=[
 		["hoe","種下第一份收成","%s 鋤田 → %s 種子 → %s 澆水 → %s 採收。\n%s 換種子，靠近種子攤按 %s 買賣。"%[app.binding_label("hoe"),app.binding_label("seed"),app.binding_label("water"),app.binding_label("harvest"),app.binding_label("seeds"),app.binding_label("interact")]],
 		["build","慢慢蓋起自己的家","%s 選家具，點附近空地放置。\n%s 搬家具，按住 %s 拖曳鋪地板、步道、屋頂。"%[app.binding_label("build_menu"),app.binding_label("move_object"),app.binding_label("area_modifier")]],
-		["axe","口袋裡的島嶼材料","斧頭砍樹三下，十字鎬敲石兩下。\nT 種樹苗約三分鐘長成；砍樹會取得樹苗。"],
+		["axe","口袋裡的島嶼材料","斧頭砍樹三下，十字鎬敲石兩下。瞄準同一格，按住滑鼠左鍵或手把 X 就能連續採集。\n{plant_tree} 種樹苗，約三分鐘長成。砍樹會取得樹苗。"],
 		["letter","和島民一起生活","公告板按 %s 捐材料修橋，%s 看居民故事。\n放箱子共享材料，小石灶做料理和飼料。"%[app.binding_label("interact"),app.binding_label("journal")]],
 		["fish","留一點時間給河岸","%s 選釣竿，點水面拋竿，咬鉤按 %s。\n靠近糯米雞按 %s 照料，%s 看生活收藏。"%[app.binding_label("fish"),app.binding_label("fish_catch"),app.binding_label("interact"),app.binding_label("collection")]],
-		["settings","照自己的步調遊玩","上 %s、左 %s、下 %s、右 %s，操作範圍約三格。\n%s 切近遠景，Esc 開選單。"%[app.binding_label("move_up"),app.binding_label("move_left"),app.binding_label("move_down"),app.binding_label("move_right"),app.binding_label("zoom")]]]
-	for lesson in lessons:
-		var card:=PanelContainer.new()
-		card.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		card.add_theme_stylebox_override("panel",Art.compact_style())
-		grid.add_child(card)
-		var body:=VBoxContainer.new()
-		card.add_child(body)
-		var heading:=HBoxContainer.new()
-		body.add_child(heading)
-		heading.add_child(picture(icon(lesson[0]),40))
-		heading.add_child(text(app,lesson[1],18))
-		var description:Label=app.label(lesson[2],14)
-		description.custom_minimum_size.x=290
-		body.add_child(description)
-	content.add_child(app.label("菜園小幫手：蓋工作台，靠近按 %s 做強化石鎬 → 採銅 → 銅接頭 → 灑水器套件。%s 放置，靠近按 %s 補水。"%[app.binding_label("interact"),app.binding_label("build_menu"),app.binding_label("interact")],14))
-	content.add_child(app.label(app.binding_text("林間水工坊：成熟樹提供樹脂；鋸木台做木板、炭窯做木炭。工作台再做桶、泵和銅管，{build} 放置。河水泵在河水兩格內啟用，以同主人的四向管線接桶、再接灑水器。管線占一格，可走過；斷管後既有儲水仍可用。"),14))
-	content.add_child(app.label("輸送帶：按 %s 選方向和物品，再啟用。木材可送入鋸木台或炭窯，木炭可送入林務工作站。"%[app.binding_label("interact")],14))
-	content.add_child(app.label("手推耕田機：持有時按 %s，點身邊空地一次最多開 9 格。成功才消耗 1 木炭。"%[app.binding_label("till_area")],14))
-	content.add_child(app.label("手推播種機：按 %s 換種子，按 %s 拿起。點自己的空農田，最多播 9 格。"%[app.binding_label("seeds"),app.binding_label("seed_area")],14))
-	content.add_child(app.label("手推收割機：按 %s 拿起，點自家成熟作物，最多收 9 格，整次成功耗 1 木炭。"%[app.binding_label("harvest_area")],14))
-	content.add_child(app.label(app.binding_text("小小林務所：工作台製作林務工作站，{build} 放置，{interact} 裝入木炭與樹苗再啟用。管理上下左右各兩格的四塊人工林；每 12 秒巡一格，成熟後採伐並補植。只處理自己的人工樹，不動原生林。木材、纖維、樹脂存滿會停止，領取後可帶去鋸木台與炭窯。"),14))
-	content.add_child(app.label(app.binding_text("{remove} 拆除會退回材料，也能收回自己的樹苗或空農田。屋頂先鋪地板，進屋後會淡化。成功操作後自動保存；無人在線時生長暫停。"),14))
+		["settings","照自己的步調遊玩","上 %s、左 %s、下 %s、右 %s，操作範圍約三格。\n%s 切近遠景，Esc 開選單。\n%s 開招呼與標記。手把按下左搖桿再按下方向鍵可選標記。"%[app.binding_label("move_up"),app.binding_label("move_left"),app.binding_label("move_down"),app.binding_label("move_right"),app.binding_label("zoom"),app.binding_label("social")]]]
+	var cards:Array[PanelContainer]=[]
+	for lesson in lessons:cards.append(help_card(app,grid,lesson[0],lesson[1],lesson[2]))
+	var workshop_heading:=HBoxContainer.new()
+	content.add_child(workshop_heading)
+	var workshop_title:Label=app.label("做大一點的工坊",20)
+	workshop_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	workshop_heading.add_child(workshop_title)
+	var diagrams:Button=app.button("看接線圖",app._workshop_guide)
+	diagrams.name="HelpWorkshopGuide"
+	workshop_heading.add_child(diagrams)
+	cards.append(help_card(app,content,"water","灌溉與水管","在工作台按 {interact} 做強化石鎬。採銅做銅接頭，就能製作灑水器套件。按 {build_menu} 選灑水器，靠近按 {interact} 補水。\n成熟樹提供樹脂，鋸木台做木板、炭窯做木炭。用工作台製作桶、泵與銅管，按 {build} 放置。將水泵放在離河水兩格內，用同一主人的管線接儲水桶，再接灑水器。銅管可走過，斷管後桶裡的水仍可用。"))
+	cards.append(help_card(app,content,"hoe","手推農機","{till_area} 拿耕田機。點身邊空地，成功開田才消耗 1 份木炭。\n{seeds} 換種子，{seed_area} 拿播種機，點自己的空農田播種。\n{harvest_area} 拿收割機，點自家成熟作物。成功收割耗 1 份木炭。\n三種農機一次最多處理 9 格。"))
+	cards.append(help_card(app,content,"axe","林務與輸送帶","在工作台製作林務工作站，按 {build} 放置，靠近按 {interact} 裝入木炭與樹苗再啟用。它每 12 秒巡查一格，只管理四個方向各兩格處的自種樹，成熟後採伐並補植。木材、纖維或樹脂存滿時會暫停。\n靠近輸送帶按 {interact} 選方向和物品再啟用。木材能送進鋸木台或炭窯，木炭能送進林務工作站。"))
+	cards.append(help_card(app,content,"build","拆除與存檔","{remove} 拆除會退回材料，也能收回自己的樹苗或空農田。蓋屋頂前先鋪地板，進屋後屋頂會淡化。成功操作後自動保存，無人在線時作物暫停生長。"))
+	for index in cards.size():
+		cards[index].name="GuideCard%d"%index
+	for index in cards.size():
+		var card:=cards[index]
+		card.focus_entered.connect(func():scroll_to_help_card.call_deferred(scroll,card))
+		card.focus_neighbor_top=card.get_path_to(cards[maxi(0,index-1)])
+		card.focus_neighbor_bottom=card.get_path_to(cards[mini(index+1,cards.size()-1)])
+		card.focus_neighbor_left=card.get_path_to(cards[index-1]) if index<lessons.size() and index%2==1 else NodePath(".")
+		card.focus_neighbor_right=card.get_path_to(cards[index+1]) if index<lessons.size() and index%2==0 else NodePath(".")
+
+static func scroll_to_help_card(scroll:ScrollContainer,card:Control) -> void:
+	if not is_instance_valid(card) or not card.has_focus():return
+	var bounds:=scroll.get_global_rect()
+	var target:=card.get_global_rect()
+	if target.position.y<bounds.position.y or target.end.y>bounds.end.y:
+		scroll.scroll_vertical+=roundi(target.position.y-bounds.position.y)
+
+static func audio_settings(app,parent:Container) -> Dictionary:
+	var grid:=GridContainer.new()
+	grid.columns=2
+	grid.add_theme_constant_override("h_separation",16)
+	parent.add_child(grid)
+	var sliders:Dictionary={}
+	for entry:Array in [["master_volume","主音量","MasterVolume"],["music_volume","背景音樂","MusicVolume"],
+		["ambience_volume","環境聲","AmbienceVolume"],["volume","動作音","ActionVolume"],["interface_volume","介面提示","InterfaceVolume"]]:
+		var key:String=entry[0]
+		var caption:String=entry[1]
+		var column:=VBoxContainer.new()
+		column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		grid.add_child(column)
+		var heading:=text(app,"%s %d%%"%[caption,roundi(float(app.sound.get(key))*100.0)],16)
+		column.add_child(heading)
+		var slider:=HSlider.new()
+		slider.name=entry[2]
+		slider.max_value=100
+		slider.step=5
+		slider.value=app.sound.get(key)*100.0
+		slider.custom_minimum_size.y=28
+		slider.tooltip_text=caption
+		slider.value_changed.connect(func(value:float):heading.text="%s %d%%"%[caption,roundi(value)])
+		column.add_child(slider)
+		sliders[key]=slider
+	parent.add_child(text(app,"0% 為靜音",14))
+	var captions:=CheckBox.new()
+	captions.name="ActivityCaptions"
+	captions.text="顯示活動字幕"
+	captions.button_pressed=app.sound.activity_captions
+	captions.tooltip_text="在畫面上提示咬鉤、收成與附近自己的機台完工。"
+	parent.add_child(captions)
+	sliders.activity_captions=captions
+	return sliders
+
+static func audio_levels(sliders:Dictionary) -> Dictionary:
+	return {"master_volume":sliders.master_volume.value/100.0,"ambience_volume":sliders.ambience_volume.value/100.0,
+		"interface_volume":sliders.interface_volume.value/100.0,"activity_captions":sliders.activity_captions.button_pressed}
+
+static func camera_setting(app,content:VBoxContainer) -> OptionButton:
+	content.add_child(text(app,"鏡頭跟隨",16))
+	var choice:=OptionButton.new()
+	choice.name="CameraMode"
+	choice.add_item("直接跟隨")
+	choice.add_item("小範圍固定")
+	choice.selected=int(app.sound.fixed_area_camera)
+	choice.custom_minimum_size.y=40
+	content.add_child(choice)
+	content.add_child(text(app,"小範圍固定時，短距離走動不會帶動背景。",14))
+	return choice
+
+static func text_scale_setting(app,content:VBoxContainer) -> OptionButton:
+	content.add_child(text(app,"介面與場景文字大小",16))
+	var choice:=OptionButton.new()
+	choice.name="TextScale"
+	for index in 4:choice.add_item(["小","標準","大","特大"][index],index)
+	choice.selected=app.sound.preferred_text_scale
+	choice.custom_minimum_size.y=40
+	content.add_child(choice)
+	return choice
 
 static func settings(app) -> void:
 	var content:VBoxContainer=app._open_modal("讓自己舒服一點")
 	app.modal.set_meta("life_modal_layout","settings")
-	var audio:=HBoxContainer.new()
-	audio.add_theme_constant_override("separation",16)
-	content.add_child(audio)
-	audio.add_child(picture(icon("bell"),48))
-	var volume:=VBoxContainer.new()
-	volume.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	audio.add_child(volume)
-	var amount:=text(app,"提示音 %d%%"%roundi(app.sound.volume*100),20)
-	volume.add_child(amount)
-	var slider:=HSlider.new()
-	slider.min_value=0;slider.max_value=100;slider.step=5;slider.value=app.sound.volume*100
-	slider.custom_minimum_size.y=32
-	volume.add_child(slider)
-	slider.value_changed.connect(func(value):amount.text="提示音 %d%%"%int(value))
-	content.add_child(text(app,"靜音也能靠文字提示完成所有操作。",14))
+	var camera:=camera_setting(app,content)
+	var audio:=audio_settings(app,content)
 	content.add_child(HSeparator.new())
 	var motion:=CheckBox.new()
 	motion.text="減少裝飾動態"
@@ -604,13 +779,7 @@ static func settings(app) -> void:
 		var caption:=text(app,"近景 · 角色更清楚" if value==2 else "遠景 · 看更多小島",15)
 		caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		card.add_child(caption)
-	content.add_child(text(app,"介面文字大小",16))
-	var text_scale:=OptionButton.new()
-	text_scale.name="TextScale"
-	for index in 4:text_scale.add_item(["小","標準","大","特大"][index],index)
-	text_scale.selected=app.sound.preferred_text_scale
-	text_scale.custom_minimum_size.y=40
-	content.add_child(text_scale)
+	var text_scale:=text_scale_setting(app,content)
 	var skin:=CheckBox.new()
 	skin.text="森林工具外觀"
 	skin.disabled=World.gathering_level(app.session.snapshot.get("players",{}).get(app.session.own_id,{}))<10
@@ -625,19 +794,44 @@ static func settings(app) -> void:
 	fishing.custom_minimum_size.y=40
 	content.add_child(fishing)
 	var save_button:Button=app.button("保存偏好 · 試聽",func():
-		if not app.sound.save_preferences(app.arg_value("settings","user://settings.cfg"),slider.value/100.0,motion.button_pressed,selected_zoom.value,null if skin.disabled else skin.button_pressed,fishing.selected==1,text_scale.get_selected_id()):
+		if not app.sound.save_preferences(app.settings_path,audio.volume.value/100.0,motion.button_pressed,selected_zoom.value,null if skin.disabled else skin.button_pressed,fishing.selected==1,text_scale.get_selected_id(),audio.music_volume.value/100.0,audio_levels(audio),camera.selected==1):
 			app._notice("設定保存失敗，原本設定仍保留。",false)
 			return
 		app.view.reduced_motion=app.sound.reduced_motion
 		app.view.zoom=float(app.sound.preferred_zoom)
+		app.view.fixed_area_camera=app.sound.fixed_area_camera
 		app._apply_font_scale_tree()
 		app._refresh_hud()
 		app._notice("設定已儲存，下次啟動會沿用。",true)
 		app.sound.play_cue("reward",true)
 	)
 	save_button.name="SaveComfort"
-	content.add_child(save_button)
+	var footer:=HBoxContainer.new()
+	footer.add_theme_constant_override("separation",10)
+	app.modal_feedback.get_parent().add_child(footer)
+	app.modal_feedback.reparent(footer,false)
+	app.modal_feedback.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	footer.add_child(save_button)
 	content.add_theme_constant_override("separation",7)
 	motion.custom_minimum_size.y=32
 	app.modal_feedback.text="偏好保存在這台電腦 · %s 切換遠近"%app.binding_label("zoom")
 	app._layout_preview()
+
+static func picnic_cooking_hint(snapshot:Dictionary,owner:String) -> String:
+	var person:Dictionary=snapshot.get("players",{}).get(owner,{})
+	if person.is_empty():return ""
+	var dishes:Dictionary=snapshot.get("picnic_materials",{})
+	var needed:Array[String]=[]
+	for item in ["soup","bread"]:
+		if int(dishes.get(item,0))<(2 if item=="soup" else 1):needed.append(item)
+	var now:=float(snapshot.get("time",0.0))
+	var cooking:=""
+	for device:Dictionary in snapshot.get("objects",{}).values():
+		if device.get("type","")!="stove":continue
+		var model:=preload("res://scripts/cooking_queue_ui.gd").model(device,now)
+		for dish:Dictionary in model.ready:
+			if dish.kind in needed:return "料理好了，到小石灶領取"
+		var active:Dictionary=model.active
+		if not active.is_empty() and active.kind in needed:
+			cooking="小石灶料理中，約剩 %d 秒"%maxi(0,ceili(float(active.remaining)))
+	return cooking

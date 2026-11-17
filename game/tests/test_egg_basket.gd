@@ -57,5 +57,54 @@ func _initialize() -> void:
 	expect(world.step(60.0,true) and int(world.state.animal.basket_eggs)==1,"Retry produces exactly one egg")
 	for suffix in ["",".bak",".tmp"]:
 		if FileAccess.file_exists(path+suffix):DirAccess.remove_absolute(path+suffix)
+	for mode in ["hand","basket","machine"]:verify_quality(mode)
+	var hen:Dictionary={"egg_ready":1.0,"bond":5,"bonus_progress":3,"basket_eggs":3}
+	expect(World.LIVESTOCK.store_chicken_cycle(hen,hen,"basket_eggs",4,1.0)==1 and int(hen.bonus_progress)==4,
+		"A one-slot basket stores the ordinary egg and saves the owed quality reward")
+	hen.basket_eggs=0
+	hen.egg_ready=2.0
+	expect(World.LIVESTOCK.store_chicken_cycle(hen,hen,"basket_eggs",4,2.0)==2
+		and int(hen.basket_eggs_quality)==1 and int(hen.bonus_progress)==0,"The next cycle pays the deferred bonus only once")
 	print("EGG_BASKET_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0))
+
+func verify_quality(mode:String)->void:
+	var world:=World.new()
+	var token:="grower"
+	world.add_player(token,"牧場")
+	var player:Dictionary=world.state.players[token]
+	player.x=HEN.x+0.5
+	player.y=HEN.y+0.5
+	player.inventory.feed=World.LIVESTOCK.BONUS_INTERVAL
+	for i in World.LIVESTOCK.BONUS_BOND:
+		expect(world.act(token,"pet-%d"%i,"pet",HEN).ok,"Pet the hen through the normal action")
+		world.step(World.LIVESTOCK.PET_INTERVAL,true)
+	var site:=HEN+Vector2i.DOWN
+	if mode=="basket":
+		player.inventory.egg_basket=1
+		expect(world.act(token,"install","install_egg_basket",HEN).ok,"Install the legacy basket")
+	if mode=="machine":
+		world.state.objects[World.key(site)]={"type":"animal_collector","owner":token,"items":{}}
+		player.inventory.egg_basket=1
+		expect(world.act(token,"bind","collector_bind",site,"chicken").ok,"Bind the equipment to the hen")
+	for i in World.LIVESTOCK.BONUS_INTERVAL:
+		expect(world.act(token,"feed-%d"%i,"feed",HEN).ok,"Feed through the usual action")
+		world.step(World.CHICKEN_EGG_SECONDS,true)
+		if mode=="hand":expect(world.act(token,"collect-%d"%i,"egg",HEN).ok,"Collect the egg by hand")
+	var path:="user://quality-egg-%s-%d.json"%[mode,Time.get_ticks_usec()]
+	world.save_path=path
+	expect(world.save() and world.load_world(path),"Save and reload "+mode)
+	if mode=="basket":expect(world.act(token,"collect","egg",HEN).ok,"Empty the legacy basket")
+	if mode=="machine":expect(world.act(token,"collect","collector_collect",site).ok,"Empty the equipment")
+	var bag:Dictionary=world.state.players[token].inventory
+	expect(int(bag.get("egg",0))==4 and int(bag.get("quality_egg",0))==1,"Exactly four normal eggs and one quality egg through "+mode)
+	expect(int(world.state.animal.bonus_progress)==0,"Granting a quality egg resets the streak")
+	var stall:=Vector2i(43,29)
+	player=world.state.players[token]
+	player.x=stall.x+0.5
+	player.y=stall.y+0.5
+	var coins:=int(player.coins)
+	expect(world.act(token,"sell","sell",stall,"quality_egg").ok and int(player.coins)==coins+37
+		and int(bag.egg)==4,"Selling a quality egg pays 37 and keeps ordinary eggs")
+	for suffix in ["",".bak",".tmp"]:
+		if FileAccess.file_exists(path+suffix):DirAccess.remove_absolute(path+suffix)

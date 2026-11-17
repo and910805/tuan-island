@@ -31,12 +31,14 @@ func scenario()->bool:
 	gamma=await join("miner",GAMMA,port)
 	if not expect(joined(alpha) and joined(beta) and joined(gamma),"three clients connected"):return false
 	var marks:=[alpha.notices.size(),beta.notices.size()]
-	alpha.session.perform("axe",World.SEAWEED_CELL)
+	alpha.session.perform(World.SEAWEED_POINT,World.SEAWEED_CELL)
 	beta.session.perform("axe",World.SEAWEED_CELL)
 	if not expect(await wait_until(func():return alpha.notices.size()>marks[0] and beta.notices.size()>marks[1],4.0),"both foragers receive a reply"):return false
 	await settle([alpha,beta])
 	expect(int(alpha.notices[marks[0]][1])+int(beta.notices[marks[1]][1])==1,"one of the two competing gathers succeeds")
 	expect(int(alpha.bag().get("seaweed",0))+int(beta.bag().get("seaweed",0))==1,"only one seaweed enters inventory")
+	expect(int(alpha.me().collection.shore.get("seaweed",false))+int(beta.me().collection.shore.get("seaweed",false))==1,
+		"Only the player who actually forages registers the seaweed")
 	var due:=float(alpha.session.snapshot.get("seaweed_ready",0.0))
 	expect(due>float(alpha.session.snapshot.time) and due==float(beta.session.snapshot.get("seaweed_ready",0.0)),"both foragers see the same regrowth timer")
 	expect(gamma.session.snapshot.get("region_id")=="mine_1","miner enters mine")

@@ -69,7 +69,7 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	theme = LifeTheme.apply(base_theme)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_theme_stylebox_override("panel", LifeTheme.panel_style())
-	prices = Shipping.prices(World.CROPS, World.FISH, World.OTHER_SALES)
+	prices = Shipping.prices(World.CROPS, World.FISH, World.OTHER_SALES,true)
 	var body := VBoxContainer.new()
 	body.add_theme_constant_override("separation", 10)
 	add_child(body)
@@ -149,6 +149,7 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	selected.add_child(description)
 	detail_name = text_label("選一份收穫", 21)
+	detail_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	description.add_child(detail_name)
 	detail_price = text_label("", 16)
 	description.add_child(detail_price)
@@ -200,21 +201,63 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	confirm_button = button("核對出貨", confirm)
 	confirm_button.custom_minimum_size.y = 48
 	right.add_child(confirm_button)
-	notice = text_label("挑選物品，按 ＋ 放進出貨籃。關閉介面會清空尚未送出的明細。", 15)
+	notice = text_label("挑選物品後按 ＋ 放入出貨籃。手把 X 可前往數量操作。", 15)
 	notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	notice.custom_minimum_size.y = 40
 	body.add_child(notice)
 	refresh(snapshot, own_id)
 	select_category(0)
 	update_cart()
+	var first:Control=slots.get(selected_id,tabs[0])
+	first.grab_focus.call_deferred()
+
+func _input(event:InputEvent) -> void:
+	if not is_visible_in_tree() or not event is InputEventJoypadButton or not event.pressed or event.button_index!=JOY_BUTTON_X:return
+	if selected_id.is_empty() or get_viewport().gui_get_focus_owner()!=slots.get(selected_id):return
+	var action:=plus if not plus.disabled else minus
+	if action.disabled:return
+	action.grab_focus()
+	get_viewport().set_input_as_handled()
+
+func _unhandled_input(event:InputEvent) -> void:
+	if not is_visible_in_tree() or not event.is_action_pressed("ui_cancel"):return
+	var focused:=get_viewport().gui_get_focus_owner()
+	if is_instance_valid(focused) and is_ancestor_of(focused):
+		get_viewport().set_input_as_handled()
+		close_requested.emit()
 
 func layout_for(viewport_size: Vector2) -> void:
 	size = Vector2(minf(960, viewport_size.x - 32), minf(500, viewport_size.y - 32))
 	position = ((viewport_size - size) / 2).floor()
-	grid.columns = 5 if size.x >= 940 else 4
+	var columns:=5 if size.x>=940 else 4
+	if grid.columns!=columns:
+		grid.columns=columns
+		link_stock_focus()
+
+func link_stock_focus() -> void:
+	var entries:Array[Control]=[]
+	for slot:Control in grid.get_children():
+		if slot.visible:entries.append(slot)
+	for index in entries.size():
+		var slot:=entries[index]
+		var above:Control=entries[index-grid.columns] if index>=grid.columns else tabs[category]
+		var below:Control=entries[index+grid.columns] if index+grid.columns<entries.size() else plus
+		slot.focus_neighbor_top=slot.get_path_to(above)
+		slot.focus_neighbor_bottom=slot.get_path_to(below)
+	plus.focus_neighbor_bottom=plus.get_path_to(confirm_button)
+	plus.focus_neighbor_left=plus.get_path_to(minus)
+	minus.focus_neighbor_right=minus.get_path_to(plus)
+	minus.focus_neighbor_bottom=minus.get_path_to(confirm_button)
+	plus.focus_neighbor_right=plus.get_path_to(all_button)
+	all_button.focus_neighbor_left=all_button.get_path_to(plus)
+	all_button.focus_neighbor_bottom=all_button.get_path_to(confirm_button)
+	confirm_button.focus_neighbor_right=confirm_button.get_path_to(clear_button)
+	clear_button.focus_neighbor_bottom=clear_button.get_path_to(confirm_button)
+	clear_button.focus_neighbor_left=clear_button.get_path_to(confirm_button)
+	confirm_button.focus_neighbor_top=confirm_button.get_path_to(plus)
 
 static func category_for(id: String) -> int:
-	if World.CROPS.has(id): return 1
+	if World.CROPS.has(World.CROP_CATALOG.base_kind(id)): return 1
 	if World.FISH.has(id): return 2
 	if Shipping.MATERIAL_PRICES.has(id): return 3
 	return 4
@@ -247,12 +290,16 @@ func select_category(index: int) -> void:
 	empty_label.visible = visible_ids.is_empty()
 	if selected_id not in visible_ids: selected_id = visible_ids[0] if not visible_ids.is_empty() else ""
 	select_item(selected_id)
+	link_stock_focus()
 
 func select_item(id: String) -> void:
 	if not id.is_empty() and (not slots.has(id) or not slots[id].visible): return
 	selected_id = id
 	for item in slots: slots[item].set_selected(item == id)
 	update_selection()
+	var selected:Control=slots.get(selected_id,tabs[category])
+	tabs[category].focus_neighbor_bottom=tabs[category].get_path_to(selected)
+	plus.focus_neighbor_top=plus.get_path_to(selected)
 
 func update_selection() -> void:
 	var held := int(inventory.get(selected_id, 0))
@@ -320,8 +367,7 @@ func update_cart() -> void:
 		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(details)
 		var item := text_label(World.NAMES[id], 16)
-		item.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		item.tooltip_text = World.NAMES[id]
+		item.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		details.add_child(item)
 		var subtotal := HBoxContainer.new()
 		details.add_child(subtotal)
@@ -359,11 +405,16 @@ func confirm() -> void:
 	shipment_requested.emit(JSON.stringify([lines(), quote.total]))
 
 func complete(result: Dictionary) -> void:
+	var focused:=get_viewport().gui_get_focus_owner()
+	var move_focus:=focused==confirm_button or focused==null
 	pending = false
 	reviewing = false
 	if result.get("ok", false): cart.clear()
 	update_cart()
 	select_category(category)
+	if move_focus and confirm_button.disabled:
+		var next:Control=slots.get(selected_id,tabs[category])
+		next.grab_focus()
 	show_notice(str(result.get("message", "出貨未完成，請重新核對。")), result.get("ok", false))
 
 func show_notice(message: String, success: bool) -> void:

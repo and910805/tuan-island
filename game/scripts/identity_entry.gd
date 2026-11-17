@@ -308,7 +308,8 @@ func show_world(record:Dictionary,code:String) -> void:
 	var capacity:=int(record.get("capacity",4))
 	content.add_child(app.label("%s  ·  %s  ·  線上 %d／%d  ·  成員 %d" % [world_state(record),record.get("mode","生活"),int(record.get("online",0)),capacity,int(record.get("members_count",0))],15))
 	var role:=str(record.get("role",""))
-	var role_label:="島主" if role=="owner" else ("成員" if role=="member" else "受邀")
+	var role_labels:={"owner":"島主","admin":"管理員","member":"成員"}
+	var role_label:String=role_labels.get(role,"受邀")
 	var activity:=int(record.get("last_activity",0))
 	var last:="尚無活動紀錄" if activity<=0 else Time.get_datetime_string_from_unix_time(activity,true)+" UTC"
 	content.add_child(app.label("%s  ·  協定 %d  ·  %s" % [role_label,int(record.get("protocol",0)),last],14))
@@ -325,7 +326,7 @@ func show_world(record:Dictionary,code:String) -> void:
 		seats.add_child(seat)
 		var member:Dictionary=roster[index] if roster is Array and index<roster.size() and roster[index] is Dictionary else {}
 		seat.add_child(Shell.picture(Shell.icon("sign" if member.is_empty() else "home"),24))
-		var caption:Label=app.label("空位" if member.is_empty() else "%s · %s · %s" % [str(member.get("name","島民")).left(6),"島主" if member.get("role")=="owner" else "成員","在線" if member.get("online",false) else "離線"],14)
+		var caption:Label=app.label("空位" if member.is_empty() else "%s · %s · %s" % [str(member.get("name","島民")).left(6),role_labels.get(member.get("role"),"成員"),"在線" if member.get("online",false) else "離線"],14)
 		caption.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		caption.autowrap_mode=TextServer.AUTOWRAP_OFF
 		caption.tooltip_text=caption.text
@@ -384,6 +385,7 @@ func request(route:String,body:Dictionary,bearer:="") -> Dictionary:
 	if data is Dictionary:
 		match data.get("error"):
 			"INVITE_INVALID":return {"message":"這封邀請無效或已過期，請向朋友索取新的邀請。"}
+			"WORLD_BLOCKED":return {"message":"你的帳號目前被這座島封鎖。"}
 			"WORLD_OFFLINE":return {"message":"這座島目前離線，請稍後再試。"}
 			"WORLD_FULL":return {"message":"島上已滿，請等有空位再試。"}
 			"DIRECTORY_STALE":return {"message":"這座島的狀態暫未更新，請稍後再試。"}
@@ -484,16 +486,22 @@ func join_result(ok:bool,message:String,code:="") -> void:
 		resolved_code=""
 
 func configured_update_url() -> String:
+	return update_page_url()
+
+static func update_page_url() -> String:
 	var value:=str(ProjectSettings.get_setting("application/config/update_url","")).strip_edges()
 	return value if endpoint(value,"https","",false) else ""
 
 func show_update_prompt(required_protocol:int=-1) -> void:
 	if is_instance_valid(update_dialog):update_dialog.queue_free()
+	update_dialog=make_update_prompt(self,app,required_protocol)
+
+static func make_update_prompt(host:Node,game,required_protocol:int=-1) -> Control:
 	var overlay:=Control.new()
 	overlay.name="UpdateRequiredOverlay"
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter=Control.MOUSE_FILTER_STOP
-	add_child(overlay)
+	host.add_child(overlay)
 	var shade:=ColorRect.new()
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.color=Color(0.07,0.12,0.10,0.68)
@@ -505,35 +513,51 @@ func show_update_prompt(required_protocol:int=-1) -> void:
 	panel.anchor_right=0.5
 	panel.anchor_bottom=0.5
 	panel.offset_left=-230
-	panel.offset_top=-145
+	panel.offset_top=-113
 	panel.offset_right=230
-	panel.offset_bottom=145
+	panel.offset_bottom=113
 	panel.add_theme_stylebox_override("panel",Art.badge_style())
 	overlay.add_child(panel)
+	var inset:=MarginContainer.new()
+	for edge in ["left","right","top","bottom"]:
+		inset.add_theme_constant_override("margin_"+edge,14)
+	panel.add_child(inset)
 	var content:=VBoxContainer.new()
 	content.add_theme_constant_override("separation",12)
-	panel.add_child(content)
-	content.add_child(app.label("島嶼需要更新",24))
+	inset.add_child(content)
+	var heading:Label=game.label("島嶼需要更新",24)
+	heading.add_theme_color_override("font_color",Color("294335"))
+	content.add_child(heading)
 	var current:=Session.PROTOCOL
 	var explanation:="目前遊戲版本與這座島不相容，更新後才能一起遊玩。"
 	if required_protocol>0:
 		explanation+="\n你的協定 %d · 島嶼協定 %d" % [current,required_protocol]
-	var detail:Label=app.label(explanation,16)
+	var detail:Label=game.label(explanation,16)
+	detail.add_theme_color_override("font_color",Color("3d422d"))
 	detail.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(detail)
-	var download_url:=configured_update_url()
+	var download_url:=update_page_url()
 	if not download_url.is_empty():
-		content.add_child(primary("前往下載新版",func():open_update_page(download_url)))
+		var download:Button=game.button("前往下載新版",func():
+			if OS.shell_open(download_url)!=OK:
+				detail.text="無法開啟更新頁。請用瀏覽器開啟 "+download_url)
+		for state in ["normal","hover","pressed"]:
+			download.add_theme_stylebox_override(state,Pixel.texture_style("button_pressed",3,8))
+		for color in ["font_color","font_hover_color","font_focus_color","font_pressed_color"]:
+			download.add_theme_color_override(color,Color("fff3cf"))
+		content.add_child(download)
 	else:
-		var missing:Label=app.label("更新下載頁尚未設定，請查看遊戲官方公告取得新版。",14)
+		var missing:Label=game.label("更新下載頁尚未設定，請向島主取得與伺服器相容的版本。",14)
+		missing.add_theme_color_override("font_color",Color("3d422d"))
 		missing.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		content.add_child(missing)
-	content.add_child(secondary("稍後再說",func():overlay.queue_free();update_dialog=null))
-	update_dialog=overlay
-
-func open_update_page(url:String) -> void:
-	var error:=OS.shell_open(url)
-	if error!=OK:set_status("無法開啟更新頁，請複製官方下載網址後以瀏覽器開啟。")
+	var close:Button=game.button("稍後再說",overlay.queue_free)
+	close.flat=true
+	for color in ["font_color","font_hover_color","font_focus_color","font_pressed_color"]:
+		close.add_theme_color_override(color,Color("294335"))
+	content.add_child(close)
+	close.grab_focus.call_deferred()
+	return overlay
 
 static func valid_token(value:String) -> bool:
 	if value.is_empty() or value.length()>256:return false

@@ -26,6 +26,8 @@ func valid(candidate:Dictionary) -> bool:
 
 func region_tile(region:String,skip:int=0,allow_protected:bool=false) -> String:
 	if region==Regions.HOME:return "%d,30"%(30+skip)
+	# Jiaoxi only permits the story bench, even on its unprotected clearing.
+	if region==Regions.Springs.REGION and not allow_protected:return ""
 	var found:=0
 	for y in range(World.SIZE.y):
 		for x in range(World.SIZE.x):
@@ -89,7 +91,7 @@ func _initialize() -> void:
 	write_candidate(fresh)
 	var live:=World.new()
 	expect(live.load_world(path),"v17 save with auto roof loads")
-	expect(int(live.state.version)==26,"loaded v17 migrates to 20")
+	expect(int(live.state.version)==Schema.VERSION,"loaded v17 migrates to the current format")
 	expect(live.state.roofs==expected_roofs,"v17 roofs load unchanged")
 	expect(live.save(),"v17 world saves")
 	var parsed=JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -129,7 +131,7 @@ func _initialize() -> void:
 	write_candidate(legacy)
 	var migrated:=World.new()
 	expect(migrated.load_world(path),"hand-built v16 with manual roofs loads")
-	expect(int(migrated.state.version)==26,"v16 migrates to 20")
+	expect(int(migrated.state.version)==Schema.VERSION,"v16 migrates to the current format")
 	expect(roofs_by_region(migrated.state)==legacy_roofs,"v16 manual roofs keep identity in every region")
 	for region in Regions.ALL:
 		for roof_record in layer(migrated.state,region).roofs.values():
@@ -138,7 +140,7 @@ func _initialize() -> void:
 		expect(not migrated.state.roofs.has(k),"enclosed v16 room is not auto-roofed on load "+k)
 	expect(migrated.save() and World.new().load_world(path),"migrated v16 resaves and reloads")
 	parsed=JSON.parse_string(FileAccess.get_file_as_string(path))
-	expect(parsed is Dictionary and int(parsed.version)==26 and parsed.roofs.size()==legacy.roofs.size(),"resaved v16 is v19 with same roof count")
+	expect(parsed is Dictionary and int(parsed.version)==Schema.VERSION and parsed.roofs.size()==legacy.roofs.size(),"resaved v16 uses the current format with the same roof count")
 
 	var legacy_false:Dictionary=legacy.duplicate(true)
 	legacy_false.roofs["34,30"].auto=false
@@ -178,6 +180,21 @@ func _initialize() -> void:
 	var manual_unknown:Dictionary=fresh.duplicate(true)
 	manual_unknown.roofs["36,30"]=roof("ghost_owner")
 	expect(valid(manual_unknown),"v17 manual roof with unknown owner and no floor stays valid")
+
+	var clearing:=Regions.Springs.BENCH_CLEARING
+	var bench_tile:=Vector2i(-1,-1)
+	for y in range(clearing.position.y,clearing.end.y):
+		for x in range(clearing.position.x,clearing.end.x):
+			var candidate:=Vector2i(x,y)
+			if Regions.land(candidate,Regions.Springs.REGION) and not Regions.protected(candidate,Regions.Springs.REGION):
+				bench_tile=candidate
+				break
+		if bench_tile.x>=0:break
+	expect(bench_tile.x>=0,"Jiaoxi has an unprotected story bench tile")
+	if bench_tile.x>=0:
+		var restricted:Dictionary=base.duplicate(true)
+		layer(restricted,Regions.Springs.REGION).roofs[World.key(bench_tile)]=roof("alice")
+		expect(not valid(restricted),"Jiaoxi still refuses a manual roof in the story bench clearing")
 
 	# Every region layer: offline payer (persistent but elsewhere) accepted; global players used.
 	# Use regions present in the v17 fixture; Tianwei is introduced in v25.

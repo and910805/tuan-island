@@ -52,10 +52,11 @@ const T_SUMMER2_START:=70.0*DAY
 const T_AUTUMN2:=84.0*DAY+200.0
 ## Keys of a pre-existing plot (hoe creates kind/growth/wet/owner, sowing adds remaining).
 const PLOT_KEYS:=["growth","kind","owner","remaining","wet"]
+const QUALITY_KEYS:=["fertility","last_care_day","last_harvest_kind"]
 ## Literal strings from world.gd (seed / harvest / water branches).
 const DORMANT_MSG:="作物正在休眠，等到適合的季節會繼續生長。"
 const PLANT_DORMANT_MSG:="種下太陽番茄。現在不是它的季節，會休眠到夏季再生長。"
-const WATER_MSG:="水分充足，幼苗會慢慢長大"
+const CARE_MSG:="水分充足 · 照料 %d／5"
 const NOT_RIPE_DRY:="還沒成熟，先澆點水吧"
 const NO_CROP:="這裡沒有作物"
 const H1_MSG:="收成了！太陽番茄 +2。太陽番茄還能再收 2 次，記得重新澆水"
@@ -465,14 +466,25 @@ func agree(clients:Array,label:String,d1:bool,d2:bool)->void:
 		var tile:Vector2i=pair[0]
 		var want_d:bool=pair[1]
 		var k:String=World.key(tile)
-		var srow:=row_of(srv_crop(k))
+		var server_crop:=srv_crop(k)
+		var srow:=row_of(server_crop)
 		var sd:=srv_dormant(tile)
 		expect(sd==want_d,"%s: server plot_dormant(%s)==%s (got %s, time %.1f %s)"%[label,k,str(want_d),str(sd),srv_time(),season_of(srv_time())])
 		for c:Client in clients:
 			expect(row_of(c.crop(k))==srow,"%s: %s sees plot %s exactly as the server (client %s, server %s)"%[label,c.label,k,row_of(c.crop(k)),srow])
 			expect(c.dormant(tile)==sd,"%s: %s plot_dormant(%s) from its own snapshot agrees with the server (client %s, server %s)"%[label,c.label,k,str(c.dormant(tile)),str(sd)])
-			expect(key_list(c.crop(k))==PLOT_KEYS,"%s: %s plot %s has exactly the pre-existing plot fields %s (got %s)"%[label,c.label,k,str(PLOT_KEYS),str(key_list(c.crop(k)))])
-		expect(key_list(srv_crop(k))==PLOT_KEYS,"%s: server plot %s keys %s (got %s)"%[label,k,str(PLOT_KEYS),str(key_list(srv_crop(k)))])
+			expect(key_list(c.crop(k))==key_list(server_crop) and quality_fields(c.crop(k))==quality_fields(server_crop),"%s: %s plot %s keeps the server plot fields and quality values"%[label,c.label,k])
+		expect(valid_plot_keys(server_crop),"%s: server plot %s uses ordinary and recognized quality fields (got %s)"%[label,k,str(key_list(server_crop))])
+
+static func valid_plot_keys(crop:Dictionary)->bool:
+	return PLOT_KEYS.all(func(key):return crop.has(key)) and crop.keys().all(func(key):return key in PLOT_KEYS or key in QUALITY_KEYS)
+
+static func quality_fields(crop:Dictionary)->Dictionary:
+	var fields:Dictionary={}
+	for key in QUALITY_KEYS:
+		if crop.has(key):
+			fields[key]=str(crop[key]) if key=="last_harvest_kind" else int(crop[key])
+	return fields
 
 func keys_same(pairs:Array,label:String)->void:
 	for pair in pairs:
@@ -537,11 +549,11 @@ static func disk_tomatoes(disk:Variant,token:String)->int:
 	return int(inv.get("tomato",0)) if inv is Dictionary else -1
 
 ## Field-by-field save check of one plot against the last server row (JSON reorders keys).
-func disk_plot_ok(disk:Variant,k:String,server_row:String,owner:String,label:String)->void:
+func disk_plot_ok(disk:Variant,k:String,server_crop:Dictionary,owner:String,label:String)->void:
 	var d=disk_crop(disk,k)
 	if not expect(d is Dictionary,"%s: saved plot %s present"%[label,k]):return
-	expect(disk_row(d)==server_row,"%s: saved plot %s kind/growth/remaining/wet equal the last server state (disk %s, server %s)"%[label,k,disk_row(d),server_row])
-	expect(key_list(d)==PLOT_KEYS,"%s: saved plot %s keys %s (got %s)"%[label,k,str(PLOT_KEYS),str(key_list(d))])
+	expect(disk_row(d)==row_of(server_crop),"%s: saved plot %s kind/growth/remaining/wet agree"%[label,k])
+	expect(key_list(d)==key_list(server_crop) and quality_fields(d)==quality_fields(server_crop),"%s: saved plot %s preserves quality metadata"%[label,k])
 	expect(str(d.get("owner",""))==owner,"%s: saved plot %s owner is alpha's raw token on disk"%[label,k])
 	var g:Variant=d.get("growth")
 	var r:Variant=d.get("remaining")
@@ -620,7 +632,7 @@ func scenario()->bool:
 	await settle(ab)
 	expect(await all_see(ab,k1,regrow_row,2.0),"case 3 the mid-regrow tomato survived into autumn unchanged %s"%seen_text(ab,k1))
 	agree(ab,"case 3 autumn",true,false)
-	await succeed(alpha,"water",plot1,"",WATER_MSG,"case 3 alpha waters the dormant tomato",[beta])
+	await succeed(alpha,"water",plot1,"",CARE_MSG%1,"case 3 alpha waters the dormant tomato",[beta])
 	var wet_regrow:=want("tomato",60.0,2,true)
 	expect(await all_see(ab,k1,wet_regrow,3.0),"case 3 both see the dormant tomato wet, growth 60, remaining 2 %s"%seen_text(ab,k1))
 	var t_before:=srv_time()
@@ -648,7 +660,7 @@ func scenario()->bool:
 	expect(await all_see(ab,k1,regrow_row,2.0),"case 4 at summer's first midnight the soil dried; growth 60 and remaining 2 kept through the dormancy %s"%seen_text(ab,k1))
 	for c:Client in ab:expect(season_of(c.now())=="summer","case 4 %s's clock is in summer"%c.label)
 	agree(ab,"case 4 summer",false,false)
-	await succeed(alpha,"water",plot1,"",WATER_MSG,"case 4 alpha waters the tomato in season",[beta])
+	await succeed(alpha,"water",plot1,"",CARE_MSG%2,"case 4 alpha waters the tomato in season",[beta])
 	saw_mid=false
 	var ripe2:=await fast_forward(func():
 		var g:=float(alpha.crop(k1).get("growth",-1.0))
@@ -661,7 +673,7 @@ func scenario()->bool:
 	await succeed(alpha,"harvest",plot1,"",H2_MSG,"case 4 alpha's second harvest",[beta])
 	expect(await all_see(ab,k1,want("tomato",60.0,1,false),3.0),"case 4 after harvest 2 both see 60 / remaining 1 / dry %s"%seen_text(ab,k1))
 	expect(tomatoes(alpha)==4 and srv_tomatoes(ALPHA)==4,"case 4 alpha holds 4 tomatoes (client %d, server %d)"%[tomatoes(alpha),srv_tomatoes(ALPHA)])
-	await succeed(alpha,"water",plot1,"",WATER_MSG,"case 4 alpha waters again",[beta])
+	await succeed(alpha,"water",plot1,"","水分充足，幼苗會慢慢長大","case 4 alpha waters again",[beta])
 	var ripe3:=await fast_forward(func():return float(alpha.crop(k1).get("growth",-1.0))>=120.0 and float(beta.crop(k1).get("growth",-1.0))>=120.0,15.0)
 	expect(ripe3,"case 4 the tomato regrew a second time on the live clock %s"%seen_text(ab,k1))
 	await settle(ab)
@@ -678,7 +690,7 @@ func scenario()->bool:
 	preset_time(T_AUTUMN2) # PRESET autumn day 85
 	expect(await clocks_reach(ab,T_AUTUMN2,4.0),"case 5 both clocks show the second autumn")
 	await settle(ab)
-	await succeed(alpha,"water",plot2,"",WATER_MSG,"case 5 alpha waters the dormant plot-2 tomato",[beta])
+	await succeed(alpha,"water",plot2,"",CARE_MSG%3,"case 5 alpha waters the dormant plot-2 tomato",[beta])
 	expect(await all_see(ab,k2,want("tomato",0.0,3,true),3.0),"case 5 plot 2 dormant: growth 0, remaining 3, wet %s"%seen_text(ab,k2))
 	agree(ab,"case 5 before shutdown",false,true)
 	await leave(alpha)
@@ -686,16 +698,18 @@ func scenario()->bool:
 	alpha=null
 	beta=null
 	await pause(0.3)
-	var last1:=row_of(srv_crop(k1))
-	var last2:=row_of(srv_crop(k2))
+	var saved1:=srv_crop(k1)
+	var saved2:=srv_crop(k2)
+	var last1:=row_of(saved1)
+	var last2:=row_of(saved2)
 	var last_time:=srv_time()
 	expect(last2==want("tomato",0.0,3,true) and last1==want("",0.0,0,false),"case 5 last server state: plot 1 empty, plot 2 dormant tomato (%s / %s)"%[last1,last2])
 	expect(await stop_server(),"case 5 server shuts down with a final save")
 	var disk=read_disk()
 	if not expect(disk is Dictionary,"case 5 save parses"):return false
 	expect(disk_valid(disk),"case 5 saved world passes SaveSchema")
-	disk_plot_ok(disk,k1,last1,ALPHA,"case 5 save")
-	disk_plot_ok(disk,k2,last2,ALPHA,"case 5 save")
+	disk_plot_ok(disk,k1,saved1,ALPHA,"case 5 save")
+	disk_plot_ok(disk,k2,saved2,ALPHA,"case 5 save")
 	# JSON.stringify without full precision may round the live clock in the last digits.
 	expect(absf(float(disk.get("time",-1.0))-last_time)<0.01 and season_of(float(disk.get("time",-1.0)))=="autumn","case 5 saved time equals the last server time, autumn (%s vs %.3f)"%[str(disk.get("time")),last_time])
 	expect(disk_tomatoes(disk,ALPHA)==6 and disk_tomatoes(disk,BETA)==0,"case 5 save: alpha 6 tomatoes, beta 0")
@@ -727,14 +741,14 @@ func scenario()->bool:
 	alpha=null
 	beta=null
 	await pause(0.3)
-	var fin1:=row_of(srv_crop(k1))
-	var fin2:=row_of(srv_crop(k2))
+	var final1:=srv_crop(k1)
+	var final2:=srv_crop(k2)
 	expect(await stop_server(),"case 6 restarted server shuts down cleanly")
 	var after=read_disk()
 	expect(disk_valid(after),"case 6 final save passes SaveSchema")
-	disk_plot_ok(after,k1,fin1,ALPHA,"case 6 final save")
-	disk_plot_ok(after,k2,fin2,ALPHA,"case 6 final save")
-	expect(fin2==last2,"case 6 the dormant tomato did not change across the restart (%s)"%fin2)
+	disk_plot_ok(after,k1,final1,ALPHA,"case 6 final save")
+	disk_plot_ok(after,k2,final2,ALPHA,"case 6 final save")
+	expect(row_of(final2)==last2 and quality_fields(final2)==quality_fields(saved2),"case 6 the dormant tomato and quality fields did not change across the restart")
 	expect(after is Dictionary and after.get("players",{}).has(GAMMA),"case 6 final save records gamma")
 	return true
 

@@ -16,10 +16,10 @@ extends SceneTree
 ## SaveSchema before use): picnic=true; mine_depths={unlocked:6, ready:{},
 ## pumped:24, hoist:false} (B6 opened, hoist NOT repaired); fixed positions at
 ## home beside the furnace cell (38,34): alpha (37.5,34.5), beta (39.5,35.5);
-## exact bags: alpha {stone 12, ochre_earth 4, copper_joint 2, crystal_sand 3,
+## exact bags: alpha {stone 25, iron_ingot 6, crystal_sand 3,
 ## wood 22, vein_quartz 2} (furnace cost + one glass job + one crystal sand job +
-## a chest (wood 20) + 1 wood to stock it), beta {stone 12, ochre_earth 4,
-## copper_joint 2, crystal_sand 3, wood 1} (so beta's refusals are never about
+## a chest (wood 20) + 1 wood to stock it), beta {stone 25, iron_ingot 6,
+##, crystal_sand 3, wood 1} (so beta's refusals are never about
 ## materials); a third seeded islander "mender" stands on the jinguashi surface
 ## beside the hoist sign holding exactly Mines.HOIST_COST.
 ## Everything after the seed goes through client Sessions over the network: the
@@ -47,10 +47,10 @@ const MENDER:="furnace-session-mender-token"
 const SURFACE:="jinguashi"
 const SURFACE_ARRIVAL:=Vector2(27.5,19.5)
 const FURNACE:=Vector2i(38,34)
-const CHEST:=Vector2i(38,35)
+const CHEST:=Vector2i(38,36)
 const STAND_A:=Vector2(37.5,34.5)
-const STAND_B:=Vector2(39.5,35.5)
-const FURNACE_COST:={"stone":12,"ochre_earth":4,"copper_joint":2}
+const STAND_B:=Vector2(40.5,35.5)
+const FURNACE_COST:={"stone":25,"iron_ingot":6}
 const CHEST_COST:={"wood":20}
 const GLASS_COST:={"crystal_sand":3,"wood":1}
 const SAND_COST:={"vein_quartz":2}
@@ -173,9 +173,9 @@ func seed_fixture()->bool:
 		p["x"]=at.x
 		p["y"]=at.y
 		if token==ALPHA:
-			p["inventory"]={"stone":12,"ochre_earth":4,"copper_joint":2,"crystal_sand":3,"wood":22,"vein_quartz":2}
+			p["inventory"]={"stone":25,"iron_ingot":6,"crystal_sand":3,"wood":22,"vein_quartz":2}
 		else:
-			p["inventory"]={"stone":12,"ochre_earth":4,"copper_joint":2,"crystal_sand":3,"wood":1}
+			p["inventory"]={"stone":25,"iron_ingot":6,"crystal_sand":3,"wood":1}
 	w.active_tokens.clear()
 	if not w.save():return false
 	var parsed=JSON.parse_string(FileAccess.get_file_as_string(save_path))
@@ -232,6 +232,14 @@ func wait_until(condition:Callable,seconds:float)->bool:
 
 func pause(seconds:float)->void:
 	await create_timer(seconds,true,false,true).timeout
+
+func walk_to(c:Client,target:Vector2)->bool:
+	var deadline:=Time.get_ticks_msec()+6000
+	while Time.get_ticks_msec()<deadline and c.pos().distance_to(target)>0.22:
+		c.session.input_direction((target-c.pos()).limit_length(0.8))
+		await pause(0.05)
+	c.session.input_direction(Vector2.ZERO)
+	return c.pos().distance_to(target)<=0.22
 
 func settle(clients:Array)->void:
 	var marks:Array=clients.map(func(c):return c.changes)
@@ -500,7 +508,8 @@ func scenario()->bool:
 	gamma=await join("gamma",GAMMA,port2)
 	expect(joined(gamma),"late joiner gamma joins with a fresh token")
 	if not joined(gamma):return false
-	expect(gamma.region()==Regions.HOME and gamma.pos().distance_to(Vector2(FURNACE)+Vector2(0.5,0.5))<=3.2,"gamma spawns at home within reach of the furnace (%s)"%str(gamma.pos()))
+	expect(gamma.region()==Regions.HOME and gamma.pos().distance_to(World.WANGAN_COAST.FERRY_LANDING)<0.2,"Gamma spawns at the ferry landing")
+	if not expect(await walk_to(gamma,Vector2(41.5,30.5)) and await walk_to(gamma,Vector2(41.5,34.5)),"Gamma walks from the ferry to the furnace"):return false
 	expect(text(furnace(gamma))==final_furnace,"gamma sees the same furnace object")
 	await refuse(gamma,"claim_processing",FURNACE,"",OWNER_ONLY_MSG,"gamma claims from alpha's running furnace",false,[alpha])
 	await refuse(gamma,"queue_processing",FURNACE,"glass",OWNER_ONLY_MSG,"gamma queues on alpha's furnace",false,[alpha])

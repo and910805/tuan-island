@@ -455,6 +455,48 @@ func size_flow()->void:
 	await world_flow()
 	await page_flow()
 	await panels_flow()
+	await pipe_flow()
+
+func pipe_flow()->void:
+	await close()
+	erase_row()
+	clear_tile(PIPE)
+	clear_tile(T_STORE)
+	var objects:Dictionary=w.state.objects
+	objects[k(PIPE)]={"type":"water_pipe","owner":id,"items":{}}
+	await stand(Vector2(PIPE)+Vector2(0.5,1.5))
+	await pipe_frame("pipe-disconnected","水管 · 未接通")
+	objects[k(T_STORE)]=tower(0,true)
+	await refresh()
+	await pipe_frame("pipe-empty","水管 · 蓄水已空")
+	objects[k(T_STORE)].water=12
+	await refresh()
+	await pipe_frame("pipe-stored","水管 · 管網蓄水 12／96")
+	check(Industry.network_info(w.state,k(PIPE)).flow_visible,"Enabled tower with stored water can animate the connected pipe")
+	clear_tile(T_FULL)
+	objects[k(T_FULL)]={"type":"water_tank","owner":id,"items":{},"water":24}
+	objects[k(T_STORE)]={"type":"diversion_gate","owner":id,"items":{},"mode":"closed"}
+	await refresh()
+	await pipe_frame("pipe-gate-closed","水管 · 分流閘隔開供水")
+	check(not Industry.network_info(w.state,k(PIPE)).flow_visible,"Water behind a closed gate cannot animate the downstream pipe")
+	objects[k(T_STORE)].mode="low"
+	await refresh()
+	await pipe_frame("pipe-gate-low","水管 · 分流閘僅通餘水")
+	objects[k(T_STORE)].mode="open"
+	await refresh()
+	await pipe_frame("pipe-gate-open","水管 · 管網蓄水 24／48")
+	check(Industry.network_info(w.state,k(PIPE)).flow_visible,"Opening the gate restores the reachable water animation")
+	app.view.show_target=false
+
+func pipe_frame(name:String,expected:String)->void:
+	var view=app.view
+	view.target=PIPE
+	view.show_target=true
+	view.queue_redraw()
+	await shot(name)
+	var viewport:=Rect2(Vector2.ZERO,Vector2(root.size)/view.view_zoom())
+	var labels:Array= view.world_label_placements(viewport)
+	check(labels.any(func(entry):return entry.title==expected and not entry.active),"Visible pipe inspection label: "+expected)
 
 # ------------------------------------------------------------------ icons --
 

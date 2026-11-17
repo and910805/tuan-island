@@ -69,17 +69,39 @@ func blue_workwear_atlas()->Texture2D:
 	blue_atlas=ImageTexture.create_from_image(pixels)
 	return blue_atlas
 
-func draw_person(canvas:CanvasItem,foot:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool,blue_workwear:=false,milu_apron:=false) -> void:
+func draw_seated(canvas:CanvasItem,foot:Vector2,blue_workwear:bool,style:="") -> void:
+	if atlas==null:return
+	var texture:=blue_workwear_atlas() if blue_workwear else atlas
+	var top:=foot.round()-Vector2(24,39)
+	var source_x:=frame_selection(style,Vector2i.DOWN,0.0,false,false).x*FRAME_SIZE.x
+	canvas.draw_texture_rect_region(texture,Rect2(top,Vector2(48,35)),Rect2(source_x,0,48,35))
+	canvas.draw_texture_rect_region(texture,Rect2(top+Vector2(0,34),Vector2(48,9)),Rect2(source_x,38,48,9))
+
+func draw_person(canvas:CanvasItem,foot:Vector2,shirt:Color,style:String,facing:Vector2i,phase:float,walking:bool,reduced_motion:bool,blue_workwear:=false,milu_apron:=false,cart_push:=0.0) -> void:
 	if atlas==null:return
 	var frame:=frame_selection(style,facing,phase,walking,reduced_motion)
 	var at:=foot.round()
 	# 棉棉、阿潮、暖暖暫用米露、阿榆、小栗的圖格加染色以便區分；專用像素圖待做。
 	var tint:Color={"mianmian":Color(0.80,0.92,1.0),"achao":Color(0.86,0.96,0.94),"nuannuan":Color(1.0,0.80,0.68),"luoluo":Color(1.0,0.93,0.72),"lingpopo":Color(0.86,0.82,0.92),"diandian":Color(0.84,0.96,0.82)}.get(style,Color.WHITE)
 	var texture:=blue_workwear_atlas() if blue_workwear and style in ["farmer","guest"] else atlas
-	canvas.draw_texture_rect_region(texture,Rect2(at-Vector2(FOOT),Vector2(FRAME_SIZE)),Rect2(Vector2(frame*FRAME_SIZE),Vector2(FRAME_SIZE)),tint)
+	draw_person_frame(canvas,texture,at,frame,tint,facing,cart_push)
 	if milu_apron and style in ["farmer","guest"]:
-		canvas.draw_texture_rect_region(APRON_ATLAS,Rect2(at-Vector2(FOOT),Vector2(FRAME_SIZE)),Rect2(Vector2(frame*FRAME_SIZE),Vector2(FRAME_SIZE)))
+		draw_person_frame(canvas,APRON_ATLAS,at,frame,Color.WHITE,facing,cart_push)
 	if style=="guest":
 		# Use a small ground-level color tag to identify guests without tinting sprite pixels.
 		canvas.draw_rect(Rect2(at+Vector2(-4,3),Vector2(8,3)),Color("403d35"))
 		canvas.draw_rect(Rect2(at+Vector2(-3,3),Vector2(6,2)),shirt)
+
+func draw_person_frame(canvas:CanvasItem,texture:Texture2D,foot:Vector2,frame:Vector2i,tint:Color,facing:Vector2i,cart_push:float) -> void:
+	var top:=foot-Vector2(FOOT)
+	var source:=Vector2(frame*FRAME_SIZE)
+	if cart_push<=0.0:
+		canvas.draw_texture_rect_region(texture,Rect2(top,Vector2(FRAME_SIZE)),Rect2(source,Vector2(FRAME_SIZE)),tint)
+		return
+	# Shift the torso in two steps while leaving boots on the original pixel grid.
+	var lean:=(Vector2(facing)*cart_push).round()
+	var shoulder_shift:=Vector2(lean.x,absf(lean.y))
+	var waist_shift:=(Vector2(lean.x,0)*0.5).round()
+	canvas.draw_texture_rect_region(texture,Rect2(top+shoulder_shift,Vector2(48,31)),Rect2(source,Vector2(48,31)),tint)
+	canvas.draw_texture_rect_region(texture,Rect2(top+Vector2(0,31)+waist_shift,Vector2(48,7)),Rect2(source+Vector2(0,31),Vector2(48,7)),tint)
+	canvas.draw_texture_rect_region(texture,Rect2(top+Vector2(0,38),Vector2(48,10)),Rect2(source+Vector2(0,38),Vector2(48,10)),tint)

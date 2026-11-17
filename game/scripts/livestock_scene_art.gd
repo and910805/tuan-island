@@ -26,6 +26,7 @@ const STATES := ["idle", "fed", "produce"]
 const FRAMES := 2
 const FRAME_SECONDS := 0.6
 const PET_SECONDS:=1.4
+const BRUSH=preload("res://assets/livestock/grooming-brush.png")
 const PET_PIXELS:=[".oo.oo.","oPPoPPo","oPppPPo",".oPPPo.","..oPo..","...o..."]
 const COLLECTOR_PIXELS:=[
 	"..oooooooooo..",
@@ -257,23 +258,31 @@ static func stamp(image: Image, rows: Array, at: Vector2i) -> void:
 			image.set_pixelv(p, PALETTE[ch])
 
 # Returns null for unknown animal/state/frame; never falls back to another sprite.
-static func build_image(id: String, state: String, frame: int) -> Image:
+static func build_image(id: String, state: String, frame: int, body_offset:=Vector2i.ZERO,grooming:=false,walk_frame:=-1,animal_only:=false) -> Image:
 	if not has_animal(id) or not has_state(state) or frame < 0 or frame >= FRAMES:
 		return null
 	var spec: Dictionary = LAYOUT[id]
-	var image := Image.create_empty(SIZE.x, SIZE.y, false, Image.FORMAT_RGBA8)
-	for x in spec.leg_x:
-		stamp(image, spec.leg, Vector2i(int(x), int(spec.leg_y)))
-	stamp(image, spec.body, spec.body_at)
+	var image := Image.create_empty(SIZE.x, SIZE.y+maxi(0,body_offset.y), false, Image.FORMAT_RGBA8)
+	for index in spec.leg_x.size():
+		var step:=Vector2i.ZERO
+		if walk_frame>=0:
+			var raised:bool=(index+walk_frame)%2==0
+			step=Vector2i(1 if raised else -1,-1 if raised else 0)
+		stamp(image, spec.leg, Vector2i(int(spec.leg_x[index]), int(spec.leg_y))+body_offset+step)
+	stamp(image, spec.body, spec.body_at+body_offset)
 	var bob := Vector2i(0, 1 if frame == 1 and state != "produce" else 0)
+	var head:Array=spec.head
+	if grooming and id=="sheep":
+		head=head.duplicate()
+		head[4]=".odeedddoeeo"
 	if state == "fed":
-		stamp(image, spec.head, spec.head_down + bob)
-		stamp(image, TROUGH, spec.trough_at)
-		if frame == 1:
+		stamp(image, head, spec.head_down+bob+body_offset)
+		if not animal_only:stamp(image, TROUGH, spec.trough_at)
+		if frame == 1 and not animal_only:
 			stamp(image, ["Y"], spec.crumb)
 	else:
-		stamp(image, spec.head, spec.head_up + bob)
-	if state == "produce":
+		stamp(image, head, spec.head_up+bob+body_offset)
+	if state == "produce" and not animal_only:
 		stamp(image, spec.prop, spec.prop_at)
 		stamp(image, TWINKLE, spec.twinkle[frame])
 	return image
@@ -300,15 +309,49 @@ static func draw_origin(foot: Vector2, state: String, elapsed: float, reduced_mo
 
 # Call from the canvas's _draw(). Returns false (draws nothing) for unknown
 # IDs/states so the caller can keep its existing sign fallback.
-static func draw(canvas: CanvasItem, foot: Vector2, id: String, state: String, reduced_motion: bool, elapsed: float) -> bool:
+static func draw(canvas: CanvasItem, foot: Vector2, id: String, state: String, reduced_motion: bool, elapsed: float, body_offset:=Vector2i.ZERO,grooming:=false,walk_frame:=-1,animal_only:=false,face_right:=false,zoom:=1.0) -> bool:
 	var tex := texture_at(id, state, elapsed, reduced_motion)
 	if tex == null:
 		return false
-	canvas.draw_texture(tex, draw_origin(foot, state, elapsed, reduced_motion))
+	if grooming or animal_only or walk_frame>=0 or (body_offset!=Vector2i.ZERO and not reduced_motion):
+		var frame:=frame_index(elapsed,reduced_motion)
+		var key:="%s:%s:%d:%s:%s:%d:%s"%[id,state,frame,body_offset,grooming,walk_frame,animal_only]
+		if not cache.has(key):
+			cache[key]=ImageTexture.create_from_image(build_image(id,state,frame,body_offset,grooming,walk_frame,animal_only))
+		tex=cache[key]
+	var at:=draw_origin(foot, state, elapsed, reduced_motion)
+	if face_right:
+		canvas.draw_set_transform(Vector2(2.0*foot.x,0)*zoom,0.0,Vector2(-zoom,zoom))
+		canvas.draw_texture(tex,at)
+		canvas.draw_set_transform(Vector2.ZERO,0.0,Vector2.ONE*zoom)
+	else:canvas.draw_texture(tex,at)
 	return true
+
+## The trough / ready produce stay at the feed station when the sheep moves.
+static func draw_station(canvas:CanvasItem,foot:Vector2,id:String,state:String,elapsed:float,quiet:bool)->void:
+	if state not in ["fed","produce"]:return
+	var frame:=frame_index(elapsed,quiet)
+	var key:="station:%s:%s:%d"%[id,state,frame]
+	if not cache.has(key):
+		var image:=Image.create_empty(SIZE.x,SIZE.y,false,Image.FORMAT_RGBA8)
+		var spec:Dictionary=LAYOUT[id]
+		if state=="fed":stamp(image,TROUGH,spec.trough_at)
+		else:
+			stamp(image,spec.prop,spec.prop_at)
+			stamp(image,TWINKLE,spec.twinkle[frame])
+		cache[key]=ImageTexture.create_from_image(image)
+	canvas.draw_texture(cache[key],foot.round()-Vector2(ANCHOR))
 
 static func clear_cache() -> void:
 	cache.clear()
+
+static func reaction_offset(id:String,age:float,bond:int,reduced_motion:bool) -> Vector2:
+	if reduced_motion or age<0.0 or age>=PET_SECONDS:return Vector2.ZERO
+	var pulse:=sin(PI*clampf(age/PET_SECONDS,0.0,1.0))
+	match id:
+		"cow":return Vector2(0,roundf(pulse*(2 if bond<5 else 3)))
+		"sheep":return Vector2(0,-roundf(pulse*(3 if bond<5 else 6)))
+	return Vector2.ZERO
 
 static func pet_heart_origin(foot:Vector2,age:float,reduced_motion:bool) -> Vector2:
 	return foot.round()+Vector2(9,-38-(0 if reduced_motion else floori(age*8.0)))
@@ -321,6 +364,11 @@ static func draw_pet_heart(canvas:CanvasItem,foot:Vector2,age:float,reduced_moti
 		stamp(image,PET_PIXELS,Vector2i.ZERO)
 		cache[texture_key]=ImageTexture.create_from_image(image)
 	canvas.draw_texture(cache[texture_key],pet_heart_origin(foot,age,reduced_motion))
+
+static func draw_brushing(canvas:CanvasItem,foot:Vector2,age:float,quiet:bool)->void:
+	if age<0.0 or age>=PET_SECONDS:return
+	var travel:=0.0 if quiet else roundf(sin(age*TAU*2.5)*4.0)
+	canvas.draw_texture_rect(BRUSH,Rect2((foot+Vector2(-6+travel,-32)).round(),Vector2(20,20)),false)
 
 static func collector_texture(count:int,capacity:int)->Texture2D:
 	var status:="empty" if count==0 else ("full" if count>=capacity else "stored")

@@ -253,6 +253,7 @@ class IdentityTests(unittest.TestCase):
 
     def test_schema_one_migrates_preserving_identity(self):
         with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute("DROP TABLE world_storage")
             db.execute("DROP TABLE directory_members")
             db.execute("DROP TABLE directory")
             db.execute("DROP TABLE admissions")

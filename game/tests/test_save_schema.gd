@@ -26,6 +26,12 @@ func _initialize() -> void:
 	write_candidate(baseline)
 	var loaded=World.new()
 	expect(loaded.load_world(path),"valid full world loads")
+	var rounded:Dictionary=baseline.duplicate(true)
+	rounded.time=61.016666666666
+	rounded.next_network_check=69.016666666667
+	rounded.next_logistics_check=63.016666666667
+	write_candidate(rounded)
+	expect(loaded.load_world(path),"Independent JSON clock rounding preserves a valid save")
 	var bad_cases:Array=[]
 	var bad:Dictionary=baseline.duplicate(true);bad.time="tomorrow";bad_cases.append(bad)
 	bad=baseline.duplicate(true);bad.players.alice.x="bad";bad_cases.append(bad)
@@ -47,6 +53,8 @@ func _initialize() -> void:
 	bad=baseline.duplicate(true);bad.donations.stone=-1;bad_cases.append(bad)
 	bad=baseline.duplicate(true);bad.removed["38,32"]=1;bad_cases.append(bad)
 	bad=baseline.duplicate(true);bad.version=999;bad_cases.append(bad)
+	bad=rounded.duplicate(true);bad.next_network_check+=0.01;bad_cases.append(bad)
+	bad=rounded.duplicate(true);bad.next_logistics_check+=0.01;bad_cases.append(bad)
 	for i in range(bad_cases.size()):
 		write_candidate(bad_cases[i])
 		var original:=FileAccess.get_file_as_string(path)

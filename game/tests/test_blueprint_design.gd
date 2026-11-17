@@ -12,8 +12,8 @@ const WATERWORKS=preload("res://scripts/waterworks.gd")
 const MODULE_PATH:="res://scripts/blueprint_design.gd"
 const API:=["validate","capture","rotate","base_cost"]
 const SECTIONS:=["hand_worked_validate_and_cost","all_build_kinds","layer_capacity_boundary","same_cell_duplicates","invalid_validate_inputs","rotation","capture_integration","capture_rejections","base_cost_rejections"]
-## Hand-worked copy of the current World.BUILD kind list (30 kinds).
-const ALL_KINDS:=["jam_pot","flower_pot","ore_display","floor","wall","path","chest","bench","bed","lamp","door","window","roof","table","chair","stove","private_chest","long_bench","planter","sign","sofa","sprinkler","water_pipe","water_tank","mine_drill","waterworks","water_pump","sawmill","charcoal_kiln","forester","conveyor","mill","seed_maker","loom","glass_furnace","greenhouse_roof","greenhouse_rack","medium_sprinkler","master_flower_bed","rope_rack","sketch_easel","fish_display","author_sign","author_shelf","supply_box","expedition_tent","veg_basket_rack","relay_crate_stack","carp_banner","float_garland","lantern_post","flower_arch","trio_keepsake","water_share_plaque","diversion_gate","mine_lantern","tea_ware","salt_basket","water_tower","keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan"]
+## Hand-worked copy of the current World.BUILD kind list.
+const ALL_KINDS:=["jam_pot","flower_pot","ore_display","floor","wall","path","spring_pebble_path","chest","bench","bed","lamp","door","window","roof","table","chair","stove","private_chest","long_bench","planter","sign","sofa","sprinkler","water_pipe","water_tank","mine_drill","waterworks","water_pump","sawmill","charcoal_kiln","forester","conveyor","mill","seed_maker","loom","glass_furnace","greenhouse_roof","greenhouse_rack","medium_sprinkler","large_sprinkler","master_flower_bed","rope_rack","sketch_easel","guest_wardrobe","wood_mailbox","basic_tea_set","fish_display","author_sign","author_shelf","supply_box","expedition_tent","veg_basket_rack","relay_crate_stack","carp_banner","float_garland","lantern_post","flower_arch","trio_keepsake","water_share_plaque","diversion_gate","mine_lantern","tea_ware","salt_basket","water_tower","keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_nuannuan_room","festival_memorial_bell","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","master_bench","small_smelter","clay_kiln","dye_table","assembly_table","animal_collector","ceramic_eave_chime","shell_chime","warm_lamp_niche","towel_rack","inn_welcome_sign","inn_tea_table","spring_stone_bench","inn_lattice_wardrobe","inn_fabric_screen","inn_quilt_bed","inn_stone_footbath","inn_luggage_rack","acorn_ornament"]
 
 var checks:=0
 var failures:=0
@@ -155,7 +155,7 @@ func materials(kind:String)->Dictionary:
 
 ## Contract layer rank: floor/path ground, roof roofs, everything else objects.
 func rank(kind:String)->int:
-	if kind in ["floor","path"]:return 0
+	if kind in ["floor","path","spring_pebble_path"]:return 0
 	if kind in ["roof","greenhouse_roof"]:return 2
 	return 1
 
@@ -237,15 +237,28 @@ func all_build_kinds()->bool:
 	for item in ["gold_sample","mine_drill_kit","waterworks_kit","conveyor_kit","forester_kit","sprinkler_kit","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit","wood","stone","fiber"]:
 		expect(N.has(item),"premise: World.NAMES knows "+item)
 	for kind in World.BUILD:
-		var single:=design("單件",1,1,[piece(kind,0,0)])
+		var size:=Vector2i(3,2) if kind==World.INDUSTRY.FOOT_BATH else Vector2i(2 if kind in ["master_bench","small_smelter","clay_kiln","dye_table","assembly_table","spring_stone_bench","inn_fabric_screen","inn_quilt_bed","inn_luggage_rack"] else 1,2 if kind in World.INDUSTRY.FIXED_SQUARE_STATIONS else 1)
+		var single:=design("單件",size.x,size.y,[piece(kind,0,0)])
 		var expected_single:=single.duplicate(true)
 		if kind=="conveyor":expected_single.pieces[0]["settings"]={"dir":0,"filter":"wood"}
 		accepted_as(val(single),expected_single,"blueprint","every real kind validates alone: "+kind)
 		accepted_as(cost(single),materials(kind),"cost","single-piece base_cost equals recipe materials: "+kind)
 	var pieces:=[]
 	for i in ALL_KINDS.size():
-		pieces.append(piece(ALL_KINDS[i],i%16,i/16))
-	var all:=design("全部",16,5,pieces)
+		var kind:String=ALL_KINDS[i]
+		if kind=="acorn_ornament":pieces.append(piece(kind,7,8))
+		elif kind=="master_bench":pieces.append(piece(kind,0,6))
+		elif kind=="small_smelter":pieces.append(piece(kind,2,6))
+		elif kind=="clay_kiln":pieces.append(piece(kind,4,6))
+		elif kind=="dye_table":pieces.append(piece(kind,6,6))
+		elif kind=="assembly_table":pieces.append(piece(kind,8,6))
+		elif kind=="spring_stone_bench":pieces.append(piece(kind,10,6))
+		elif kind=="inn_fabric_screen":pieces.append(piece(kind,12,6))
+		elif kind=="inn_quilt_bed":pieces.append(piece(kind,14,6))
+		elif kind=="inn_stone_footbath":pieces.append(piece(kind,0,8))
+		elif kind=="inn_luggage_rack":pieces.append(piece(kind,4,8))
+		else:pieces.append(piece(kind,i%16,i/16))
+	var all:=design("全部",16,10,pieces)
 	var r=val(all)
 	if accepted(r,"one of every kind validates"):
 		var out:Array=r.blueprint.pieces
@@ -260,7 +273,7 @@ func all_build_kinds()->bool:
 			if p.kind=="conveyor":settings_correct=settings_correct and p.get("settings",{})=={"dir":0,"filter":"wood"}
 			elif p.has("settings"):settings_correct=false
 		expect(settings_correct,"only conveyor receives normalized default configuration")
-	accepted_as(cost(all),{"wood":187,"stone":56,"fiber":29,"plank":49,"copper_joint":10,"rope":3,"flower_pot":1,"ochre_earth":4,"cotton_cloth":2,"wool_cloth":2,"glass":5,"supply_box_kit":1,"gold_sample":1,"sprinkler_kit":2,"pipe_kit":1,"tank_kit":1,"mine_drill_kit":1,"waterworks_kit":1,"pump_kit":1,"sawmill_kit":1,"kiln_kit":1,"forester_kit":1,"conveyor_kit":1,"mill_kit":1,"veg_basket_rack_kit":1,"relay_crate_stack_kit":1,"carp_banner_kit":1,"float_garland_kit":1,"lantern_post_kit":1,"flower_arch_kit":1,"trio_keepsake_kit":1,"water_share_plaque_kit":1,"diversion_gate_kit":1,"mine_lantern_kit":1,"tea_ware_kit":1,"salt_basket_kit":1,"water_tower_kit":1,"keepsake_aru_kit":1,"keepsake_milu_kit":1,"keepsake_bobo_kit":1,"keepsake_chacha_kit":1,"keepsake_achao_kit":1,"keepsake_mianmian_kit":1,"keepsake_xinghe_kit":1,"keepsake_lingpopo_kit":1,"keepsake_xiaoli_kit":1,"keepsake_luoluo_kit":1,"keepsake_diandian_kit":1,"keepsake_nuannuan_kit":1},"cost","hand-summed base_cost of every real kind")
+	accepted_as(cost(all),{"acorn_ornament_kit":1,"wood":276,"seashell":2,"hardwood":104,"copper_ore":5,"clay":46,"stone":154,"fiber":44,"plank":33,"copper_joint":3,"iron_ingot":27,"copper_ingot":14,"woodwork_parts":12,"animal_collector_kit":1,"rope":3,"flower_pot":1,"cotton_cloth":23,"wool_cloth":5,"glass":12,"supply_box_kit":1,"gold_sample":1,"pipe_kit":1,"tank_kit":1,"mine_drill_kit":1,"waterworks_kit":1,"pump_kit":1,"sawmill_kit":1,"kiln_kit":1,"forester_kit":1,"conveyor_kit":1,"mill_kit":1,"veg_basket_rack_kit":1,"relay_crate_stack_kit":1,"carp_banner_kit":1,"float_garland_kit":1,"lantern_post_kit":1,"flower_arch_kit":1,"trio_keepsake_kit":1,"water_share_plaque_kit":1,"diversion_gate_kit":1,"mine_lantern_kit":1,"tea_ware_kit":1,"salt_basket_kit":1,"water_tower_kit":1,"keepsake_aru_kit":1,"keepsake_milu_kit":1,"keepsake_bobo_kit":1,"keepsake_chacha_kit":1,"keepsake_achao_kit":1,"keepsake_mianmian_kit":1,"keepsake_xinghe_kit":1,"keepsake_lingpopo_kit":1,"keepsake_xiaoli_kit":1,"keepsake_luoluo_kit":1,"keepsake_diandian_kit":1,"keepsake_nuannuan_kit":1,"keepsake_nuannuan_room_kit":1,"keepsake_aru_bird_kit":1,"keepsake_achao_oar_kit":1,"keepsake_xinghe_sign_kit":1,"keepsake_lingpopo_memorial_kit":1},"cost","hand-summed base_cost of every real kind")
 	var missing:=World.BUILD.duplicate(true)
 	missing.erase("conveyor")
 	rejected(val(design("帶",1,1,[piece("conveyor",0,0)]),missing),"kind absent from passed recipes rejected")

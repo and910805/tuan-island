@@ -108,9 +108,14 @@ const MSG_FOREIGN_BOX := "這是另一位島民的私人箱"
 const MSG_ROOF_FLOOR := "只能在自己的地板上蓋屋頂"
 const MSG_GREENHOUSE := "請在自己的農田上蓋溫室玻璃棚"
 const MSG_BLUEPRINT_FLOOR := "物件不能放在他人的地板上"
+const MSG_PRIVATE_FLOOR := "這格地板只開放地板主人放置物件。"
+const FLOOR_ACCESS := ["legacy","owner","island"]
+const SHARED_REMOVAL_FURNITURE := ["chair","table","sofa","bed","bench","long_bench","lamp","planter","flower_pot","rope_rack","towel_rack"]
 const MSG_TEA_SEED := "只有茶圃田主能播種"
 const MSG_FOREIGN_TREE := "只能移回自己種下的樹苗"
 const MSG_FOREIGN_PLOT := "只能恢復自己開墾的農田"
+const MSG_SOW_OWNER := "這塊農田只開放田主播種。"
+const MSG_WATER_OWNER := "這塊農田只開放田主手動澆水。"
 const MSG_FOREIGN_OBJECT := "只能拆除自己放置的物件"
 const MSG_FOREIGN_MOVE := "只能搬自己放置的家具"
 const MSG_HARVEST := "你沒有這塊田的採收權限。"
@@ -145,8 +150,9 @@ static func can_place(world, token: String, p: Vector2i, kind: String, blueprint
 	var st: Dictionary = world.state
 	var region: String = world._region
 	if kind.begins_with("seed:"):
-		# Legacy: an ownerless plot is "" here, so only home sowing stays open.
-		var owner := str(st.crops.get(k, {}).get("owner", ""))
+		var crop:Dictionary=st.crops.get(k,{})
+		var owner := str(crop.get("owner", ""))
+		if region == REGIONS.HOME and crop.get("owner_sow",false) and owner != token:return deny(MSG_SOW_OWNER)
 		if region == REGIONS.Bamboo.REGION and owner != token:return deny(MSG_TEA_SEED)
 		if region == FLOWER_NURSERY.REGION and owner != token:return deny(FLOWER_NURSERY.FOREIGN_PLOT_MESSAGE)
 		return allow()
@@ -158,18 +164,41 @@ static func can_place(world, token: String, p: Vector2i, kind: String, blueprint
 	if kind == "greenhouse_roof" and str(st.crops.get(k, {}).get("owner", "")) != token:return deny(MSG_GREENHOUSE)
 	if kind == "roof" and st.ground.has(k) and not _owned_by(st.ground[k], token):return deny(MSG_ROOF_FLOOR)
 	if blueprint:return blueprint_floor(world, token, p, kind)
+	if kind not in BLUEPRINT_DESIGN.GROUND_KINDS and kind not in BLUEPRINT_DESIGN.ROOF_KINDS:
+		return placement_floor(world,token,p)
 	return allow()
 
 ## Checked before the normal build rules when staging a blueprint piece.
 static func blueprint_floor(world, token: String, p: Vector2i, kind: String) -> Dictionary:
 	if kind not in BLUEPRINT_DESIGN.GROUND_KINDS and kind not in BLUEPRINT_DESIGN.ROOF_KINDS:
-		var below = world.state.ground.get(world.key(p))
-		if below is Dictionary and below.get("owner") != token:return deny(MSG_BLUEPRINT_FLOOR)
+		return placement_floor(world,token,p,true)
 	return allow()
+
+static func placement_floor(world, token:String, p:Vector2i, blueprint:=false) -> Dictionary:
+	var below = world.state.ground.get(world.key(p))
+	if not below is Dictionary or _owned_by(below,token):return allow()
+	if below.get("type")=="floor":
+		var access:String=below.get("placement_access","legacy")
+		if access=="owner":return deny(MSG_PRIVATE_FLOOR)
+		if access=="island":return allow()
+	return deny(MSG_BLUEPRINT_FLOOR) if blueprint else allow()
 
 ## take: deposit into / withdraw from / configure a box. Shared chests are open.
 static func can_take(token: String, box: Dictionary) -> Dictionary:
 	if str(box.get("type", "")) in PRIVATE_BOXES and not _owned_by(box, token):return deny(MSG_FOREIGN_BOX)
+	return allow()
+
+static func can_deposit(token:String,box:Dictionary) -> Dictionary:
+	if box.get("type")=="private_chest" and box.get("guest_deposit",false):return allow()
+	return can_take(token,box)
+
+static func can_withdraw(token:String,box:Dictionary) -> Dictionary:
+	if box.get("type")=="private_chest" and box.get("withdraw_guest")==token:return allow()
+	return can_take(token,box)
+
+static func can_water(world,token:String,plot:Dictionary) -> Dictionary:
+	if world._region==REGIONS.HOME and plot.get("owner_water",false) and not _owned_by(plot,token):
+		return deny(MSG_WATER_OWNER)
 	return allow()
 
 ## harvest: delegates to World.can_harvest_plot (single source of policy).
@@ -195,4 +224,7 @@ static func can_dismantle(world, token: String, p: Vector2i, move := false) -> D
 		return allow() if str(st.crops[k].get("owner", token)) == token else deny(MSG_FOREIGN_PLOT)
 	var layer: String = world._remove_layer(k)
 	if layer == "":return allow()
+	var piece:Dictionary=st[layer][k]
+	if layer=="objects" and world._region==REGIONS.HOME and piece.get("guest_remove",false) and piece.get("type") in SHARED_REMOVAL_FURNITURE:
+		return allow()
 	return allow() if _owned_by(st[layer][k], token) else deny(MSG_FOREIGN_OBJECT)

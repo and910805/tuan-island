@@ -35,7 +35,7 @@ extends SceneTree
 ##    阿榆 1 goes through the real Session.perform("resident_goal") -> World -> snapshot trip
 ##    (阿榆 1 therefore also passes the server-side own_bed check), and the resulting done
 ##    pages are reached again through the real ✓ BondGoalOpen.
-## SHOTS per size (33 = 16 + 9 + 8 batch 3, see below). Batch 1 (unchanged, 16): events_milu_open, events_milu_nogoal,
+## SHOTS per size (33 = 16 + 9 + 8 batch 3, see below). Batch 1 (unchanged, 16): events_milu_open, events_milu_pages,
 ##  events_milu_locked, goal_milu1_away, goal_milu1_short, goal_milu1_ready, events_milu_done,
 ##  goal_milu1_done, goal_bobo2_option, goal_bobo2_done, goal_xinghe2_option, goal_aru2_steps,
 ##  goal_lingpopo2_wrong, goal_lingpopo2_right, goal_lingpopo3_long, goal_luoluo3_option.
@@ -680,7 +680,8 @@ func done_page_ok(resident:String,stage:int,label:String)->void:
 	for quote in entry.quote:wanted.append("「%s」"%str(quote))
 	var picked:=Goals.option(entry,choice_of(resident,stage))
 	if not picked.is_empty():wanted.append("當時選的是：%s"%str(picked.label))
-	if kind.is_empty():wanted.append("紀念：%s（收在手帳裡，沒有其他用途）"%str(entry.keepsake))
+	if resident=="aru" and stage==2:wanted.append("紀念：%s。師父的長椅已加入家園工坊。"%str(entry.keepsake))
+	elif kind.is_empty():wanted.append("紀念：%s（收在手帳裡，沒有其他用途）"%str(entry.keepsake))
 	for text:String in wanted:
 		var l:=find_label(text)
 		check(l!=null and done!=null and done.is_ancestor_of(l),"Done page shows 「%s」 (%s %s)"%[text,label,tag])
@@ -838,17 +839,17 @@ func milu_flow()->void:
 	if not await open_events("milu",0):return
 	events_ok("milu",0,true,"milu open")
 	await page_shot("events_milu_open")
-	if await press_tab(1,"milu nogoal"):
-		events_ok("milu",1,false,"milu nogoal")
-		check(not Goals.has_goal("milu",2),"米露 has no goal on 熟悉 (%s)"%tag)
-		await page_shot("events_milu_nogoal")
-		differ("events_milu_open","events_milu_nogoal",0.003,"events open vs no goal")
+	if await press_tab(1,"milu pages"):
+		events_ok("milu",1,true,"milu pages")
+		check(Goals.has_goal("milu",2) and state_of("milu",2)=="open","米露 recipe page activity opens at 熟悉 (%s)"%tag)
+		await page_shot("events_milu_pages")
+		differ("events_milu_open","events_milu_pages",0.003,"different open event cards")
 	if await press_tab(2,"milu locked"):
 		events_ok("milu",2,false,"milu locked")
 		check(Goals.has_goal("milu",3) and state_of("milu",3)=="locked","米露 3 exists and is locked (%s)"%tag)
 		check(find_label("%s・尚未展開（好感 %d）"%[str(Bond.STAGES[2]),int(Bond.THRESHOLDS[2])])!=null,"Locked card line shown (%s)"%tag)
 		await page_shot("events_milu_locked")
-		differ("events_milu_nogoal","events_milu_locked",0.003,"events no goal vs locked")
+		differ("events_milu_pages","events_milu_locked",0.003,"events recipe pages vs locked")
 	if not await press_tab(0,"milu back to open"):return
 	var open:=control("BondGoalOpen") as Button
 	if not await press_button(open,"BondGoalOpen milu 1"):return
@@ -875,7 +876,7 @@ func milu_flow()->void:
 	if not await complete("milu",1,{"soup":1},"","milu1"):return
 	if not await open_events("milu",0):return
 	events_ok("milu",0,true,"milu done")
-	check(control("BondGoalCount")!=null and (control("BondGoalCount") as Label).text=="一起做的事 1／2","Count reads 1／2 after completion (%s)"%tag)
+	check(control("BondGoalCount")!=null and (control("BondGoalCount") as Label).text=="一起做的事 1／4","Count reads 1／4 after completion (%s)"%tag)
 	var entry_rect:=pixel_rect(control("BondGoalOpen"))
 	await page_shot("events_milu_done")
 	differ("events_milu_open","events_milu_done",0.0001,"events ○ vs ✓ (whole modal)")
@@ -932,11 +933,11 @@ func xinghe_flow()->void:
 
 ## 阿榆 2: free-order steps + items, two steps picked.
 func aru_flow()->void:
-	set_bonds();set_done({});stock({"plank":4})
+	set_bonds();set_done({});stock({"hardwood":4})
 	await stand("aru")
 	if not await open_goal("aru",2,"aru2"):return
 	var entry:=entry_of("aru",2)
-	open_page_ok("aru",2,Tasks.GOAL_NEED_STEPS,{"plank":4},"aru2 no steps")
+	open_page_ok("aru",2,Tasks.GOAL_NEED_STEPS,{"hardwood":4},"aru2 no steps")
 	await baseline("base_aru2")
 	if not await press("BondGoalStep_2"):return
 	if not await press("BondGoalStep_0"):return
@@ -946,10 +947,10 @@ func aru_flow()->void:
 	check(s2!=null and s2.text=="1. "+str(entry.steps[2]) and s2.disabled,"Step 2 marked 1. and disabled (aru2 %s)"%tag)
 	check(s0!=null and s0.text=="2. "+str(entry.steps[0]) and s0.disabled,"Step 0 marked 2. and disabled (aru2 %s)"%tag)
 	check(s1!=null and s1.text==str(entry.steps[1]) and not s1.disabled,"Step 1 still open (aru2 %s)"%tag)
-	open_page_ok("aru",2,Tasks.GOAL_NEED_STEPS,{"plank":4},"aru2 two steps")
+	open_page_ok("aru",2,Tasks.GOAL_NEED_STEPS,{"hardwood":4},"aru2 two steps")
 	var image:Image=await page_shot("goal_aru2_steps")
 	reason_red(image,"aru2 two steps")
-	chip_red(image,"plank",false,"aru2 two steps")
+	chip_red(image,"hardwood",false,"aru2 two steps")
 	differ("base_aru2","goal_aru2_steps",0.002,"aru2 no steps vs two steps")
 	await close()
 
@@ -990,17 +991,17 @@ func lingpopo_flow()->void:
 				await page_shot("goal_lingpopo2_right")
 				differ("goal_lingpopo2_wrong","goal_lingpopo2_right",0.002,"lingpopo2 wrong vs right order")
 	await close()
-	stock({"copper_joint":2,"glass":2})
+	stock({"copper_ingot":4,"glass":2})
 	await refresh()
 	if not await open_goal("lingpopo",3,"lingpopo3"):return
-	open_page_ok("lingpopo",3,Tasks.GOAL_NEED_OPTION,{"copper_joint":2,"glass":2},"lingpopo3 no option")
+	open_page_ok("lingpopo",3,Tasks.GOAL_NEED_OPTION,{"copper_ingot":4,"glass":2},"lingpopo3 no option")
 	await baseline("base_lingpopo3")
 	if not await press("BondGoalOption_baked_potato"):return
-	open_page_ok("lingpopo",3,short_text("baked_potato",1),{"copper_joint":2,"glass":2,"baked_potato":1},"lingpopo3 baked_potato")
+	open_page_ok("lingpopo",3,short_text("baked_potato",1),{"copper_ingot":4,"glass":2,"baked_potato":1},"lingpopo3 baked_potato")
 	var image3:Image=await page_shot("goal_lingpopo3_long")
 	reason_red(image3,"lingpopo3 baked_potato")
 	chip_red(image3,"baked_potato",true,"lingpopo3 baked_potato")
-	chip_red(image3,"copper_joint",false,"lingpopo3 baked_potato")
+	chip_red(image3,"copper_ingot",false,"lingpopo3 baked_potato")
 	differ("base_lingpopo3","goal_lingpopo3_long",0.002,"lingpopo3 no option vs option")
 	await close()
 
@@ -1031,7 +1032,7 @@ func place_bed(near:Vector2i)->String:
 	return k
 
 ## 阿榆 1 (own_bed + 10 wood): no bed -> bed written -> real BondGoalDo -> ✓ done page ->
-## events header count 一起做的事 1／2.
+## events header count 一起做的事 1／4.
 func aru1_flow()->void:
 	set_bonds();set_done({});stock({"wood":10})
 	await stand("aru")
@@ -1039,7 +1040,7 @@ func aru1_flow()->void:
 	check(not Goals.need_met("own_bed",w.state,id),"Fixture starts without an own bed (aru1 %s)"%tag)
 	if not await open_events("aru",0):return
 	events_ok("aru",0,true,"aru events open")
-	check(control("BondGoalCount")!=null and (control("BondGoalCount") as Label).text=="一起做的事 0／2","Count reads 0／2 before completion (aru %s)"%tag)
+	check(control("BondGoalCount")!=null and (control("BondGoalCount") as Label).text=="一起做的事 0／4","Count reads 0／4 before completion (aru %s)"%tag)
 	await baseline("base_events_aru")
 	if not await press_button(control("BondGoalOpen") as Button,"BondGoalOpen aru 1"):return
 	check(goal_open("aru",1),"BondGoalOpen opens 和%s一起做的事 (aru1 %s)"%[npc("aru"),tag])
@@ -1065,9 +1066,9 @@ func aru1_flow()->void:
 			differ("goal_aru1_ready","goal_aru1_done",0.01,"aru1 ready vs done")
 		if await open_events("aru",0):
 			events_ok("aru",0,true,"aru events done")
-			check(control("BondGoalCount")!=null and (control("BondGoalCount") as Label).text=="一起做的事 1／2","Count reads 1／2 after completion (aru %s)"%tag)
+			check(control("BondGoalCount")!=null and (control("BondGoalCount") as Label).text=="一起做的事 1／4","Count reads 1／4 after completion (aru %s)"%tag)
 			await page_shot("events_aru_done")
-			differ("base_events_aru","events_aru_done",0.0001,"aru events 0／2 vs 1／2 (whole modal)")
+			differ("base_events_aru","events_aru_done",0.0001,"aru events 0／4 vs 1／4 (whole modal)")
 	w.state.objects.erase(bed_key)  # undo the PRESET bed
 	await close()
 
@@ -1558,7 +1559,7 @@ func run()->void:
 	w=app.session.world;id=app.session.profile.token
 	w.state.time=float(w.state.time)+Village.DAY*2.0  # PRESET: two whole days later
 	w.state.picnic=true  # PRESET: 洛洛／鈴婆婆 present
-	check(Goals.total()==32,"Thirty-two goals (%d)"%Goals.total())
+	check(Goals.total()==48,"Forty-eight goals (%d)"%Goals.total())
 	for size:Vector2i in SIZES:
 		root.size=size
 		tag="%dx%d"%[size.x,size.y]

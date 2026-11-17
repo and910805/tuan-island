@@ -17,7 +17,7 @@ const DETAILS := {
 	"grow":"用鋤頭開墾，播種並澆水，成熟後用採收籃。先種三株蘿蔔、一株小麥（一株收兩份）。留兩份蘿蔔、兩份小麥做野餐，也留一包種子測試灑水器。",
 	"ship":"到渡口出貨箱寄出一份自己採收過的作物。小栗攤位的直接出售不算出貨。留兩份蘿蔔、兩份小麥做野餐；賣完了可用剩餘種子補種，或到小栗攤位買種子。",
 	"works":"用斧頭採木、十字鎬採石，再到公告板捐入木材30和石材10。捐款可分次，朋友也能一起準備。",
-	"water":"帶木材12、石材8、纖維4找阿榆換設備，或沿用既有管網。把自己的儲水桶、水管和灑水器沿上下左右接起來，再在灑水器上下左右任一格自己的乾田播種。補滿儲水桶，啟用灑水器後等它澆水。直接補給灑水器的水不算；若已補滿，拆除重放後再接管。",
+	"water":"帶木材12、石材8、纖維4找阿榆換設備，或沿用既有管網。先在田邊空草地放儲水桶、水管和灑水器，沿上下左右連接；耕地不能直接放設備。再在灑水器上下左右任一格自己的乾田播種。補滿儲水桶，啟用灑水器後等它澆水。直接補給灑水器的水不算；若已補滿，拆除重放後再接管。",
 	"meal":"建一座小石灶（木材12、石材15）。用蘿蔔2煮出湯2，小麥2烤出麵包1；料理完成後領取，再交到公告板。舊世界已辦過的野餐會保留。",
 	"complete":"找小栗收下茶陶介紹信。從渡口搭交通船，經頭城轉乘到瑞芳，在鐵路門選經臺北轉乘至貓空，再到鶯歌合作陶坊製罐。先試寄一罐茶，讓空罐回來，往後就能帶湯去拜訪朋友。M 可查看旅圖與免費回程。",
 }
@@ -31,10 +31,11 @@ const PLACES := {"grow":"小栗種子攤東北邊的田", "ship":"渡口出貨�
 ## 風鈴樹 (41,28)、風鈴節訪客 (43..44,28)、鈴婆婆／洛洛／阿潮／棉棉站位、
 ## 渡口轉乘點 (47,30) 與到站點 (46,30)、出生點 (39,33)、糯米雞 (45,34) 上。
 const STARTER_PLOT: Array[Vector2i] = [Vector2i(45,26),Vector2i(46,26),Vector2i(47,26),Vector2i(45,27),Vector2i(46,27),Vector2i(47,27)]
-const FIRST_CROP_STEPS: Array[String] = ["find","till","sow","water","wait","harvest","ship"]
+const FIRST_CROP_STEPS: Array[String] = ["find","till","buy_seed","sow","water","wait","harvest","ship"]
 ## 距離田地最近一格中心超過這個距離時，第一步是「去找小栗與田地」。
 const FIND_REACH := 3.5
 const NO_PLOT_CELL := Vector2i(-1,-1)
+const PERSONAL_START:="wangan_personal_start"
 
 static func fresh() -> Dictionary:
 	return {"shipped": false, "watered": false, "harvests": {}, "starter_claims": {}}
@@ -51,9 +52,17 @@ static func record_harvest(state: Dictionary, owner: String, item: String, quant
 
 static func record_shipment(state: Dictionary, owner: String, quantities: Dictionary) -> void:
 	var chapter: Dictionary = state.chapter_one
+	var person:Dictionary=state.get("players",{}).get(owner,{})
 	var harvests: Dictionary = chapter.harvests.get(owner, {})
+	if person.get(PERSONAL_START,false):
+		var known:Dictionary=person.get("crops_discoveries",{})
+		for item in quantities:
+			var kind:=preload("res://scripts/crop_catalog.gd").base_kind(str(item))
+			if not known.has(kind) and int(harvests.get(kind,0))<=0:continue
+			person.erase(PERSONAL_START)
+			break
 	for item in quantities:
-		if int(harvests.get(item, 0)) > 0:
+		if int(harvests.get(preload("res://scripts/crop_catalog.gd").base_kind(str(item)), 0)) > 0:
 			chapter.shipped = true
 			chapter.harvests.clear()
 			return
@@ -83,6 +92,30 @@ static func next_step(state: Dictionary) -> Dictionary:
 		if shipping!=Vector2i(-1,-1):result.cell=shipping
 	return result
 
+static func can_serve_picnic(state:Dictionary,owner:String) -> bool:
+	if state.get("picnic",false):return false
+	var bag:Dictionary=state.get("players",{}).get(owner,{}).get("inventory",{})
+	var delivered:Dictionary=state.get("picnic_materials",{})
+	return (int(delivered.get("soup",0))<2 and int(bag.get("soup",0))>0) or (
+		int(delivered.get("bread",0))<1 and int(bag.get("bread",0))>0)
+
+static func needs_starter_kit(state:Dictionary,owner:String) -> bool:
+	if state.get("region_id","home")!="home" or not state.get("players",{}).has(owner) or phase(state)!="water":
+		return false
+	if state.get("chapter_one",{}).get("starter_claims",{}).get(owner,false):return false
+	var bag:Dictionary=state.players[owner].get("inventory",{})
+	var sprinkler:=["sprinkler_kit","field_sprinkler_kit","medium_sprinkler_kit","large_sprinkler_kit"].any(
+		func(item):return int(bag.get(item,0))>0)
+	var pipe:=int(bag.get("pipe_kit",0))>0
+	var supply:=["tank_kit","water_tower_kit","pump_kit"].any(func(item):return int(bag.get(item,0))>0)
+	for device:Dictionary in state.get("objects",{}).values():
+		if device.get("owner","")!=owner:continue
+		match device.get("type",""):
+			"sprinkler","medium_sprinkler","large_sprinkler":sprinkler=true
+			"water_pipe":pipe=true
+			"water_tank","water_tower","water_pump":supply=true
+	return not (sprinkler and pipe and supply)
+
 ## 望安開場的第一株作物指引：{id, text, cell}，id 依序為
 ## find → till → sow → water → wait → harvest → ship；不在這段開場時回傳 {}。
 ## 只讀既有狀態（本人的作物、背包、位置、第一章紀錄與出貨箱位置），伺服器 state
@@ -90,7 +123,7 @@ static func next_step(state: Dictionary) -> Dictionary:
 ## 推進我的步驟。純讀取，不修改傳入的字典。
 static func first_crop_step(state: Dictionary, owner: String) -> Dictionary:
 	var chapter = state.get("chapter_one")
-	if not chapter is Dictionary or chapter.get("shipped", true) != false:
+	if not chapter is Dictionary:
 		return {}
 	if str(state.get("region_id", "home")) != "home":
 		return {}
@@ -100,11 +133,16 @@ static func first_crop_step(state: Dictionary, owner: String) -> Dictionary:
 	var person: Dictionary = people[owner]
 	if str(person.get("region", "home")) != "home":
 		return {}
+	var personal:bool=person.get(PERSONAL_START,false)
+	if chapter.get("shipped",true) and not personal:return {}
 	var bag = person.get("inventory", {})
 	if not bag is Dictionary:
 		bag = {}
 	var records = chapter.get("harvests", {})
 	var mine = records.get(owner, {}) if records is Dictionary else {}
+	if personal and chapter.get("shipped",true):
+		mine={}
+		for item in person.get("crops_discoveries",{}):mine[item]=1
 	if mine is Dictionary and not mine.is_empty():
 		var carried := ""
 		for item in ["radish"] + mine.keys():
@@ -152,7 +190,10 @@ static func first_crop_step(state: Dictionary, owner: String) -> Dictionary:
 		var seeds := 0
 		for kind in catalog:
 			seeds += maxi(0, int(bag.get(str(kind) + "_seed", 0)))
-		var sow_text := "在翻好的土播下蘿蔔種子" if int(bag.get("radish_seed", 0)) > 0 else ("在翻好的土播種" if seeds > 0 else "種子用完了，到小栗攤位買種子")
+		if seeds==0:
+			var stall:Vector2i=preload("res://scripts/village.gd").resident_cell(state,"xiaoli")
+			return {"id":"buy_seed","text":"種子用完了，找小栗補貨","cell":stall}
+		var sow_text := "在翻好的土播下蘿蔔種子" if int(bag.get("radish_seed", 0)) > 0 else "在翻好的土播種"
 		return {"id": "sow", "text": sow_text, "cell": _closest_to_plot(soil)}
 	var free := starter_plot_free(state)
 	if free.is_empty():

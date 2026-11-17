@@ -714,7 +714,7 @@ func test_device_aggregate() -> void:
 	var w=new_world()
 	var o:=find_site(w,HOME,Vector2i(9,2))
 	if o.x<0:return
-	w.state.players[A].inventory["sprinkler_kit"]=40
+	w.state.players[A].inventory.merge({"copper_ingot":160,"stone":160},true)
 	pose(w,A,stand(o))
 	var q:=quote(w,A,sprinklers(17),o)
 	expect(q.get("ok")==false,"17 sprinklers in one blueprint exceed the limit of %d"%World.SPRINKLER_LIMIT)

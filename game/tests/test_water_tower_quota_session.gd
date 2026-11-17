@@ -192,6 +192,7 @@ func seed_world(path:String)->bool:
 		if not seed_act(w,ALPHA,"memory_gate",Memory.SERVICE,"b:%d"%pair[1]):return false
 		if not seed_act(w,ALPHA,"memory_flow",Memory.SERVICE):return false
 	if not seed_act(w,ALPHA,"memory_plaque",Memory.SERVICE):return false
+	w.state.history_memory.players[ALPHA].erase("completed_day")  # Legacy record for the day-one fixture.
 	# The revisit (day 1, spring, demand 6/4/2 -> gates a:3 b:2).
 	place(w,ALPHA,"lanyang",A_SPOT)
 	if not seed_act(w,ALPHA,Revisit.GATE_ACTION,Revisit.GATE_CELL,"a:3"):return false

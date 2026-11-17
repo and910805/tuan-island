@@ -1,5 +1,7 @@
 extends SceneTree
 const Audio=preload("res://scripts/soft_audio.gd")
+const World=preload("res://scripts/world.gd")
+const View=preload("res://scripts/world_view.gd")
 var checks:=0
 var failures:=0
 func expect(value:bool,message:String) -> void:
@@ -19,6 +21,11 @@ func run() -> void:
 	expect(not loaded.save_preferences(path,NAN,true,2),"invalid volume rejected")
 	expect(not loaded.save_preferences(path,0.5,true,3),"unsupported zoom rejected")
 	expect(loaded.save_preferences(path,0.4,false,2),"valid settings can change")
+	expect(not loaded.fixed_area_camera,"A pre-existing preference keeps direct following")
+	expect(loaded.save_preferences(path,0.4,false,2,null,null,null,null,{},true),"Fixed-area choice saves")
+	expect(sound.load_preferences(path) and sound.fixed_area_camera,"Fixed-area choice survives reload")
+	expect(not loaded.save_preferences(path,0.4,false,2,null,null,null,null,{},"fixed") and loaded.fixed_area_camera,"Invalid camera values leave the setting intact")
+	verify_camera()
 	expect(loaded.play_cue("reward",true),"preview plays a generated cue")
 	expect(not loaded.play_cue("action"),"rapid actions do not stack sound")
 	for kind in ["action","reward","notice"]:
@@ -43,3 +50,53 @@ func run() -> void:
 	await process_frame
 	print("COMFORT_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(0 if failures==0 else 1)
+
+func verify_camera() -> void:
+	var world:=World.new()
+	world.add_player("camera-test","島民")
+	var actor:Dictionary=world.state.players["camera-test"]
+	var view:=View.new()
+	root.add_child(view)
+	view.set_process(false)
+	view.village_art_preview=true
+	view.fixed_area_camera=true
+	var position:=Vector2(39.5,33.5)
+	actor.x=position.x
+	actor.y=position.y
+	view.update_snapshot(world.state.duplicate(true),"camera-test")
+	var original:=view.camera
+	actor.x+=1.0
+	view.update_snapshot(world.state.duplicate(true),"camera-test")
+	view._process(0.1)
+	expect(view.camera==original,"A one-tile walk leaves the background stationary")
+	actor.x+=2.0
+	view.update_snapshot(world.state.duplicate(true),"camera-test")
+	view._process(0.1)
+	expect(view.camera.x>original.x and view.camera.y==original.y,"Crossing the edge follows only along the moving axis")
+	expect(view.camera==view.camera.round(),"Fixed-area offsets land on whole pixels")
+	var chosen:=Vector2(44.5,35.5)
+	expect(view.to_cell(view.screen(chosen)*view.view_zoom())==Vector2i(44,35),"Screen picking stays attached to the same world cell")
+	actor.x+=0.25
+	view.update_snapshot(world.state.duplicate(true),"camera-test")
+	view._process(0.1)
+	var moved:=Vector2(actor.x,actor.y)
+	var anchor:=view.get_viewport_rect().size*0.5+Vector2(0,40)
+	view.zoom=1.0
+	view._process(0.1)
+	expect((view.screen(moved)*view.view_zoom()).distance_to(anchor)<=1.0,"Changing zoom recenters without a stale edge offset")
+	actor.y+=8.0
+	view.update_snapshot(world.state.duplicate(true),"camera-test")
+	expect((view.screen(Vector2(actor.x,actor.y))*view.view_zoom()).distance_to(anchor)<=1.0,"A long jump immediately centers the area on arrival")
+	var mine_snapshot:=world.state.duplicate(true)
+	mine_snapshot.region_id="mine_1"
+	view.zoom=2.0
+	view.update_snapshot(mine_snapshot,"camera-test")
+	expect(view.view_zoom()==1.0 and (view.screen(Vector2(actor.x,actor.y))*view.view_zoom()).distance_to(anchor)<=1.0,"Changing region resets the camera with the mine's own zoom")
+	view.fixed_area_camera=false
+	view._process(0.1)
+	actor.x+=1.0
+	mine_snapshot.players["camera-test"]=actor.duplicate()
+	view.update_snapshot(mine_snapshot,"camera-test")
+	view._process(0.1)
+	expect((view.screen(Vector2(actor.x,actor.y))*view.view_zoom()).distance_to(anchor)<=1.0,"Direct mode follows a one-tile move immediately")
+	view.queue_free()

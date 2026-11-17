@@ -70,7 +70,8 @@ static func reserve_text(reserve:int) -> String:
 
 static func quota_text(quota:int,used:int) -> String:
 	if quota<=0:return "每日配水：不限"
-	return "每日配水：%d 份・今天已送 %d%s"%[quota,used,"（今天送完了）" if used>=quota else ""]
+	if used>=quota:return "每日配水：%d 份・今天已送 %d（今天送完了）"%[quota,used]
+	return "每日配水：%d 份・已送 %d・剩 %d"%[quota,used,quota-used]
 
 ## One settings row: a label plus 「－」「＋」 stepping through the rule's option list.
 static func _setting_row(app,parent:Node,id:String,field:String) -> void:
@@ -87,6 +88,10 @@ static func _setting_row(app,parent:Node,id:String,field:String) -> void:
 		b.add_theme_font_size_override("font_size",15)
 		b.size_flags_horizontal=Control.SIZE_SHRINK_END
 		row.add_child(b)
+	var less:=row.get_node(id+"Less") as Button
+	var more:=row.get_node(id+"More") as Button
+	less.focus_neighbor_right=less.get_path_to(more)
+	more.focus_neighbor_left=more.get_path_to(less)
 
 static func _options(field:String) -> Array:
 	return Industry.TOWER_RESERVES if field=="reserve" else Industry.TOWER_QUOTAS
@@ -108,7 +113,14 @@ static func open(app,cell:Vector2i) -> void:
 	app.modal.set_meta("life_modal_layout",LAYOUT)
 	app.modal.set_meta("tower_body",body)
 	app.modal.set_meta("tower_cell",cell)
-	body.add_theme_constant_override("separation",8)
+	body.add_theme_constant_override("separation",5)
+	var scroll:=body.get_parent() as ScrollContainer
+	if scroll!=null:
+		var shell:=scroll.get_parent() as VBoxContainer
+		shell.add_theme_constant_override("separation",3)
+		var divider:=shell.get_node_or_null("ModalFooterDivider") as HSeparator
+		if divider!=null:divider.hide()
+		if is_instance_valid(app.modal_feedback):app.modal_feedback.custom_minimum_size.y=0
 	var head:=Gate._paper(body,"TowerHeader")
 	var row:=HBoxContainer.new()
 	row.add_theme_constant_override("separation",12)
@@ -248,9 +260,30 @@ static func refresh(app) -> void:
 	if is_instance_valid(app.modal_feedback) and str(app.modal.get_meta("tower_context",""))!=str([present,owner]):
 		app.modal.set_meta("tower_context",str([present,owner]))
 		app.modal_feedback.text=("Esc 回到島上" if owner else NOT_OWNER) if present else GONE+"Esc 回到島上"
-	if focus_before!=null and (not is_instance_valid(focus_before) or not focus_before.is_visible_in_tree() or (focus_before is BaseButton and focus_before.disabled)):_focus_first.call_deferred(app)
+	if focus_before!=null and (not is_instance_valid(focus_before) or not focus_before.is_visible_in_tree() or (focus_before is BaseButton and focus_before.disabled)):
+		var previous_name:=str(focus_before.name) if is_instance_valid(focus_before) else ""
+		_restore_setting_focus.call_deferred(app,app.modal,previous_name)
+
+static func _restore_setting_focus(app,page:Control,previous:String)->void:
+	if not is_instance_valid(page) or app.modal!=page:return
+	for prefix in ["TowerReserve","TowerQuota"]:
+		if previous not in [prefix+"Less",prefix+"More"]:continue
+		var sibling:=_node(app,prefix+("More" if previous.ends_with("Less") else "Less")) as Button
+		if is_instance_valid(sibling) and sibling.is_visible_in_tree() and not sibling.disabled:
+			sibling.grab_focus()
+			return
+	_focus_first(app)
 
 ## Owner: the toggle. Visitor / removed tower: the 關閉 button (Enter closes the page).
+static func focus_toggle(app) -> bool:
+	if not is_open(app):return false
+	var toggle:=_node(app,"TowerToggle") as Button
+	if is_instance_valid(toggle) and toggle.is_visible_in_tree() and not toggle.disabled:
+		toggle.grab_focus()
+		var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+		if scroll!=null and scroll.is_ancestor_of(toggle):scroll.ensure_control_visible(toggle)
+	return true
+
 static func _focus_first(app) -> void:
 	if not is_open(app):return
 	var toggle:=_node(app,"TowerToggle") as Button

@@ -248,9 +248,9 @@ static func chest_items(w,cell:Vector2i)->Dictionary:
 # ------------------------------------------------------------------ catalog --
 
 func test_catalog()->void:
-	expect(Goals.KEEPSAKE_ORDER.size()==12 and Goals.KEEPSAKES.size()==12,"Twelve keepsakes in KEEPSAKES and KEEPSAKE_ORDER")
+	expect(Goals.KEEPSAKE_ORDER.size()==17 and Goals.KEEPSAKES.size()==17,"Seventeen keepsakes in KEEPSAKES and KEEPSAKE_ORDER")
 	expect(World.RESIDENT_GOALS.KEEPSAKES==Goals.KEEPSAKES,"World wires the same RESIDENT_GOALS keepsake catalogue")
-	expect(Goals.keepsake_items().size()==12,"keepsake_items() lists twelve kits")
+	expect(Goals.keepsake_items().size()==17,"keepsake_items() lists seventeen kits")
 	var residents:={}
 	var names:={}
 	var other_names:={}
@@ -287,8 +287,8 @@ func test_catalog()->void:
 			if (World.BUILD[b] as Dictionary).has(item):users+=1
 		expect(users==1,"%s is consumed by exactly one BUILD recipe (%d)"%[item,users])
 		expect(not other_names.has(name),"%s: name '%s' not used by another BUILD kind or item (%s)"%[kind,name,str(other_names.get(name,""))])
-	expect(residents.size()==12,"One keepsake per resident (%d residents)"%residents.size())
-	expect(names.size()==12,"Twelve distinct names")
+	expect(residents.size()==12,"All twelve residents have keepsakes (%d residents)"%residents.size())
+	expect(names.size()==17,"Seventeen distinct names")
 	expect(Goals.keepsake_kind("aru",2)=="" and Goals.keepsake_item("bogus")=="" and not Goals.is_keepsake_item("wood") and not Goals.is_keepsake_item("trio_keepsake_kit"),"Negative lookups")
 
 # 2. Not a currency: no price, not tradeable, not stall-listable, no shipping quote.
@@ -312,8 +312,8 @@ func test_placement()->World:
 	w.add_player(BETA,"乙")
 	w.state["picnic"]=true  # PRESET: plaza features (market stall, shipping) open
 	w.state["time"]=START   # PRESET
-	var tiles:Array=free_tiles(w,ORIGIN,15,reserved_cells(w))
-	if not expect(tiles.size()==15,"Fifteen free home tiles near %s (%d)"%[str(ORIGIN),tiles.size()]):return null
+	var tiles:Array=free_tiles(w,ORIGIN,20,reserved_cells(w))
+	if not expect(tiles.size()==20,"Twenty free home tiles near %s (%d)"%[str(ORIGIN),tiles.size()]):return null
 	build_tile=tiles[0]
 	move_tile=tiles[1]
 	chest_tile=tiles[2]
@@ -395,13 +395,13 @@ func test_placement_saves(w)->void:
 	var path:=temp_path("place")
 	# a) All 12 kits in the bag.
 	var data:=saved(w,path,"kits in bag")
-	expect(not data.is_empty() and validates(data),"Save with 12 keepsake kits in the bag validates")
+	expect(not data.is_empty() and validates(data),"Save with 17 keepsake kits in the bag validates")
 	# b) All 12 kits in the chest.
 	put(w,ALPHA,work_spot)
 	for item:String in Goals.keepsake_items():ok(w,ALPHA,"deposit",chest_tile,item,"deposit %s"%item)
 	for item:String in Goals.keepsake_items():expect(int(chest_items(w,chest_tile).get(item,0))==1 and int(bag(w,ALPHA).get(item,0))==0,"%s sits in the chest"%item)
 	data=saved(w,path,"kits in chest")
-	expect(not data.is_empty() and validates(data),"Save with 12 keepsake kits in a chest validates")
+	expect(not data.is_empty() and validates(data),"Save with 17 keepsake kits in a chest validates")
 	var mid:=World.new()
 	expect(mid.load_world(path),"Save with kits in a chest reloads")
 	expect(same(chest_items(mid,chest_tile),chest_items(w,chest_tile)),"Chest contents survive reload (canonical)")
@@ -423,9 +423,9 @@ func test_placement_saves(w)->void:
 	var placed:=0
 	for obj in w.state.objects.values():
 		if obj is Dictionary and Goals.is_keepsake_kind(str(obj.get("type",""))):placed+=1
-	expect(placed==12,"Twelve keepsakes placed after a world tick (%d)"%placed)
+	expect(placed==17,"Seventeen keepsakes placed after a world tick (%d)"%placed)
 	data=saved(w,path,"kits placed")
-	expect(not data.is_empty() and validates(data),"Save with 12 keepsakes placed validates")
+	expect(not data.is_empty() and validates(data),"Save with 17 keepsakes placed validates")
 	var reloaded:=World.new()
 	if not expect(reloaded.load_world(path),"Fresh world reloads the placement save"):return
 	expect(same(reloaded.state.objects,w.state.objects),"state.objects survives reload (canonical)")
@@ -485,6 +485,12 @@ func test_earned()->void:
 	expect(same(w.state.objects.get(World.key(ks_tile),{}),{"type":kind,"owner":EARN,"items":{}}),"earned keepsake on the home layer, owned by earn")
 	expect(int(bag(w,EARN).get(item,0))==0,"earned kit consumed")
 	expect(not w.blocked(ks_tile) and w.can_stand(Vector2(ks_tile)+HALF),"earned keepsake is walk-through")
+	var gallery_board:=Vector2i(40,29)
+	put(w,EARN,Vector2(40.5,30.5))
+	ok(w,EARN,"collection_donate",gallery_board,item,"catalog the earned keepsake while it is placed")
+	ok(w,EARN,"collection_display",gallery_board,item,"publicly exhibit the record")
+	expect(w.state.objects.get(World.key(ks_tile),{}).get("type")==kind and int(bag(w,EARN).get(item,0))==0,
+		"The gallery leaves the original furniture in place and does not mint a second copy")
 	# Legacy completion (before batch 3) claimed later.
 	set_points(w,LEGACY,"aru",int(Bond.THRESHOLDS[0]))  # PRESET
 	var leg_cell:=go(w,LEGACY,"aru")
@@ -533,6 +539,7 @@ func earned_saves(w,ks_tile:Vector2i,spot:Vector2)->void:
 		expect(same(pl(reloaded,token).get(Goals.KEEPSAKE_KEY),pl(w,token).get(Goals.KEEPSAKE_KEY)),"%s bond_keepsakes survive reload"%token.left(14))
 		expect(same(pl(reloaded,token).get(Goals.RECORD_KEY),pl(w,token).get(Goals.RECORD_KEY)),"%s bond_goals survive reload"%token.left(14))
 	expect(Goals.keepsake_claimed(pl(reloaded,EARN),"keepsake_aru") and pl(reloaded,EARN)[Goals.KEEPSAKE_KEY]["keepsake_aru"] is bool,"Reloaded claim flag is a real bool true")
+	expect(pl(reloaded,EARN).get("collection_display",[])==["keepsake_aru_kit"],"The displayed story entry survives reloading")
 	reloaded.active_tokens={EARN:true,LEGACY:true}
 	put(reloaded,EARN,spot)
 	ok(reloaded,EARN,"remove",ks_tile,"","earn picks the earned keepsake up after reload")

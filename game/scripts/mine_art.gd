@@ -14,6 +14,20 @@ const CHAMBER := MineLayout.BASE_RECT
 const ROUGH_EARTH := 6
 const SIDE_FLOOR := [[5,4],[6,5],[6,4],[5,6],[11,6]]
 const WALL_NORMALS := [Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT]
+const MUD_PIXELS := [
+	".....00000......","...001111100....","..01122222110...","..01223232210...","..01223232210...",
+	".0122433342210..","012221212122210.","012211222112210.","012222222222210.","00111111111100..",
+	"..0000000000....",
+]
+const MUD_COLORS := [Color("44322f"),Color("775043"),Color("aa7960"),Color("514137"),Color("e3a781")]
+
+static func draw_mudling(canvas:CanvasItem,at:Vector2,seconds:float,reduced_motion:bool) -> void:
+	var rise:=0 if reduced_motion else roundi(sin(seconds*2.6)*2.0)
+	for y in MUD_PIXELS.size():
+		var row:String=MUD_PIXELS[y]
+		for x in row.length():
+			if row[x]!=".":
+				canvas.draw_rect(Rect2(at+Vector2(x*2,8+y*2+rise),Vector2(2,2)),MUD_COLORS[int(row[x])])
 static var perimeters:Dictionary={}
 const FLOOR_TINT := [
 	Color("aaa09a"),Color("aaa4a0"),Color("909b9e"),Color("9f9287"),Color("8b8582"),

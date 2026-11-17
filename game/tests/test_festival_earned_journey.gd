@@ -347,6 +347,8 @@ func lamps_and_open() -> void:
 	var portions:=int(world.state.community.watermelon.portions)
 	act("festival_story_open",BOARD)
 	expect(world.festival_story_view().opened and bool(world.state.festival_story_open),"festival opened by the board action")
+	act(World.Deer.ACTION,World.Deer.site(world.state))
+	expect(bool(world.state.players[tok].get("windbell_deer_seen",false)),"The festival journey ends with the visitor at the windbell tree")
 	expect(int(world.state.community.watermelon.portions)==portions,"opening leaves the shared portions on the table")
 	expect(world.state.events.size()>=events,"opening does not drop event history")
 	for id in residents_before:
@@ -458,6 +460,7 @@ func restart_and_replay() -> void:
 	tok=TOKEN_A
 	for field in ["x","y","coins","inventory","region"]:expect_same(person().get(field),expected_a.get(field),"restart: A %s preserved"%field)
 	expect(world.festival_story_view().opened,"restart: opening persisted without any project override")
+	expect(bool(person().get("windbell_deer_seen",false)),"restart: the earned visitor encounter is preserved")
 	for id:String in World.OUTLYING_COMMISSIONS.ids():
 		expect(World.OUTLYING_COMMISSIONS.done(world.state,TOKEN_A,id),"restart: festival journey retains local commission "+id)
 	expect(int(world.state.dock_stage)==World.DOCK_REPAIRS.size() and int(world.state.community.watermelon.portions)==World.COMMUNITY.HOTPOT_PORTIONS,"restart: dock and shared meal persisted")
@@ -470,6 +473,8 @@ func restart_and_replay() -> void:
 	var table:=World.COMMUNITY.table_cell(world.state)
 	act("claim_watermelon",table)
 	expect(int(bag().get("watermelon_platter",0))==1 and int(world.state.community.watermelon.portions)==World.COMMUNITY.HOTPOT_PORTIONS-1,"late member claims one festival portion")
+	late_member_uses_public_facilities()
+	if failed:return
 	# Personal replay is read-only and repeatable.
 	var scenes:=festival_scene_count()
 	expect(scenes>=3,"festival memory has at least three replay scenes (%d)"%scenes)
@@ -479,6 +484,41 @@ func restart_and_replay() -> void:
 		expect(view.opened,"replay %d sees the opened festival"%(n+1))
 	expect(canon_bytes(world.state)==before,"replaying the festival memory %d times changes nothing"%REPLAYS)
 	tok=TOKEN_A
+
+func late_member_uses_public_facilities() -> void:
+	expect(World.crafting_level(person())==1 and World.farming_level(person())==1 and not person().get("borrowed_mine_pick",false),
+		"The late resident begins at base skill levels without a loan")
+	var kitchen:=World.PUBLIC_KITCHEN
+	var stove:=kitchen.parse_cell(str(world.state.public_kitchen.stove))
+	expect(kitchen.stage(world.state)=="open" and world.state.objects[World.key(stove)].owner==TOKEN_A,
+		"The original resident built the public stove")
+	expect(preload("res://scripts/island_map.gd").public_kitchen_marker(world.state)==stove,
+		"The map points newcomers to the actual public stove")
+	var recipe:Dictionary=World.RECIPES.soup
+	for i in int(recipe.ingredients.radish):
+		var plot:=open_cell()
+		if not expect(plot!=Vector2i(-1,-1),"Find a free garden tile for the new resident"):return
+		wait_for_kitchen_crop("radish",plot)
+		act("hoe",plot)
+		act("seed",plot,"radish")
+		act("water",plot)
+		grow([plot])
+		act("harvest",plot)
+	act("cook",stove,"soup")
+	wait(float(recipe.time))
+	act("claim_cook",stove)
+	expect(int(bag().get("soup",0))==int(recipe.yield) and int(person().get("builds",0))==0,
+		"The newcomer cooked with their own crops and the existing stove")
+	act("borrow_mine_pick",World.COPPER_CELL)
+	act("mine_copper",World.COPPER_CELL)
+	expect(int(bag().get("copper_ore",0))==2 and not bag().has("reinforced_pick"),
+		"The same newcomer can mine through the public loan without obtaining a physical tool")
+	var coins:=int(person().coins)
+	walk_to(RECEIVER)
+	if failed:return
+	actions+=1
+	var sale:=world.act(tok,"late-loan-sale","sell",RECEIVER,"reinforced_pick")
+	expect(not sale.ok and int(person().coins)==coins,"Selling a public loan cannot credit coins")
 
 func second_restart() -> void:
 	expect(world.save(),"explicit save before the second restart")
@@ -490,6 +530,8 @@ func second_restart() -> void:
 	expect(world.festival_story_view().opened,"second restart: still opened")
 	expect(world.state.community.watermelon.claimed.has(LATE),"second restart: late member's claim persisted")
 	tok=LATE
+	expect(person().get("borrowed_mine_pick",false) and int(bag().get("soup",0))==int(World.RECIPES.soup.yield)
+		and int(bag().get("copper_ore",0))==2,"second restart: the newcomer retains the loan and their earned output")
 	frefuse("claim_watermelon",World.COMMUNITY.table_cell(world.state),"",MSG_CLAIMED)
 	frefuse("festival_story_open",BOARD,"",MSG_OPENED)
 	tok=TOKEN_A

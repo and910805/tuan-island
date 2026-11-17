@@ -73,11 +73,12 @@ func run() -> void:
 	expect(panel.slots.pipe_kit.visible and panel.slots.sawmill_kit.visible, "industry kits appear under other items")
 	expect(panel.slots.forester_kit.visible, "forestry kit appears under other items")
 	panel.select_category(0)
-	for extent in [Vector2(1024,640), Vector2(1280,720), Vector2(1280,800), Vector2(1920,1080)]:
+	for extent in [Vector2(1024,640), Vector2(1280,720), Vector2(800,600), Vector2(1280,800), Vector2(1920,1080)]:
 		panel.layout_for(extent)
 		await process_frame
 		await process_frame
-		expect(panel.size == Vector2(900, 560), "panel keeps desktop size at %s (actual %s)" % [extent, panel.size])
+		expect(panel.size == Vector2(minf(900,extent.x-32), 560), "panel keeps responsive width at %s (actual %s)" % [extent, panel.size])
+		expect(panel.grid.columns==(5 if extent.x==800 else 6),"grid uses the available width at %s"%extent)
 		expect(panel.get_rect().get_center().distance_to(extent / 2) < 1, "panel centers at %s" % extent)
 		expect(panel.scroller.size.x >= panel.grid.size.x, "grid width fits tray at %s" % extent)
 	expect(panel.selected_id == "wood" and panel.detail_count.text == "持有 12", "wood is selected on open")

@@ -337,9 +337,9 @@ static func draw_row(canvas:CanvasItem,origin:Vector2,y:int,data:Dictionary,elap
 	if y==Salt.PUBLIC_SIGN.y:
 		var feet:=origin+Vector2(Salt.PUBLIC_SIGN.x+0.5,y+1)*32+Vector2(0,-2)
 		draw_structure(canvas,feet,"sign")
-		labels.append([feet+Vector2(0,-30),"salt:lot:%d"%Salt.PUBLIC_LOT])
+		labels.append([feet-Vector2(0,SaltArt.structure_anchor("sign").y+3),"salt:lot:%d"%Salt.PUBLIC_LOT])
 	if y==Salt.HERITAGE_SIGN.y:
 		var feet:=origin+Vector2(Salt.HERITAGE_SIGN.x+0.5,y+1)*32+Vector2(0,-2)
 		draw_structure(canvas,feet,"sign")
-		labels.append([feet+Vector2(0,-30),"salt:heritage"])
+		labels.append([feet-Vector2(0,SaltArt.structure_anchor("sign").y+3),"salt:heritage"])
 	return labels

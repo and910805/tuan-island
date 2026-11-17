@@ -54,7 +54,7 @@ const JAR_TEXT:="交一只"
 const FILL_TEXT:="裝一罐"
 const SEND_TEXT:="寄出大單"
 const CLAIM_TEXT:="領取茶陶組"
-const JAR_NOTE:="只收送貨回來的空罐（回收陶罐、磨損陶罐）；交給陶師的空罐留給大單用，不會退回。"
+const JAR_NOTE:="請交送貨回來的回收罐或磨損罐，陶師會留給大單使用。"
 const AWAY_JAR:="交罐要到鶯歌合作陶坊，站在陶師的工作桌旁（%d,%d）。"
 const AWAY_FILL:="裝茶要到貓空合作茶園，站在包裝台旁（%d,%d）。"
 const AWAY_SEND:="寄出要到貓空合作茶園，站在包裝台旁（%d,%d）。"
@@ -115,21 +115,31 @@ static func claim_reason(s:Dictionary,person:Dictionary) -> String:
 ## 貓空／鶯歌 tracker (two short lines). "" unless the player is ready and the order has a
 ## step they can do right now with what they carry (hand in a jar, fill, send or claim);
 ## otherwise the tea notebook keeps the tracker so it can lead to jars and tea first.
-static func tracker_text(s:Dictionary,own_id:String) -> String:
-	if not in_tea_region(s) or not TR.player_ready(s):return ""
+static func navigation(s:Dictionary,own_id:String) -> Dictionary:
+	if not in_tea_region(s) or not TR.player_ready(s):return {}
 	var person:=_person_of(s,own_id)
-	if person.is_empty():return ""
+	if person.is_empty():return {}
 	var bag:=_bag(person)
 	if TR.completed(s):
-		return "茶罐大單寄出了\n到鶯歌陶師那裡領茶陶組" if TR.claim_block(s,bag).is_empty() else ""
-	if TR.send_block(s).is_empty():return "茶罐大單・6 罐都裝好了\n到貓空的包裝台寄出"
+		if not TR.claim_block(s,bag).is_empty():return {}
+		return {"region":"yingge","cell":TR.POTTER,"action":"領茶陶組","tracker":"茶罐大單寄出了\n到鶯歌陶師那裡領茶陶組"}
+	if TR.send_block(s).is_empty():
+		return {"region":"maokong","cell":TR.PACKER,"action":"寄出茶罐大單","tracker":"茶罐大單・6 罐都裝好了\n到貓空的包裝台寄出"}
 	var styles:=PackedStringArray()
 	for style:String in TR.STYLES:
 		if TR.fill_block(s,style,bag).is_empty():styles.append(str(TR.STYLE_NAMES[style]))
-	if not styles.is_empty():return "茶罐大單・已裝 %d／6\n到貓空的包裝台裝%s"%[TR.filled_total(s),"、".join(styles)]
+	if not styles.is_empty():
+		var names:="、".join(styles)
+		return {"region":"maokong","cell":TR.PACKER,"action":"裝罐・"+names,
+			"tracker":"茶罐大單・已裝 %d／6\n到貓空的包裝台裝%s"%[TR.filled_total(s),names]}
 	for item:String in TR.JAR_ITEMS:
-		if TR.jar_block(s,item,bag).is_empty():return "茶罐大單・空罐 %d／6\n帶回收空罐到鶯歌交給陶師"%TR.jars_total(s)
-	return ""
+		if TR.jar_block(s,item,bag).is_empty():
+			return {"region":"yingge","cell":TR.POTTER,"action":"交回收空罐",
+				"tracker":"茶罐大單・空罐 %d／6\n帶回收空罐到鶯歌交給陶師"%TR.jars_total(s)}
+	return {}
+
+static func tracker_text(s:Dictionary,own_id:String) -> String:
+	return str(navigation(s,own_id).get("tracker",""))
 
 ## The tracker card follows the order (and its button opens this page).
 static func tracking(s:Dictionary,own_id:String) -> bool:
@@ -170,7 +180,7 @@ static func open(app,origin:String="") -> void:
 	app.modal.set_meta("life_modal_layout",LAYOUT)
 	app.modal.set_meta("tr_body",body)
 	app.modal.set_meta("tr_origin",origin)
-	body.add_theme_constant_override("separation",6)
+	body.add_theme_constant_override("separation",4)
 	build(app,body,origin)
 	refresh(app,true)
 	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="Esc 回到島上"
@@ -192,7 +202,7 @@ static func layout(app,bounds:Vector2) -> void:
 	var modal:Control=app.modal
 	var card:=card_open(app)
 	var width:=minf(880.0 if card else 920.0,bounds.x-48)
-	var cap:=bounds.y-32
+	var cap:=bounds.y-(32 if card else 16)
 	var height:=minf(cap,620)
 	modal.size.x=width
 	var outer:=modal.find_child("ModalScroll",true,false) as Control

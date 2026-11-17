@@ -446,6 +446,28 @@ func run() -> void:
 		for kind: String in styles.kinds(style_id):
 			expect(entries.has(kind),"Style exposes "+kind)
 		expect(recipe_text().contains("搭配建議"),"Style recipe shows its design note")
+	var inn_entries:=await press_tab("暖泉旅舍")
+	var inn_order:=["inn_quilt_bed","inn_stone_footbath","inn_lattice_wardrobe","inn_fabric_screen","inn_tea_table",
+		"spring_stone_bench","towel_rack","ceramic_eave_chime","warm_lamp_niche","inn_luggage_rack","spring_pebble_path","inn_welcome_sign"]
+	expect(inn_entries.size()==inn_order.size(),"The inn page has exactly the twelve planned pieces")
+	for index in inn_order.size():
+		var kind:String=inn_order[index]
+		expect(inn_entries.has(kind),"The inn page exposes "+kind)
+		if not inn_entries.has(kind):continue
+		var entry:Button=inn_entries[kind][0]
+		expect(entry.get_index()==index,"Pieces are in the inn collection's plan order")
+		entry.pressed.emit()
+		await process_frame
+		expect(recipe_text().contains(World.BUILD[kind].name),"The inn page opens the real recipe for "+kind)
+	if inn_entries.has(World.INDUSTRY.FOOT_BATH):
+		inn_entries[World.INDUSTRY.FOOT_BATH][0].pressed.emit()
+		expect(place_button().disabled and recipe_text().contains("池邊的裂縫"),"The inn collection explains the locked bath")
+		app.session.snapshot["resident_goals"]={"nuannuan":{"2":{"state":"done"}}}
+		inn_entries[World.INDUSTRY.FOOT_BATH][0].pressed.emit()
+		await capture("warm-springs-inn")
+		place_button().pressed.emit()
+		expect(app.building==World.INDUSTRY.FOOT_BATH and app.building_style.is_empty(),"The inn collection selects normal placement without applying another style")
+		await open_folio("after inn selection")
 	await press_tab("全部")
 	await verify_counts()
 	await verify_locked()

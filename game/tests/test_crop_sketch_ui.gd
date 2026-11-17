@@ -36,6 +36,18 @@ func run() -> void:
 		app.session.perform("seed",tile,kind)
 		app._interact()
 		await process_frame
+		var sow_access:=app.modal.find_child("PlotSowAccess",true,false) as Button
+		expect(sow_access!=null and sow_access.text=="只限田主播種","The home plot exposes its independent sowing control")
+		if sow_access:sow_access.pressed.emit()
+		expect(app.session.snapshot.crops[World.key(tile)].get("owner_sow",false),"Plot control updates the public crop policy")
+		app._interact()
+		await process_frame
+		var water_access:=app.modal.find_child("PlotWaterAccess",true,false) as Button
+		expect(water_access!=null and water_access.text=="只限田主澆水","Watering has a separate control")
+		if water_access:water_access.pressed.emit()
+		expect(app.session.snapshot.crops[World.key(tile)].get("owner_water",false),"Watering control changes only its own policy")
+		app._interact()
+		await process_frame
 		var button:=app.modal.find_child("CropSketch",true,false) as Button if is_instance_valid(app.modal) else null
 		expect(button!=null and not button.disabled,"Ordinary plot interaction shows the crop sketch action")
 		if button!=null:button.pressed.emit()
@@ -91,6 +103,8 @@ func run() -> void:
 	expect(app.session.shutdown(),"Save and close")
 	var loaded:=World.new()
 	expect(loaded.load_world(path) and loaded.state.objects.get(World.key(easel),{}).get("type")=="sketch_easel","Built easel survives a full reload")
+	expect(loaded.state.crops.get("38,34",{}).get("owner_sow",false),"The independent plot policy survives a full reload")
+	expect(loaded.state.crops.get("38,34",{}).get("owner_water",false),"Watering policy survives the same reload")
 	for suffix in ["",".bak",".tmp"]:
 		if FileAccess.file_exists(path+suffix):DirAccess.remove_absolute(path+suffix)
 	app.sound.close()

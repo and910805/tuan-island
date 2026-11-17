@@ -9,6 +9,14 @@ func check(ok:bool,message:String)->void:
 		push_error(message)
 func _initialize()->void:
 	run.call_deferred()
+func tap(button:JoyButton)->void:
+	for pressed in [true,false]:
+		var event:=InputEventJoypadButton.new()
+		event.button_index=button
+		event.pressed=pressed
+		root.push_input(event)
+	await process_frame
+
 func run()->void:
 	var folder:=OS.get_environment("TEMP").path_join("shipping-ui-"+Crypto.new().generate_random_bytes(8).hex_encode())
 	DirAccess.make_dir_recursive_absolute(folder)
@@ -36,8 +44,16 @@ func run()->void:
 		var size:String=app.arg_value("qa-size","1024x640")
 		var dimensions:=size.split("x")
 		extents=[Vector2i(int(dimensions[0]),int(dimensions[1]))]
+	var layouts:Array[Vector3i]=[]
 	for extent in extents:
+		var scales:Array=[0,1,2,3] if photo.is_empty() else [int(app.arg_value("qa-text-scale","3"))]
+		for scale_id:int in scales:
+			layouts.append(Vector3i(extent.x,extent.y,scale_id))
+	for layout in layouts:
+		var extent:=Vector2i(layout.x,layout.y)
 		root.size=extent
+		app.sound.preferred_text_scale=layout.z
+		app._apply_font_scale_tree()
 		await process_frame
 		if not photo.is_empty() and stage=="world":
 			app._process(0.0)
@@ -55,23 +71,30 @@ func run()->void:
 		await process_frame
 		check(Rect2(Vector2.ZERO,Vector2(extent)).encloses(panel.get_global_rect()),"Panel fits "+str(extent))
 		check(panel.confirm_button.is_visible_in_tree() and panel.get_global_rect().encloses(panel.confirm_button.get_global_rect()),"Confirmation fully visible")
+		check(panel.detail_name.get_theme_font_size("font_size")==app.scaled_font_size(21),"Selection name uses the chosen text size")
 		check(not app.preview_toolbar.visible,"World HUD hidden")
 		panel.select_category(1)
-		panel.select_item("radish")
-		panel.set_amount("radish",3)
+		panel.slots.radish.grab_focus()
+		await tap(JOY_BUTTON_X)
+		check(root.gui_get_focus_owner()==panel.plus,"X goes straight to quantity controls")
+		await tap(JOY_BUTTON_A)
+		await tap(JOY_BUTTON_DPAD_RIGHT)
+		check(root.gui_get_focus_owner()==panel.all_button,"D-pad reaches the bulk quantity action")
+		await tap(JOY_BUTTON_A)
+		check(panel.cart.get("radish",0)==12,"A places all held radishes in the basket")
+		await tap(JOY_BUTTON_DPAD_DOWN)
 		var balance:int=player.coins
-		panel.confirm()
+		await tap(JOY_BUTTON_A)
 		check(panel.reviewing and player.coins==balance and player.inventory.radish==12,"Review has no side effect")
 		if not photo.is_empty() and stage=="review":
 			await RenderingServer.frame_post_draw
 			check(root.get_texture().get_image().save_png(photo)==OK,"Rendered shipping review")
-		var escape:=InputEventKey.new()
-		escape.pressed=true
-		escape.physical_keycode=KEY_ESCAPE
-		app._input(escape)
-		check(app.modal==null and app.preview_toolbar.visible and player.inventory.radish==12,"Escape restores HUD without sale")
+		await tap(JOY_BUTTON_B)
+		check(app.modal==null and app.preview_toolbar.visible and player.inventory.radish==12,"B restores HUD without sale")
 	app._interact()
 	var panel:ShippingPanel=app.modal
+	await process_frame
+	await process_frame
 	panel.set_amount("radish",3)
 	panel.confirm()
 	player.inventory.radish=2
@@ -82,8 +105,12 @@ func run()->void:
 	panel.clear_cart()
 	panel.set_amount("radish",2)
 	var quote:Dictionary=panel.current_quote()
-	panel.confirm()
-	panel.confirm()
+	panel.confirm_button.grab_focus()
+	await tap(JOY_BUTTON_A)
+	check(panel.reviewing,"First A requests review after refreshing the basket")
+	await tap(JOY_BUTTON_A)
+	await tap(JOY_BUTTON_A)
+	check(panel.is_ancestor_of(root.gui_get_focus_owner()) and root.gui_get_focus_owner()!=panel.confirm_button,"Sale returns focus to a usable control")
 	player=app.session.world.state.players[id]
 	var persisted:Dictionary=JSON.parse_string(FileAccess.get_file_as_string(path))
 	check(player.coins==before+int(quote.total) and int(player.inventory.get("radish",0))==0,"Real Session sale commits coins and inventory")
@@ -99,8 +126,22 @@ func run()->void:
 	panel.select_category(1)
 	panel.select_item("carrot")
 	panel.select_all()
+	var longest_id:=""
+	for item_id:String in panel.prices:
+		if longest_id.is_empty() or String(panel.World.NAMES[item_id]).length()>String(panel.World.NAMES[longest_id]).length():longest_id=item_id
+	player.inventory[longest_id]=1
+	app.session._send_snapshot(1)
+	panel.select_category(panel.category_for(longest_id))
+	panel.select_item(longest_id)
+	panel.set_amount(longest_id,1)
 	await process_frame
 	await process_frame
+	check(panel.detail_name.text==panel.World.NAMES[longest_id] and panel.detail_name.get_visible_line_count()==panel.detail_name.get_line_count(),"Longest item name fits the selection details")
+	var receipt_name_fits:=false
+	for label:Label in panel.receipt.find_children("*","Label",true,false):
+		if label.text==panel.World.NAMES[longest_id]:
+			receipt_name_fits=label.get_visible_line_count()==label.get_line_count()
+	check(receipt_name_fits,"Longest item name fits the receipt")
 	check(panel.get_global_rect().encloses(panel.confirm_button.get_global_rect()),"Large quantities keep confirmation inside panel")
 	check(panel.receipt_scroll.get_global_rect().size.x>=panel.receipt.get_global_rect().size.x,"Large receipt quantities fit available width")
 	panel.pending=true

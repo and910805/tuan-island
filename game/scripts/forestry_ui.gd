@@ -25,8 +25,13 @@ func device(app, cell: Vector2i) -> void:
 	plots.get_parent().size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	Tasks.line(app, plots, "作業地塊", 20)
 	Tasks.line(app, plots, "距工作站兩格，每 %d 秒依序檢查一格。" % World.FORESTRY.INTERVAL, 15)
+	Tasks.line(app,plots,"新種耗一棵苗。採伐耗一份木炭，並原地補種。",14)
 	var summary: Label = single_line(app, "", 16)
 	plots.add_child(summary)
+	var advice_label:Label=app.label("",15)
+	advice_label.name="ForestryAdvice"
+	advice_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	plots.add_child(advice_label)
 	var plots_grid := GridContainer.new()
 	plots_grid.columns = 2
 	plots_grid.add_theme_constant_override("h_separation", 6)
@@ -41,6 +46,7 @@ func device(app, cell: Vector2i) -> void:
 		Tasks.add_icon(line, ItemArt.icon("sapling"), 32)
 		line.add_child(single_line(app, direction, 15))
 		var plot: Label = app.label("", 14)
+		plot.name="ForestryPlot_"+str(plot_labels.size())
 		plot.custom_minimum_size = Vector2(124, 24)
 		plot_card.add_child(plot)
 		plot_labels.append(plot)
@@ -59,6 +65,7 @@ func device(app, cell: Vector2i) -> void:
 		amount.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(amount)
 		var load_button: Button = app.button("補入", func(): app.session.perform("load_forester", cell, item))
+		load_button.name="ForestryLoad_"+item
 		load_button.tooltip_text = "每次最多補入 4 件"
 		row.add_child(load_button)
 		stocks[item] = [amount, load_button]
@@ -75,6 +82,8 @@ func device(app, cell: Vector2i) -> void:
 		product_labels[item] = label
 	var toggle: Button = app.button("啟用", func(): app.session.perform("toggle_forester", cell))
 	var collect: Button = app.button("領取產物", func(): app.session.perform("collect_forester", cell))
+	collect.name="ForestryCollect"
+	collect.tooltip_text="手把 X 選取 · A 確認"
 	var unload: Button = app.button("退回供料", func(): app.session.perform("unload_forester", cell))
 	var actions := HBoxContainer.new()
 	controls.add_child(actions)
@@ -89,6 +98,7 @@ func device(app, cell: Vector2i) -> void:
 		var enabled: bool = station.get("enabled", false)
 		var bag: Dictionary = person.get("inventory", {})
 		map.state = snapshot
+		map._region = str(snapshot.get("region_id","home"))
 		var has_supply := false
 		for item in INPUTS:
 			var stored: int = station.get(INPUTS[item], 0)
@@ -107,10 +117,23 @@ func device(app, cell: Vector2i) -> void:
 		collect.disabled = not owned or total == 0
 		unload.disabled = not owned or not has_supply
 		summary.text = station_summary(snapshot, station, present, owned)
+		advice_label.text=operation_advice(map,cell,station).detail if present else ""
 		for index in plot_labels.size():
 			var tile: Vector2i = cell + World.FORESTRY.OFFSETS[index]
 			plot_labels[index].text = plot_summary(map, tile, station) if present else "—"
+			plot_labels[index].tooltip_text="%s兩格（%d，%d）\n%s"%[DIRECTIONS[index],tile.x,tile.y,plot_labels[index].text]
 	refresh(app)
+
+func focus_primary(app) -> bool:
+	if not is_instance_valid(modal) or app.modal != modal:return false
+	for id in ["ForestryCollect","ForestryLoad_charcoal","ForestryLoad_sapling"]:
+		var action:=modal.find_child(id,true,false) as Button
+		if not is_instance_valid(action) or action.disabled or not action.is_visible_in_tree():continue
+		action.grab_focus()
+		var scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
+		if scroll!=null:scroll.ensure_control_visible(action)
+		break
+	return true
 
 func refresh(app) -> void:
 	if not is_instance_valid(modal) or app.modal != modal:
@@ -132,6 +155,42 @@ static func station_summary(snapshot: Dictionary, station: Dictionary, present: 
 	var remaining := maxi(0, ceili(float(station.next_cycle) - float(snapshot.get("time", 0))))
 	return "下次檢查%s · %d 秒" % [DIRECTIONS[int(station.cursor)], remaining]
 
+static func operation_advice(map,cell:Vector2i,station:Dictionary)->Dictionary:
+	if not station.get("enabled",false):return {"short":"已停止","detail":"補好供料後啟用，工作站會依序檢查四格。"}
+	var growing:=false
+	var growth_blocked:=false
+	var crowded:=false
+	var needs_fuel:=false
+	var needs_seed:=false
+	var full:=false
+	for offset:Vector2i in World.FORESTRY.OFFSETS:
+		var tile:=cell+offset
+		var status:=World.FORESTRY.plot_status(map,tile,str(station.owner))
+		if status=="growing":
+			if float(map.state.forest[World.key(tile)].growth)>=World.TREE_TIME:growth_blocked=true
+			else:growing=true
+		elif status=="empty":
+			var occupied:=false
+			for person:Dictionary in map.state.get("players",{}).values():
+				if Vector2(person.x,person.y).distance_to(Vector2(tile)+Vector2(0.5,0.5))<0.8:occupied=true;break
+			if occupied:crowded=true
+			elif int(station.get("saplings",0))==0:needs_seed=true
+			else:return {"short":"","detail":"有可作業地塊，依四個方向輪流種植與採伐。"}
+		elif status=="mature":
+			if int(station.get("fuel",0))==0:needs_fuel=true;continue
+			var fits:=true
+			for item in PRODUCTS:
+				if int(station.get("items",{}).get(item,0))+World.FORESTRY.OUTPUT[item]>World.FORESTRY.OUTPUT_CAPS[item]:fits=false;break
+			if fits:return {"short":"","detail":"有可作業地塊，依四個方向輪流種植與採伐。"}
+			full=true
+	if full:return {"short":"產物滿了，先領取","detail":"先領取工作站產物，騰出空間後會繼續採伐並補種。"}
+	if needs_fuel:return {"short":"待補木炭","detail":"成熟的樹需要木炭才能採伐；在右側補入木炭。"}
+	if needs_seed:return {"short":"待補樹苗","detail":"空地需要樹苗才能種植；在右側補入樹苗。"}
+	if growth_blocked:return {"short":"請讓出生長空間","detail":"請離開已長滿的樹格，讓樹木完成成熟後再由工作站採伐。"}
+	if growing:return {"short":"等待樹木成長","detail":"作業格的樹還在成長；保留空間，成熟後會繼續作業。"}
+	if crowded:return {"short":"請讓出種植格","detail":"有人站在作業格上；讓出位置後，工作站會在下次輪到時種植。"}
+	return {"short":"作業格被擋住","detail":"清出四個方向兩格處的作業空間；天然樹石需手動清理，保護區則需移動工作站。"}
+
 static func plot_summary(map, tile: Vector2i, station: Dictionary) -> String:
 	var status: String = World.FORESTRY.plot_status(map, tile, station.owner)
 	match status:
@@ -152,4 +211,23 @@ static func plot_summary(map, tile: Vector2i, station: Dictionary) -> String:
 					return "成熟 · 請先領取產物"
 			return "成熟 · 可採收"
 		_:
-			return "不可作業"
+			return blocked_plot_summary(map,tile,station)
+
+static func blocked_plot_summary(map,tile:Vector2i,station:Dictionary)->String:
+	var key:=World.key(tile)
+	if not map.is_land(tile) or map.water(tile):return "水岸 · 無法種植"
+	if map.protected(tile):return "保護區 · 請換位置"
+	var object:Dictionary=map.state.get("objects",{}).get(key,{})
+	if not object.is_empty():
+		var title:String=World.BUILD.get(str(object.get("type","")),{}).get("name","設施")
+		return title+"占格"
+	if map.state.get("crops",{}).has(key):return "農田 · 保留不動"
+	if map.state.get("ground",{}).has(key):return "地板 · 無法種植"
+	if map.state.get("roofs",{}).has(key):return "屋頂 · 無法種植"
+	var tree:Dictionary=map.state.get("forest",{}).get(key,{})
+	if not tree.is_empty() and str(tree.get("owner",""))!=str(station.get("owner","")):return "他人樹木 · 保留不動"
+	match map.resource(tile):
+		"tree":return "天然樹 · 先清理"
+		"rock":return "石頭 · 先清理"
+		"grass":return "雜草 · 先清理"
+	return "不可作業"

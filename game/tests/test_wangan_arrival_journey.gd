@@ -218,9 +218,9 @@ func release()->void:
 	held_key=KEY_NONE
 
 ## Waits (real time) until main._process has handed the held direction to the Session.
-func direction_is(d:Vector2)->bool:
+func direction_is(d:Vector2,sent_after:int=-1)->bool:
 	for i in 80:
-		if Vector2(app.session.directions.get(1,Vector2(9,9)))==d:return true
+		if Vector2(app.session.directions.get(1,Vector2(9,9)))==d and int(app.session.last_movement.get(1,0))>sent_after:return true
 		await create_timer(0.02).timeout
 	return false
 
@@ -272,8 +272,11 @@ func beside(target:Vector2i)->Array:
 func walk(path_cells:Array,from:int,to:int,label:String)->bool:
 	for index in range(from+1,to+1):
 		var d:Vector2i=path_cells[index]-path_cells[index-1]
+		var last_packet:=int(app.session.last_movement.get(1,0))
 		hold(move_key(d))
-		var handed:bool=await direction_is(Vector2(d))
+		# Let the client refresh held input during long walks even when the simulated clock advances faster.
+		await process_frame
+		var handed:bool=await direction_is(Vector2(d),last_packet)
 		if not check(handed,"%s: held %s reached the session as %s"%[label,OS.get_keycode_string(move_key(d)),str(d)]):
 			release()
 			return false
@@ -297,7 +300,9 @@ func walk(path_cells:Array,from:int,to:int,label:String)->bool:
 	return true
 
 func walk_to(goals:Array,label:String)->bool:
+	w.switch_region(w.player_region(tok))
 	var cells:=route(goals)
+	w.switch_region(World.REGIONS.HOME)
 	if not check(not cells.is_empty(),"%s: route found from %s to %s"%[label,str(pos()),str(goals)]):return false
 	var ok:=await walk(cells,0,cells.size()-1,label)
 	note("%s: walked %d cells to %s, time=%.2f"%[label,cells.size()-1,str(cells.back()),float(w.state.time)])
@@ -454,8 +459,566 @@ func run()->void:
 		finish()
 		return
 	await retained_routes()
+	var map_script=preload("res://scripts/island_map.gd")
+	for stop in map_script.WANGAN_STOPS:
+		if not await walk_to([stop[0]],str(stop[1])):
+			break
+		if stop[0]==World.WANGAN_COAST.SHELL_CELL:
+			await key(bound("interact"))
+			check(int(snap_bag().get(World.WANGAN_COAST.SHELL_ITEM,0))==1,"Low tide lets the player collect one shell")
+			await key(bound("interact"))
+			check(int(snap_bag().get(World.WANGAN_COAST.SHELL_ITEM,0))==1,"An immediate second gather does not grant a shell")
+	if Vector2i(pos())==World.SEAWEED_CELL:
+		var seaweed_before:=int(snap_bag().get("seaweed",0))
+		await key(bound("interact"))
+		check(int(snap_bag().get("seaweed",0))==seaweed_before+1,"Pressing the interaction key adds seaweed to the inventory")
+		await key(bound("interact"))
+		check(int(snap_bag().get("seaweed",0))==seaweed_before+1,"Pressing again during regrowth does not grant another frond")
+		if await walk_to([Vector2i(50,58)],"南岸拋竿"):
+			app.sound.standard_fishing=false
+			if await tool_click("fish",Vector2i(50,59)):
+				check(person().has("fishing"),"Clicking the south shore water casts the line")
+				tick(3.1)
+				await key(bound("fish_catch"))
+				check(int(snap_bag().get("sardine",0))==1 and "sardine" in person().collection.fish,"Reeling lands a sardine and records it in the collection")
+	await star_shore()
+	if snap().get("wangan_star_walk",false):
+		await dock_orders()
+		await coastal_greenhouse()
 	time_now=float(w.state.time)
 	finish()
+
+func dock_orders()->void:
+	var coast:=World.WANGAN_COAST
+	var pool:=coast.STAR_POOL.end-Vector2i.ONE
+	if await tool_click("fish",pool):
+		tick(3.1)
+		await key(bound("fish_catch"))
+	check(int(snap_bag().get("gold_shrimp",0))==2 and int(snap_bag().get("seaweed",0))==1,"Two tidepool casts and a shore gather supply the dock order")
+	if not await walk_to([coast.DOCK_ORDERS],"回望安碼頭交貨"):return
+	await key(bound("interact"))
+	var card:Node=app.modal.find_child("DockOrder_dock_shrimp",true,false) if is_instance_valid(app.modal) else null
+	if not check(card!=null,"Interacting with the dock opens its own order board"):return
+	var accept:=card.find_child("OrderAccept",true,false) as Button
+	if not check(accept!=null and not accept.disabled,"The dock order is available after the repair"):return
+	accept.pressed.emit()
+	await frames(3)
+	await key(bound("interact"))
+	card=app.modal.find_child("DockOrder_dock_shrimp",true,false) if is_instance_valid(app.modal) else null
+	var deliver:=card.find_child("OrderDeliver",true,false) as Button if card else null
+	if not check(deliver!=null and not deliver.disabled,"The gathered seafood enables delivery"):return
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--dock-orders-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--dock-orders-shot="))==OK,"Capture the dock order board")
+	var before:=int(person().coins)
+	deliver.pressed.emit()
+	await frames(3)
+	check(int(person().coins)==before+110 and int(snap_bag().get("gold_shrimp",0))==0 and int(snap_bag().get("seaweed",0))==0,
+		"The dock accepts the actual catch and pays the displayed reward")
+
+func coastal_greenhouse()->void:
+	var bench:=Vector2i(41,36)
+	if not await walk_to([bench+Vector2i.DOWN],"帶晶砂回家園工作台"):return
+	person().inventory.wood=20
+	person().inventory.stone=5
+	person().inventory.charcoal=1
+	person().inventory.copper_joint=1
+	app.session._send_snapshot(1)
+	if not await choose_build("bench"):return
+	await click(bench)
+	if not check(w.state.objects.get(World.key(bench),{}).get("type")=="bench","A workbench is built through the normal build tool"):return
+	await key(bound("interact"))
+	var recipe:=modal_button("溫室玻璃")
+	if not check(recipe!=null,"The workbench offers the greenhouse glass recipe"):return
+	recipe.pressed.emit()
+	await frames(3)
+	var craft:=app.modal.find_child("CraftRecipe",true,false) as Button
+	if not check(craft!=null and not craft.disabled,"Shore sand and charcoal enable glass production"):return
+	craft.pressed.emit()
+	await frames(4)
+	check(int(snap_bag().get("glass",0))==2 and int(snap_bag().get("crystal_sand",0))==0 and bool(person().get("greenhouse_glass_crafted",false)),
+		"The craft consumes the coastal sand and registers two glass and Xinghe's milestone")
+	await close_modal_with_esc("coastal glass workbench")
+	var farm:=Vector2i(-1,-1)
+	for tile in Chapter.STARTER_PLOT:
+		if w.state.crops.get(World.key(tile),{}).get("owner","")==tok:farm=tile;break
+	if not check(farm.x>=0,"The early farming plot still belongs to this player"):return
+	if not await walk_to(beside(farm),"回自己的農田搭玻璃棚"):return
+	if not await choose_build("greenhouse_roof"):return
+	await click(farm)
+	check(w.state.roofs.get(World.key(farm),{}).get("type")=="greenhouse_roof" and int(snap_bag().get("glass",0))==0,
+		"Placing the greenhouse canopy spends the crafted glass on the player's plot")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--shore-glass-shot="):
+			if not await walk_to([Vector2i(49,28)],"離開屋頂的剖面範圍"):return
+			await create_timer(0.35).timeout
+			app.activity_caption.hide()
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--shore-glass-shot="))==OK,"Capture the greenhouse made with coastal sand")
+	await winter_harvest(farm)
+
+func winter_harvest(farm:Vector2i)->void:
+	var winter:=3*World.WEATHER.DAYS_PER_SEASON*World.WEATHER.DAY_SECONDS+480.0
+	w.state.time=winter
+	app.session._send_snapshot(1)
+	check(not World.crop_grows_in_season("radish","home",farm,winter),"Winter is outside the uncovered radish growing season")
+	if not await walk_to(beside(farm),"回到冬天的玻璃棚"):return
+	app.crop="radish"
+	if not await tool_click("seed",farm):return
+	check(w.state.crops[World.key(farm)].kind=="radish","The new canopy accepts a radish seed during winter")
+	if not await tool_click("water",farm):return
+	tick(float(World.CROPS.radish.time)+0.1)
+	if not await tool_click("harvest",farm):return
+	check(person().get("greenhouse_cross_season_crop")=="radish" and int(snap_bag().get("radish",0))==1,"Harvest keeps the radish and records the protected winter crop")
+	# Unlock the existing ferry without replaying the picnic and bridge projects.
+	w.state.board=true
+	w.state.picnic=true
+	app.session._send_snapshot(1)
+	if not await walk_to([Transit.STATIONS.home.cell],"到渡口準備去蘭陽"):return
+	app._travel_menu()
+	await frames(3)
+	var depart:=app.modal.find_child("TravelDepart",true,false) as Button
+	if not check(depart!=null and not depart.disabled,"The existing ferry can sail to Lanyang"):return
+	depart.pressed.emit()
+	await frames(5)
+	if not check(snap().get("region_id")=="lanyang","The normal ticket brings the player to Lanyang"):return
+	var service:=World.LANYANG_LIFE.SERVICE
+	if not await walk_to([service+Vector2i.LEFT,service+Vector2i.RIGHT],"走到星禾的水圳"):return
+	await key(bound("interact"))
+	var report:=app.modal.find_child("GreenhouseReport",true,false) as Button if is_instance_valid(app.modal) else null
+	if not check(report!=null and not report.disabled,"Xinghe accepts the actual winter harvest record"):return
+	report.pressed.emit()
+	await frames(4)
+	check(person().get("greenhouse_reported",false),"Reporting marks the letter complete")
+	check(int(snap_bag().get("radish",0))==1,"Sharing the record leaves the harvested radish with the player")
+	var saved:=World.new()
+	check(saved.load_world(path) and not saved.recovered_from_backup and saved.state.players[tok].get("greenhouse_reported",false),"Xinghe's letter remains complete after reopening the save")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--winter-report-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--winter-report-shot="))==OK,"Capture Xinghe's response")
+	await restore_canal()
+
+func restore_canal()->void:
+	var canal=World.LANYANG_LIFE
+	await close_modal_with_esc("Xinghe's winter report")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--canal-nursery-shot="):
+			await key(bound("map"))
+			await RenderingServer.frame_post_draw
+			var map_path:=arg.trim_prefix("--canal-nursery-shot=").get_base_dir().path_join("lanyang-canal-map.png")
+			check(root.get_texture().get_image().save_png(map_path)==OK,"Capture the numbered canal map")
+			await close_modal_with_esc("numbered canal map")
+	if not await lanyang_water_round(8,true):return
+	for cell:Vector2i in canal.BLOCKAGES:
+		if not await walk_to([cell+Vector2i.LEFT,cell+Vector2i(2,0)],"走到水口 %s"%str(cell)):return
+		await key(bound("interact"))
+		var clear:=app.modal.find_child("ClearBlockage",true,false) as Button if is_instance_valid(app.modal) else null
+		if not check(clear!=null and not clear.disabled,"The nearest blockage can be cleared from the bank"):return
+		clear.pressed.emit()
+		await frames(3)
+		check(snap().lanyang_life.cleared.has(World.key(cell)),"Clearing updates this exact blockage")
+		await close_modal_with_esc("cleared waterway")
+	if not await walk_to([canal.SERVICE+Vector2i.LEFT],"帶材料回星禾的水圳"):return
+	for item in canal.REPAIR_COST:person().inventory[item]=canal.REPAIR_COST[item]
+	for item in canal.NURSERY_COST:person().inventory[item]=canal.NURSERY_COST[item]
+	app.session._send_snapshot(1)
+	await key(bound("interact"))
+	var donate:=app.modal.find_child("CanalDonate",true,false) as Button if is_instance_valid(app.modal) else null
+	if not check(donate!=null and not donate.disabled,"Clearing every blockage unlocks the sluice materials hand-in"):return
+	donate.pressed.emit()
+	await frames(3)
+	check(snap().lanyang_life.repaired and int(snap_bag().get("plank",0))==0,"The repaired sluice consumes its materials and updates the shared project")
+	var nursery:=modal_button("看看育苗盤")
+	if not check(nursery!=null,"The canal page opens the nursery"):return
+	nursery.pressed.emit()
+	await frames(3)
+	var start:=app.modal.find_child("NurseryStart",true,false) as Button
+	if not check(start!=null and not start.disabled,"A player can start the nursery with the displayed materials"):return
+	start.pressed.emit()
+	await frames(3)
+	check(int(snap_bag().get("sapling",0))==0 and app.modal.find_child("NurseryTime",true,false)!=null,"The seedling is invested in a timed batch")
+	tick(canal.NURSERY_TIME+0.1)
+	await frames(3)
+	var claim:=app.modal.find_child("NurseryClaim",true,false) as Button
+	if not check(claim!=null and not claim.disabled,"The same page offers three seedlings when the timer ends"):return
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--canal-nursery-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--canal-nursery-shot="))==OK,"Capture the finished nursery batch")
+	claim.pressed.emit()
+	await frames(3)
+	check(int(snap_bag().get("sapling",0))==3,"Claiming the nursery harvest gives exactly three seedlings")
+	await close_modal_with_esc("collected nursery seedlings")
+	if await lanyang_water_round(12,false):await lanyang_sprinkler()
+
+func lanyang_water_round(rate:int,place_devices:bool)->bool:
+	var pump:=Vector2i(32,23)
+	var pipe:=Vector2i(31,23)
+	var tank:=Vector2i(30,23)
+	if place_devices:
+		if not await walk_to([Vector2i(31,22)],"到水圳上游架設河水泵"):return false
+		for item in ["pump_kit","pipe_kit","tank_kit"]:person().inventory[item]=1
+		app.session._send_snapshot(1)
+		for device:Array in [["water_pump",pump],["water_pipe",pipe],["water_tank",tank]]:
+			if not await choose_build(device[0]):return false
+			await click(device[1])
+			if not check(snap().objects.get(World.key(device[1]),{}).get("type")==device[0],"The player places "+device[0]):return false
+	if not await walk_to([Vector2i(32,24)],"操作蘭陽河水泵"):return false
+	await key(bound("interact"))
+	var status:=app.modal.find_child("WaterDeviceStatus",true,false) as Label if is_instance_valid(app.modal) else null
+	var toggle:=app.modal.find_child("WaterDeviceOperation",true,false) as Button if is_instance_valid(app.modal) else null
+	if not check(status!=null and toggle!=null and "%d 格水"%rate in status.text,"The pump panel displays the actual regional flow rate"):return false
+	var before:=int(snap().objects[World.key(tank)].water)
+	toggle.pressed.emit()
+	await frames(3)
+	tick(World.INDUSTRY.INTERVAL+0.1)
+	await frames(3)
+	var added:=int(snap().objects[World.key(tank)].water)-before
+	check(added==rate,"A connected tank receives %d water after one pump round"%rate)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--lanyang-pump-shot=") and not place_devices:
+			await hud_tick()
+			check("已啟用" in status.text and "20／48" in status.text,"The pump panel refreshes to the new tank level")
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--lanyang-pump-shot="))==OK,"Capture the restored canal flow rate")
+	toggle.pressed.emit()
+	await close_modal_with_esc("water pump panel")
+	return true
+
+func lanyang_sprinkler()->void:
+	var crop_cell:=Vector2i(28,23)
+	var sprinkler:=crop_cell+Vector2i.RIGHT
+	if not await walk_to([Vector2i(30,22)],"把水管接到農田灑水器"):return
+	person().inventory.field_sprinkler_kit=1
+	person().inventory.potato_seed=1
+	app.session._send_snapshot(1)
+	if not await choose_build("sprinkler"):return
+	await click(sprinkler)
+	if not await tool_click("hoe",crop_cell):return
+	app.crop="potato"
+	if not await tool_click("seed",crop_cell):return
+	var crop_key:=World.key(crop_cell)
+	if not check(not snap().crops.get(crop_key,{}).get("wet",false),"The new potato plot starts dry"):return
+	if not await walk_to([Vector2i(29,22)],"啟用小型灑水器"):return
+	await key(bound("interact"))
+	var enable:=modal_button("啟用")
+	if not check(enable!=null and not enable.disabled,"The installed sprinkler can be turned on from the device panel"):return
+	enable.pressed.emit()
+	await frames(3)
+	tick(World.INDUSTRY.INTERVAL+0.1)
+	await frames(3)
+	check(snap().crops.get(crop_key,{}).get("wet",false),"Stored water reaches the sprinkler and waters the potato plot")
+	await lanyang_forestry()
+
+func lanyang_forestry()->void:
+	await close_modal_with_esc("working sprinkler")
+	var tree:=Vector2i(26,23)
+	var saw:=Vector2i(25,23)
+	if not await walk_to([Vector2i(26,22)],"到蘭陽的林地種樹"):return
+	check(app.view.tree_planting_preview(tree).is_empty() and not app.view.tree_planting_preview(Vector2i(28,23)).is_empty(),
+		"Planting preview distinguishes empty ground from the neighboring potato plot")
+	if not await tool_click("plant_tree",tree):return
+	check(snap().forest.has(World.key(tree)) and int(snap_bag().get("sapling",0))==2,"One of Xinghe's seedlings is planted")
+	tick(World.TREE_TIME+0.1)
+	await frames(3)
+	check(snap().forest.get(World.key(tree),{}).get("mature",false),"The seedling grows into harvestable timber")
+	var wood_before:=int(snap_bag().get("wood",0))
+	var resin_before:=int(snap_bag().get("resin",0))
+	var hardwood_before:=int(snap_bag().get("hardwood",0))
+	for strike in 3:
+		if not await tool_click("axe",tree):return
+	check(not snap().forest.has(World.key(tree)) and int(snap_bag().get("wood",0))==wood_before+6
+		and int(snap_bag().get("resin",0))==resin_before+1 and int(snap_bag().get("hardwood",0))==hardwood_before+World.HARDWOOD_YIELD,
+		"Harvesting the tree yields wood, resin and hardwood")
+	person().inventory.sawmill_kit=1
+	app.session._send_snapshot(1)
+	if not await choose_build("sawmill"):return
+	await click(saw)
+	if not await walk_to([Vector2i(25,22)],"到鋸木台加工蘭陽木材"):return
+	await key(bound("interact"))
+	var enqueue:=app.modal.find_child("ProcessingEnqueue",true,false) as Button if is_instance_valid(app.modal) else null
+	if not check(enqueue!=null and not enqueue.disabled,"The sawmill accepts the harvested timber"):return
+	enqueue.pressed.emit()
+	await frames(3)
+	tick(float(World.INDUSTRY.PROCESS.plank.time)+0.1)
+	await hud_tick()
+	var claim:=app.modal.find_child("ProcessingClaim",true,false) as Button
+	if not check(claim!=null and not claim.disabled,"The cut planks are ready to collect"):return
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--lanyang-sawmill-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--lanyang-sawmill-shot="))==OK,"Capture the completed sawmill batch")
+	var planks_before:=int(snap_bag().get("plank",0))
+	claim.pressed.emit()
+	await frames(3)
+	check(int(snap_bag().get("plank",0))==planks_before+2 and int(snap_bag().get("wood",0))==wood_before+2,
+		"The sawmill converts four harvested wood into two planks")
+	await lanyang_forester()
+
+func lanyang_forester()->void:
+	await close_modal_with_esc("claimed planks")
+	var station:=Vector2i(23,23)
+	var north:=World.key(station+Vector2i.UP*2)
+	var station_key:=World.key(station)
+	if not await walk_to([Vector2i(23,22)],"架設蘭陽林務工作站"):return
+	person().inventory.forester_kit=1
+	person().inventory.charcoal=1
+	app.session._send_snapshot(1)
+	if not await choose_build("forester"):return
+	await click(station)
+	await key(bound("interact"))
+	var load_seed:=app.modal.find_child("ForestryLoad_sapling",true,false) as Button if is_instance_valid(app.modal) else null
+	var load_fuel:=app.modal.find_child("ForestryLoad_charcoal",true,false) as Button if is_instance_valid(app.modal) else null
+	if not check(load_seed!=null and load_fuel!=null and not load_seed.disabled and not load_fuel.disabled,"The forestry panel can load the nursery stock and charcoal"):return
+	load_seed.pressed.emit()
+	load_fuel.pressed.emit()
+	var toggle:=modal_button("啟用")
+	if not check(toggle!=null and not toggle.disabled,"The forestry station can be enabled from its own panel"):return
+	toggle.pressed.emit()
+	tick(World.FORESTRY.INTERVAL+0.1)
+	check(snap().forest.has(north) and int(snap().objects[station_key].fuel)==1,"The station plants a nursery seedling without burning charcoal")
+	tick(World.TREE_TIME+0.1)
+	for cycle in 3:tick(World.FORESTRY.INTERVAL+0.1)
+	await hud_tick()
+	var device:Dictionary=snap().objects[station_key]
+	check(int(device.fuel)==0 and int(device.items.get("wood",0))==6 and not snap().forest[north].mature,"Automatic harvest spends one charcoal and replants the tree")
+	var collect:=app.modal.find_child("ForestryCollect",true,false) as Button
+	if not check(collect!=null and not collect.disabled,"The completed automatic batch can be collected"):return
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--lanyang-forester-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--lanyang-forester-shot="))==OK,"Capture the automatic forestry harvest")
+	var wood_before:=int(snap_bag().get("wood",0))
+	collect.pressed.emit()
+	await frames(3)
+	check(int(snap_bag().get("wood",0))==wood_before+6 and snap().objects[station_key].items.is_empty(),"The automated timber moves from the station to the bag exactly once")
+	person().inventory.charcoal=1
+	app.session._send_snapshot(1)
+	await hud_tick()
+	load_fuel.pressed.emit()
+	await close_modal_with_esc("refueled forestry station")
+	await lanyang_conveyor(station)
+
+func lanyang_conveyor(station:Vector2i)->void:
+	var belt:=station+Vector2i.RIGHT
+	var saw:=belt+Vector2i.RIGHT
+	person().inventory.conveyor_kit=1
+	app.session._send_snapshot(1)
+	if not await choose_build("conveyor"):return
+	await click(belt)
+	if not await walk_to([belt+Vector2i.UP],"調整輸送帶往鋸木台"):return
+	await key(bound("interact"))
+	var east:=modal_button("→")
+	var activate:=modal_button("啟用")
+	if not check(east!=null and activate!=null,"The conveyor opens with direction and power controls"):return
+	east.pressed.emit()
+	await hud_tick()
+	var endpoints:=app.modal.find_child("ConveyorEndpoints",true,false) as Label
+	check(endpoints!=null and "林務工作站" in endpoints.text and "自動加工未啟用" in endpoints.text,
+		"The conveyor identifies the forestry source and an idle receiving sawmill")
+	activate.pressed.emit()
+	await close_modal_with_esc("enabled wood conveyor")
+	if not await walk_to([saw+Vector2i.UP],"開啟鋸木台自動緩衝"):return
+	await key(bound("interact"))
+	var auto_tab:=app.modal.find_child("ProcessingAutoTab",true,false) as Button if is_instance_valid(app.modal) else null
+	if not check(auto_tab!=null,"The sawmill offers its automatic processing tab"):return
+	auto_tab.pressed.emit()
+	await frames(3)
+	var auto:=app.modal.find_child("ProcessingToggleAuto",true,false) as Button
+	if not check(auto!=null and not auto.disabled,"An empty manual queue allows automatic processing"):return
+	auto.pressed.emit()
+	await frames(3)
+	var wood_before:=int(snap_bag().get("wood",0))
+	tick(World.TREE_TIME+0.1)
+	for round_index in 4:tick(World.FORESTRY.INTERVAL+0.1)
+	for transfer in 18:tick(World.LOGISTICS.INTERVAL+0.1)
+	await hud_tick()
+	var machine:Dictionary=snap().objects[World.key(saw)]
+	check(machine.auto_enabled and int(machine.items.get("plank",0))==2 and int(snap_bag().get("wood",0))==wood_before,
+		"Wood moves from the forester into automatic processing without passing through the bag")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--lanyang-conveyor-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--lanyang-conveyor-shot="))==OK,"Capture automatic plank production")
+	await lanyang_plank_storage(saw)
+
+func lanyang_plank_storage(saw:Vector2i)->void:
+	var belt:=saw+Vector2i.RIGHT
+	var chest:=belt+Vector2i.RIGHT
+	var saw_key:=World.key(saw)
+	var belt_key:=World.key(belt)
+	var chest_key:=World.key(chest)
+	await close_modal_with_esc("automatic sawmill")
+	person().inventory.conveyor_kit=1
+	person().inventory.wood=20
+	app.session._send_snapshot(1)
+	if not await choose_build("conveyor"):return
+	await click(belt)
+	if not await choose_build("private_chest"):return
+	await click(chest)
+	if not check(snap().objects.get(belt_key,{}).get("type")=="conveyor"
+		and snap().objects.get(chest_key,{}).get("type")=="private_chest","The player builds the output belt and private chest"):return
+	if not await walk_to([belt+Vector2i.UP],"設定成品輸送帶"):return
+	await key(bound("interact"))
+	var east:=modal_button("→")
+	var plank:=app.modal.find_child("Filter_plank",true,false) as Button if is_instance_valid(app.modal) else null
+	if not check(east!=null and plank!=null,"The output belt supports a plank filter"):return
+	east.pressed.emit()
+	plank.pressed.emit()
+	await hud_tick()
+	var objects:Dictionary=snap().objects
+	check(objects[belt_key].dir==1 and objects[belt_key].filter=="plank","The plank belt points from the sawmill toward the chest")
+	var bag_planks:=int(snap_bag().get("plank",0))
+	for cycle in 2:tick(World.LOGISTICS.INTERVAL+0.1)
+	objects=snap().objects
+	check(not objects[belt_key].enabled and objects[belt_key].items.is_empty()
+		and int(objects[saw_key].items.get("plank",0))==2 and objects[chest_key].items.is_empty(),
+		"The stopped belt leaves both planks in the sawmill")
+	var activate:=modal_button("啟用")
+	if not check(activate!=null,"The configured plank belt can be enabled"):return
+	activate.pressed.emit()
+	tick(World.LOGISTICS.INTERVAL+0.1)
+	check(int(snap().objects[belt_key].items.get("plank",0))==1,"The enabled belt picks up its first plank")
+	for cycle in 4:tick(World.LOGISTICS.INTERVAL+0.1)
+	objects=snap().objects
+	check(objects[belt_key].items.is_empty() and int(objects[saw_key].items.get("plank",0))==0
+		and int(objects[chest_key].items.get("plank",0))==2 and int(snap_bag().get("plank",0))==bag_planks,
+		"Exactly two planks transfer to the chest without entering the backpack")
+	var persisted:=World.new()
+	check(persisted.load_world(path) and not persisted.recovered_from_backup
+		and int(persisted.region_snapshot("lanyang").get("objects",{}).get(chest_key,{}).get("items",{}).get("plank",0))==2,
+		"The primary save restores both planks in the Lanyang chest")
+	await close_modal_with_esc("enabled plank conveyor")
+	if not await walk_to([chest+Vector2i.UP],"查看木板入箱"):return
+	await key(bound("interact"))
+	if not check(is_instance_valid(app.modal) and app.modal.visible,"The player opens the private chest"):return
+	var take_all:=app.modal.find_child("ChestWithdrawAll",true,false) as Button
+	check(take_all!=null and not take_all.disabled and "2 件" in take_all.tooltip_text,
+		"The private chest selects its two stored planks when opened")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--lanyang-storage-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--lanyang-storage-shot="))==OK,"Capture automatic plank delivery")
+	await lanyang_large_sprinkler(chest)
+
+func lanyang_large_sprinkler(chest:Vector2i)->void:
+	await close_modal_with_esc("stocked plank chest")
+	var bench:=chest+Vector2i.UP
+	var chest_key:=World.key(chest)
+	var bag:=person().inventory as Dictionary
+	# PRESET: bench supplies, sprinkler metals and glass, a seed, and farm level.
+	bag.wood=World.BUILD.bench.wood
+	bag.stone=World.BUILD.bench.stone
+	bag.iron_ingot=World.BUILD.large_sprinkler.iron_ingot
+	bag.glass=World.BUILD.large_sprinkler.glass
+	bag.potato_seed=1
+	person().harvests=World.FARMING_LEVEL_THRESHOLDS[World.LARGE_SPRINKLER_LEVEL-1]
+	app.session._send_snapshot(1)
+	if not await walk_to([bench+Vector2i.UP],"到箱子北側設工作台"):return
+	if not await choose_build("bench"):return
+	await click(bench)
+	if not check(snap().objects.get(World.key(bench),{}).get("type")=="bench","A workbench is built next to the plank output"):return
+	await key(bound("interact"))
+	var recipe:=modal_button("木工零件")
+	if not check(recipe!=null,"The local workbench offers woodwork parts"):return
+	recipe.pressed.emit()
+	await frames(3)
+	var craft:=app.modal.find_child("CraftRecipe",true,false) as Button
+	if not check(craft!=null and not craft.disabled,"Handmade planks enable the first pair of parts"):return
+	craft.pressed.emit()
+	await hud_tick()
+	if not check(int(snap_bag().get("woodwork_parts",0))==2 and int(snap_bag().get("plank",0))==0 and craft.disabled,
+		"The first batch spends the backpack planks and a second batch needs a new source"):return
+	var picker:Node=app.modal.find_child("MaterialSourcePicker",true,false)
+	if not check(picker!=null and picker.select_cell(chest_key),"The workbench can select its neighboring private chest"):return
+	await hud_tick()
+	if not check(not craft.disabled and int(snap().objects[chest_key].items.get("plank",0))==2,
+		"The chest supplies the missing planks without withdrawing them first"):return
+	craft.pressed.emit()
+	await hud_tick()
+	if not check(int(snap_bag().get("woodwork_parts",0))==4 and int(snap_bag().get("plank",0))==0
+		and int(snap().objects[chest_key].items.get("plank",0))==0,"The second batch spends exactly the two machine-made planks"):return
+	await close_modal_with_esc("sourced woodworking")
+	var sprinkler:=Vector2i(30,24)
+	var crop_cell:=Vector2i(30,26)
+	if not await walk_to([Vector2i(30,25)],"把木工零件用在蘭陽灌溉"):return
+	if not await choose_build("large_sprinkler"):return
+	await click(sprinkler)
+	var sprinkler_key:=World.key(sprinkler)
+	if not check(snap().objects.get(sprinkler_key,{}).get("type")=="large_sprinkler"
+		and int(snap_bag().get("woodwork_parts",0))==0,"The four woodwork parts become a large sprinkler"):return
+	if not await tool_click("hoe",crop_cell):return
+	app.crop="potato"
+	if not await tool_click("seed",crop_cell):return
+	var crop_key:=World.key(crop_cell)
+	if not check(not snap().crops[crop_key].wet,"The new plot two tiles away starts dry"):return
+	await key(bound("interact"))
+	var enable:=modal_button("啟用")
+	if not check(enable!=null and not enable.disabled,"The new sprinkler can be enabled"):return
+	enable.pressed.emit()
+	tick(World.INDUSTRY.INTERVAL+0.1)
+	await hud_tick()
+	check(snap().crops[crop_key].wet,"The connected large sprinkler waters the distant potato plot")
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--lanyang-large-sprinkler-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--lanyang-large-sprinkler-shot="))==OK,"Capture the linked irrigation expansion")
+
+func choose_build(kind:String)->bool:
+	app.life_panels.build_menu(app,kind)
+	await frames(3)
+	var place:=app.modal.find_child("BuildPlace",true,false) as Button
+	if not check(place!=null and not place.disabled,"The builder can select "+kind):return false
+	place.pressed.emit()
+	await frames(3)
+	return check(app.building==kind and app.selected=="build","The builder selects the correct placement tool")
+
+func star_shore()->void:
+	var coast:=World.WANGAN_COAST
+	check(w.blocked(coast.STAR_SAND) and not snap().get("wangan_star_walk",false),"The unrepaired shore is closed to walking")
+	var pool:=coast.STAR_POOL.end-Vector2i.ONE
+	if not await walk_to([coast.STAR_REPAIR],"星砂步道工程"):return
+	await key(bound("interact"))
+	var repair:=app.modal.find_child("StarWalkRepair",true,false) as Button
+	check(repair!=null and repair.disabled,"The project rejects an empty plank supply")
+	await close_modal_with_esc("unfunded star shore project")
+	person().inventory.plank=8
+	person().inventory.fiber=4
+	app.session._send_snapshot(1)
+	await key(bound("interact"))
+	repair=app.modal.find_child("StarWalkRepair",true,false) as Button
+	if not check(repair!=null and not repair.disabled,"The project can be confirmed with enough materials"):return
+	repair.pressed.emit()
+	await frames(3)
+	check(snap().get("wangan_star_walk",false) and int(snap_bag().get("plank",0))==0 and int(snap_bag().get("fiber",0))==0,"Repair opens the shore and consumes the displayed materials once")
+	check(w.water(pool) and w.blocked(pool),"The restored tidepool is water and keeps its walking collision")
+	check(not World.INDUSTRY.near_river(w,pool+Vector2i.RIGHT),"A saltwater tidepool does not supply a river pump")
+	if not await walk_to([Vector2i(34,56),coast.STAR_SAND],"跨上星砂棧道"):return
+	if not await walk_to([coast.STAR_SAND],"走到晶砂採集點"):return
+	if not await walk_to([coast.STAR_SAND+Vector2i.LEFT],"潮池邊"):return
+	await create_timer(0.35).timeout
+	app.toast.hide()
+	app.activity_caption.hide()
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--star-shore-shot="):
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png(arg.trim_prefix("--star-shore-shot="))==OK,"Capture the repaired beach")
+	await key(bound("interact"))
+	check(int(snap_bag().get("crystal_sand",0))==1 and float(snap().wangan_star_sand_ready)>float(snap().time),"Gathering grants glassmaking sand and starts shared regrowth")
+	var persisted:=World.new()
+	check(persisted.load_world(path) and not persisted.recovered_from_backup,"The coastal project reloads from the primary save")
+	check(persisted.state.wangan_star_walk and is_equal_approx(float(persisted.state.wangan_star_sand_ready),float(snap().wangan_star_sand_ready)),"The repair and sand availability survive reload")
+	tick(World.WANGAN_COAST.STAR_SAND_RESPAWN)
+	await key(bound("interact"))
+	check(int(snap_bag().get("crystal_sand",0))==2,"The replenished shore supplies the second glassmaking sand")
+	if not await walk_to([pool+Vector2i(2,0)],"星砂潮池拋竿"):return
+	if await tool_click("fish",pool):
+		check(person().has("fishing"),"The pool accepts a cast from the dry bank")
+		tick(3.1)
+		await key(bound("fish_catch"))
+		check(int(snap_bag().get("gold_shrimp",0))==1 and "gold_shrimp" in person().collection.fish,"The tidepool produces gold shrimp and records it in the collection")
 
 ## 1 + 2: a brand-new save, the arrival card, its dismissal.
 func arrival()->bool:
@@ -471,7 +1034,8 @@ func arrival()->bool:
 	check(title!=null and title.is_visible_in_tree() and title.text=="風鈴渡口","HUD region title 風鈴渡口: 「%s」"%(title.text if title else "<none>"))
 	expect_step("find","fresh save")
 	await expect_tracker("%s\n去找小栗：種子攤東北邊的田\n%s 移動"%[HEADING,app.movement_hint()],"find")
-	check(pos()==World.SPAWN and snap_pos()==World.SPAWN,"Player at SPAWN %s (server %s, client %s)"%[str(World.SPAWN),str(pos()),str(snap_pos())])
+	var landing:=World.WANGAN_COAST.FERRY_LANDING
+	check(pos()==landing and snap_pos()==landing,"Player arrives at the ferry dock in both the server and client")
 	# Expected start values from World.add_player's behaviour on a second fresh World.
 	var probe:=World.new()
 	probe.add_player("journey-probe","probe")
@@ -489,7 +1053,7 @@ func arrival()->bool:
 	check(app.modal==null and int(app.session.counter)==counter and notices.is_empty(),"Interact key did only that (no panel, no request, no notice)")
 	await hud_tick()
 	check(card()==null,"Card stays gone after HUD refreshes")
-	check(pos()==World.SPAWN,"Still on SPAWN after closing the card")
+	check(pos()==landing,"Still on the dock after closing the card")
 	return true
 
 ## 3 + 4: walk to the plot, till/sow/water/wait/harvest with refusals.
@@ -545,7 +1109,7 @@ func first_radish()->bool:
 	if switched>=0:
 		var at_cell:Vector2i=trace[switched][0]
 		var at:=Vector2(at_cell)+Vector2(0.5,0.5)
-		var prior:=World.SPAWN
+		var prior:=World.WANGAN_COAST.FERRY_LANDING
 		if switched>0:
 			var prior_cell:Vector2i=trace[switched-1][0]
 			prior=Vector2(prior_cell)+Vector2(0.5,0.5)
@@ -576,7 +1140,7 @@ func first_radish()->bool:
 	await done_click("seed",target,"種下%s，記得澆水"%str(World.CROPS.radish.name),{"radish_seed":-1},["committed","crops","players.inventory","players.receipts"],"sow radish")
 	expect_step("water","after sowing")
 	await expect_tracker("%s\n替剛種下的作物澆水\n%s 澆水 · 點那一格"%[HEADING,app.binding_label("water")],"water")
-	await done_click("water",target,"水分充足，幼苗會慢慢長大",{},["committed","crops","players.receipts"],"water")
+	await done_click("water",target,"水分充足 · 照料 1／5",{},["committed","crops","players.crop_care","players.receipts"],"water")
 	expect_step("wait","after watering")
 	await expect_tracker("%s\n作物正在長大，等它成熟\n成熟前可以先逛逛"%HEADING,"wait")
 	var left:=ceili(float(World.CROPS.radish.time)-float(w.state.crops[k].growth))
@@ -626,7 +1190,7 @@ func first_radish()->bool:
 	await expect_tracker("%s\n作物熟了，用採收籃收成\n%s 採收 · 點成熟的作物"%[HEADING,app.binding_label("harvest")],"harvest")
 	check(Chapter.phase(w.state)=="grow","Phase still grow before the harvest")
 	var yield_n:=int(World.CROPS.radish.yield)
-	await done_click("harvest",target,"收成了！%s +%d。可以出售或帶去做料理"%[str(World.CROPS.radish.name),yield_n],{"radish":yield_n},["chapter_one","committed","crops","island_crops_discoveries","ledger","players.collection","players.crops_discoveries","players.harvests","players.inventory","players.receipts"],"harvest")
+	await done_click("harvest",target,"收成了！%s +%d。可以出售或帶去做料理"%[str(World.CROPS.radish.name),yield_n],{"radish":yield_n},["chapter_one","committed","crops","island_crops_discoveries","ledger","players.collection","players.collection_acquired","players.crops_discoveries","players.harvests","players.inventory","players.receipts"],"harvest")
 	check(w.state.crops.has(k) and str(w.state.crops[k].kind)=="","Harvested plot stays my empty soil")
 	check(int(person().harvests)==1,"One harvest on record")
 	expect_step("ship","after the harvest")
@@ -673,12 +1237,13 @@ func ship_radish()->bool:
 	check(same(bag(),plus(bag_before,{"radish":-1})) and same(snap_bag(),bag()),"Bag: radish −1 only")
 	var diff:=diff_paths(state_before,w.state)
 	note("ship changed=%s"%str(diff))
-	check(diff==["chapter_one","committed","ledger","players.coins","players.inventory","players.receipts","players.resident_participation"],"Ship changed only %s"%str(diff))
+	check(diff==["chapter_one","committed","ledger","players.coins","players.first_crop_trade","players.inventory","players.receipts","players.resident_participation","players.wangan_personal_start"],"Ship changed only the shipping and story fields: %s"%str(diff))
+	check(person().get(World.RESIDENT_GOALS.CROP_TRADE_KEY)==World.RESIDENT_GOALS.CROP_SOLD,"First shipment records the sale for Xiaoli")
 	check(bool(w.state.chapter_one.shipped) and Chapter.phase(w.state)=="works" and Chapter.phase(snap())=="works","Chapter phase ship -> works")
 	check(Chapter.first_crop_step(w.state,tok).is_empty() and Chapter.first_crop_step(snap(),me).is_empty(),"first_crop_step is {} on server and client")
 	check(not Opening.marker_shown(snap(),me) and not Opening.marker_shown(w.state,tok),"Plot marker off")
 	await close_modal_with_esc("bin after shipping")
-	await expect_tracker("讓渡口重新開飯\n修橋，讓配送重新出發\n木 %d/30 · 石 %d/10"%[int(w.state.donations.wood),int(w.state.donations.stone)],"next chapter step (works)")
+	await expect_tracker("一起修河灣橋\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[app.binding_label("interact"),int(w.state.donations.wood),int(w.state.donations.stone)],"next chapter step (works)")
 	return true
 
 ## 6: save, reload in a plain World and in a fresh app; returning player.
@@ -703,7 +1268,7 @@ func reload()->bool:
 		check(same(person().get(field),expected.get(field)),"App reload keeps %s on the server"%field)
 	check(snap_pos()==Vector2(float(expected.x),float(expected.y)) and same(snap_bag(),nonzero(expected.inventory)) and int(snap_person().coins)==int(expected.coins),"App reload: client position, bag and coins")
 	check(same(w.state.chapter_one,chapter) and Chapter.phase(snap())=="works","App reload keeps the chapter state")
-	await expect_tracker("讓渡口重新開飯\n修橋，讓配送重新出發\n木 %d/30 · 石 %d/10"%[int(w.state.donations.wood),int(w.state.donations.stone)],"after reload")
+	await expect_tracker("一起修河灣橋\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[app.binding_label("interact"),int(w.state.donations.wood),int(w.state.donations.stone)],"after reload")
 	return true
 
 ## 7: retained routes, read-only, on the same journey state.

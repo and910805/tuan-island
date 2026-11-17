@@ -1,5 +1,66 @@
 extends RefCounted
 
+const SMELTER:="small_smelter"
+const CLAY_KILN:="clay_kiln"
+const DYE_TABLE:="dye_table"
+const ASSEMBLY_TABLE:="assembly_table"
+const FABRIC_SCREEN:="inn_fabric_screen"
+const INN_BED:="inn_quilt_bed"
+const FOOT_BATH:="inn_stone_footbath"
+const LUGGAGE_RACK:="inn_luggage_rack"
+const LUGGAGE_SLOTS:=2
+const FOOT_BATH_SEATS:=[Vector2(0.57,0.67),Vector2(2.43,0.67),Vector2(0.57,1.48),Vector2(2.43,1.48)]
+const ANIMAL_COLLECTOR:="animal_collector"
+const ANIMAL_COLLECTOR_KIT:="animal_collector_kit"
+const COLLECTOR_MATERIALS:={"iron_ingot":6,"woodwork_parts":4,"wood":12}
+const TWO_CELL_STATIONS:=[DYE_TABLE,ASSEMBLY_TABLE,FABRIC_SCREEN,INN_BED,LUGGAGE_RACK]
+const ORIENTABLE_FOOTPRINTS:=TWO_CELL_STATIONS+[FOOT_BATH]
+const SPRINKLER_KITS:={"sprinkler":"field_sprinkler_kit","medium_sprinkler":"medium_sprinkler_kit","large_sprinkler":"large_sprinkler_kit"}
+const DYEABLE_FURNITURE:=["chair","table","sofa","bed",INN_BED]
+const FURNITURE_DYES:={"blue_dye":"藍染","orange_dye":"橙染"}
+const DYE_REACH:=4
+const FIXED_SQUARE_STATIONS:=[SMELTER,CLAY_KILN]
+const MANUAL_STATIONS:=["seed_maker","loom","glass_furnace",SMELTER,"jam_pot",CLAY_KILN,DYE_TABLE]
+const EXPANDABLE_STATIONS:=["loom","glass_furnace"]
+const SQUARE_CELLS:=[Vector2i.ZERO,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.ONE]
+const SMELTER_CELLS:=SQUARE_CELLS
+const METAL_RECIPES:=["copper_ingot","iron_ingot"]
+
+static func assembly_items() -> Dictionary:
+	var items:=SPRINKLER_KITS.duplicate()
+	items[ANIMAL_COLLECTOR]=ANIMAL_COLLECTOR_KIT
+	return items
+
+static func square_part_field(kind:String) -> String:
+	if kind==FOOT_BATH:return "bath_part"
+	if kind==LUGGAGE_RACK:return "luggage_part"
+	return {"small_smelter":"smelter_part","loom":"loom_part","glass_furnace":"furnace_part","clay_kiln":"kiln_part","dye_table":"dye_part","assembly_table":"assembly_part",FABRIC_SCREEN:"screen_part",INN_BED:"inn_bed_part"}.get(kind,"")
+
+static func square_part(obj:Dictionary) -> int:
+	var kind:String=obj.get("type","")
+	if kind in FIXED_SQUARE_STATIONS or kind in ORIENTABLE_FOOTPRINTS:return int(obj.get(square_part_field(kind),0))
+	if kind in EXPANDABLE_STATIONS:return int(obj.get(square_part_field(kind),-1))
+	return -1
+
+static func vertical_field(kind:String) -> String:
+	if kind==FABRIC_SCREEN:return "screen_vertical"
+	if kind==INN_BED:return "inn_bed_vertical"
+	if kind==FOOT_BATH:return "bath_vertical"
+	if kind==LUGGAGE_RACK:return "luggage_vertical"
+	return "assembly_vertical" if kind==ASSEMBLY_TABLE else "dye_vertical"
+
+static func is_vertical(obj:Dictionary) -> bool:
+	return obj.get(vertical_field(obj.get("type","")),false)==true
+
+static func station_cells(kind:String,vertical:=false) -> Array:
+	if kind==FOOT_BATH:
+		return [Vector2i.ZERO,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.ONE,Vector2i(0,2),Vector2i(1,2)] if vertical else [Vector2i.ZERO,Vector2i.RIGHT,Vector2i(2,0),Vector2i.DOWN,Vector2i.ONE,Vector2i(2,1)]
+	if kind in TWO_CELL_STATIONS:return [Vector2i.ZERO,Vector2i.DOWN if vertical else Vector2i.RIGHT]
+	return SQUARE_CELLS
+
+static func uses_station(kind:String,station:String) -> bool:
+	return PROCESS.get(kind,{}).get("station","")==station or (station==SMELTER and kind in METAL_RECIPES)
+
 ## ── 第 40 章「分流閘」diversion_gate（家園工坊；蘭陽回訪完成後才能製作 diversion_gate_kit）
 ##   物件：{"type":"diversion_gate","owner","items":{},"mode":"open"|"low"|"closed"}（新放置為 open），
 ##   和水管一樣不擋路、算在 NETWORK（連接同一位主人的水管）；每人每地區最多 LIMITS.diversion_gate=8。
@@ -90,18 +151,26 @@ const INTERVAL := 8.0
 const TANK_CAPACITY := 48
 const PUMP_RATE := 8
 const LIMITS := {"water_pipe":128,"water_tank":8,"water_pump":4,"diversion_gate":8,"water_tower":4}
-const SPRINKLER_CAPACITIES := {"sprinkler":12,"medium_sprinkler":24}
+const SPRINKLER_CAPACITIES := {"sprinkler":12,"medium_sprinkler":24,"large_sprinkler":48}
 const SPRINKLER_LIMIT := 16
 
 static func sprinkler_offsets(kind:String) -> Array[Vector2i]:
 	var offsets:Array[Vector2i]=[Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
-	if kind=="medium_sprinkler":
+	if kind in ["medium_sprinkler","large_sprinkler"]:
 		offsets.append_array([Vector2i(-1,-1),Vector2i(1,-1),Vector2i(1,1),Vector2i(-1,1)])
+	if kind=="large_sprinkler":
+		for y in range(-2,3):
+			for x in range(-2,3):
+				if maxi(absi(x),absi(y))==2:offsets.append(Vector2i(x,y))
 	return offsets
 
-const NETWORK := ["water_pipe","water_tank","water_pump","sprinkler","medium_sprinkler","waterworks","diversion_gate","water_tower"]
+const NETWORK := ["water_pipe","water_tank","water_pump","sprinkler","medium_sprinkler","large_sprinkler","waterworks","diversion_gate","water_tower"]
 const NEIGHBORS := [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
 const PROCESS := {
+	"orange_dye":{"station":DYE_TABLE,"ingredients":{"orange_blossom":3},"time":30.0,"yield":2},
+	"blue_dye":{"station":DYE_TABLE,"ingredients":{"bluebell":3},"time":30.0,"yield":2},
+	"fired_brick":{"station":CLAY_KILN,"ingredients":{"clay":3,"charcoal":1},"time":75.0,"yield":2},
+	"flower_pot":{"station":CLAY_KILN,"ingredients":{"clay":4,"charcoal":1},"time":60.0,"yield":1},
 	"cotton_cloth":{"station":"loom","ingredients":{"cotton":3},"time":60.0,"yield":1},
 	"wool_cloth":{"station":"loom","ingredients":{"wool":2},"time":60.0,"yield":1},
 	# T067 glass furnace (owner-only manual queue like the loom, never automated).
@@ -109,6 +178,8 @@ const PROCESS := {
 	# separate table (World.CRAFT) and stays unchanged.
 	"glass":{"station":"glass_furnace","ingredients":{"crystal_sand":3,"wood":1},"time":120.0,"yield":1},
 	"crystal_sand":{"station":"glass_furnace","ingredients":{"vein_quartz":2},"time":60.0,"yield":3},
+	"iron_ingot":{"station":"glass_furnace","ingredients":{"iron_ore":2,"charcoal":1},"time":60.0,"yield":2},
+	"copper_ingot":{"station":"glass_furnace","ingredients":{"copper_ore":2,"charcoal":1},"time":45.0,"yield":2},
 	"plank":{"station":"sawmill","ingredients":{"wood":4},"time":12.0,"yield":2},
 	"charcoal":{"station":"charcoal_kiln","ingredients":{"wood":4},"time":16.0,"yield":2},
 	"flour":{"station":"mill","ingredients":{"wheat":2},"time":60.0,"yield":1},
@@ -121,6 +192,7 @@ static func near_river(world, tile:Vector2i) -> bool:
 		for y in range(-2,3):
 			var offset:=Vector2i(x,y)
 			var target:=tile+offset
+			if world._region=="home" and preload("res://scripts/wangan_coast.gd").STAR_POOL.has_point(target):continue
 			if absi(x)+absi(y)<=2 and world.is_land(target) and world.water(target):
 				return true
 	return false
@@ -142,7 +214,7 @@ static func components(state:Dictionary) -> Array[Dictionary]:
 			group["keys"].append(key)
 			match objects[key].type:
 				"water_tank":group.tanks.append(key)
-				"sprinkler","medium_sprinkler":group.sprinklers.append(key)
+				"sprinkler","medium_sprinkler","large_sprinkler":group.sprinklers.append(key)
 				"waterworks":group.waterworks.append(key)
 				"water_pump":group.pumps.append(key)
 			var parts:=key.split(",")
@@ -161,6 +233,7 @@ static func components(state:Dictionary) -> Array[Dictionary]:
 static func networks(state:Dictionary) -> Dictionary:
 	var result:Dictionary={}
 	var objects:Dictionary=state.get("objects",{})
+	var day:=tower_day(float(state.get("time",0.0)))
 	for group in components(state):
 		var towers:=_towers(objects,group)
 		var info:Dictionary={"connected_tanks":group.tanks.size(),"connected_pumps":group.pumps.size(),
@@ -170,11 +243,64 @@ static func networks(state:Dictionary) -> Dictionary:
 			if objects[pump].enabled:info.enabled_pumps+=1
 		for tank in group.tanks:info.water+=int(objects[tank].water)
 		for tower in towers:info.tower_water+=int(objects[tower].get("water",0))
-		for key in group["keys"]:result[key]=info
+		var full:Dictionary={}
+		var low:Dictionary={}
+		var wet:Dictionary={}
+		var classify_supply:=false
+		var outlets:=towers.filter(func(key):return objects[key].get("enabled",false))
+		var wet_outlets:=outlets.filter(func(key):
+			var tower:Dictionary=objects[key]
+			var quota:=tower_quota(tower)
+			return int(tower.get("water",0))>0 and (quota==0 or tower_quota_used(tower,day)<quota))
+		var has_gate:=_has_gate(objects,group)
+		if has_gate:
+			var wet_tanks:Array=group.tanks.filter(func(key):return int(objects[key].water)>0)
+			wet=_reach_from(objects,group,wet_tanks,["open","low"])
+			wet.merge(_reach_from(objects,group,wet_outlets,["open"]))
+			classify_supply=not group.tanks.is_empty() or not outlets.is_empty()
+			if classify_supply:
+				var tower_reach:=_reach_from(objects,group,outlets,["open"])
+				full=_reach(objects,group,["open"])
+				low=_reach(objects,group,["open","low"])
+				full.merge(tower_reach)
+		for key in group["keys"]:
+			result[key]=info
+			var is_pipe:bool=objects[key].type=="water_pipe"
+			var show_zone:bool=classify_supply and not full.has(key) and (is_pipe or key in group.sprinklers or key in group.waterworks)
+			if not is_pipe and not show_zone:continue
+			var detail:=info.duplicate()
+			if is_pipe:detail.flow_visible=wet.has(key) if has_gate else int(info.water)>0 or not wet_outlets.is_empty()
+			if show_zone:detail.supply_zone=ZONE_LOW if low.has(key) else ZONE_CUT
+			result[key]=detail
 	return result
 
 static func network_info(state:Dictionary,key:String) -> Dictionary:
 	return networks(state).get(key,{"connected_tanks":0,"connected_pumps":0,"enabled_pumps":0,"water":0,"capacity":0,"towers":0,"tower_water":0,"tower_capacity":0})
+
+static func pipe_caption(mask:int,info:Dictionary) -> String:
+	if mask==0:return "水管 · 未接通"
+	var capacity:=int(info.get("capacity",0))+int(info.get("tower_capacity",0))
+	if capacity==0:return "水管 · 未接水桶或水塔"
+	match info.get("supply_zone",""):
+		ZONE_CUT:return "水管 · 分流閘隔開供水"
+		ZONE_LOW:return "水管 · 分流閘僅通餘水"
+	var stored:=int(info.get("water",0))+int(info.get("tower_water",0))
+	if stored==0:return "水管 · 蓄水已空"
+	return "水管 · 管網蓄水 %d／%d"%[stored,capacity]
+
+static func supply_note(info:Dictionary) -> String:
+	match info.get("supply_zone",""):
+		ZONE_CUT:return "此處被分流閘隔開"
+		ZONE_LOW:return "此處只接收餘水"
+	return ""
+
+static func sprinkler_status(device:Dictionary,now:float) -> String:
+	if not device.get("enabled",false):return "已停止"
+	var pending:=float(device.get("next_water",0.0))>now
+	if pending and device.get("sprinkler_daily",false):return "今日已澆水"
+	if int(device.get("water",0))<=0:return "等待補水"
+	if pending:return "等待下一輪"
+	return "等待澆水"
 
 static func plan(world, pump_rate: int = PUMP_RATE) -> Dictionary:
 	return plan_detail(world,pump_rate).water

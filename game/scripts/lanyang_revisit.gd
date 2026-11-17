@@ -119,6 +119,7 @@ const NO_PLAYER:="請重新加入世界再操作分流閘。"
 const WRONG_REGION:="蘭陽回訪在宜蘭水圳，請先到蘭陽試作田。"
 const LOCKED:="修好蘭陽水圳、在橋邊設置配水紀念牌之後，星禾才會邀大家回來調整分流。"
 const NOT_READY:="先完成你自己的第一次分水練習（三處觀察、三輪配水），再來幫忙旱日分流。"
+const RETURN_TOMORROW:="今天先讓水慢慢流進田裡。明天起，挑個放晴的日子再來找星禾。"
 const WRONG_GATE_CELL:="請走到水圳岔口的分流閘旁。"
 const WRONG_FIELD_CELL:="請走到要確認的那塊田旁。"
 const WRONG_SERVICE_CELL:="請到橋邊找星禾。"
@@ -168,6 +169,11 @@ static func record(snapshot:Dictionary) -> Dictionary:
 
 static func completed(snapshot:Dictionary) -> bool:
 	return record(snapshot).get("completed")==true
+
+static func waiting_for_return(snapshot:Dictionary,token:String="") -> bool:
+	var first_visit:=_own_memory(snapshot,token)
+	return not completed(snapshot) and first_visit.get("completed")==true \
+		and int(first_visit.get("completed_day",-1))>=today(snapshot)-1
 
 static func tech_unlocked(snapshot:Dictionary) -> bool:
 	return completed(snapshot)
@@ -238,6 +244,7 @@ static func gate_extra(which:String,level:int) -> String:
 static func _common_block(snapshot:Dictionary,token:String) -> String:
 	if not unlocked(snapshot):return LOCKED
 	if not player_ready(snapshot,token):return NOT_READY
+	if waiting_for_return(snapshot,token):return RETURN_TOMORROW
 	return ""
 
 static func gate_block(snapshot:Dictionary,token:String="") -> String:
@@ -307,8 +314,8 @@ static func apply(state:Dictionary,token:String,action:String,p:Vector2i,extra:S
 	if not people is Dictionary or not people.get(token) is Dictionary:return _fail(NO_PLAYER)
 	var person:Dictionary=people[token]
 	if not in_lanyang:return _fail(WRONG_REGION)
-	if not unlocked(state):return _fail(LOCKED)
-	if not player_ready(state,token):return _fail(NOT_READY)
+	var blocked:=_common_block(state,token)
+	if not blocked.is_empty():return _fail(blocked)
 	if state.has(STATE_KEY) and not _shape_ok(state[STATE_KEY]):return _fail(BAD_EXTRA)
 	var target:Vector2i
 	if action==GATE_ACTION:

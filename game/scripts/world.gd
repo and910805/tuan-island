@@ -1,9 +1,21 @@
 extends RefCounted
+const CHICKEN_CUDDLE=preload("res://scripts/chicken_cuddle.gd")
 const ISLAND_NOTES=preload("res://scripts/island_notes.gd")
 const DOCK_REPAIRS := [{"plank":12,"stone":8},{"plank":8,"fiber":10,"copper_joint":2}]
 const OUTLYING_COMMISSIONS=preload("res://scripts/outlying_commissions.gd")
 const ISLAND_STORY_RECAP=preload("res://scripts/island_story_recap.gd")
 const BUILD_STYLES = preload("res://scripts/build_style_catalog.gd")
+const WALL_FIXTURES = preload("res://scripts/wall_fixtures.gd")
+const ITEM_CATALOG = preload("res://scripts/item_catalog.gd")
+const WELCOME_SIGN = preload("res://scripts/welcome_sign.gd")
+const INN_TEA_TABLE:="inn_tea_table"
+const INN_TEA_ITEM:="mist_tea_brew"
+const GINGER_TEA:="ginger_tea"
+const WARM_SPRINGS=preload("res://scripts/warm_springs.gd")
+const WANGAN_MEMORY=preload("res://scripts/wangan_memory.gd")
+const WANGAN_COAST=preload("res://scripts/wangan_coast.gd")
+const INN_TEA_ITEMS:=[INN_TEA_ITEM,GINGER_TEA]
+const INN_TEA_SLOTS:=2
 const TRADE = preload("res://scripts/trade_offer.gd")
 const TRADE_ACTIONS := ["trade_open", "trade_edit", "trade_confirm", "trade_cancel"]
 # Offers are transient. Only the completed inventory swap and its receipt persist.
@@ -35,6 +47,15 @@ const COIN_CAP_MSG:="鈴幣已達上限，先花掉一些再來。"
 const FUND_DONATIONS:=["10","25","50"]
 const FUND_MATERIAL_PRICES:={"wood":5,"stone":8}
 const ORDER_CATALOG=preload("res://scripts/order_catalog.gd")
+const AnimalCollector=preload("res://scripts/animal_collector.gd")
+const Rabbit=preload("res://scripts/companion_rabbit.gd")
+const Cat=preload("res://scripts/companion_cat.gd")
+const Dog=preload("res://scripts/companion_dog.gd")
+const Fox=preload("res://scripts/companion_fox.gd")
+const Hedgehog=preload("res://scripts/courtyard_hedgehog.gd")
+const Squirrel=preload("res://scripts/woodland_squirrel.gd")
+const Seal=preload("res://scripts/shore_seal.gd")
+const Deer=preload("res://scripts/windbell_deer.gd")
 const LIVESTOCK=preload("res://scripts/livestock.gd")
 const CHAPTER_ONE=preload("res://scripts/chapter_one.gd")
 const SHIPPING=preload("res://scripts/shipping.gd")
@@ -66,6 +87,8 @@ const INDUSTRY=preload("res://scripts/industry.gd")
 const Collections=preload("res://scripts/collections.gd")
 const FishingTracking=preload("res://scripts/fishing_tracking.gd")
 const AUTO_ROOF_PLAN=preload("res://scripts/auto_roof_plan.gd")
+const ROOM_ENCLOSURE=preload("res://scripts/room_enclosure.gd")
+const MAX_OUTDOOR_VISIT_TILES:=25
 const AUTO_ROOF_SETTLEMENT=preload("res://scripts/auto_roof_settlement.gd")
 const CONSTRUCTION_UNDO=preload("res://scripts/construction_undo.gd")
 const CONSTRUCTION_HISTORY=preload("res://scripts/construction_history.gd")
@@ -91,7 +114,13 @@ const HOIST_SHORT_MSG := "修理材料不足。"
 const GLASS_FURNACE_LOCKED_MSG := "修好金瓜石的升降台後，波波會送來玻璃爐圖樣。"
 const UNDO_ACTION := "undo_build"
 const UNDO_ACTIONS := ["build","build_area","remove","move_object"]
-const UNDO_SOLID := ["ore_display", "wall", "window", "chest", "private_chest", "supply_box", "bench", "bed", "table", "stove","long_bench","sofa","planter","sketch_easel","rope_rack","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot"]
+const LEGACY_GLASS_FURNACE_COST := {"stone":12,"ochre_earth":4,"copper_joint":2}
+const LEGACY_LOOM_COST := {"plank":8,"fiber":4,"copper_joint":1}
+const LEGACY_SEED_MAKER_COST := {"plank":8,"stone":6,"copper_joint":2}
+const LEGACY_JAM_POT_COST := {"stone":8,"copper_joint":1}
+const KIT_SPRINKLER_COST := {"name":"小型灑水器","sprinkler_kit":1}
+const LEGACY_MEDIUM_SPRINKLER_COST := {"sprinkler_kit":1,"copper_joint":3,"plank":4}
+const UNDO_SOLID := ["ore_display", "wall", "window", "chest", "private_chest", "supply_box", "bench", "bed", "inn_quilt_bed", "inn_stone_footbath", "table", "stove","long_bench","master_bench","spring_stone_bench","small_smelter","sofa","planter","sketch_easel","guest_wardrobe","inn_lattice_wardrobe","inn_fabric_screen","wood_mailbox","rope_rack","towel_rack","inn_tea_table","inn_luggage_rack","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","large_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","small_smelter","jam_pot","clay_kiln","dye_table","assembly_table","animal_collector"]
 ## Q05 bakery: the flour mill kit and the mill itself unlock only once the
 ## shared public kitchen has opened (state.public_kitchen.opened). Every route
 ## (plain/sourced craft, build, blueprint simulation, undo restore) uses this.
@@ -128,15 +157,17 @@ const AUTO_ROOF_REMOVES := ["floor","wall","window","door"]
 const SIZE := Vector2i(80, 60)
 const SPAWN := Vector2(39.5, 33.5)
 const SEAWEED_CELL := Vector2i(54,53)
+const SEAWEED_POINT := "shore_seaweed"
 const RICE_BALL_ENERGY := 20
 const ROPE_FIBER_COST := 5
 const SEAWEED_REGROW_SECONDS := 60.0
 const TREE_TIME := 180.0
+const HARDWOOD_YIELD:=2
 const COPPER_CELL := Vector2i(54,24)
 const SPRINKLER_INTERVAL := 8.0
 const SPRINKLER_CAPACITY := INDUSTRY.SPRINKLER_CAPACITIES.sprinkler
 const SPRINKLER_LIMIT := INDUSTRY.SPRINKLER_LIMIT
-const CHICKEN_CELL := Vector2i(45,34)
+const CHICKEN_CELL := AnimalCollector.CHICKEN_CELL
 const CHICKEN_EGG_SECONDS := 60.0
 const EGG_BASKET_CAPACITY := SAVE_SCHEMA.EGG_BASKET_CAPACITY
 const CRAFT := {
@@ -148,6 +179,7 @@ const CRAFT := {
 	"supply_box_kit":{"name":"便攜補給箱","ingredients":{"plank":4,"fiber":2},"yield":1},
 	"glass":{"name":"溫室玻璃","ingredients":{"crystal_sand":2,"charcoal":1},"yield":2},
 	"copper_joint":{"name":"銅接頭","ingredients":{"copper_ore":2,"wood":1},"yield":1},
+	"woodwork_parts":{"name":"木工零件","ingredients":{"plank":2,"hardwood":1},"yield":2},
 	"sprinkler_kit":{"name":"小型灑水器","ingredients":{"copper_joint":2,"wood":8,"stone":4},"yield":1},
 	"pipe_kit":{"name":"銅水管","ingredients":{"copper_joint":1,"resin":1},"yield":2},
 	"tank_kit":{"name":"儲水桶","ingredients":{"plank":4,"resin":2},"yield":1},
@@ -173,6 +205,7 @@ const CRAFT := {
 # One point per harvested plot, including each successful repeat harvest.
 const EXPLORATION_LEVEL_THRESHOLDS := [0,1,2,4,6,8,10,11,12,14]
 const BATCH_BUILD_LEVEL := 6
+const WORKSHOP_LEVEL := 6
 const BASIC_BUILD_AREA := 25
 const CRAFTING_LEVEL_THRESHOLDS := [0,4,10,20,35,55,80,110,145,185]
 const GATHERING_LEVEL_THRESHOLDS := [0,4,10,20,35,55,80,110,145,185]
@@ -181,9 +214,11 @@ const RESOURCE_MAP_LEVEL := 6
 const FARMING_LEVEL_THRESHOLDS := [0,4,10,20,35,55,80,110,145,185]
 const SEED_MAKER_LEVEL := 3
 const MEDIUM_SPRINKLER_LEVEL := 6
+const LARGE_SPRINKLER_LEVEL := 8
 const MASTER_FARMING_LEVEL := 10
 const SEED_MAKER := preload("res://scripts/seed_maker.gd")
-const CROPS := preload("res://scripts/crop_catalog.gd").CROPS
+const CROP_CATALOG := preload("res://scripts/crop_catalog.gd")
+const CROPS := CROP_CATALOG.CROPS
 const CROP_SEASONS := {
 	"radish": ["spring", "autumn"],
 	"lettuce": ["spring", "summer"],
@@ -208,18 +243,26 @@ const CROP_SEASONS := {
 	"orange_blossom": ["summer", "autumn"],
 }
 const BUILD := {
-	"loom":{"name":"織布機","plank":8,"fiber":4,"copper_joint":1},
-	"jam_pot":{"name":"果醬鍋","stone":8,"copper_joint":1},
+	"loom":{"name":"織布機","wood":20,"fiber":10,"woodwork_parts":2},
+	"animal_collector":{"name":"動物自動收集器","animal_collector_kit":1},
+	"assembly_table":{"name":"裝配桌","hardwood":20,"iron_ingot":6,"woodwork_parts":4},
+	"dye_table":{"name":"染色桌","wood":12,"clay":6},
+	"clay_kiln":{"name":"陶窯","stone":30,"clay":10},
+	"jam_pot":{"name":"果醬鍋","clay":10,"copper_ingot":4},
 	# T067 Q07 reward: blueprint unlocked by repairing the Jinguashi hoist.
-	"glass_furnace":{"name":"玻璃爐","stone":12,"ochre_earth":4,"copper_joint":2},
-	"seed_maker":{"name":"種子機","plank":8,"stone":6,"copper_joint":2},
+	"small_smelter":{"name":"小熔爐","stone":25,"copper_ore":5},
+	"glass_furnace":{"name":"玻璃爐","stone":25,"iron_ingot":6},
+	"seed_maker":{"name":"種子機","wood":15,"copper_ingot":4,"woodwork_parts":2},
 	"ore_display":{"name":"礦樣展示架","wood":4,"gold_sample":1},
 	"floor": {"name": "木地板", "wood": 2},
 	"wall": {"name": "木牆", "wood": 3},
 	"path": {"name": "石板路", "stone": 2},
+	"spring_pebble_path": {"name":"泉邊卵石路","stone":2,"clay":1},
 	"chest": {"name": "共用箱", "wood": 20},
 	"bench": {"name": "工作台", "wood": 20, "stone": 5},
 	"bed": {"name": "小床", "wood": 15, "fiber": 10},
+	"inn_quilt_bed":{"name":"厚被旅舍床","hardwood":12,"cotton_cloth":6,"wool_cloth":3},
+	"inn_stone_footbath":{"name":"暖石泡腳池","stone":24,"clay":8,"hardwood":8},
 	"lamp": {"name": "木燈", "wood": 5, "stone": 2},
 	"door": {"name": "木門", "wood": 6, "fiber": 2},
 	"window": {"name": "採光木牆", "wood": 6, "stone": 1},
@@ -231,6 +274,8 @@ const BUILD := {
 	"supply_box":{"name":"便攜補給箱","supply_box_kit":1},
 	"private_chest": {"name": "私人箱", "wood": 20},
 	"long_bench":{"name":"雙人長椅","wood":14,"fiber":4},
+	"master_bench":{"name":"師父的長椅","wood":14,"hardwood":4},
+	"spring_stone_bench":{"name":"石邊長凳","stone":8,"hardwood":8},
 	"author_sign":{"name":"工匠署名牌","plank":3,"fiber":1},
 	"expedition_tent":{"name":"探險紀念帳篷","plank":6,"wool_cloth":2},
 	"author_shelf":{"name":"工匠展示架","plank":6,"glass":1},
@@ -238,13 +283,21 @@ const BUILD := {
 	"master_flower_bed":{"name":"豐收花圃","plank":4,"stone":2,"fiber":2},
 	"greenhouse_rack":{"name":"溫室花架","plank":4,"fiber":2},
 	"planter":{"name":"窗邊花箱","wood":8,"stone":3},
+	"basic_tea_set":{"name":"基本茶具","wood":3,"clay":2},
+	"wood_mailbox":{"name":"普通信箱","wood":5,"fiber":1},
+	"guest_wardrobe":{"name":"旅舍更衣櫃","plank":4,"cotton_cloth":2},
+	"inn_lattice_wardrobe":{"name":"木格更衣櫃","hardwood":14,"cotton_cloth":2},
+	"inn_fabric_screen":{"name":"織布屏風","hardwood":10,"cotton_cloth":5},
 	"sketch_easel":{"name":"點點的小畫架","wood":4,"fiber":1},
 	"rope_rack":{"name":"航海繩掛架","wood":6,"rope":3},
 	"flower_pot":{"name":"陶花盆","flower_pot":1},
 	"sign":{"name":"手刻歡迎牌","wood":5},
+	RESIDENT_GOALS.SHELL_CHIME:{"name":"潮紋貝殼風鈴","wood":4,"fiber":2,WANGAN_COAST.SHELL_ITEM:2},
+	Squirrel.ORNAMENT:{"name":"橡果掛飾",Squirrel.KIT:1},
 	"sofa":{"name":"棉布小沙發","wood":18,"cotton_cloth":2},
-	"sprinkler":{"name":"小型灑水器","sprinkler_kit":1},
-	"medium_sprinkler":{"name":"中型灑水器","sprinkler_kit":1,"copper_joint":3,"plank":4},
+	"sprinkler":{"name":"小型灑水器","copper_ingot":4,"stone":4},
+	"large_sprinkler":{"name":"大型灑水器","iron_ingot":10,"glass":4,"woodwork_parts":4},
+	"medium_sprinkler":{"name":"中型灑水器","iron_ingot":5,"copper_ingot":2},
 	"water_pipe":{"name":"銅水管","pipe_kit":1},
 	"water_tank":{"name":"儲水桶","tank_kit":1},
 	"mine_drill":{"name":"礦脈採掘機","mine_drill_kit":1},
@@ -266,6 +319,17 @@ const BUILD := {
 	"trio_keepsake":{"name":"三活動紀念牌","trio_keepsake_kit":1},
 	# T066「一起做的事」第三批紀念小物（= RESIDENT_GOALS.KEEPSAKES）：完成該項行動時得到
 	# kit；不擋路、拆除退回 kit、沒有價目、不能交易。只是裝飾。
+	"festival_memorial_bell":{"name":"風鈴節紀念鐘","wood":6,"copper_joint":2,"glass":1},
+	"ceramic_eave_chime":{"name":"簷下陶風鈴","clay":4,"fiber":2},
+	"warm_lamp_niche":{"name":"暖燈壁龕","stone":6,"glass":2},
+	"towel_rack":{"name":"浴巾收納架","wood":10,"cotton_cloth":6},
+	"inn_welcome_sign":{"name":"暖暖的迎賓牌","hardwood":8,"clay":2},
+	"inn_tea_table":{"name":"暖薑茶小桌","hardwood":8,"clay":3},
+	"inn_luggage_rack":{"name":"旅人行李架","hardwood":12,"fiber":4},
+	"keepsake_lingpopo_memorial":{"name":"鈴婆婆的風鈴節紀念鐘","keepsake_lingpopo_memorial_kit":1},
+	"keepsake_xinghe_sign":{"name":"星禾的共同花園牌","keepsake_xinghe_sign_kit":1},
+	"keepsake_achao_oar":{"name":"阿潮的紀念木槳","keepsake_achao_oar_kit":1},
+	"keepsake_aru_bird":{"name":"阿榆手刻小木鳥","keepsake_aru_bird_kit":1},
 	"keepsake_aru":{"name":"有點歪的第一塊板","keepsake_aru_kit":1},
 	"keepsake_milu":{"name":"試吃會的空碗","keepsake_milu_kit":1},
 	"keepsake_bobo":{"name":"排成小島的石頭","keepsake_bobo_kit":1},
@@ -278,6 +342,7 @@ const BUILD := {
 	"keepsake_luoluo":{"name":"寫給以後的信封","keepsake_luoluo_kit":1},
 	"keepsake_diandian":{"name":"畫著放鬆的手的速寫","keepsake_diandian_kit":1},
 	"keepsake_nuannuan":{"name":"亮起來的門牌","keepsake_nuannuan_kit":1},
+	"keepsake_nuannuan_room":{"name":"暖暖的房間名牌","keepsake_nuannuan_room_kit":1},
 	# Chapter 40: 蘭陽回訪 memento (LANYANG_REVISIT.PLAQUE_*): same rules as the T071
 	# decor kits (walk-through, removal returns the kit, no price, no trade).
 	"water_share_plaque":{"name":"分水木牌","water_share_plaque_kit":1},
@@ -311,8 +376,10 @@ const RECIPES := {"soup":{"name":"熱蘿蔔湯","ingredients":{"radish":2},"time
 	"sugar":{"name":"熬製甜菜糖","ingredients":{"sugar_beet":2},"time":60.0,"yield":2},
 	"trout_hotpot":{"name":"雪點鱒魚火鍋","ingredients":{"snow_trout":1,"cabbage":1,"star_mushroom":1},"time":60.0,"yield":4},
 	"roasted_sweet_potato":{"name":"烤地瓜","ingredients":{"sweet_potato":2},"time":18.0,"yield":2},
+	"seafood_rice":{"name":"海鮮燉飯","ingredients":{"rice":2,"sardine":1,"seaweed":1},"time":40.0,"yield":2},
 	"eggplant_rice":{"name":"茄子燴飯","ingredients":{"rice":2,"eggplant":1},"time":30.0,"yield":2},
 	"mist_tea_brew":{"name":"霧竹茶飲","ingredients":{"mist_tea":2},"time":20.0,"yield":2},
+	"ginger_tea":{"name":"暖薑茶","ingredients":{"ginger":1,"sugar":1},"time":60.0,"yield":2},
 	"watermelon_platter":{"name":"夏日西瓜盤","ingredients":{"watermelon":1},"time":8.0,"yield":4},
 	# corn_chowder 玉米濃湯（規劃書第 14 章「玉米、牛奶・團隊分享餐」；數量、30 秒、四份與
 	# 售價 30 是設計值，規劃書沒有給）。共餐桌的第三道分享餐（community.gd DISHES）。
@@ -320,16 +387,23 @@ const RECIPES := {"soup":{"name":"熱蘿蔔湯","ingredients":{"radish":2},"time
 	"tea_pudding":{"name":"茶香布丁","ingredients":{"tea_leaf":1,"milk":1,"egg":1},"time":120.0,"yield":3},
 	"star_rice_ball":{"name":"星點飯糰","ingredients":{"rice":2,"seaweed":1},"time":60.0,"yield":3},
 	"strawberry_toast":{"name":"草莓吐司","ingredients":{"bread":1,"strawberry_jam":1},"time":20.0,"yield":2}}
-const OTHER_SALES := {"milk":36,"wool":48,"tea_pudding":60,"corn_chowder":30,"egg":30,"soup":32,"bread":48,"salad":36,"baked_potato":36,"grilled_fish":26,"carrot_soup":50,"pumpkin_pie":80,"garden_cookie":36,"salt_grilled_fish":34,"strawberry_jam":49,"cucumber_salad":26,"trout_hotpot":60,"roasted_sweet_potato":41,"eggplant_rice":51,"mist_tea_brew":44,"watermelon_platter":38}
+const OTHER_SALES := {"duck_egg":34,"quality_duck_egg":42,"quality_egg":37,"quality_milk":45,"quality_wool":60,WANGAN_COAST.SHELL_ITEM:18,"fired_brick":16,"ochre_earth":10,"iron_ingot":20,"seafood_rice":62,"milk":36,"wool":48,"tea_pudding":60,"corn_chowder":30,"egg":30,"soup":32,"bread":48,"salad":36,"baked_potato":36,"grilled_fish":26,"carrot_soup":50,"pumpkin_pie":80,"garden_cookie":36,"salt_grilled_fish":34,"strawberry_jam":49,"cucumber_salad":26,"trout_hotpot":60,"roasted_sweet_potato":41,"eggplant_rice":51,"mist_tea_brew":44,"watermelon_platter":38}
 ## Flower seeds, blue_dye and sugar are deliberately absent from CROPS prices and
 ## OTHER_SALES: they can never be sold or shipped (no seed-saving arbitrage).
 ## sea_salt is likewise never sellable, shippable or buyable (no automation pump).
-const NAMES := {"egg_basket":"收集籃","flower_pot":"陶花盆","rope":"繩索","strawberry_toast":"草莓吐司","seaweed":"海苔","star_rice_ball":"星點飯糰","tea_pudding":"茶香布丁","corn_chowder":"玉米濃湯","supply_box_kit":"便攜補給箱","moon_squid":"月光小魷","gold_shrimp":"金邊蝦","sardine":"藍背沙丁","flounder":"奶油比目魚","crystal_sand":"晶砂","ochre_earth":"赭土","vein_quartz":"脈石英","warm_stone":"暖岩片","glass":"溫室玻璃","tea_leaf":"新鮮茶葉","clay":"陶土","tea_jar":"陶罐","tea_returned_jar":"回收陶罐","tea_worn_jar":"磨損陶罐","tea_spent_jar":"待修陶罐","tea_light":"淺焙茶","tea_deep":"深焙茶","mine_drill_kit":"礦脈採掘機","waterworks_kit":"水力加工台","gold_ore":"含金礦料","gold_sample":"金工收藏樣本","wood":"木材", "stone":"石材", "fiber":"纖維", "radish":"蘿蔔", "lettuce":"萵苣", "wheat":"小麥", "radish_seed":"蘿蔔種子", "lettuce_seed":"萵苣種子", "wheat_seed":"小麥種子", "carp":"圓肚鯽魚", "minnow":"銀線溪魚", "redfish":"紅尾小鯉", "loach":"斑點泥鰍", "egg":"雞蛋", "feed":"飼料", "soup":"蘿蔔湯", "bread":"麵包", "sapling":"小樹苗","carrot":"胡蘿蔔","potato":"馬鈴薯","tomato":"番茄","carrot_seed":"胡蘿蔔種子","potato_seed":"馬鈴薯種子","tomato_seed":"番茄種子","salad":"菜園沙拉","baked_potato":"烤馬鈴薯","grilled_fish":"香煎鯽魚","carrot_soup":"胡蘿蔔濃湯","reinforced_pick":"強化石鎬","copper_ore":"銅礦","copper_joint":"銅接頭","sprinkler_kit":"小型灑水器","plank":"木板","resin":"樹脂","charcoal":"木炭","pipe_kit":"銅水管","tank_kit":"儲水桶","pump_kit":"河水泵","sawmill_kit":"鋸木台","kiln_kit":"炭窯","forester_kit":"林務工作站","conveyor_kit":"輸送帶","tiller":"手推耕田機","seeder":"手推播種機","harvester":"手推收割機","pumpkin":"南瓜","pumpkin_seed":"南瓜種子","flour":"麵粉","pumpkin_pie":"南瓜派","mill_kit":"麵粉磨坊","bluebell":"鈴蘭藍花","orange_blossom":"蜜橙花","chime_herb":"風鈴香草","bluebell_seed":"鈴蘭藍花種子","orange_blossom_seed":"蜜橙花種子","chime_herb_seed":"風鈴香草種子","blue_dye":"藍色染料","sugar":"糖","garden_cookie":"花園餅乾","sea_salt":"海鹽","salt_wheel_kit":"鹽田水車組","salt_rake_kit":"收鹽台組","salt_grilled_fish":"香煎溪魚","cauliflower":"花椰菜","cauliflower_seed":"花椰菜種子","sweet_corn":"甜玉米","sweet_corn_seed":"甜玉米種子","star_spot":"星斑魚","bamboo_ayu":"竹影香魚","glass_shrimp":"玻璃小蝦","snow_trout":"雪點鱒魚","strawberry":"草莓","strawberry_seed":"草莓種子","cucumber":"黃瓜","cucumber_seed":"黃瓜種子","strawberry_jam":"草莓果醬","cucumber_salad":"涼拌黃瓜","cabbage":"高麗菜","cabbage_seed":"高麗菜種子","sugar_beet":"甜菜","sugar_beet_seed":"甜菜種子","star_mushroom":"星夜菇","star_mushroom_seed":"星夜菇菌種","trout_hotpot":"雪點鱒魚火鍋","sweet_potato":"地瓜","sweet_potato_seed":"地瓜種子","eggplant":"茄子","eggplant_seed":"茄子種子","rice":"稻米","rice_seed":"稻種","roasted_sweet_potato":"烤地瓜","eggplant_rice":"茄子燴飯","watermelon":"西瓜","watermelon_seed":"西瓜種子","ginger":"暖泉薑","ginger_seed":"薑種","cotton":"棉球花","cotton_seed":"棉球花種子","mist_tea":"霧竹茶","mist_tea_seed":"霧竹茶種","mist_tea_brew":"霧竹茶飲","watermelon_platter":"夏日西瓜盤","milk":"鮮奶","wool":"羊毛","cotton_cloth":"布料","wool_cloth":"羊毛布","veg_basket_rack_kit":"菜籃小架","relay_crate_stack_kit":"接力菜箱堆","carp_banner_kit":"鯽魚布旗","float_garland_kit":"浮球串飾","lantern_post_kit":"紙燈籠柱","flower_arch_kit":"花草拱架","trio_keepsake_kit":"三活動紀念牌","water_share_plaque_kit":"分水木牌","diversion_gate_kit":"分流閘","water_tower_kit":"水塔","mine_lantern_kit":"礦燈","tea_ware_kit":"茶陶組","salt_basket_kit":"鹽籃","keepsake_aru_kit":"有點歪的第一塊板","keepsake_milu_kit":"試吃會的空碗","keepsake_bobo_kit":"排成小島的石頭","keepsake_chacha_kit":"換下來的舊竹片","keepsake_achao_kit":"鬆開的舊繩結","keepsake_mianmian_kit":"縫線有點歪的玩具","keepsake_xinghe_kit":"留了一格空白的花圃圖紙","keepsake_lingpopo_kit":"留著你的顏色的鈴","keepsake_xiaoli_kit":"招牌的試寫木片","keepsake_luoluo_kit":"寫給以後的信封","keepsake_diandian_kit":"畫著放鬆的手的速寫","keepsake_nuannuan_kit":"亮起來的門牌"}
+const NAMES := {"duck_egg":"鴨蛋", "quality_duck_egg":"優良鴨蛋",Squirrel.ACORN:"橡果", Squirrel.KIT:"橡果掛飾","quality_egg":"優良雞蛋","quality_milk":"優良鮮奶","quality_wool":"優良羊毛","quality_radish":"優良奶白蘿蔔", "quality_lettuce":"優良圓葉萵苣", "quality_wheat":"優良星點小麥", "quality_carrot":"優良糖心胡蘿蔔", "quality_potato":"優良小馬鈴薯", "quality_tomato":"優良太陽番茄", "quality_pumpkin":"優良琥珀南瓜", "quality_cauliflower":"優良雲朵花椰菜", "quality_sweet_corn":"優良甜玉米", "quality_strawberry":"優良蜜香草莓", "quality_cucumber":"優良波點黃瓜", "quality_cabbage":"優良雪白高麗菜", "quality_sugar_beet":"優良霜糖甜菜", "quality_star_mushroom":"優良星夜菇", "quality_sweet_potato":"優良栗香地瓜", "quality_eggplant":"優良紫絨茄子", "quality_rice":"優良月牙稻米", "quality_watermelon":"優良小圓西瓜", "quality_ginger":"優良暖泉薑", "quality_cotton":"優良棉球花", "quality_mist_tea":"優良霧竹茶", "quality_bluebell":"優良鈴蘭藍花", "quality_orange_blossom":"優良蜜橙花", "quality_chime_herb":"優良風鈴香草", WANGAN_COAST.SHELL_ITEM:"潮紋貝殼","ginger_tea":"暖薑茶","animal_collector_kit":"動物自動收集器組件","field_sprinkler_kit":"小型灑水器組件","medium_sprinkler_kit":"中型灑水器組件","large_sprinkler_kit":"大型灑水器組件","orange_dye":"橙色染料","fired_brick":"紅磚","woodwork_parts":"木工零件","iron_ore":"鐵礦","iron_ingot":"鐵錠","copper_ingot":"銅錠","hardwood":"硬木","keepsake_lingpopo_memorial_kit":"鈴婆婆的風鈴節紀念鐘","keepsake_xinghe_sign_kit":"星禾的共同花園牌","keepsake_achao_oar_kit":"阿潮的紀念木槳","seafood_rice":"海鮮燉飯","keepsake_aru_bird_kit":"阿榆手刻小木鳥","egg_basket":"收集籃","flower_pot":"陶花盆","rope":"繩索","strawberry_toast":"草莓吐司","seaweed":"海苔","star_rice_ball":"星點飯糰","tea_pudding":"茶香布丁","corn_chowder":"玉米濃湯","supply_box_kit":"便攜補給箱","moon_squid":"月光小魷","gold_shrimp":"金邊蝦","sardine":"藍背沙丁","flounder":"奶油比目魚","crystal_sand":"晶砂","ochre_earth":"赭土","vein_quartz":"脈石英","warm_stone":"暖岩片","glass":"溫室玻璃","tea_leaf":"新鮮茶葉","clay":"陶土","tea_jar":"陶罐","tea_returned_jar":"回收陶罐","tea_worn_jar":"磨損陶罐","tea_spent_jar":"待修陶罐","tea_light":"淺焙茶","tea_deep":"深焙茶","mine_drill_kit":"礦脈採掘機","waterworks_kit":"水力加工台","gold_ore":"含金礦料","gold_sample":"金工收藏樣本","wood":"木材", "stone":"石材", "fiber":"纖維", "radish":"蘿蔔", "lettuce":"萵苣", "wheat":"小麥", "radish_seed":"蘿蔔種子", "lettuce_seed":"萵苣種子", "wheat_seed":"小麥種子", "carp":"圓肚鯽魚", "minnow":"銀線溪魚", "redfish":"紅尾小鯉", "loach":"斑點泥鰍", "egg":"雞蛋", "feed":"飼料", "soup":"蘿蔔湯", "bread":"麵包", "sapling":"小樹苗","carrot":"胡蘿蔔","potato":"馬鈴薯","tomato":"番茄","carrot_seed":"胡蘿蔔種子","potato_seed":"馬鈴薯種子","tomato_seed":"番茄種子","salad":"菜園沙拉","baked_potato":"烤馬鈴薯","grilled_fish":"香煎鯽魚","carrot_soup":"胡蘿蔔濃湯","reinforced_pick":"強化石鎬","copper_ore":"銅礦","copper_joint":"銅接頭","sprinkler_kit":"小型灑水器","plank":"木板","resin":"樹脂","charcoal":"木炭","pipe_kit":"銅水管","tank_kit":"儲水桶","pump_kit":"河水泵","sawmill_kit":"鋸木台","kiln_kit":"炭窯","forester_kit":"林務工作站","conveyor_kit":"輸送帶","tiller":"手推耕田機","seeder":"手推播種機","harvester":"手推收割機","pumpkin":"南瓜","pumpkin_seed":"南瓜種子","flour":"麵粉","pumpkin_pie":"南瓜派","mill_kit":"麵粉磨坊","bluebell":"鈴蘭藍花","orange_blossom":"蜜橙花","chime_herb":"風鈴香草","bluebell_seed":"鈴蘭藍花種子","orange_blossom_seed":"蜜橙花種子","chime_herb_seed":"風鈴香草種子","blue_dye":"藍色染料","sugar":"糖","garden_cookie":"花園餅乾","sea_salt":"海鹽","salt_wheel_kit":"鹽田水車組","salt_rake_kit":"收鹽台組","salt_grilled_fish":"香煎溪魚","cauliflower":"花椰菜","cauliflower_seed":"花椰菜種子","sweet_corn":"甜玉米","sweet_corn_seed":"甜玉米種子","star_spot":"星斑魚","bamboo_ayu":"竹影香魚","glass_shrimp":"玻璃小蝦","snow_trout":"雪點鱒魚","strawberry":"草莓","strawberry_seed":"草莓種子","cucumber":"黃瓜","cucumber_seed":"黃瓜種子","strawberry_jam":"草莓果醬","cucumber_salad":"涼拌黃瓜","cabbage":"高麗菜","cabbage_seed":"高麗菜種子","sugar_beet":"甜菜","sugar_beet_seed":"甜菜種子","star_mushroom":"星夜菇","star_mushroom_seed":"星夜菇菌種","trout_hotpot":"雪點鱒魚火鍋","sweet_potato":"地瓜","sweet_potato_seed":"地瓜種子","eggplant":"茄子","eggplant_seed":"茄子種子","rice":"稻米","rice_seed":"稻種","roasted_sweet_potato":"烤地瓜","eggplant_rice":"茄子燴飯","watermelon":"西瓜","watermelon_seed":"西瓜種子","ginger":"暖泉薑","ginger_seed":"薑種","cotton":"棉球花","cotton_seed":"棉球花種子","mist_tea":"霧竹茶","mist_tea_seed":"霧竹茶種","mist_tea_brew":"霧竹茶飲","watermelon_platter":"夏日西瓜盤","milk":"鮮奶","wool":"羊毛","cotton_cloth":"布料","wool_cloth":"羊毛布","veg_basket_rack_kit":"菜籃小架","relay_crate_stack_kit":"接力菜箱堆","carp_banner_kit":"鯽魚布旗","float_garland_kit":"浮球串飾","lantern_post_kit":"紙燈籠柱","flower_arch_kit":"花草拱架","trio_keepsake_kit":"三活動紀念牌","water_share_plaque_kit":"分水木牌","diversion_gate_kit":"分流閘","water_tower_kit":"水塔","mine_lantern_kit":"礦燈","tea_ware_kit":"茶陶組","salt_basket_kit":"鹽籃","keepsake_aru_kit":"有點歪的第一塊板","keepsake_milu_kit":"試吃會的空碗","keepsake_bobo_kit":"排成小島的石頭","keepsake_chacha_kit":"換下來的舊竹片","keepsake_achao_kit":"鬆開的舊繩結","keepsake_mianmian_kit":"縫線有點歪的玩具","keepsake_xinghe_kit":"留了一格空白的花圃圖紙","keepsake_lingpopo_kit":"留著你的顏色的鈴","keepsake_xiaoli_kit":"招牌的試寫木片","keepsake_luoluo_kit":"寫給以後的信封","keepsake_diandian_kit":"畫著放鬆的手的速寫","keepsake_nuannuan_kit":"亮起來的門牌","keepsake_nuannuan_room_kit":"暖暖的房間名牌"}
 ## T071 紀念票兌換品（*_kit，= SOUVENIR.items()）刻意不在 CROPS／FISH／OTHER_SALES：
 ## 不能出貨、不能在攤位出售或上市集；trade_items() 也排除，不能和其他玩家交易。
 var state: Dictionary
+const PUBLIC_BUILD_PLOT := Rect2i(40,24,4,2)
+const PUBLIC_BUILD_DENIED := "渡口北側公共地塊需要島主或管理員授權施工。"
+var public_build_access: Callable
+
+func allows_public_build(token:String,p:Vector2i) -> bool:
+	return _region!=REGIONS.HOME or not PUBLIC_BUILD_PLOT.has_point(p) or not public_build_access.is_valid() or public_build_access.call(token)
 var save_path := ""
 var save_error := ""
+var last_saved_at := 0
 var recovered_from_backup := false
 var rejected_path := ""
 ## Why the last step() returned false: "" (ok/paused), STEP_FAIL_SALT or
@@ -368,6 +442,9 @@ func ensure_life_fields() -> void:
 	if not state.has("festival"):state.festival=Festival.fresh()
 	if not state.has("quarry"):state.quarry={"hits":0,"ready":0.0}
 	if not state.has("seaweed_ready"):state.seaweed_ready=0.0
+	if not state.has("wangan_shell_ready"):state.wangan_shell_ready=0.0
+	if not state.has("wangan_star_walk"):state.wangan_star_walk=false
+	if not state.has("wangan_star_sand_ready"):state.wangan_star_sand_ready=0.0
 	if not state.has("copper"):state.copper={"ready":0.0}
 	if not state.has("next_logistics_check"):state.next_logistics_check=0.0
 	if not state.has("next_network_check"):state.next_network_check=0.0
@@ -396,11 +473,16 @@ static func cell(k: String) -> Vector2i:
 
 static func land(p: Vector2i, region: String = REGIONS.HOME) -> bool:
 	if region != REGIONS.HOME:return REGIONS.land(p,region)
+	return WANGAN_COAST.shore_cell(p) or WANGAN_COAST.star_shore(p) or original_home_land(p)
+
+static func original_home_land(p:Vector2i)->bool:
 	var d := Vector2((p.x-39.5)/36.0, (p.y-29.5)/26.0)
 	return p.x >= 0 and p.y >= 0 and p.x < SIZE.x and p.y < SIZE.y and d.length_squared() < 1.0 + sin(p.y*0.7)*0.035
 
 static func base_resource(p: Vector2i, region: String = REGIONS.HOME) -> String:
 	if region != REGIONS.HOME:return REGIONS.resource(p,region)
+	if (WANGAN_COAST.shore_cell(p) or WANGAN_COAST.star_shore(p)) and not original_home_land(p):return ""
+	if WANGAN_MEMORY.COURT.has_point(p):return ""
 	# Keep the illustrated village paths walkable and visually clear. Existing
 	# player-planted trees remain in the saved forest layer and are unaffected.
 	if VILLAGE_LAYOUT.path_at(Vector2(p)+Vector2(0.5,0.5)):return ""
@@ -421,8 +503,18 @@ func resource(p: Vector2i) -> String:
 func is_land(p: Vector2i) -> bool:
 	return land(p,_region)
 
+func tree_planting_problem(token:String,p:Vector2i)->String:
+	if water(p) or protected(p):return "這裡是水域或公共通道，請換個位置"
+	var tile:=key(p)
+	if resource(p)!="" or state.crops.has(tile) or state.objects.has(tile) or state.ground.has(tile) or state.roofs.has(tile):
+		return "樹苗需要一格空地，不能種在農田或建物上"
+	if int(state.players.get(token,{}).get("inventory",{}).get("sapling",0))<1:
+		return "沒有樹苗了，砍樹會得到樹苗，也可以向小栗購買"
+	return ""
+
 func water(p: Vector2i) -> bool:
 	if _region != REGIONS.HOME:return REGIONS.water(p,_region)
+	if WANGAN_COAST.STAR_POOL.has_point(p):return true
 	if not land(p): return true
 	return (p.x == 55 or p.x == 56) and not (state.board and p.y >= 29 and p.y <= 31)
 
@@ -430,15 +522,23 @@ func bobo_sites() -> Dictionary:
 	return BOBO_WORKSHOP.sites(state)
 
 func protected(p: Vector2i) -> bool:
+	if _region==MINES.MUD_REGION and p.y<MINES.MUD_ALCOVE_EDGE and is_land(p):return true
 	if _region == REGIONS.JINGUASHI and p in bobo_sites().values():return true
+	if _region==REGIONS.LANYANG and p in RESIDENT_GOALS.GARDEN_POTS:return true
 	if _region != REGIONS.HOME:return REGIONS.protected(p,_region)
+	if WANGAN_COAST.shore_cell(p) and not original_home_land(p):return true
+	if WANGAN_COAST.star_shore(p) or p==WANGAN_COAST.STAR_REPAIR:return true
+	if p==WANGAN_COAST.DOCK_ORDERS and state.get("wangan_star_walk",false):return true
+	if WANGAN_MEMORY.COURT.has_point(p) and WANGAN_MEMORY.courtyard_available(state):return true
 	# T042: donated public-kitchen stove/seats are permanently public (HOME only).
 	if PUBLIC_KITCHEN.is_site_cell(state,p):return true
-	if p in [REGIONS.exit_cell(REGIONS.HOME),Vector2i(REGIONS.spawn(REGIONS.HOME))]:
+	if p in RESIDENT_GOALS.ARU_PARK_SLOTS.values():return true
+	if p in [REGIONS.exit_cell(REGIONS.HOME),Vector2i(REGIONS.spawn(REGIONS.HOME)),Vector2i(WANGAN_COAST.FERRY_LANDING)]:
 		var tile := key(p)
 		for layer in ["objects","ground","roofs","crops","forest"]:
 			if state[layer].has(tile):return false
 		return true
+	if WANGAN_COAST.FERRY_ACCESS.has_point(p):return true
 	if p in [Vector2i(38,29),Vector2i(44,31),Vector2i(54,25)]:return true
 	if p in MARKET.CANDIDATES and p==MARKET.active_cell(state):return true # T071 市集攤位（解鎖後保留）
 	if HARVEST.reserved(state,p):return true # T071 豐收接力場地（解鎖後空著的格子保留）
@@ -449,7 +549,10 @@ func protected(p: Vector2i) -> bool:
 	return (p.x >= 38 and p.x <= 44 and p.y >= 28 and p.y <= 31) or (p.x >= 54 and p.x <= 57) or (p.x==39 and p.y in [32,33]) or p==Vector2i(45,34)
 
 func blocked(p: Vector2i) -> bool:
+	if _region==WARM_SPRINGS.REGION and (WARM_SPRINGS.BATH_FOOTPRINT.has_point(p) or WARM_SPRINGS.INN_FOOTPRINT.has_point(p)):return true
+	if _region==WARM_SPRINGS.REGION and WARM_SPRINGS.room_blocked(p):return true
 	if _region in TRANSIT.TEA_STOPS and REGIONS.tea_blocked(p,_region):return true
+	if _region==TEA_CERAMICS.MAOKONG and p==TEA_REVISIT.HOUSE_SITE and TEA_REVISIT.house_open(state):return true
 	if _region in TRANSIT.LOCAL and (not is_land(p) or TRANSIT.blocked(p,_region)):return true
 	if _region == FLOWER_NURSERY.REGION and (not is_land(p) or FLOWER_NURSERY.blocked(p)):return true
 	if _region == SALT_PAN.REGION and (not is_land(p) or SALT_PAN.blocked(p)):return true
@@ -458,6 +561,8 @@ func blocked(p: Vector2i) -> bool:
 	if _region == REGIONS.JINGUASHI and (p in JINGUASHI.NODES or JINGUASHI.ENTRANCE_FOOTPRINT.has_point(p)):return true
 	if _region == REGIONS.JINGUASHI and p == bobo_sites().table:return true
 	if _region == REGIONS.HOME:
+		if WANGAN_COAST.star_shore(p) and not state.get("wangan_star_walk",false):return true
+		if WANGAN_MEMORY.HOUSE_WALL.has_point(p) and WANGAN_MEMORY.courtyard_available(state):return true
 		if state.get("festival_story_open",false) and p in Village.FESTIVAL_SPOTS.values():return true
 		if (p in COMMUNITY.CANDIDATES and p == COMMUNITY.table_cell(state)) or p==COPPER_CELL or (p in SHIPPING.CANDIDATES and p == SHIPPING.cell_for(state)):return true
 		if p in MARKET.CANDIDATES and p == MARKET.active_cell(state):return true
@@ -474,10 +579,12 @@ func blocked(p: Vector2i) -> bool:
 	if o.get("type","")=="door":return not o.get("open",false)
 	return o.get("type", "") in UNDO_SOLID
 
-func add_player(token: String, name: String) -> void:
+func add_player(token: String, name: String, landing:=SPAWN) -> void:
 	active_tokens[token]=true
-	if not state.players.has(token):
-		state.players[token] = {"name":name.left(12), "region":REGIONS.HOME, "travel_epoch":0, "travel_book":TRANSIT.fresh(), "mine_energy":100, "x":SPAWN.x, "y":SPAWN.y, "coins":120, "inventory":{"wood":12,"stone":4,"fiber":10,"radish_seed":5,"lettuce_seed":3,"wheat_seed":3,"sapling":2}, "receipts":{}, "harvests":0, "builds":0}
+	var new_player:bool=not state.players.has(token)
+	if new_player:
+		state.players[token] = {"name":name.left(12), "region":REGIONS.HOME, "travel_epoch":0, "travel_book":TRANSIT.fresh(), "mine_energy":100, "x":landing.x, "y":landing.y, "coins":120, "inventory":{"wood":12,"stone":4,"fiber":10,"radish_seed":5,"lettuce_seed":3,"wheat_seed":3,"sapling":2}, "receipts":{}, "harvests":0, "builds":0}
+		if landing==WANGAN_COAST.FERRY_LANDING:state.players[token][CHAPTER_ONE.PERSONAL_START]=true
 	else: state.players[token].name = name.left(12)
 	Village.ensure_player(state.players[token])
 	Collections.ensure_player(state.players[token])
@@ -485,20 +592,24 @@ func add_player(token: String, name: String) -> void:
 	var current := player_region(token)
 	switch_region(current)
 	var person: Dictionary = state.players[token]
-	if not can_stand(Vector2(person.x,person.y)):
-		var point := safe_arrival(REGIONS.spawn(current) if current != REGIONS.HOME else SPAWN)
+	person.erase(RESIDENT_GOALS.MASTER_BENCH_SEAT)
+	person.erase(REGIONS.Springs.REST_SEAT_KEY)
+	if not can_stand(Vector2(person.x,person.y)) or (new_player and not can_enter_room_floor(token,Vector2(person.x,person.y))):
+		var fallback:Vector2=landing if new_player else SPAWN
+		var point := safe_arrival(REGIONS.spawn(current) if current != REGIONS.HOME else fallback,token)
+		if point==Vector2.ZERO and current==REGIONS.HOME and fallback!=SPAWN:point=safe_arrival(SPAWN,token)
 		if point != Vector2.ZERO:
 			person.x = point.x
 			person.y = point.y
 	switch_region(REGIONS.HOME)
 
-func safe_arrival(preferred: Vector2) -> Vector2:
-	if can_stand(preferred):return preferred
+func safe_arrival(preferred: Vector2,token:="") -> Vector2:
+	if can_stand(preferred) and can_enter_room_floor(token,preferred):return preferred
 	for radius in range(1,5):
 		for y in range(-radius,radius+1):
 			for x in range(-radius,radius+1):
 				var candidate := preferred + Vector2(x,y)
-				if can_stand(candidate):return candidate
+				if can_stand(candidate) and can_enter_room_floor(token,candidate):return candidate
 	return Vector2.ZERO
 
 func player_region(token: String) -> String:
@@ -524,6 +635,14 @@ func island_project_mask() -> int:
 		| (int(SALT_PAN.repaired(state))<<3)
 		| (int(state.get("public_kitchen",{}).get("opened",false))<<4)
 		| (int(int(state.get("mine_depths",{}).get("unlocked",1))>=5)<<5))
+
+func island_news_project_mask() -> int:
+	var mine:Dictionary=state.get("mine_depths",{})
+	var local:=int(MINES.hoist_ready(mine)) \
+		| (int(int(mine.get("unlocked",1))>=MINES.MAX_DEPTH)<<1) \
+		| (int(state.get(WARM_SPRINGS.BATH_KEY,false))<<2) \
+		| (int(TEA_REVISIT.house_open(state))<<3)
+	return island_project_mask() | (local<<ISLAND_NOTES.PROJECTS.size())
 
 func festival_story_view() -> Dictionary:
 	var table:=COMMUNITY.table_cell(state)
@@ -567,11 +686,13 @@ func home_layer(field: String) -> Variant:
 
 ## T055 self-only order board for `token` (Session sends it to that player
 ## only). Read-only: lazy expiry is shown but committed on the next order action.
-func order_board(token: String) -> Dictionary:
+func order_board(token: String,channel:="village") -> Dictionary:
 	var person: Dictionary = state.players.get(token, {})
 	if person.is_empty():return {}
 	var now := float(state.time)
-	var view := ORDER_CATALOG.snapshot(person.get("orders", {}), now, ORDER_CATALOG.context_from_world(self, token))
+	var context:=ORDER_CATALOG.context_from_world(self,token)
+	context.channel=channel
+	var view := ORDER_CATALOG.snapshot(person.get("orders", {}), now, context)
 	view.board = state.get("board", false) == true
 	return view
 
@@ -581,7 +702,7 @@ static func market_cell(snapshot: Dictionary) -> Vector2i:
 
 ## T071 只給本人看的攤位摘要（Session 以 data.own_market 送出）。
 func market_view(token: String) -> Dictionary:
-	return MARKET.view(state,token,SHIPPING.prices(CROPS,FISH,OTHER_SALES))
+	return MARKET.view(state,token)
 
 ## T071 豐收接力：場地是否可用（已解鎖且五格都空；可用在用戶端的家園快照上）。
 static func harvest_available(snapshot: Dictionary) -> bool:
@@ -637,10 +758,55 @@ func swap_region_layers(region: String) -> void:
 		state[field] = other[field]
 		other[field] = value
 
+func _regional_guest(actor:String,public_id:String) -> String:
+	for guest:String in regional_tokens():
+		if guest!=actor and guest.sha256_text().left(16)==public_id:return guest
+	return ""
+
 func regional_tokens() -> Array:
 	return active_tokens.keys().filter(func(token): return player_region(token) == _region)
 
-func step(dt: float, active: bool) -> bool:
+const REST_DAWN := 360.0
+const REST_STEP := 1.0
+
+func night_rest_reason(token:String) -> String:
+	var person:Dictionary=state.players.get(token,{})
+	if person.is_empty():return "請先進入島上。"
+	var region:=player_region(token)
+	var cell:=Vector2i(floori(person.x),floori(person.y))
+	if region in MINES.IDS or (region==WARM_SPRINGS.REGION and WARM_SPRINGS.POOLS.upland.water.grow(3).has_point(cell)):
+		return "請先離開礦道或高地冷泉，再休息。"
+	if person.has(RESIDENT_GOALS.VOYAGE_START) or not person.get("fishing",{}).is_empty():
+		return "請先靠岸或收起釣竿，再休息。"
+	if TRADE.blocks_sleep(trade_offers):return "請先結束島民交換。"
+	if state.get("festival",{}).get("active",false):return "請先完成風鈴接力。"
+	for activity:Dictionary in [HARVEST.round_state(state),FISH_MEET.round_state(state),SHOWCASE.round_state(state)]:
+		if activity.active and activity.participants.get(token,{}).get("joined",false):
+			return "請先退出正在參加的活動。"
+	if fposmod(float(state.time),WEATHER.DAY_SECONDS)>=REST_DAWN:return "午夜 00:00 後才可休息到清晨。"
+	return ""
+
+func rest_until_dawn(token:String) -> Dictionary:
+	var reason:=night_rest_reason(token)
+	if not reason.is_empty():return fail(reason)
+	switch_region(REGIONS.HOME)
+	var before:=state.duplicate(true)
+	var before_undo:=_undo_ticks_at.duplicate(true)
+	var dawn:=floorf(float(state.time)/WEATHER.DAY_SECONDS)*WEATHER.DAY_SECONDS+REST_DAWN
+	# Resume the same world systems across the skipped interval without writing
+	# intermediate states. The final save commits the morning and its outputs together.
+	while float(state.time)<dawn:
+		var interval:=minf(REST_STEP,dawn-float(state.time))
+		if not step(interval,true,false):
+			_step_rollback(before,before_undo,step_error)
+			return fail("這一晚無法結算，時間與進度已保留。")
+	state.committed+=1
+	if not save():
+		_step_rollback(before,before_undo,STEP_FAIL_SAVE)
+		return fail("無法保存清晨進度，時間與進度已保留。")
+	return ok("早安！已休息到 06:00，農田與設備已結算。")
+
+func step(dt: float, active: bool, persist:bool=true) -> bool:
 	step_error = ""
 	if not active:return true
 	# Atomic tick: `before` is taken HOME-oriented (regional layers inside
@@ -659,15 +825,33 @@ func step(dt: float, active: bool) -> bool:
 		var local_changed := step_region(dt)
 		changed = changed or local_changed
 	switch_region(REGIONS.HOME)
+	if state.animal.has(CHICKEN_CUDDLE.FIELD) and (not active_tokens.has(str(state.animal[CHICKEN_CUDDLE.FIELD])) or CHICKEN_CUDDLE.holder(state,active_tokens).is_empty()):
+		CHICKEN_CUDDLE.clear(state.animal)
+		changed=true
+	for token:String in state.players:
+		var sailor:Dictionary=state.players[token]
+		if not sailor.has(RESIDENT_GOALS.VOYAGE_START):continue
+		if not active_tokens.has(token):
+			sailor.erase(RESIDENT_GOALS.VOYAGE_START)
+			sailor.erase(RESIDENT_GOALS.VOYAGE_CAPTAIN)
+			changed=true
+		elif float(state.time)-float(sailor[RESIDENT_GOALS.VOYAGE_START])>=RESIDENT_GOALS.VOYAGE_SECONDS:
+			sailor.erase(RESIDENT_GOALS.VOYAGE_START)
+			sailor.erase(RESIDENT_GOALS.VOYAGE_CAPTAIN)
+			sailor[RESIDENT_GOALS.VOYAGE_DONE]=true
+			changed=true
 	var freight_changed := MINE_FREIGHT.step(state)
 	var auto_changed:=MINE_AUTO_FREIGHT.step(state)
 	var tea_changed:=TEA_CERAMICS.step(state)
-	var market_changed:=MARKET.step(state,SHIPPING.prices(CROPS,FISH,OTHER_SALES))
+	var market_changed:=MARKET.step(state)
 	if HARVEST.step(state,active_tokens):market_changed=true # T071 豐收接力：離線放下、時間到結算
 	if FISH_MEET.step(state,active_tokens):market_changed=true # T071 河岸釣魚會：離線退出、時間到結算
 	if SHOWCASE.step(state,active_tokens):market_changed=true # T071 家園布置題：離線退出、時間到結算、冷卻後清空展示
-	var chicken_changed:=_store_chicken_egg()
 	var livestock_changed:=LIVESTOCK.step(state.livestock,float(state.time),state.objects,dt)
+	var automatic_collected:=AnimalCollector.step(self)
+	for tile in automatic_collected:_undo_mark_remote_chest(_undo_used,REGIONS.HOME,{"cell":tile})
+	livestock_changed=livestock_changed or not automatic_collected.is_empty()
+	var chicken_changed:=_store_chicken_egg()
 	if LIVESTOCK.collect_into_equipment(state.livestock,float(state.time)):livestock_changed=true
 	var livestock_chests:=LIVESTOCK.collect_into_chests(self)
 	if not livestock_chests.is_empty():
@@ -688,7 +872,7 @@ func step(dt: float, active: bool) -> bool:
 	# invalidation/expiry is persisted in the same save (or rolled back with it).
 	var undo_changed:=_undo_observe(_undo_used)
 	_undo_used = {}
-	if changed or freight_changed or auto_changed or tea_changed or salt_changed or undo_changed or livestock_changed or market_changed or chicken_changed:
+	if persist and (changed or freight_changed or auto_changed or tea_changed or salt_changed or undo_changed or livestock_changed or market_changed or chicken_changed):
 		state.committed += 1
 		if not save():
 			_step_rollback(before,undo_ticks_before,STEP_FAIL_SAVE)
@@ -705,13 +889,7 @@ func _step_rollback(before: Dictionary, undo_ticks_before: Dictionary, code: Str
 	step_error = code
 
 func _store_chicken_egg() -> bool:
-	var animal:Dictionary=state.animal
-	var stored:=int(animal.get("basket_eggs",EGG_BASKET_CAPACITY))
-	var due:=float(animal.egg_ready)
-	if stored>=EGG_BASKET_CAPACITY or due<0.0 or due>float(state.time):return false
-	animal.basket_eggs=stored+1
-	animal.egg_ready=-1.0
-	return true
+	return LIVESTOCK.store_chicken_cycle(state.animal,state.animal,"basket_eggs",EGG_BASKET_CAPACITY,float(state.time))>0
 
 static func chicken_status(animal:Dictionary,now:float) -> String:
 	var stored:=int(animal.get("basket_eggs",0))
@@ -723,7 +901,10 @@ static func chicken_status(animal:Dictionary,now:float) -> String:
 	return "糯米雞想吃一份飼料。"
 
 func pump_rate() -> int:
-	if _region == REGIONS.LANYANG and state.lanyang_life.repaired:
+	return pump_rate_for(_region,state)
+
+static func pump_rate_for(region:String,snapshot:Dictionary)->int:
+	if region==REGIONS.LANYANG and snapshot.get("lanyang_life",{}).get("repaired",false):
 		return LANYANG_LIFE.REPAIRED_PUMP_RATE
 	return INDUSTRY.PUMP_RATE
 
@@ -809,6 +990,9 @@ func step_region(dt: float) -> bool:
 ## sprinkler water nor credits irrigation. Machines/queues keep their own dt
 ## rules; only crops are segmented by day here. Returns true when any plot's wet
 ## flag flipped, so rain/drying transitions are saved (or rolled back with step).
+static func supply_box_unlocked(person:Dictionary,bobo_completed:=false) -> bool:
+	return exploration_level(exploration_points(person))>=SUPPLY_BOX_LEVEL or bobo_completed or RESIDENT_GOALS.done(person,"bobo").has(3)
+
 static func exploration_points(person:Dictionary) -> int:
 	var discovered:Dictionary=person.get("explored_regions",{}).duplicate()
 	discovered.merge(person.get("travel_book",{}).get("visited",{}))
@@ -848,12 +1032,97 @@ static func farming_level(person:Dictionary) -> int:
 
 ## T066 好感：居民所在的 [地區, 格子]。茶茶與星禾不在 Village.NPCS，站位沿用
 ## 茶園與水圳既有的互動格；介面與伺服器共用這一處判定。
+static func milu_recipe_cell(snapshot:Dictionary,site:String) -> Vector2i:
+	match site:
+		"board":return Vector2i(40,29)
+		"shop":return Village.resident_cell(snapshot,"xiaoli")
+		"table":
+			if snapshot.get("picnic",false):return COMMUNITY.table_cell(snapshot)
+	return COMMUNITY.NO_CELL
+
 static func achao_route_cell(site:String) -> Vector2i:
 	match site:
 		"board":return Vector2i(40,29)
 		"ferry":return TRANSIT.POINTS[REGIONS.HOME].ferry.cell
 		"river":return FISH_MEET.SIGN
 	return Vector2i(-1,-1)
+
+func _shared_garden_choose(token:String,player:Dictionary,choice:String) -> Dictionary:
+	var goals:=RESIDENT_GOALS
+	var pots:Array=state.get(goals.GARDEN_KEY,[])
+	if pots.size()>=goals.GARDEN_POTS.size():return fail("三盆花都選好了，可以向星禾回報。")
+	var helper:=goals.GARDEN_NPCS.has(choice)
+	var stage:=RESIDENT_BOND.stage(player,"xinghe")
+	if stage<4 and (pots.is_empty() or helper):return fail("先請星禾的好友來開啟共同花園。")
+	if not helper and choice not in goals.GARDEN_FLOWERS:return fail("請從三種花裡挑一種。")
+	var author:=choice if helper else token
+	for pot:Dictionary in pots:
+		if pot.npc==helper and pot.author==author:return fail("這位作者已經選過一盆了。")
+	var flower:String=goals.GARDEN_NPCS[choice].flower if helper else choice
+	pots.append({"npc":helper,"author":author,"flower":flower})
+	state[goals.GARDEN_KEY]=pots
+	return ok("三盆花都選好了，去找星禾掛上花園牌。" if pots.size()==goals.GARDEN_POTS.size() else "花盆已放好，花園記下了選花的人。")
+
+func _achao_voyage(token:String,player:Dictionary,cell:Vector2i,operation:String) -> Dictionary:
+	var goals:=RESIDENT_GOALS
+	if operation=="photo":
+		if not player.has(goals.VOYAGE_START) or RESIDENT_BOND.stage(player,"achao")<4:
+			return fail("和阿潮成為好友後，在航行中才能拍合照。")
+		player[goals.VOYAGE_PHOTO]=true
+		return ok("合照已記在手帳，回到碼頭後可找阿潮。")
+	if operation=="return":
+		if not player.has(goals.VOYAGE_START):return fail("小船已停在碼頭。")
+		player.erase(goals.VOYAGE_START)
+		player.erase(goals.VOYAGE_CAPTAIN)
+		for sailor:Dictionary in state.players.values():
+			if sailor.get(goals.VOYAGE_CAPTAIN)==token:
+				sailor.erase(goals.VOYAGE_CAPTAIN)
+				sailor.erase(goals.VOYAGE_START)
+		return ok("已返回碼頭，想再出發時可以找阿潮。")
+	if _region!=REGIONS.HOME or cell!=RESIDENT_BOND.dock_cell(state) or RESIDENT_BOND.stage(player,"achao")<3:
+		return fail("取得阿潮的信任後，到風鈴渡口碼頭找他。")
+	if player.has(goals.VOYAGE_START):return fail("小船已經出發。")
+	if not TRANSIT.boat_open(state):return fail("先到公告板完成碼頭與小船工程。")
+	match operation:
+		"repair":
+			if state.get(goals.DOCK_LIGHT,false):return fail("碼頭燈已經亮起來了。")
+			for item:String in goals.VOYAGE_LIGHT_COST:
+				if int(player.inventory.get(item,0))<int(goals.VOYAGE_LIGHT_COST[item]):return fail("修燈需要 4 份木材和 1 份銅礦。")
+			for item:String in goals.VOYAGE_LIGHT_COST:give(player.inventory,item,-int(goals.VOYAGE_LIGHT_COST[item]))
+			state[goals.DOCK_LIGHT]=true
+			return ok("碼頭燈重新亮起來了。")
+		"join":
+			var occupied:Dictionary={}
+			for sailor:Dictionary in state.players.values():
+				if sailor.has(goals.VOYAGE_CAPTAIN):occupied[sailor[goals.VOYAGE_CAPTAIN]]=true
+			for captain:String in active_tokens:
+				var vessel:Dictionary=state.players[captain]
+				if captain==token or occupied.has(captain) or not vessel.has(goals.VOYAGE_START) or vessel.has(goals.VOYAGE_CAPTAIN):continue
+				var started:=float(vessel[goals.VOYAGE_START])
+				if float(state.time)-started>goals.VOYAGE_BOARD_WINDOW:continue
+				player.erase("fishing")
+				player[goals.VOYAGE_START]=started
+				player[goals.VOYAGE_CAPTAIN]=captain
+				return ok("你坐上朋友的小船。")
+			return fail("沒有空船位，請在朋友出航後五秒內加入。")
+		"depart":
+			if not state.get(goals.DOCK_LIGHT,false):return fail("先修好碼頭燈，再出發試航。")
+			player.erase("fishing")
+			player[goals.VOYAGE_START]=float(state.time)
+			return ok("小船出發。按返回鍵或互動鍵可提前返航。")
+		"paint":
+			if not goals.done(player,"achao").has(3):return fail("先完成阿潮的試航事件。")
+			if player.get(goals.VOYAGE_PAINT,false):player.erase(goals.VOYAGE_PAINT)
+			else:player[goals.VOYAGE_PAINT]=true
+			return ok("已換成藍白船身。" if player.has(goals.VOYAGE_PAINT) else "已換回原木船身。")
+	return fail("無法辨識這次試航操作。")
+
+static func aru_bench_active(snapshot:Dictionary,site:Vector2i) -> bool:
+	for person:Dictionary in snapshot.get("players",{}).values():
+		var at:=float(person.get(RESIDENT_GOALS.ARU_REST_KEY,-RESIDENT_GOALS.ARU_REST_SECONDS))
+		if person.get("region",REGIONS.HOME)==REGIONS.HOME and float(snapshot.time)-at<RESIDENT_GOALS.ARU_REST_SECONDS and Vector2(person.x,person.y).distance_to(Vector2(site)+Vector2(0.5,0.5))<=3.2:
+			return true
+	return false
 
 static func bond_place(snapshot:Dictionary, resident:String) -> Array:
 	if resident=="chacha":return [TEA_CERAMICS.MAOKONG,TEA_CERAMICS.TEA_NPC]
@@ -867,7 +1136,7 @@ static func bond_place(snapshot:Dictionary, resident:String) -> Array:
 	return [Village.npc_region(resident),Village.resident_cell(snapshot,resident)]
 
 static func _record_crop_sale(player:Dictionary,item:String) -> void:
-	if CROPS.has(item) and not player.has(RESIDENT_GOALS.CROP_TRADE_KEY):
+	if CROPS.has(CROP_CATALOG.base_kind(item)) and not player.has(RESIDENT_GOALS.CROP_TRADE_KEY):
 		player[RESIDENT_GOALS.CROP_TRADE_KEY]=RESIDENT_GOALS.CROP_SOLD
 
 static func crop_grows_in_season(kind:String, region:String, tile:Vector2i, time:float) -> bool:
@@ -939,6 +1208,31 @@ func can_harvest_plot(plot:Dictionary,token:String,machine:=false) -> bool:
 	var access:String=plot.get("harvest_access","owner" if machine else "island")
 	return access=="island" or (access=="friend" and plot.get("harvest_friend","")==token)
 
+func _blocks_sprinkler(tile:Vector2i) -> bool:
+	var obj:Dictionary=state.objects.get(key(tile),{})
+	var kind:String=obj.get("type","")
+	return kind in ["wall","window"] or (kind=="door" and not obj.get("open",false))
+
+func _sprinkler_reaches(origin:Vector2i, offset:Vector2i) -> bool:
+	# Trace from tile center to tile center. When the ray hits a corner,
+	# either of the two adjoining tiles can block it.
+	var span:=offset.abs()
+	var direction:=offset.sign()
+	var crossed:=Vector2i.ZERO
+	var tile:=origin
+	while crossed!=span:
+		var x_cross:=(2*crossed.x+1)*span.y
+		var y_cross:=(2*crossed.y+1)*span.x
+		var step_x:=crossed.x<span.x and (crossed.y==span.y or x_cross<=y_cross)
+		var step_y:=crossed.y<span.y and (crossed.x==span.x or y_cross<=x_cross)
+		if step_x and step_y:
+			if _blocks_sprinkler(tile+Vector2i(direction.x,0)) or _blocks_sprinkler(tile+Vector2i(0,direction.y)):return false
+		var step:=Vector2i(int(step_x),int(step_y))
+		crossed+=step
+		tile+=step*direction
+		if _blocks_sprinkler(tile):return false
+	return true
+
 func pending_sprinklers(now:float,water_plan:Dictionary) -> Dictionary:
 	var pending:Dictionary={}
 	for k in state.objects:
@@ -946,8 +1240,10 @@ func pending_sprinklers(now:float,water_plan:Dictionary) -> Dictionary:
 		if not INDUSTRY.SPRINKLER_CAPACITIES.has(device.type) or not device.enabled or int(water_plan.get(k,device.water))==0 or float(device.next_water)>now:
 			continue
 		var targets:Array[String]=[]
+		var origin:=cell(k)
 		for offset in INDUSTRY.sprinkler_offsets(device.type):
-			var crop_key:=key(cell(k)+offset)
+			if device.get("sprinkler_daily",false) and not _sprinkler_reaches(origin,offset):continue
+			var crop_key:=key(origin+offset)
 			var crop:Dictionary=state.crops.get(crop_key,{})
 			if crop.get("kind","")!="" and not crop.get("wet",false) and crop.get("owner","")==device.owner:
 				targets.append(crop_key)
@@ -958,6 +1254,7 @@ func step_sprinklers(pending:Dictionary) -> bool:
 	var watered:=false
 	for k in pending:
 		var device:Dictionary=state.objects[k]
+		var used:=false
 		for crop_key in pending[k]:
 			if int(device.water)==0:break
 			if state.crops[crop_key].wet:continue
@@ -969,7 +1266,12 @@ func step_sprinklers(pending:Dictionary) -> bool:
 			device.water=int(device.water)-1
 			device.last_water=float(state.time)
 			watered=true
-		device.next_water=float(state.time)+SPRINKLER_INTERVAL
+			used=true
+		if device.get("sprinkler_daily",false):
+			if used:
+				device.next_water=(floorf(float(state.time)/WEATHER.DAY_SECONDS)+1.0)*WEATHER.DAY_SECONDS
+		else:
+			device.next_water=float(state.time)+SPRINKLER_INTERVAL
 	return watered
 
 # ---------------------------------------------------------------------------
@@ -1003,9 +1305,9 @@ func step_processing(now: float) -> bool:
 	var changed:=false
 	for k in state.objects:
 		var device=state.objects[k]
-		if not device is Dictionary or (str(device.get("type","")) not in LOGISTICS.PROCESSORS and device.get("type") not in ["seed_maker","loom","glass_furnace","jam_pot"]) or not device.has("processing"):continue
+		if not device is Dictionary or (str(device.get("type","")) not in LOGISTICS.PROCESSORS and device.get("type") not in INDUSTRY.MANUAL_STATIONS) or not device.has("processing"):continue
 		if device.has("job") or device.get("auto_enabled",false) or not device.processing is Dictionary:continue
-		var advanced:Dictionary=COOKING_QUEUE.advance(device.processing,processing_recipes(str(device.type)),now)
+		var advanced:Dictionary=COOKING_QUEUE.advance(device.processing,processing_recipes(str(device.type),true),now)
 		if not advanced.ok or not advanced.changed:continue
 		device.processing=advanced.state
 		var used_here:Dictionary=_undo_used.get(_region,{})
@@ -1015,12 +1317,12 @@ func step_processing(now: float) -> bool:
 	return changed
 
 ## INDUSTRY.PROCESS entries whose station is `station` (fresh copy).
-static func processing_recipes(station: String) -> Dictionary:
-	if station=="seed_maker":return SEED_MAKER.recipes(CROPS)
+static func processing_recipes(station: String, include_retired:=false) -> Dictionary:
+	if station=="seed_maker":return SEED_MAKER.recipes(CROPS,include_retired)
 	var out:={}
 	for kind in INDUSTRY.PROCESS:
 		var recipe:Dictionary=INDUSTRY.PROCESS[kind]
-		if recipe.get("station","")==station:out[kind]=recipe.duplicate(true)
+		if INDUSTRY.uses_station(kind,station):out[kind]=recipe.duplicate(true)
 	return out
 
 ## True when the stove's queue holds no active, waiting or unclaimed ready work.
@@ -1081,6 +1383,9 @@ func _queue_new_id(queue: Dictionary) -> String:
 	return ""
 
 ## Replaces the live inventory contents in place so other references stay valid.
+static func has_recipe(person:Dictionary,id:String) -> bool:
+	return RECIPES.has(id) and (id!=RESIDENT_GOALS.SEAFOOD_RICE or RESIDENT_GOALS.done(person,"achao").has(3))
+
 static func _cooking_commit_inventory(inv: Dictionary, items: Dictionary) -> void:
 	inv.clear()
 	inv.merge(items)
@@ -1098,7 +1403,7 @@ func _cooking_action(token: String, stove: Dictionary, action: String, extra: St
 	var inv:Dictionary=player.inventory
 	var now:=float(state.time)
 	if action in ["cook","queue_cook"]:
-		if not RECIPES.has(extra):return fail("還沒有這份食譜")
+		if not has_recipe(player,extra):return fail("還沒有這份食譜")
 		var base:Dictionary
 		if stove.has("cooking"):
 			if not stove.cooking is Dictionary:return fail(COOKING_MSG_CORRUPT)
@@ -1171,18 +1476,111 @@ func _cooking_action(token: String, stove: Dictionary, action: String, extra: St
 	cancel_result.refunded=(cancelled.refunded as Dictionary).duplicate()
 	return cancel_result
 
+static func master_bench_anchor(objects:Dictionary,tile:Vector2i) -> Vector2i:
+	var piece:Dictionary=objects.get(key(tile),{})
+	return tile-master_bench_offset(piece) if piece.get("type") in RESIDENT_GOALS.DOUBLE_BENCHES and piece.get("bench_end",false) else tile
+
+static func master_bench_offset(piece:Dictionary) -> Vector2i:
+	return Vector2i.DOWN if piece.get("bench_vertical",false) else Vector2i.RIGHT
+
+static func station_anchor(objects:Dictionary,tile:Vector2i) -> Vector2i:
+	var obj:Dictionary=objects.get(key(tile),{})
+	var part:=INDUSTRY.square_part(obj)
+	var cells:=INDUSTRY.station_cells(str(obj.get("type","")),INDUSTRY.is_vertical(obj))
+	return tile-cells[part] if part in range(cells.size()) else tile
+
+func _write_station_parts(anchor:Vector2i,obj:Dictionary) -> void:
+	var field:=INDUSTRY.square_part_field(obj.type)
+	var cells:=INDUSTRY.station_cells(obj.type,INDUSTRY.is_vertical(obj))
+	for part in range(1,cells.size()):
+		var child:={"type":obj.type,"owner":obj.owner,"items":{},field:part}
+		if INDUSTRY.is_vertical(obj):child[INDUSTRY.vertical_field(obj.type)]=true
+		state.objects[key(anchor+cells[part])]=child
+
+func _footprint_space(builder:String,anchor:Vector2i,offsets:Array,ignore:Vector2i=Vector2i(-1000,-1000)) -> Dictionary:
+	for offset:Vector2i in offsets:
+		var spot:=anchor+offset
+		if not allows_public_build(builder,spot):return fail(PUBLIC_BUILD_DENIED)
+		var floor_permission:=PLOT_PERMISSIONS.placement_floor(self,builder,spot)
+		if not floor_permission.ok:return fail(floor_permission.message)
+		var cell_key:=key(spot)
+		if water(spot) or protected(spot) or state.crops.has(cell_key) or resource(spot)!="":
+			return fail("整件家具需要落在可施工的空地。")
+		if state.objects.has(cell_key) and spot-ignore not in offsets:
+			return fail("整件家具的占地都需要留空。")
+		for token:String in regional_tokens():
+			var person:Dictionary=state.players[token]
+			if Vector2(person.x,person.y).distance_to(Vector2(spot)+Vector2(0.5,0.5))<0.8:
+				return fail("占地範圍有人，請先讓開。")
+	return ok("")
+
+func _master_bench_end(anchor:Vector2i,obj:Dictionary) -> void:
+	var end:={"type":obj.type,"owner":obj.owner,"items":{},"bench_end":true}
+	if obj.get("bench_vertical",false):end.bench_vertical=true
+	state.objects[key(anchor+master_bench_offset(obj))]=end
+
+func _master_bench_clear(anchor:Vector2i) -> void:
+	var seat_key:=key(anchor)
+	for person:Dictionary in state.players.values():
+		if person.get("region",REGIONS.HOME)==_region and person.get(RESIDENT_GOALS.MASTER_BENCH_SEAT,{}).get("cell")==seat_key:
+			person.erase(RESIDENT_GOALS.MASTER_BENCH_SEAT)
+
+func _master_bench_sit(token:String,player:Dictionary,tile:Vector2i) -> Dictionary:
+	var goals:=RESIDENT_GOALS
+	var anchor:=master_bench_anchor(state.objects,tile)
+	var kind=state.objects.get(key(anchor),{}).get("type")
+	if kind not in goals.DOUBLE_BENCHES or (kind==goals.MASTER_BENCH and _region!=REGIONS.HOME):return fail("請靠近長椅。")
+	if player.has(goals.MASTER_BENCH_SEAT):
+		player.erase(goals.MASTER_BENCH_SEAT)
+		return ok("你從長椅上起身。")
+	var seat:={"cell":key(anchor),"side":absi(tile.x-anchor.x)+absi(tile.y-anchor.y)}
+	return _claim_seat(token,player,seat,"你在長椅上坐了一會兒。")
+
+func _claim_seat(token:String,player:Dictionary,seat:Dictionary,message:String) -> Dictionary:
+	var field:=RESIDENT_GOALS.MASTER_BENCH_SEAT
+	for other:String in regional_tokens():
+		if other!=token and state.players[other].get(field)==seat:return fail("這個座位有人了。")
+	player.erase("fishing")
+	player[field]=seat
+	return ok(message)
+
+func _sit_at_inn(person:Dictionary,choice:String) -> void:
+	var seat:Vector2i=REGIONS.Springs.REST_SEATS[choice]
+	person[REGIONS.Springs.REST_SEAT_KEY]=choice
+	person.x=seat.x+0.55
+	person.y=seat.y+0.66
+
 func move_player(token: String, direction: Vector2, dt: float) -> void:
 	if not state.players.has(token): return
 	var p: Dictionary = state.players[token]
+	if p.has(RESIDENT_GOALS.VOYAGE_START):return
 	var pos := Vector2(p.x, p.y)
 	switch_region(player_region(token))
+	if _region==REGIONS.HOME and not direction.is_zero_approx() and Rect2(WANGAN_MEMORY.HOUSE_WALL).grow(0.22).has_point(pos):
+		if WANGAN_MEMORY.courtyard_available(state) and not can_stand(pos):
+			var yard:=safe_arrival(Vector2(WANGAN_MEMORY.COURT_SIGN)+Vector2(0.5,0.5),token)
+			if yard!=Vector2.ZERO:pos=yard
+	if _region==TEA_CERAMICS.MAOKONG and not direction.is_zero_approx() \
+		and Rect2(Vector2(TEA_REVISIT.HOUSE_SITE),Vector2.ONE).grow(0.22).has_point(pos) \
+		and TEA_REVISIT.house_open(state) and not can_stand(pos):
+		var by_table:=safe_arrival(Vector2(TEA_REVISIT.HOUSE_SITE+Vector2i.DOWN)+Vector2(0.5,0.5))
+		if by_table!=Vector2.ZERO:pos=by_table
 	var next := pos + direction.limit_length()*3.6*dt
-	if direction.length_squared()>0.01:p.erase("fishing")
+	if direction.length_squared()>0.01:
+		p.erase("fishing")
+		p.erase(RESIDENT_GOALS.MASTER_BENCH_SEAT)
+		p.erase(REGIONS.Springs.REST_SEAT_KEY)
 	# Separate axes; corners of a small foot box must all remain passable.
-	if can_stand(Vector2(next.x,pos.y)): pos.x=next.x
-	if can_stand(Vector2(pos.x,next.y)): pos.y=next.y
+	var horizontal:=Vector2(next.x,pos.y)
+	if can_stand(horizontal) and can_enter_room_floor(token,horizontal,pos) and can_enter_mud_alcove(token,horizontal,pos):pos.x=next.x
+	var vertical:=Vector2(pos.x,next.y)
+	if can_stand(vertical) and can_enter_room_floor(token,vertical,pos) and can_enter_mud_alcove(token,vertical,pos):pos.y=next.y
 	p.x=pos.x
 	p.y=pos.y
+	if _region==MINES.MUD_REGION and p.has("mud_duel"):
+		var duel:Dictionary=p.mud_duel
+		if float(state.time)<float(duel.strike_at) and absf(pos.x-float(duel.origin_x))>=0.65:
+			duel.dodged=true
 	switch_region(REGIONS.HOME)
 
 func can_stand(pos: Vector2) -> bool:
@@ -1190,6 +1588,31 @@ func can_stand(pos: Vector2) -> bool:
 		var v: Vector2=pos+offset
 		if blocked(Vector2i(floori(v.x),floori(v.y))): return false
 	return true
+
+func can_enter_room_floor(token:String,to:Vector2,from:=Vector2.INF) -> bool:
+	if token.is_empty() or _region!=REGIONS.HOME:return true
+	var floor_piece:Dictionary=state.ground.get(key(Vector2i(to.floor())),{})
+	if not floor_piece.get("owner_visit",false) or floor_piece.get("owner")==token or floor_piece.get("visit_guest")==token:return true
+	if from==Vector2.INF:return false
+	# A visitor already inside when access changes can still walk out.
+	var previous:Dictionary=state.ground.get(key(Vector2i(from.floor())),{})
+	return previous.get("owner_visit",false) and previous.get("owner")==floor_piece.get("owner")
+
+func can_enter_mud_alcove(token:String,to:Vector2,from:Vector2) -> bool:
+	return _region!=MINES.MUD_REGION or to.y>=MINES.MUD_ALCOVE_EDGE or from.y<MINES.MUD_ALCOVE_EDGE or int(state.players[token].get("mud_alcove",0))>=1
+
+func visit_restriction_problem(token:String,area:Dictionary) -> String:
+	if area.cells.is_empty():return "請選擇可站立的木地板。"
+	if not area.sealed and (area.truncated or area.area>MAX_OUTDOOR_VISIT_TILES):
+		return "戶外私人地塊最多可設定 %d 格相連木地板。"%MAX_OUTDOOR_VISIT_TILES
+	for spot:Vector2i in area.cells:
+		if state.ground[key(spot)].owner!=token or protected(spot) or PUBLIC_BUILD_PLOT.has_point(spot):
+			return "只能限制全由自己鋪設、且避開公共通道的地塊。"
+		if spot in [Vector2i(SPAWN),Vector2i(WANGAN_COAST.FERRY_LANDING),Vector2i(REGIONS.spawn(REGIONS.HOME)),REGIONS.exit_cell(REGIONS.HOME)]:
+			return "出生點和出入口需保持開放。"
+		if not area.sealed and VILLAGE_LAYOUT.path_at(Vector2(spot)+Vector2(0.5,0.5)):
+			return "渡口的步道需保持開放。"
+	return ""
 
 func act(token: String, request_id: String, action: String, p: Vector2i, extra: String="") -> Dictionary:
 	if not state.players.has(token): return {"ok":false,"message":"尚未加入世界"}
@@ -1205,6 +1628,8 @@ func act(token: String, request_id: String, action: String, p: Vector2i, extra: 
 	switch_region(REGIONS.HOME)
 	var player: Dictionary=state.players[token]
 	if player.receipts.has(request_id): return player.receipts[request_id]
+	if player.has(RESIDENT_GOALS.VOYAGE_START) and action!=RESIDENT_GOALS.VOYAGE_ACTION:return fail("試航中，先返回碼頭再操作。")
+	if player.has(RESIDENT_GOALS.MASTER_BENCH_SEAT) and action not in [RESIDENT_GOALS.MASTER_BENCH_SIT,RESIDENT_GOALS.INSCRIBE_ACTION,"inn_pool_sit","move_object","remove"]:return fail("起身後就能繼續操作。")
 	var before := state.duplicate(true)
 	var region := player_region(token)
 	var builds_before:=int(player.get("builds",0))
@@ -1220,6 +1645,10 @@ func act(token: String, request_id: String, action: String, p: Vector2i, extra: 
 	if result.ok and action=="build" and not build_style.is_empty():
 		var layer := BUILD_STYLES.expected_layer(extra)
 		state[layer][key(p)].style=build_style
+	if result.ok and player_region(token)!=region:
+		player.erase(REGIONS.Springs.REST_SEAT_KEY)
+	if result.ok and str(state.animal.get(CHICKEN_CUDDLE.FIELD,""))==token and (player_region(token)!=REGIONS.HOME or player.has(RESIDENT_GOALS.VOYAGE_START) or player.has(RESIDENT_GOALS.MASTER_BENCH_SEAT) or player.has(REGIONS.Springs.REST_SEAT_KEY)):
+		CHICKEN_CUDDLE.clear(state.animal)
 	if not result.ok:
 		switch_region(REGIONS.HOME)
 		# Most rejected base actions have not mutated anything. Keep their live
@@ -1261,8 +1690,13 @@ func act(token: String, request_id: String, action: String, p: Vector2i, extra: 
 			_undo_mark_remote_chest(used,region,{"cell":result.source_cell})
 		_undo_observe(used)
 		if not undo_intent.is_empty():
-			_undo_capture(token,region,action,str(undo_intent.label),before,builds_before)
+			_undo_capture(token,region,action,str(undo_intent.label),before,builds_before,not result.get("guest_dismantle",false))
+		result.erase("guest_dismantle")
 		player=state.players[token]
+		Collections.note_acquisitions(player,before.players[token].inventory,CROPS,RECIPES)
+		if not staged_trade.is_empty():
+			for other:String in state.players:
+				if other!=token:Collections.note_acquisitions(state.players[other],before.players[other].inventory,CROPS,RECIPES)
 		state.committed += 1
 		player.receipts[request_id]=result
 		# Keep a bounded retry window; transport session IDs reject old sessions.
@@ -1376,6 +1810,7 @@ func _trade_near(token: String, partner: String) -> bool:
 	if not state.players.has(partner) or player_region(token)!=player_region(partner):return false
 	var a: Dictionary = state.players[token]
 	var b: Dictionary = state.players[partner]
+	if a.has(RESIDENT_GOALS.VOYAGE_START) or b.has(RESIDENT_GOALS.VOYAGE_START):return false
 	return Vector2(a.x,a.y).distance_to(Vector2(b.x,b.y))<=3.2
 
 ## Discards the working state (whatever its orientation) and reinstates the
@@ -1442,6 +1877,7 @@ func _reconcile_auto_roofs(token: String, region: String, before: Dictionary, to
 	if add.is_empty() and remove.is_empty():return {"ok":true,"added":0,"removed":0,"summary":""}
 	if not state.players.has(token):return {"ok":false,"message":"無法確認付款者，這次沒有施工"}
 	for roof_key in add:
+		if not allows_public_build(token,cell(roof_key)):return fail(PUBLIC_BUILD_DENIED)
 		var base=state.ground.get(roof_key)
 		var roof=add[roof_key]
 		if state.roofs.has(roof_key) or not (base is Dictionary) or str(base.get("type",""))!="floor":return {"ok":false,"message":"屋頂施工計畫有誤，這次沒有施工"}
@@ -1694,7 +2130,7 @@ func _undo_observe(used: Dictionary) -> bool:
 ## remove/move_object (base + auto roofs already applied, oriented HOME). Any
 ## capture problem still replaces the previous entry, with an untracked marker,
 ## so an older construction never resurfaces as "last".
-func _undo_capture(token: String, region: String, action: String, label: String, before: Dictionary, builds_before: int) -> void:
+func _undo_capture(token: String, region: String, action: String, label: String, before: Dictionary, builds_before: int, reversible:=true) -> void:
 	var hist:=_history(true)
 	if hist.is_empty():return
 	var last:Dictionary=hist.last
@@ -1723,7 +2159,7 @@ func _undo_capture(token: String, region: String, action: String, label: String,
 		"created_utc":created,"expires_utc":created+CONSTRUCTION_HISTORY.WINDOW_SECONDS,
 		"status":"invalid","reason":"untracked","builds":builds_delta if builds_ok else fallback_builds,
 		"record":{},"watch":{}}
-	if builds_ok:
+	if builds_ok and reversible:
 		var source:Dictionary=before if region==REGIONS.HOME else before.regions.get(region,{})
 		var prior:={}
 		for field in CONSTRUCTION_HISTORY.TILE_LAYERS:
@@ -1825,6 +2261,10 @@ func _undo_restore_problem(token: String, changes: Dictionary, staged: Dictionar
 			var parsed:=CONSTRUCTION_HISTORY.parse_tile(str(tile))
 			if not parsed.ok:return CONSTRUCTION_UNDO.MSG_RECORD
 			var c:Vector2i=parsed.cell
+			if layer_changes[tile].before!=null and not allows_public_build(token,c):return PUBLIC_BUILD_DENIED
+			if layer=="objects" and layer_changes[tile].before!=null:
+				var floor_permission:=PLOT_PERMISSIONS.placement_floor(self,token,c)
+				if not floor_permission.ok:return floor_permission.message
 			# T042 defence in depth: never let an undo add/remove/replace a donated
 			# object or the ground beneath it (registration already closed watchers).
 			if layer!="roofs" and c in kitchen:return PUBLIC_KITCHEN.MSG_LOCKED
@@ -1837,6 +2277,10 @@ func _undo_restore_problem(token: String, changes: Dictionary, staged: Dictionar
 						topology.append(c)
 						break
 			var restored=change.before
+			if layer=="objects":
+				var mounted:Dictionary=staged.objects.get(key(c+Vector2i.DOWN),{})
+				if mounted.get("type") in WALL_FIXTURES.KINDS and not WALL_FIXTURES.has_support(staged.objects,c+Vector2i.DOWN,str(mounted.owner)):
+					return WALL_FIXTURES.REMOVE_MESSAGE
 			if restored==null:continue
 			if not is_land(c) or water(c) or protected(c):return UNDO_MSG_TERRAIN
 			var kind:=str(restored.get("type",""))
@@ -1847,6 +2291,8 @@ func _undo_restore_problem(token: String, changes: Dictionary, staged: Dictionar
 				continue
 			if resource(c)!="" or state.crops.has(tile) or state.forest.has(tile):return UNDO_MSG_TERRAIN
 			if layer!="objects":continue
+			if kind in WALL_FIXTURES.KINDS and not WALL_FIXTURES.has_support(staged.objects,c,str(restored.owner)):
+				return WALL_FIXTURES.SUPPORT_MESSAGE
 			if kind in UNDO_SOLID or (kind=="door" and not restored.get("open",false)):solid[tile]=true
 			if kind=="mine_drill" and (_region not in MINE_DRILL.REGIONS or int(state.mine_depths.unlocked)<5 or MINE_DRILL.placement(c)<0 or int(restored.get("dir",-1))!=MINE_DRILL.placement(c)):return UNDO_MSG_LOCKED
 			if kind=="waterworks" and int(state.mine_depths.unlocked)<4:return UNDO_MSG_LOCKED
@@ -1857,7 +2303,7 @@ func _undo_restore_problem(token: String, changes: Dictionary, staged: Dictionar
 			limited["%s|%s"%[kind,str(restored.get("owner",""))]]=[kind,str(restored.get("owner",""))]
 	# Per-owner limits on the staged layers (region-local like build; drills and
 	# waterworks also world-wide; one drill per mine layer).
-	var local_limits:={"sprinkler":SPRINKLER_LIMIT,"medium_sprinkler":SPRINKLER_LIMIT,"forester":FORESTRY.LIMIT,"conveyor":LOGISTICS.BELT_LIMIT}
+	var local_limits:={"sprinkler":SPRINKLER_LIMIT,"medium_sprinkler":SPRINKLER_LIMIT,"large_sprinkler":SPRINKLER_LIMIT,"forester":FORESTRY.LIMIT,"conveyor":LOGISTICS.BELT_LIMIT}
 	local_limits.merge(INDUSTRY.LIMITS)
 	var staged_objects:Dictionary=staged.objects
 	for pair in limited.values():
@@ -1907,6 +2353,10 @@ func _undo_apply(token: String, id: String) -> Dictionary:
 			var restored=layer_changes[tile].before
 			if restored==null:target.erase(tile)
 			else:target[tile]=(restored as Dictionary).duplicate(true)
+	if _region==REGIONS.HOME:
+		for tile:String in changes.objects:
+			if state.objects.get(tile,{}).get("type") not in RESIDENT_GOALS.DOUBLE_BENCHES+[INDUSTRY.FOOT_BATH]:
+				_master_bench_clear(cell(tile))
 	var inventories:Dictionary=check.prepared.inventories
 	for owner in inventories:state.players[owner].inventory=inventories[owner]
 	var player:Dictionary=state.players[token]
@@ -1954,6 +2404,22 @@ func undo_summary(token: String) -> Dictionary:
 
 func _apply(token: String, action: String, p: Vector2i, extra: String, build_style: String = "") -> Dictionary:
 	var player: Dictionary=state.players[token]
+	var cuddler:=CHICKEN_CUDDLE.holder(state,active_tokens)
+	if action==CHICKEN_CUDDLE.RELEASE:
+		if _region!="home" or cuddler!=token:return fail("現在沒有抱著糯米雞。")
+		CHICKEN_CUDDLE.clear(state.animal)
+		return ok("輕輕放開，糯米雞回雞圈休息了。")
+	if action==CHICKEN_CUDDLE.ACTION:
+		if _region!="home" or p!=CHICKEN_CELL or Vector2(player.x,player.y).distance_to(Vector2(CHICKEN_CELL)+Vector2(0.5,0.5))>3.2:return fail("靠近糯米雞的雞圈，才能輕輕抱牠。")
+		if not cuddler.is_empty():return fail("糯米雞正被朋友抱著，等牠回來再換你。")
+		if float(state.time)-float(state.animal.last_pet)<CHICKEN_CUDDLE.COOLDOWN:return fail("糯米雞剛被照料過，讓牠休息一會兒。")
+		state.animal.last_pet=float(state.time)
+		state.animal.bond=mini(1000000000,int(state.animal.bond)+1)
+		state.animal[CHICKEN_CUDDLE.FIELD]=token
+		player.erase("fishing")
+		return ok("抱抱糯米雞，牠晃了晃小腳。八秒後會回雞圈，也可以按互動鍵提早放開。")
+	if cuddler==token and action in CHICKEN_CUDDLE.HAND_ACTIONS:return fail("雙手正抱著糯米雞，先按互動鍵讓牠回雞圈。")
+	if not cuddler.is_empty() and action in ["pet","feed"]:return fail("糯米雞正在抱抱，等牠回雞圈再照料。")
 	if action=="ferry_news_read":
 		if not extra.is_valid_int() or int(extra)!=ISLAND_STORY_RECAP.marker(state):
 			return fail("渡口近況有更新，請重新開啟島嶼近況。")
@@ -1962,18 +2428,27 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 	if action=="news_read":
 		if not extra.is_valid_int():return fail("近況資料有誤。")
 		var mask:=int(extra)
-		var completed:=island_project_mask()
-		if mask<0 or mask>ISLAND_NOTES.project_mask() or (mask & completed)!=mask:return fail("請重新開啟島嶼近況。")
+		var completed:=island_news_project_mask()
+		if mask<0 or mask>ISLAND_NOTES.news_project_limit() or (mask & completed)!=mask:return fail("請重新開啟島嶼近況。")
 		player.news_seen=int(player.get("news_seen",0)) | mask
 		return ok("已記下這次查看的島嶼近況。")
 	if action=="news_note":
 		var message:=ISLAND_NOTES.clean(extra)
 		if message.is_empty():return fail("請輸入有效留言。")
+		var revision:=ISLAND_NOTES.revision(state)
+		if revision>=ISLAND_NOTES.REVISION_LIMIT:return fail("留言板已達紀錄上限。")
 		var notes:Array=state.get("island_notes",[])
 		notes.push_front({"sender":str(player.name),"text":message,"time":float(state.time)})
 		if notes.size()>ISLAND_NOTES.LIMIT:notes.pop_back()
 		state.island_notes=notes
+		state.island_note_revision=revision+1
 		return ok("留言已貼到島嶼近況。")
+	if action=="news_notes_read":
+		if not extra.is_valid_int():return fail("請重新開啟島民留言。")
+		var revision:=int(extra)
+		if revision<0 or revision>ISLAND_NOTES.revision(state):return fail("請重新開啟島民留言。")
+		player.island_note_seen=maxi(int(player.get("island_note_seen",0)),revision)
+		return ok("已將這批留言標為讀過。")
 	var inv: Dictionary=player.inventory
 	if action=="handcraft_rope":
 		if not extra.is_empty():return fail("無法辨識這次手作")
@@ -1983,17 +2458,94 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		give(inv,"rope",1)
 		player.crafting_points=mini(1000000000,int(player.get("crafting_points",0))+1)
 		return ok("用 %d 份纖維編成 1 條繩索"%ROPE_FIBER_COST)
-	if action=="eat_rice_ball":
+	if action in ["eat_rice_ball","drink_ginger_tea"]:
+		var food:=GINGER_TEA if action=="drink_ginger_tea" else "star_rice_ball"
+		var name:String=NAMES[food]
 		if not extra.is_empty():return fail("無法辨識這次食用")
-		if _region not in MINES.IDS:return fail("星點飯糰可在合作礦場恢復體力")
+		var highland:bool=food==GINGER_TEA and _region==WARM_SPRINGS.REGION
+		if _region not in MINES.IDS and not highland:return fail(name+"可在合作礦場恢復體力")
 		var restored:=mini(RICE_BALL_ENERGY,100-int(player.mine_energy))
-		if restored<=0:return fail("礦場體力已滿")
-		if int(inv.get("star_rice_ball",0))<1:return fail("背包裡沒有星點飯糰")
-		give(inv,"star_rice_ball",-1)
+		var now:=float(state.time)
+		var needs_warmth:=highland and WARM_SPRINGS.warmth_left(player,now)<=0.0
+		if restored<=0 and not needs_warmth:return fail("已經暖和，體力也已滿。" if highland else "礦場體力已滿")
+		if int(inv.get(food,0))<1:return fail("背包裡沒有"+name)
+		give(inv,food,-1)
 		player.mine_energy=int(player.mine_energy)+restored
-		return ok("吃了星點飯糰，恢復 %d 點礦場體力"%restored)
+		if highland:
+			player[WARM_SPRINGS.WARMTH_FIELD]=now+WARM_SPRINGS.WARMTH_SECONDS
+			return ok("喝了暖薑茶，接下來八分鐘會暖和一些。")
+		return ok(("喝了" if food==GINGER_TEA else "吃了")+name+"，恢復 %d 點礦場體力"%restored)
 	var k := key(p)
 	var dist := Vector2(player.x,player.y).distance_to(Vector2(p)+Vector2(0.5,0.5))
+	if action in Collections.GALLERY_ACTIONS:
+		if _region!=REGIONS.HOME or p!=Vector2i(40,29) or dist>3.2:return fail("請靠近風鈴渡口的公告板管理圖鑑收藏。")
+		if not Collections.gallery_item(extra,CROPS,RECIPES):return fail("圖鑑沒有這項普通收藏。")
+		var donations:Dictionary=player.get("collection_donations",{})
+		var displayed:Array=player.get("collection_display",[])
+		if action=="collection_donate":
+			if donations.has(extra):return fail("這項收藏已經登錄。")
+			if int(inv.get(extra,0))<1 and not Collections.kept_story_item(extra,player):return fail("先取得一份原品。")
+			if not Collections.story_item(extra):give(inv,extra,-1)
+			donations[extra]=true
+			player.collection_donations=donations
+			return ok("已登錄 "+str(NAMES.get(extra,extra))+"。")
+		if not donations.has(extra):return fail("先完成收藏登錄，再安排展示。")
+		if action=="collection_unshow":
+			if not displayed.has(extra):return fail("這項收藏目前未展示。")
+			displayed.erase(extra)
+		else:
+			if displayed.has(extra):return fail("這項收藏已在展示。")
+			if displayed.size()>=Collections.DISPLAY_CAP:return fail("展示已滿，先撤下一件收藏。")
+			displayed.append(extra)
+		player.collection_display=displayed
+		return ok("已更新公告板的收藏展示。")
+	if action==RESIDENT_GOALS.MASTER_BENCH_SIT:
+		if dist>3.2 or not extra.is_empty():return fail("請靠近長椅。")
+		return _master_bench_sit(token,player,p)
+	if action=="inn_pool_sit":
+		var anchor:=station_anchor(state.objects,p)
+		if _region!=REGIONS.HOME or dist>3.2 or state.objects.get(key(anchor),{}).get("type")!=INDUSTRY.FOOT_BATH:
+			return fail("請靠近家園的暖石泡腳池。")
+		if player.get(RESIDENT_GOALS.MASTER_BENCH_SEAT,{}).get("cell")==key(anchor):
+			player.erase(RESIDENT_GOALS.MASTER_BENCH_SEAT)
+			return ok("你從泡腳池旁起身。")
+		if player.has(RESIDENT_GOALS.MASTER_BENCH_SEAT) or extra not in ["0","1","2","3"]:return fail("請選擇一個座位。")
+		return _claim_seat(token,player,{"cell":key(anchor),"side":int(extra)},"坐下來泡泡腳。")
+	if action in ["remove","move_object","start_processing","claim_processing","queue_processing","cancel_processing","cancel_processing_job",MATERIAL_SOURCES.PREPARE_ACTION,"dye_furniture","assemble"]:
+		p=station_anchor(state.objects,p)
+		k=key(p)
+		var station:Dictionary=state.objects.get(k,{})
+		if INDUSTRY.square_part(station)==0:
+			for offset:Vector2i in INDUSTRY.station_cells(station.type,INDUSTRY.is_vertical(station)):
+				dist=minf(dist,Vector2(player.x,player.y).distance_to(Vector2(p+offset)+Vector2(0.5,0.5)))
+	if action in ["remove","move_object",RESIDENT_GOALS.INSCRIBE_ACTION]:
+		p=master_bench_anchor(state.objects,p)
+		k=key(p)
+	if action==RESIDENT_GOALS.TREE_NOTE_ACTION:
+		if _region!=REGIONS.HOME or p!=Festival.TREE_CELL or dist>3.2 or not RESIDENT_GOALS.done(player,"lingpopo").has(4):
+			return fail("完成鈴婆婆的最後一段故事後，才能到風鈴樹下留言。")
+		var message:=ISLAND_NOTES.clean(extra)
+		if message.is_empty():return fail("請輸入有效留言。")
+		var notes:Array=state.get(RESIDENT_GOALS.TREE_NOTES,[])
+		notes.push_front({"sender":str(player.name),"text":message,"time":float(state.time)})
+		if notes.size()>ISLAND_NOTES.LIMIT:notes.pop_back()
+		state[RESIDENT_GOALS.TREE_NOTES]=notes
+		return ok("留言綁在風鈴樹的低枝上了。")
+	if action==RESIDENT_GOALS.FESTIVAL_BELL_RING:
+		var bell:Dictionary=state.objects.get(k,{})
+		if dist>3.2 or not extra.is_empty() or bell.get("type") not in RESIDENT_GOALS.FESTIVAL_BELL_KINDS:
+			return fail("請靠近風鈴節紀念鐘再敲響。")
+		if float(state.time)-float(bell.get("bell_at",-5.0))<1.5:return fail("等鐘聲停了再敲一下。")
+		bell.bell_at=float(state.time)
+		if bell.type==RESIDENT_GOALS.CERAMIC_CHIME:return ok("叮——簷下陶風鈴響了一聲。")
+		if bell.type==RESIDENT_GOALS.SHELL_CHIME:return ok("叮——潮紋貝殼輕輕碰了一聲。")
+		return ok("叮——紀念鐘輕響了一聲。")
+	if action==RESIDENT_GOALS.GARDEN_ACTION:
+		if _region!=REGIONS.LANYANG or p!=LANYANG_LIFE.SERVICE or dist>3.2:return fail("請到蘭陽水圳旁找星禾。")
+		return _shared_garden_choose(token,player,extra)
+	if action==RESIDENT_GOALS.VOYAGE_ACTION:
+		if extra not in ["return","photo"] and dist>3.2:return fail("請靠近碼頭的阿潮。")
+		return _achao_voyage(token,player,p,extra)
 	if action=="outlying_deliver":
 		var commission:Dictionary=OUTLYING_COMMISSIONS.DEFS.get(extra,{})
 		if not TRANSIT.boat_open(state):return fail("請先完成碼頭與小船工程。")
@@ -2001,12 +2553,17 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			return fail("請到委託所在的接駁站交件。")
 		var delivery:=OUTLYING_COMMISSIONS.complete(state,token,extra,{"apply":true,"auth":token})
 		return ok(delivery.text) if delivery.ok else fail(delivery.text)
-	if action=="dock_repair":
+	if action in ["dock_project_start","dock_repair"]:
 		if _region!=REGIONS.HOME or p!=Vector2i(40,29) or dist>3.2:return fail("請到渡口公告板交付造船材料。")
 		if not CHAPTER_ONE.phase(state)=="complete" or not state.get("flower_nursery",{}).get("garden",{}).get("complete",false):
 			return fail("先完成渡口與田尾的公共故事。")
 		var stage:=int(state.get("dock_stage",0))
 		if stage>=DOCK_REPAIRS.size():return fail("碼頭和小船都已修復。")
+		if action=="dock_project_start":
+			if stage>0 or state.get("dock_project_started",false):return fail("碼頭與小船工程已經開工。")
+			if not extra.is_empty():return fail("無效的工程申請。")
+			state.dock_project_started=true
+			return ok("碼頭與小船工程已開工！所有島民都可以交付材料。")
 		if extra!=str(stage):return fail("工程進度有更新，請重新查看。")
 		var cost:Dictionary=DOCK_REPAIRS[stage]
 		for item in cost:
@@ -2041,7 +2598,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			return fail("請完成渡口野餐，再靠近指定出口旅行。")
 		var spawn := TRANSIT.arrival(_region,destination) if action == "transit" else REGIONS.spawn(destination)
 		switch_region(destination)
-		var arrival := safe_arrival(spawn)
+		var arrival := safe_arrival(spawn,token)
 		switch_region(player_region(token))
 		if arrival == Vector2.ZERO:return fail("目的地出口附近沒有安全落點。")
 		player.region = destination
@@ -2055,7 +2612,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		for field in ["fishing","last_till","last_seed","last_harvest"]:player.erase(field)
 		return ok("已抵達%s。" % REGIONS.label(destination))
 	if action == "rescue":
-		var point := safe_arrival(REGIONS.spawn(_region) if _region != REGIONS.HOME else SPAWN)
+		var point := safe_arrival(REGIONS.spawn(_region) if _region != REGIONS.HOME else SPAWN,token)
 		if point == Vector2.ZERO:return fail("附近沒有安全落點。")
 		player.x=point.x
 		player.y=point.y
@@ -2134,13 +2691,407 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 	# 第 40 章風鈴節廣場地方記憶展：只寫本人的 player.memory_exhibit.seen（補看紀錄）。
 	if action in MEMORY_EXHIBIT.ACTIONS:
 		return MEMORY_EXHIBIT.apply(state,token,action,p,extra,_region==REGIONS.HOME)
+	if action in Rabbit.ACTIONS or action in Cat.ACTIONS or action in Dog.ACTIONS or action in Fox.ACTIONS:
+		if not extra.is_empty():return fail("請重新選擇寵物操作。")
+		if action in Fox.ACTIONS:return _fox_action(player,action,p,dist)
+		var species=Dog if action in Dog.ACTIONS else (Cat if action in Cat.ACTIONS else Rabbit)
+		var adoption_site:Vector2i=LIVESTOCK.ANIMALS.sheep.cell
+		if species==Cat:adoption_site=Cat.site(state)
+		if species==Dog:adoption_site=Dog.SITE
+		var at_site:bool=_region==REGIONS.HOME and state.picnic and p==adoption_site and dist<=3.2
+		return Rabbit.act(self,player,action.get_slice("_",1),at_site,species.FIELD,species.NAME)
+	if action in Hedgehog.ACTIONS:
+		if _region!=REGIONS.HOME or p!=Hedgehog.site(state) or dist>3.2 or not extra.is_empty():
+			return fail("請走到花宅庭院的刺蝟食盤旁。")
+		return Hedgehog.act(self,player,action)
+	if action in Squirrel.ACTIONS:
+		if _region!=REGIONS.HOME or p!=Squirrel.SITE or dist>3.2 or not extra.is_empty():return fail("請走到望安西側林邊找橡果松鼠。")
+		return Squirrel.act(self,player,action)
+	if action==Seal.ACTION:
+		if _region!=REGIONS.HOME or p!=Seal.SITE or dist>3.2 or not extra.is_empty():
+			return fail("請走到望安南岸觀察胖海豹。")
+		if not Seal.present(float(state.time)):return fail("現在漲潮，退潮時再來看看。")
+		if player.get("seal_seen",false):return fail("這次相遇已經記下了，還可以和牠合照。")
+		player.seal_seen=true
+		return ok("胖海豹翻了個身，抬頭看向岸邊。可以打開海豹卡和牠合照了。")
+	if action==Deer.ACTION:
+		if _region!=REGIONS.HOME or p!=Deer.site(state) or dist>3.2 or not extra.is_empty():
+			return fail("請到渡口風鈴樹旁。")
+		if not Deer.present(state):return fail("等風鈴節開幕後，再到樹下看看。")
+		if player.get("windbell_deer_seen",false):return fail("這次相遇已經收進風鈴節回憶。")
+		player.windbell_deer_seen=true
+		return ok("風鈴鹿垂下頭，角間傳來輕輕一聲鈴響。")
 	if _region in TRANSIT.LOCAL:return fail("公共站場只供步行與轉乘，請回農地或礦區作業。")
 	var tea_farming:=_region==REGIONS.Bamboo.REGION and REGIONS.Bamboo.TEA_BEDS.has_point(p) and action in ["hoe","seed","water","harvest"]
-	if _region in REGIONS.ANGLING_RESERVES and not tea_farming and action not in ["fish_start","fish_catch"] and action not in RESIDENT_BOND.ACTIONS and action not in RESIDENT_GOALS.ACTIONS: # T066：暖暖在暖泉高地，聊天送禮與一起做的事不是施工。
+	var spring_bench:bool=_region==WARM_SPRINGS.REGION and WARM_SPRINGS.BENCH_CLEARING.has_point(p) and (
+		(action=="build" and extra==RESIDENT_GOALS.STONE_BENCH) or
+		(action in ["remove","move_object"] and state.objects.get(k,{}).get("type")==RESIDENT_GOALS.STONE_BENCH))
+	if _region in REGIONS.ANGLING_RESERVES and not tea_farming and not spring_bench and action not in ["fish_start","fish_catch"] and action not in RESIDENT_BOND.ACTIONS and action not in RESIDENT_GOALS.ACTIONS and action not in [RESIDENT_GOALS.GUEST_CLOTH_ACTION,RESIDENT_GOALS.INN_CLEAR_ACTION,REGIONS.Springs.REST_REPLAY,WARM_SPRINGS.BATH_ACTION,WARM_SPRINGS.INN_PORTAL,WARM_SPRINGS.INN_USE,RESIDENT_GOALS.PAINT_INVITE_ACTION]: # T066：暖暖在暖泉高地，聊天送禮與一起做的事不是施工。
 		return fail("保護區可以垂釣，施工請回家園。")
 	if _region == FLOWER_NURSERY.REGION and action in FLOWER_REJECTED:return fail(FLOWER_REJECT_MSG)
 	if _region == SALT_PAN.REGION and not _salt_allowed(action,p,extra):return fail(SALT_PAN.REJECT_MESSAGE)
 	if dist>(5.0 if action=="build_area" and crafting_level(player)>=BATCH_BUILD_LEVEL else 3.2): return fail("靠近一點，才能和它互動")
+	if action=="floor_placement_access":
+		var floor_piece:Dictionary=state.ground.get(k,{})
+		if _region!=REGIONS.HOME or floor_piece.get("type")!="floor" or floor_piece.get("owner")!=token:
+			return fail("只有家園木地板的主人可以更改放置權限。")
+		if extra not in PLOT_PERMISSIONS.FLOOR_ACCESS:return fail("無效的放置權限。")
+		if extra=="legacy":floor_piece.erase("placement_access")
+		else:floor_piece.placement_access=extra
+		return ok("地板放置權限已更新。")
+	if action=="room_visit_access":
+		var room_floor:Dictionary=state.ground.get(k,{})
+		if _region!=REGIONS.HOME or room_floor.get("type")!="floor" or room_floor.get("owner")!=token:
+			return fail("請在自己的家園木地板上設定參觀權限。")
+		var guest_token:=""
+		if extra.begins_with("friend:"):
+			guest_token=_regional_guest(token,extra.trim_prefix("friend:"))
+			if guest_token.is_empty():return fail("請選擇同區在線的玩家。")
+		elif extra not in ["owner","island"]:return fail("無效的參觀權限。")
+		var room:=ROOM_ENCLOSURE.analyze(state,p)
+		if extra!="island":
+			var problem:=visit_restriction_problem(token,room)
+			if not problem.is_empty():return fail(problem)
+		var affected:Array=room.cells if not room.cells.is_empty() else [p]
+		for spot:Vector2i in affected:
+			var piece:Dictionary=state.ground[key(spot)]
+			if piece.owner!=token:continue
+			if extra!="island":piece.owner_visit=true
+			else:piece.erase("owner_visit")
+			if guest_token.is_empty():piece.erase("visit_guest")
+			else:piece.visit_guest=guest_token
+		var place:="房間" if room.sealed else "戶外地塊"
+		if not guest_token.is_empty():return ok(place+"已開放屋主與指定島民進入。")
+		return ok(place+("改為僅屋主可進入。" if extra=="owner" else "已開放同島玩家參觀。"))
+	if action=="furniture_remove_access":
+		var furniture:Dictionary=state.objects.get(k,{})
+		if _region!=REGIONS.HOME or furniture.get("owner")!=token or furniture.get("type") not in PLOT_PERMISSIONS.SHARED_REMOVAL_FURNITURE or furniture.get("aru_public",false):
+			return fail("只有物主可以更改家園家具的拆除權限。")
+		if extra not in ["owner","island"]:return fail("無效的拆除權限。")
+		if extra=="island":furniture.guest_remove=true
+		else:furniture.erase("guest_remove")
+		return ok("家具拆除權限已更新。")
+	if action in TEA_SERVICE.HOUSE_ACTIONS:return TEA_SERVICE.apply_house(state,token,action,p,extra,_region)
+	if action in TEA_REVISIT.HOUSE_ACTIONS:
+		if action==TEA_REVISIT.HOUSE_RECLAIM and _region==TEA_CERAMICS.MAOKONG and p==TEA_REVISIT.HOUSE_SITE \
+			and TEA_SERVICE.portions(state,TEA_REVISIT.HOUSE_KEY)>0:
+			return fail("壺裡還有熱茶，留給晚點到的島民吧。")
+		return TEA_REVISIT.house_action(state,token,action,p,extra,_region)
+	if action in [RESIDENT_GOALS.ARU_PARK_PLACE,RESIDENT_GOALS.ARU_PARK_PHOTO]:
+		if _region!=REGIONS.HOME or RESIDENT_BOND.stage(player,"aru")<4:
+			return fail("和阿榆成為好友後，才能布置渡口公共長椅。")
+		if action==RESIDENT_GOALS.ARU_PARK_PHOTO:
+			if p!=RESIDENT_GOALS.ARU_PARK_VIEW or not extra.is_empty():
+				return fail("請到公共長椅地塊的拍照位置。")
+			for kind:String in RESIDENT_GOALS.ARU_PARK_SLOTS:
+				if not RESIDENT_GOALS.aru_park_has(state.objects,kind):return fail("請先在公共地塊放好長椅和木燈。")
+			player[RESIDENT_GOALS.ARU_PHOTO_KEY]=true
+			return ok("阿榆可以在島民手冊裡看見這次的布置紀錄。")
+		if RESIDENT_GOALS.ARU_PARK_SLOTS.get(extra)!=p or water(p):
+			return fail("請將長椅或木燈放在它的公共預留位置。")
+		var placed:=_build_piece(token,p,extra)
+		if placed.ok:state.objects[k].aru_public=true
+		return placed
+	if action==RESIDENT_GOALS.ARU_REST_ACTION:
+		if _region!=REGIONS.HOME or p!=Village.resident_cell(state,"aru"):
+			return fail("請到渡口找阿榆。")
+		if RESIDENT_BOND.stage(player,"aru")<3 and not aru_bench_active(state,p):
+			return fail("阿榆和島民坐下後，朋友就能過來一起休息。")
+		if RESIDENT_BOND.stage(player,"aru")>=3:
+			player[RESIDENT_GOALS.ARU_REST_KEY]=float(state.time)
+		return ok("你坐下來，和阿榆一起聽著渡口的風。")
+	if action in ["inn_luggage_place","inn_luggage_take"]:
+		var display:Dictionary=state.objects.get(key(station_anchor(state.objects,p)),{})
+		if display.get("type")!=INDUSTRY.LUGGAGE_RACK or display.get("owner")!=token or not ITEM_CATALOG.is_known(extra):
+			return fail("只能在自己的旅人行李架整理展示品。")
+		var items:Dictionary=display.items
+		var held:=int(inv.get(extra,0))
+		var shown:=int(items.get(extra,0))
+		if action=="inn_luggage_place":
+			if luggage_count(items)>=INDUSTRY.LUGGAGE_SLOTS:return fail("兩個展示位已滿。")
+			if held<1:return fail("背包沒有這項物品。")
+			give(inv,extra,-1)
+			give(items,extra,1)
+			return ok("已放上一件展示品。")
+		if shown<1:return fail("架上沒有這項展示品。")
+		if not ITEM_CATALOG.can_hold(extra,held+1):return fail("背包中的物品已達上限。")
+		give(inv,extra,1)
+		if shown==1:items.erase(extra)
+		else:give(items,extra,-1)
+		return ok("已取回一件展示品。")
+	if action in ["inn_tea_place","inn_tea_take"]:
+		var display:Dictionary=state.objects.get(k,{})
+		var tea:=INN_TEA_ITEM if extra.is_empty() else extra
+		if display.get("type")!=INN_TEA_TABLE or display.get("owner")!=token or tea not in INN_TEA_ITEMS:
+			return fail("只能整理自己的暖薑茶小桌。")
+		var cups:int=display.items.get(tea,0)
+		if action=="inn_tea_place":
+			if inn_tea_count(display.items)>=INN_TEA_SLOTS:return fail("兩個杯位都擺了茶。")
+			if int(inv.get(tea,0))<1:return fail("背包裡沒有"+str(NAMES[tea])+"。")
+			give(inv,tea,-1)
+			give(display.items,tea,1)
+			return ok("已把一杯茶擺到桌上。")
+		if cups<1:return fail("桌上還沒有茶。")
+		if int(inv.get(tea,0))>=1000000000:return fail("背包中的茶飲已達上限。")
+		give(inv,tea,1)
+		if cups==1:display.items.erase(tea)
+		else:give(display.items,tea,-1)
+		return ok("已收回一杯茶。")
+	if action==WELCOME_SIGN.WRITE:
+		var sign:Dictionary=state.objects.get(k,{})
+		if sign.get("type")!=WELCOME_SIGN.KIND or sign.get("owner")!=token:
+			return fail("只能編輯自己的迎賓牌。")
+		var lines:=WELCOME_SIGN.decode(extra)
+		if lines.is_empty():return fail("請確認旅舍名稱與歡迎語的字數。")
+		if lines==["","",""]:sign.erase("welcome")
+		else:sign.welcome=lines
+		return ok("迎賓牌已更新。")
+	if action==RESIDENT_GOALS.INSCRIBE_ACTION:
+		var piece:Dictionary=state.objects.get(k,{})
+		if not RESIDENT_GOALS.INSCRIPTION_KINDS.has(piece.get("type")) or piece.get("owner")!=token:
+			return fail("只能替自己的門牌或雙人長椅刻字。")
+		if not RESIDENT_GOALS.done(player,"aru").has(3):
+			return fail("先和阿榆完成〈留下新的刮痕〉。")
+		var message:=extra.strip_edges()
+		if not RESIDENT_GOALS.valid_inscription(extra) or not RESIDENT_GOALS.valid_inscription(message):
+			return fail("刻字限 18 字，請刪除無法顯示的字元。")
+		if message.is_empty():piece.erase("inscription")
+		else:piece.inscription=message
+		return ok("已擦去原本的刻字。" if message.is_empty() else "已把字刻在木頭上。")
+	if action in [RESIDENT_GOALS.SHEEP_SHELTER_ACTION,RESIDENT_GOALS.SHEEP_TOY_ACTION]:
+		if _region!=REGIONS.HOME or not state.picnic or p!=LIVESTOCK.ANIMALS.sheep.cell:
+			return fail("請到渡口的雲朵羊飼料站。")
+		if action==RESIDENT_GOALS.SHEEP_TOY_ACTION:
+			if not RESIDENT_GOALS.done(player,"mianmian").has(2) or not RESIDENT_GOALS.SHEEP_TOYS.has(extra):
+				return fail("先替雲朵羊布置好角落，再向棉棉領玩具。")
+			if float(state.time)-float(state.get(RESIDENT_GOALS.SHEEP_PLAY_KEY,{}).get("at",-10.0))<RESIDENT_GOALS.SHEEP_PLAY_SECONDS:
+				return fail("雲朵羊還在玩，等牠歇一下。")
+			state[RESIDENT_GOALS.SHEEP_PLAY_KEY]={"toy":extra,"at":float(state.time)}
+			return ok("雲朵羊好奇地湊近了%s。"%RESIDENT_GOALS.SHEEP_TOYS[extra])
+		if RESIDENT_BOND.stage(player,"mianmian")<2:return fail("先和棉棉熟悉，才能幫忙搭棚。")
+		var part:Dictionary=RESIDENT_GOALS.SHEEP_COMFORT_PARTS.get(extra,{})
+		if part.is_empty():return fail("找不到這項布置。")
+		var progress:=int(player.get(RESIDENT_GOALS.SHEEP_SHELTER_KEY,0))
+		if (progress&int(part.bit))!=0:return fail("你已經完成了這項布置。")
+		for material:String in part.cost:
+			if int(inv.get(material,0))<int(part.cost[material]):return fail("還需要%s %d。"%[NAMES[material],part.cost[material]])
+		for material:String in part.cost:give(inv,material,-int(part.cost[material]))
+		player[RESIDENT_GOALS.SHEEP_SHELTER_KEY]=progress|int(part.bit)
+		return ok("已%s。"%part.label)
+	if action==RESIDENT_GOALS.TEA_CHAIR_ACTION:
+		var seat:Dictionary=RESIDENT_GOALS.TEA_CHAIRS.get(extra,{})
+		if _region!=TEA_CERAMICS.MAOKONG or seat.is_empty() or p!=seat.cell:
+			return fail("請到貓空茶亭旁的預留座位。")
+		if RESIDENT_BOND.stage(player,"chacha")<4:return fail("和茶茶成為好友後，可以替來客留個座位。")
+		if player.has(RESIDENT_GOALS.TEA_CHAIR_KEY):return fail("你已經替茶亭留了一張椅子。")
+		player[RESIDENT_GOALS.TEA_CHAIR_KEY]=extra
+		return ok("你替來客留了一張%s，回去找茶茶吧。"%seat.name)
+	if action==RESIDENT_GOALS.TEA_SETUP_ACTION:
+		if _region!=TEA_CERAMICS.MAOKONG or p!=TEA_CERAMICS.TEA_NPC:
+			return fail("請在貓空茶屋和茶茶一起擺桌。")
+		if RESIDENT_BOND.stage(player,"chacha")<1:return fail("先和茶茶打個招呼。")
+		if player.has(RESIDENT_GOALS.TEA_SETUP_KEY):return fail("這席茶已經擺好了。")
+		var arrangement:=extra.split(":")
+		if arrangement.size()!=2 or arrangement[0] not in RESIDENT_GOALS.TEA_AXES or arrangement[1]!="2":
+			return fail("選好方向，把兩只杯子放上桌。")
+		player[RESIDENT_GOALS.TEA_SETUP_KEY]=arrangement[0]
+		return ok("茶桌和兩只杯子擺好了，找茶茶說一聲吧。")
+	if action in [RESIDENT_GOALS.MURAL_HANG_ACTION,RESIDENT_GOALS.MURAL_SIGN_ACTION]:
+		if _region!=REGIONS.HOME or p!=RESIDENT_GOALS.MURAL_SITE or not extra.is_empty() or not state.picnic:
+			return fail("請到風鈴渡口的公告板展區。")
+		var mural:Dictionary=state.get(RESIDENT_GOALS.MURAL_KEY,{})
+		if action==RESIDENT_GOALS.MURAL_HANG_ACTION:
+			if not mural.is_empty():return fail("展區已掛上合畫，歡迎在空白處落款。")
+			if RESIDENT_BOND.stage(player,"diandian")<4 or not RESIDENT_GOALS.done(player,"diandian").has(3):
+				return fail("先完成點點的第一幅合畫，並和她成為好友。")
+			var subjects:Array=player.get(RESIDENT_GOALS.PAINT_INVITES_KEY,[])
+			if subjects.size()!=RESIDENT_GOALS.PAINT_INVITE_COUNT:return fail("請先邀齊三位居民。")
+			state[RESIDENT_GOALS.MURAL_KEY]={"subjects":subjects.duplicate(),"author":token,"author_name":str(player.name).left(12),"signatures":{}}
+			return ok("你把合畫掛上了。旁邊還留著下一個位置。")
+		if mural.is_empty():return fail("要等合畫掛上後才能加入。")
+		if RESIDENT_GOALS.mural_contributed(state,token):return fail("畫上已經留著你的名字。")
+		mural.signatures[token]=str(player.name).left(12)
+		return ok("你在合畫留了一個身影和落款。")
+	if action==RESIDENT_GOALS.PAINT_INVITE_ACTION:
+		if RESIDENT_BOND.stage(player,"diandian")<3:return fail("先和點點建立信任，再幫她邀居民入畫。")
+		if extra=="diandian" or extra not in RESIDENT_BOND.RESIDENTS or not RESIDENT_BOND.present(state,extra):
+			return fail("請邀請點點以外、已在島上活動的居民。")
+		var model_spot:=bond_place(state,extra)
+		if _region!=str(model_spot[0]) or p!=model_spot[1]:return fail("到居民身邊才能提出邀請。")
+		var invited:Array=player.get(RESIDENT_GOALS.PAINT_INVITES_KEY,[])
+		if extra in invited:return fail("已經邀過這位居民了。")
+		if invited.size()>=RESIDENT_GOALS.PAINT_INVITE_COUNT:return fail("三個位置都有人了，回去找點點吧。")
+		invited.append(extra)
+		player[RESIDENT_GOALS.PAINT_INVITES_KEY]=invited
+		return ok("%s答應入畫。已記下 %d／%d 位居民。"%[RESIDENT_BOND.name_of(extra),invited.size(),RESIDENT_GOALS.PAINT_INVITE_COUNT])
+	if action==RESIDENT_GOALS.GROWTH_ACTION:
+		if _region not in RESIDENT_GOALS.GROWTH_REGIONS or not extra.is_empty() or RESIDENT_BOND.stage(player,"xinghe")<1:
+			return fail("認識星禾後，可以在渡口或蘭陽記錄自己的作物。")
+		var sample:Dictionary=state.crops.get(k,{})
+		var kind:=str(sample.get("kind",""))
+		if sample.get("owner","")!=token or sample.get("other_sown",false) or not CROPS.has(kind):return fail("請觀察自己種下的作物。")
+		var logbook:Dictionary=player.get(RESIDENT_GOALS.GROWTH_LOG_KEY,{})
+		if logbook.has(kind):return fail("已經收錄過這種作物。")
+		if not logbook.is_empty() and not RESIDENT_GOALS.done(player,"xinghe").has(1):return fail("先把第一份紀錄帶去找星禾。")
+		var tracked:Dictionary=player.get(RESIDENT_GOALS.GROWTH_KEY,{})
+		var current:={"region":_region,"tile":k,"kind":kind}
+		match RESIDENT_GOALS.growth_phase(sample,float(CROPS[kind].time)):
+			"early":
+				if tracked==current:return fail("幼苗已經記下了，等同一株成熟再來。")
+				player[RESIDENT_GOALS.GROWTH_KEY]=current
+				return ok("記下了%s的幼苗，等它成熟後再來。"%NAMES[kind])
+			"mature":
+				if tracked!=current:return fail("先記下這一株的幼苗階段。")
+				logbook[kind]=true
+				player[RESIDENT_GOALS.GROWTH_LOG_KEY]=logbook
+				player.erase(RESIDENT_GOALS.GROWTH_KEY)
+				return ok("記下了%s成熟時的樣子。"%NAMES[kind])
+			_:return fail("作物正在長大，等成熟再來。")
+	if action==RESIDENT_GOALS.ADDRESS_ACTION:
+		if _region!=REGIONS.HOME or not RESIDENT_BOND.present(state,"luoluo") or RESIDENT_BOND.stage(player,"luoluo")<1:
+			return fail("先在渡口和洛洛打個招呼。")
+		var address_stage:=int(player.get(RESIDENT_GOALS.ADDRESS_KEY,0))
+		if extra=="take":
+			if p!=RESIDENT_BOND.post_cell(state) or address_stage!=0:return fail("請在洛洛身邊領取待送的信。")
+			player[RESIDENT_GOALS.ADDRESS_KEY]=RESIDENT_GOALS.ADDRESS_CARRIED
+			return ok("你收下了洛洛的信，可以打開信封查看線索。")
+		if extra not in RESIDENT_GOALS.ADDRESS_CANDIDATES or p!=Village.resident_cell(state,extra):
+			return fail("要走到收件人身邊才能送信。")
+		if address_stage!=RESIDENT_GOALS.ADDRESS_CARRIED:return fail("目前沒有待送的信。")
+		if extra!=RESIDENT_GOALS.ADDRESS_RECIPIENT:return fail("%s說這封不是自己的，信仍由你保管。"%RESIDENT_BOND.name_of(extra))
+		player[RESIDENT_GOALS.ADDRESS_KEY]=RESIDENT_GOALS.ADDRESS_DELIVERED
+		return ok("阿榆收下了信，回去告訴洛洛吧。")
+	if action==RESIDENT_GOALS.GUEST_ROOM_ACTION:
+		if _region!=REGIONS.HOME or p!=Vector2i(floori(player.x),floori(player.y)) or not extra.is_empty():
+			return fail("站到家園的客房內再登記。")
+		if RESIDENT_BOND.stage(player,"nuannuan")<3:return fail("先和暖暖建立信任。")
+		if player.get(RESIDENT_GOALS.GUEST_ROOM_KEY,false):return fail("客房已經記在手帳裡。")
+		const Rooms=preload("res://scripts/house_rooms.gd")
+		var guest:=Rooms.guest_room(state,Rooms.inspect(state,p),p,token)
+		if not guest.ready:return fail("需要一間完整的客房，裡面有床、燈、椅，至少一件由你擺放。")
+		player[RESIDENT_GOALS.GUEST_ROOM_KEY]=true
+		return ok("已記下客房的布置，回礁溪找暖暖。")
+	if action==WANGAN_MEMORY.ACTION:
+		if _region!=REGIONS.HOME or (p!=WANGAN_MEMORY.SITE and (p!=WANGAN_MEMORY.COURT_SIGN or not WANGAN_MEMORY.courtyard_available(state))):
+			return fail("請到風鈴渡口的花宅觀察牌。")
+		return WANGAN_MEMORY.record(player,extra)
+	if action==WANGAN_MEMORY.WEIR_ACTION:
+		if _region!=REGIONS.HOME or p not in WANGAN_MEMORY.WEIR_SITES:return fail("請靠近風鈴渡口或南岸的石滬觀察點。")
+		return WANGAN_MEMORY.observe_tide(player,extra,WANGAN_COAST.high_tide(float(state.time)))
+	if action==WANGAN_MEMORY.LOG_ACTION:
+		if _region!=REGIONS.HOME or p!=RESIDENT_BOND.dock_cell(state) or not extra.is_empty():
+			return fail("請到風鈴渡口找阿潮。")
+		if not RESIDENT_BOND.present(state,"achao"):return fail(RESIDENT_BOND.DOCK_LOCKED)
+		return WANGAN_MEMORY.finish_log(player)
+	if action==WARM_SPRINGS.INN_USE:
+		if _region!=WARM_SPRINGS.REGION or not WARM_SPRINGS.in_inn(player) or not extra.is_empty():
+			return fail("請走進暖泉旅舍再使用房內家具。")
+		var kind:String=WARM_SPRINGS.INN_FURNITURE.get(p,"")
+		if kind==INDUSTRY.INN_BED:
+			player.mine_energy=100
+			return ok("在旅舍的厚被裡休息了一下，體力已恢復。")
+		if kind!="chair":return fail("這件旅舍家具沒有可用的座位。")
+		var seat_key:="%s:%s"%[WARM_SPRINGS.INN_USE,key(p)]
+		for other:String in active_tokens:
+			var visitor:Dictionary=state.players.get(other,{})
+			if other!=token and visitor.get("region")==WARM_SPRINGS.REGION and visitor.get(WARM_SPRINGS.REST_SEAT_KEY)==seat_key:
+				return fail("這張椅子有人坐了。")
+		var feet:Vector2i=WARM_SPRINGS.INN_CHAIR_FEET[p]
+		player[WARM_SPRINGS.REST_SEAT_KEY]=seat_key
+		player.x=feet.x+0.5
+		player.y=feet.y+0.5
+		return ok("坐下來休息。移動即可起身。")
+	if action==WARM_SPRINGS.INN_PORTAL:
+		if _region!=WARM_SPRINGS.REGION or not extra.is_empty():return fail("請走到暖泉旅舍的門口。")
+		var inside:=WARM_SPRINGS.in_inn(player)
+		var doorway:=WARM_SPRINGS.INN_EXIT if inside else WARM_SPRINGS.INN_DOOR
+		if p!=doorway:return fail("請走到暖泉旅舍的門口。")
+		var destination:=WARM_SPRINGS.INN_DOOR if inside else WARM_SPRINGS.INN_EXIT+Vector2i.UP
+		player.erase(WARM_SPRINGS.REST_SEAT_KEY)
+		player.erase("fishing")
+		player.x=destination.x+0.5
+		player.y=destination.y+0.5
+		return ok("回到暖泉溪畔。" if inside else "走進暖泉旅舍。")
+	if action==WARM_SPRINGS.BATH_ACTION:
+		if _region!=WARM_SPRINGS.REGION or p!=WARM_SPRINGS.BATH_ENTRANCE or not extra.is_empty():return fail("請靠近礁溪的公共泡腳池。")
+		if not state.get(WARM_SPRINGS.BATH_KEY,false):return fail("泡腳池還有裂縫。找暖暖一起修好它。")
+		if player.get(WARM_SPRINGS.REST_SEAT_KEY)==WARM_SPRINGS.BATH_ACTION:return ok("正在泡腳。移動即可起身。")
+		var occupied:=[]
+		for other:String in active_tokens:
+			var visitor:Dictionary=state.players.get(other,{})
+			if visitor.get("region")==WARM_SPRINGS.REGION and visitor.get(WARM_SPRINGS.REST_SEAT_KEY)==WARM_SPRINGS.BATH_ACTION:
+				occupied.append(Vector2(visitor.x,visitor.y))
+		for offset:Vector2 in WARM_SPRINGS.BATH_SEATS:
+			var place:=Vector2(WARM_SPRINGS.BATH_ORIGIN)+offset
+			if place in occupied:continue
+			player[WARM_SPRINGS.REST_SEAT_KEY]=WARM_SPRINGS.BATH_ACTION
+			player.x=place.x
+			player.y=place.y
+			return ok("坐在公共池邊泡泡腳。移動即可起身。")
+		return fail("公共泡腳池已坐滿，稍等一會兒吧。")
+	if action==REGIONS.Springs.REST_REPLAY:
+		if _region!=REGIONS.Springs.REGION or p!=RESIDENT_BOND.SPRING_CELL or not extra.is_empty():
+			return fail("請到礁溪找暖暖。")
+		var choice:=str(RESIDENT_GOALS.done(player,"nuannuan").get(4,""))
+		if not REGIONS.Springs.REST_SEATS.has(choice):return fail("先完成〈第一位住下的主人〉。")
+		_sit_at_inn(player,choice)
+		return ok("又和暖暖坐了一會兒。移動即可起身。")
+	if action==RESIDENT_GOALS.INN_CLEAR_ACTION:
+		if _region!=RESIDENT_BOND.SPRING_REGION or p!=RESIDENT_BOND.SPRING_CELL or not extra.is_empty():
+			return fail("請到礁溪旅舍門口。")
+		if RESIDENT_BOND.stage(player,"nuannuan")<1:return fail("先和暖暖打聲招呼。")
+		if player.get(RESIDENT_GOALS.INN_CLEAR_KEY,false) or RESIDENT_GOALS.done(player,"nuannuan").has(1):
+			return fail("旅舍門口已經清理好了。")
+		player[RESIDENT_GOALS.INN_CLEAR_KEY]=true
+		return ok("你掃開門邊的落葉，整理好門牌下的碎石。回去和暖暖一起點燈吧。")
+	if action==RESIDENT_GOALS.GUEST_CLOTH_ACTION:
+		var warm_spot:=bond_place(state,"nuannuan")
+		if _region!=str(warm_spot[0]) or p!=warm_spot[1] or not extra.is_empty():return fail("請到暖暖身邊領旅舍布料。")
+		if not RESIDENT_GOALS.done(player,"nuannuan").has(3):return fail("先向暖暖回報客房的布置。")
+		if player.get(RESIDENT_GOALS.GUEST_CLOTH_KEY,false):return fail("旅舍布料已經領過了。")
+		if int(inv.get("cotton_cloth",0))>999999998:return fail("布料已達背包上限，整理後再來領。")
+		give(inv,"cotton_cloth",2)
+		player[RESIDENT_GOALS.GUEST_CLOTH_KEY]=true
+		return ok("暖暖把兩塊旅舍布料放進了你的背包。")
+	if action==RESIDENT_GOALS.BELL_INSPECT_ACTION:
+		if _region!=REGIONS.HOME or not RESIDENT_BOND.present(state,"lingpopo") or RESIDENT_BOND.stage(player,"lingpopo")<1:
+			return fail("先到渡口和鈴婆婆說聲你好。")
+		var clue_bit:=0
+		var clue:=""
+		if extra=="tree" and p==Festival.TREE_CELL:
+			clue_bit=RESIDENT_GOALS.BELL_TREE_BIT
+			clue="粗枝上有一截空繩，繩結還留著。"
+		elif extra=="bell" and p==RESIDENT_BOND.bell_cell(state):
+			clue_bit=RESIDENT_GOALS.BELL_CRACK_BIT
+			clue="鈴口裂了一道，細繩還和樹上的一樣。"
+		else:return fail("請靠近風鈴樹，或到鈴婆婆身邊查看小鈴。")
+		var inspected:=int(player.get(RESIDENT_GOALS.BELL_INSPECT_KEY,0))
+		if (inspected&clue_bit)!=0:return fail("這處線索已經記下了。")
+		player[RESIDENT_GOALS.BELL_INSPECT_KEY]=inspected|clue_bit
+		return ok(clue)
+	if action==RESIDENT_GOALS.REST_KIT_ACTION:
+		if _region!=MINES.IDS[0] or p!=MINES.REST or not RESIDENT_GOALS.REST_KIT_PARTS.has(extra):
+			return fail("請到合作礦場第一層的提燈休息站。")
+		if not state.picnic or RESIDENT_BOND.stage(player,"bobo")<3:return fail("先和波波建立信任，再幫他整備休息站。")
+		var part:Dictionary=RESIDENT_GOALS.REST_KIT_PARTS[extra]
+		var installed:=int(player.get(RESIDENT_GOALS.REST_KIT_KEY,0))
+		var bit:=int(part.bit)
+		if (installed&bit)!=0:return fail("你已經替休息站備好這一項了。")
+		for material:String in part.cost:
+			if int(inv.get(material,0))<int(part.cost[material]):return fail("%s還缺%s。"%[part.label,NAMES[material]])
+		for material:String in part.cost:give(inv,material,-int(part.cost[material]))
+		player[RESIDENT_GOALS.REST_KIT_KEY]=installed|bit
+		return ok("你替休息站備好了%s。"%part.label)
+	if action==RESIDENT_GOALS.RECIPE_PAGE_ACTION:
+		if _region!=REGIONS.HOME or not RESIDENT_GOALS.RECIPE_PAGES.has(extra) or p!=milu_recipe_cell(state,extra):
+			return fail("請到手記標出的地方找紙角。")
+		if RESIDENT_BOND.stage(player,"milu")<2 or not RESIDENT_BOND.present(state,"milu"):
+			return fail("先和米露熟悉，再幫她找食譜紙角。")
+		var page:Dictionary=RESIDENT_GOALS.RECIPE_PAGES[extra]
+		var found:=int(player.get(RESIDENT_GOALS.RECIPE_PAGE_KEY,0))
+		if (found&int(page.bit))!=0:return fail("這片食譜紙角已經收好了。")
+		player[RESIDENT_GOALS.RECIPE_PAGE_KEY]=found|int(page.bit)
+		return ok("在%s找到一片食譜紙角。"%page.name)
 	if action==RESIDENT_GOALS.ROUTE_ACTION:
 		if _region!=REGIONS.HOME or not RESIDENT_GOALS.ROUTE_SIGNS.has(extra) or p!=achao_route_cell(extra):
 			return fail("請走到渡口對應的路標。")
@@ -2202,9 +3153,9 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			_finish_bridge()
 		state.public_fund=fund
 		return ok("謝謝你為渡口捐款。" if action=="fund_donate" else "公共基金已支付剩餘材料，河灣橋開通了！")
-	if action in ["livestock_feed","livestock_collect","livestock_pet","livestock_install","livestock_empty","livestock_pen"]:
+	if action in ["livestock_feed","livestock_collect","livestock_pet","livestock_brush","livestock_install","livestock_empty","livestock_pen"]:
 		if _region!=REGIONS.HOME or not state.picnic or not LIVESTOCK.ANIMALS.has(extra) or p!=LIVESTOCK.ANIMALS[extra].cell or dist>3.2:
-			return fail("完成渡口野餐後，可到牧場照料牛羊。")
+			return fail("完成渡口野餐後，可照料牧場家畜。")
 		if action=="livestock_install" and not state.get("flower_nursery",{}).get("garden",{}).get("complete",false):
 			return fail("完成田尾公共花園後解鎖畜牧收集器。")
 		if action=="livestock_pen" and not LIVESTOCK.pen_status(state.objects,extra):
@@ -2217,6 +3168,17 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 	# T036 explicit material sources. Plain recipe IDs never contain '|', so the
 	# backpack-only actions below stay unchanged; perform() re-enters _apply
 	# with the canonical action and the plain recipe ID (no recursion loop).
+	if action in AnimalCollector.ACTIONS:
+		if _region!=REGIONS.HOME:return fail("請回風鈴渡口使用收集器。")
+		return AnimalCollector.act(self,token,p,action,extra)
+	if action=="dye_furniture":return _dye_furniture(token,p,extra)
+	if action=="upgrade_workshop":
+		if state.objects.get(k,{}).get("type")!="bench":return fail("請在工作台完成工坊升級。")
+		if crafting_level(player)<WORKSHOP_LEVEL:return fail("手作達到六級後可升級工坊。")
+		if player.get("workshop_upgraded",false):return fail("你的工坊已升級。")
+		player.workshop_upgraded=true
+		return ok("工坊已升級，家園工坊開放裝配桌。")
+	if action=="assemble":return _assemble(player,state.objects.get(k,{}),token,extra)
 	if action==MATERIAL_SOURCES.PREPARE_ACTION:return MATERIAL_SOURCES.prepare(self,token,p,extra)
 	# Salt kit gate on the sourced path too (explained before any material quote).
 	if action=="craft" and extra.contains("|"):
@@ -2251,7 +3213,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 	if action in MINE_FREIGHT.ACTIONS:
 		var home_objects: Dictionary = state.objects if _region == REGIONS.HOME else state.regions[_region].objects
 		return MINE_FREIGHT.apply(state,token,action,p,extra,_region,home_objects)
-	if action in ["mine_travel","mine_rest","mine_commission","mine_extract",HOIST_ACTION] or (_region in MINES.IDS and action=="pick" and p in MINES.NODES):
+	if action in ["mine_travel","mine_rest","mine_commission","mine_extract","mine_mud_lure","mine_mud_claim","mine_mud_duel",HOIST_ACTION] or (_region in MINES.IDS and action=="pick" and p in MINES.NODES):
 		return mine_action(token,action,p,extra,inv)
 	if action in HISTORY_MEMORY.ACTIONS:
 		if _region != REGIONS.LANYANG:return fail("請先到蘭陽試作田。")
@@ -2267,11 +3229,14 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		return ok("星禾把你的跨季收成寫進了水圳手記，並送你溫室花架圖樣。"+("" if report_bond_note.is_empty() else " "+report_bond_note))
 	if action in LANYANG_LIFE.ACTIONS:return lanyang_action(token,action,p,inv)
 	if action=="borrow_mine_pick":
-		if _region!=REGIONS.HOME or p!=COPPER_CELL:return fail("請到渡口運入礦料點借用公用鎬。")
+		var depth:=MINES.depth_of(_region)
+		var loan_site:=(_region==REGIONS.HOME and p==COPPER_CELL) or (_region==REGIONS.JINGUASHI and p==MINES.ENTRY)
+		loan_site=loan_site or (depth in range(1,MINES.SHALLOW_DEPTH+1) and depth<=int(state.mine_depths.unlocked) and p==MINES.REST)
+		if not loan_site:return fail("請到渡口礦料點、下坑路牌或已開通的淺層休息站借用公用鎬。")
 		if not state.picnic:return fail("渡口野餐後才開放公用鎬。")
 		if player.get("borrowed_mine_pick",false):return fail("你已有公用鎬使用資格。")
 		player.borrowed_mine_pick=true
-		return ok("取得公用鎬使用資格。可在渡口練習礦料點與金瓜石淺礦場採銅。")
+		return ok("取得公用鎬使用資格。可在渡口及金瓜石地表採銅，也可在礦道 B1–B5 採礦。")
 	if _region == REGIONS.JINGUASHI and (action == "mine_copper" or (action == "pick" and p in JINGUASHI.NODES)):
 		if p not in JINGUASHI.NODES:return fail("請到合作礦場的礦料點。")
 		if int(inv.get("reinforced_pick",0))<1 and not player.get("borrowed_mine_pick",false):return fail("先製作強化鎬，或到渡口借用公用鎬。")
@@ -2303,7 +3268,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 	if action == "ship":
 		if p == SHIPPING.NO_CELL or p != SHIPPING.cell_for(state):
 			return fail("出貨箱目前無法使用。")
-		var sale := SHIPPING.verify(extra, inv, SHIPPING.prices(CROPS, FISH, OTHER_SALES), int(player.coins))
+		var sale := SHIPPING.verify(extra, inv, SHIPPING.prices(CROPS, FISH, OTHER_SALES,true), int(player.coins))
 		if not sale.ok:
 			return sale
 		for item in sale.quantities:
@@ -2323,6 +3288,12 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if float(state.time)-float(player.get("last_harvest",{}).get("at",-10))<HARVESTER.COOLDOWN:return fail("收割機正在收起割刀，稍候再試")
 		var plan:Dictionary=HARVESTER.plan(self,token,p)
 		if plan.cells.is_empty():return fail("範圍內沒有可採收的成熟作物，未消耗木炭")
+		var guarantee:=has_crop_guarantee(player)
+		for target_key in plan.cells:
+			var crop:Dictionary=state.crops[target_key]
+			var bonus:=quality_crop(crop,guarantee)
+			if not bonus.is_empty():give(plan.yields,bonus,1)
+			guarantee=false
 		for kind in plan.yields:
 			if int(inv.get(kind,0))+int(plan.yields[kind])>1000000000:return fail("收成物品已達上限，請先整理背包")
 		if int(player.harvests)+plan.cells.size()>1000000000:return fail("採收紀錄已達上限，這次沒有施工")
@@ -2340,11 +3311,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if float(state.time)-float(player.get("last_seed",{}).get("at",-10))<SEEDER.COOLDOWN:return fail("播種機正在收起料斗，稍候再試")
 		var plan:Dictionary=SEEDER.plan(self,token,p,extra)
 		if plan.cells.is_empty():return fail("範圍內沒有自己的空農田，未消耗種子或木炭")
-		for target_key in plan.cells:
-			var plot:Dictionary=state.crops[target_key]
-			plot.kind=extra
-			plot.growth=0.0
-			plot["remaining"]=int(CROPS[extra].get("cycles",1))
+		for target_key:String in plan.cells:_plant_crop(token,target_key,extra)
 		give(inv,extra+"_seed",-plan.cells.size())
 		give(inv,"charcoal",-1)
 		player.last_seed={"at":float(state.time),"x":p.x,"y":p.y,"cells":plan.cells.duplicate(),"kind":extra}
@@ -2369,7 +3336,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if device.get("type")!="waterworks" or device.get("owner")!=token:return fail("只能操作自己的水力加工台。")
 		return WATERWORKS.operate(device,inv,action,extra)
 	if action=="craft":
-		if extra=="supply_box_kit" and exploration_level(exploration_points(player))<SUPPLY_BOX_LEVEL:return fail("探索達到六級後可製作便攜補給箱。")
+		if extra=="supply_box_kit" and not supply_box_unlocked(player):return fail("探索達到六級，或完成波波的休息站事件後可製作便攜補給箱。")
 		if extra=="mine_drill_kit" and int(state.mine_depths.unlocked)<5:return fail("先完成第四層礦道工程。")
 		if extra=="waterworks_kit" and int(state.mine_depths.unlocked)<4:return fail("先完成礦場第三層的抽水工程。")
 		if extra == "gold_sample" and _region != REGIONS.HOME:return fail("請把含金礦料帶回渡口工作台。")
@@ -2465,7 +3432,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		return ok("十二枚風鈴連成一首歌！參與者各得 20 鈴幣＋每枚 2 鈴幣，G 查看成果。")
 	if action=="build_area":
 		var parts:=extra.split("|")
-		if parts.size()!=3 or parts[0] not in ["floor","path","roof"] or not parts[1].is_valid_int() or not parts[2].is_valid_int():return fail("請重新選擇施工範圍")
+		if parts.size()!=3 or parts[0] not in ["floor","path","spring_pebble_path","roof"] or not parts[1].is_valid_int() or not parts[2].is_valid_int():return fail("請重新選擇施工範圍")
 		var end:=Vector2i(int(parts[1]),int(parts[2]))
 		var a:=Vector2i(mini(p.x,end.x),mini(p.y,end.y))
 		var b:=Vector2i(maxi(p.x,end.x),maxi(p.y,end.y))
@@ -2480,13 +3447,16 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 				var tile:=Vector2i(x,y);var tile_key:=key(tile)
 				if Vector2(player.x,player.y).distance_to(Vector2(tile)+Vector2(0.5,0.5))>reach:return fail("整個施工範圍需在可施工距離內")
 				if water(tile) or protected(tile):return fail("範圍包含水域或公共通道，這次沒有扣料")
+				if not allows_public_build(token,tile):return fail(PUBLIC_BUILD_DENIED)
 				if kind=="roof":
 					if state.roofs.has(tile_key) or not state.ground.has(tile_key) or state.ground[tile_key].type!="floor" or state.ground[tile_key].owner!=token:return fail("整片屋頂都需要自己的木地板，且不能重疊屋頂")
 				elif resource(tile)!="" or state.crops.has(tile_key) or state.objects.has(tile_key) or state.ground.has(tile_key):return fail("範圍裡有東西，這次沒有放置或扣料")
 				keys.append(tile_key)
-		for item in ["wood","stone","fiber"]:
-			if int(inv.get(item,0))<int(BUILD[kind].get(item,0))*count:return fail("整片施工的"+NAMES[item]+"不足")
-		for item in ["wood","stone","fiber"]:inv[item]=int(inv.get(item,0))-int(BUILD[kind].get(item,0))*count
+		var recipe:Dictionary=BUILD[kind].duplicate()
+		recipe.erase("name")
+		for item in recipe:
+			if int(inv.get(item,0))<int(recipe[item])*count:return fail("整片施工的"+NAMES[item]+"不足")
+		for item in recipe:give(inv,item,-int(recipe[item])*count)
 		var layer:Dictionary=state.roofs if kind=="roof" else state.ground
 		for tile_key in keys:
 			var piece := {"type":kind,"owner":token,"items":{}}
@@ -2498,23 +3468,49 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		var coordinates:=extra.split(",")
 		if coordinates.size()!=2 or not coordinates[0].is_valid_int() or not coordinates[1].is_valid_int():return fail("請重新選擇搬移位置")
 		var destination:=Vector2i(int(coordinates[0]),int(coordinates[1]))
+		if not allows_public_build(token,destination):return fail(PUBLIC_BUILD_DENIED)
+		var floor_permission:=PLOT_PERMISSIONS.placement_floor(self,token,destination)
+		if not floor_permission.ok:return fail(floor_permission.message)
 		var to_key:=key(destination)
 		if _region==REGIONS.HOME and PUBLIC_KITCHEN.is_site_cell(state,p):return fail(PUBLIC_KITCHEN.MSG_LOCKED)
 		var obj:Dictionary=state.objects.get(k,{})
+		if obj.get("aru_public",false):return fail("已捐給公共地塊的家具會留給大家使用。")
 		var permission:=PLOT_PERMISSIONS.can_dismantle(self,token,p,true)
 		if not permission.ok:return fail(permission.message)
 		if obj.type in ["wall","window","door"]:return fail("牆門窗請拆除後重新建造，材料會退回")
 		if obj.type=="conveyor" and (obj.enabled or not obj.items.is_empty()):return fail("請停用並清空輸送帶")
 		if obj.type=="mine_drill" and not MINE_DRILL.can_move(obj):return fail("請停用並清空採掘機。")
 		if obj.type=="waterworks" and not WATERWORKS.can_move(obj):return fail("請停用並清空水力加工台。")
-		if (obj.type in LOGISTICS.PROCESSORS or obj.type in ["seed_maker","loom","glass_furnace","jam_pot"]) and not LOGISTICS.processing_idle(obj):return fail(PROCESSING_MSG_BUSY)
+		if (obj.type in LOGISTICS.PROCESSORS or obj.type in INDUSTRY.MANUAL_STATIONS) and not LOGISTICS.processing_idle(obj):return fail(PROCESSING_MSG_BUSY)
 		if obj.type in LOGISTICS.PROCESSORS and not LOGISTICS.processor_ready_to_move(obj):return fail("請停用自動加工並清空設備")
 		if obj.type=="forester" and not FORESTRY.can_move(obj):return fail("請先停用林務站並取回全部材料")
 		if obj.has("job"):return fail("先領取或取消目前工作，再搬動")
 		if obj.has("cooking") and not cooking_idle(obj):return fail(COOKING_MSG_BUSY)
 		if obj.type=="mine_drill" and MINE_DRILL.placement(destination)<0:return fail("採掘機必須正對本層指定礦點。")
 		if destination==p:return fail("這就是原本的位置")
+		if obj.type in WALL_FIXTURES.KINDS and not WALL_FIXTURES.has_support(state.objects,destination,str(obj.owner)):
+			return fail(WALL_FIXTURES.SUPPORT_MESSAGE)
+		if obj.has("collector_animal"):return fail("先領取產物並取回收集籃，再搬移收集器。")
+		if obj.type in RESIDENT_GOALS.DOUBLE_BENCHES:
+			if Vector2(player.x,player.y).distance_to(Vector2(destination)+Vector2(0.5,0.5))>3.2:return fail("新位置也要在身邊三格內")
+			var available:=_footprint_space(token,destination,[Vector2i.ZERO,master_bench_offset(obj)],p)
+			if not available.ok:return available
+			_master_bench_clear(p)
+			state.objects.erase(k)
+			state.objects.erase(key(p+master_bench_offset(obj)))
+			state.objects[to_key]=obj
+			_master_bench_end(destination,obj)
+			return ok("搬好了！兩格長椅和刻字都留在一起。")
 		if Vector2(player.x,player.y).distance_to(Vector2(destination)+Vector2(0.5,0.5))>3.2:return fail("新位置也要在身邊三格內")
+		if INDUSTRY.square_part(obj)==0:
+			var station_cells:=INDUSTRY.station_cells(obj.type,INDUSTRY.is_vertical(obj))
+			var available:=_footprint_space(token,destination,station_cells,p)
+			if not available.ok:return available
+			if obj.type==INDUSTRY.FOOT_BATH:_master_bench_clear(p)
+			for offset:Vector2i in station_cells:state.objects.erase(key(p+offset))
+			state.objects[to_key]=obj
+			_write_station_parts(destination,obj)
+			return ok("已搬好"+BUILD[obj.type].name+"。")
 		if obj.type=="water_pump" and not INDUSTRY.near_river(self,destination):return fail("水泵需放在河水兩格內的陸地")
 		if water(destination) or protected(destination) or resource(destination)!="" or state.objects.has(to_key) or state.crops.has(to_key):return fail("新位置不是可用空地，家具仍留在原處")
 		if obj.type not in ["chair","lamp","sign","water_pipe","conveyor","diversion_gate"]:
@@ -2538,9 +3534,23 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		return RESIDENT_BOND.apply(player,inv,action,bond_parts,float(state.time),NAMES)
 	# T066「一起做的事」：好感到了那一階，在居民身邊完成設定集的行動；只寫本人的 player.bond_goals。
 	# 第三批：CLAIM_ACTION 在同一個站位補領紀念小物（extra＝"居民:階數"）。
+	if action=="inn_bed_rest":
+		var bed:Dictionary=state.objects.get(key(station_anchor(state.objects,p)),{})
+		if _region!=REGIONS.HOME or bed.get("type")!=INDUSTRY.INN_BED or not extra.is_empty():
+			return fail("請靠近家園裡的厚被旅舍床。")
+		player.mine_energy=100
+		return ok("在厚被裡休息了一下，體力已恢復。")
+	if action=="inn_outfit":
+		if _region!=REGIONS.HOME or state.objects.get(k,{}).get("type")!=RESIDENT_GOALS.INN_WARDROBE or extra not in ["original","blue"]:
+			return fail("請靠近自己的家園或朋友家中的木格更衣櫃。")
+		if not FLOWER_NURSERY.blue_outfit_unlocked(player):return fail("先在田尾染製一套藍染工作服。")
+		player.blue_outfit_unlocked=true
+		if extra=="blue":player.blue_outfit=true
+		else:player.erase("blue_outfit")
+		return ok("已換上藍染工作服。" if extra=="blue" else "已換回原色工作服。")
 	if action==RESIDENT_GOALS.APRON_ACTION:
-		if _region!=REGIONS.HOME or p!=bond_place(state,"milu")[1] or not extra.is_empty():
-			return fail("請到米露身邊換圍裙。")
+		if _region!=REGIONS.HOME or (p!=bond_place(state,"milu")[1] and state.objects.get(k,{}).get("type") not in RESIDENT_GOALS.WARDROBES) or not extra.is_empty():
+			return fail("請到米露身邊或旅舍更衣櫃換圍裙。")
 		if not RESIDENT_GOALS.apron_unlocked(player):return fail("完成米露的共餐事件後可穿戴。")
 		if player.get(RESIDENT_GOALS.APRON_KEY,false):
 			player.erase(RESIDENT_GOALS.APRON_KEY)
@@ -2557,7 +3567,12 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if not goal_locked.is_empty():return fail(goal_locked)
 		Village.ensure_player(player)
 		if action==RESIDENT_GOALS.CLAIM_ACTION:return RESIDENT_GOALS.claim(player,inv,goal_parts)
-		return RESIDENT_GOALS.apply(player,inv,goal_parts,NAMES,state,token)
+		var result:=RESIDENT_GOALS.apply(player,inv,goal_parts,NAMES,state,token)
+		if result.ok and goal_resident=="nuannuan":
+			match int(goal_parts[1]):
+				2:state[WARM_SPRINGS.BATH_KEY]=true
+				4:_sit_at_inn(player,str(goal_parts[2]))
+		return result
 	if action=="quest":
 		var parts:=extra.split(":")
 		if parts.size()!=2 or not parts[1].is_valid_int():return fail("請重新打開居民委託")
@@ -2584,9 +3599,14 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		var bond_note:=RESIDENT_BOND.stage_up_text(extra,bond_before,RESIDENT_BOND.stage(player,extra))
 		return ok("%s：%s（鈴幣 +%d，J 可重看）%s"%[Village.NPCS[extra].name,quest.line,quest.coins,"" if bond_note.is_empty() else " "+bond_note])
 	if action in ["order","order_accept","order_cancel"]:
-		if _region!=REGIONS.HOME or p!=Vector2i(40,29) or not state.board:return fail("修好公告板後即可接生活訂單")
+		var channel:=str(ORDER_CATALOG.find(extra).get("channel","village"))
+		if channel=="dock":
+			if _region!=REGIONS.HOME or p!=WANGAN_COAST.DOCK_ORDERS or not state.wangan_star_walk:
+				return fail("修好星砂步道後，可到望安碼頭接單和交貨。")
+		elif _region!=REGIONS.HOME or p!=Vector2i(40,29) or not state.board:return fail("修好公告板後即可接生活訂單")
 		var now:=float(state.time)
 		var context:=ORDER_CATALOG.context_from_world(self,token)
+		context.channel=channel
 		var book:Dictionary=player.get("orders",{})
 		var result:Dictionary
 		match action:
@@ -2602,22 +3622,56 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			player.coins+=int(result.order.coins)
 		player.orders=result.book
 		return ok(str(result.message))
-	if action=="axe" and _region==REGIONS.HOME and p==SEAWEED_CELL:
-		if float(state.seaweed_ready)>float(state.time):return fail("海苔還在長，稍後再來採集")
+	if action in ["axe",SEAWEED_POINT] and _region==REGIONS.HOME and p==SEAWEED_CELL:
+		var remaining:=ceili(float(state.seaweed_ready)-float(state.time))
+		if remaining>0:return fail("海苔還在長，約 %d 秒後可以再採集"%remaining)
 		if int(inv.get("seaweed",0))>=1000000000:return fail("背包的海苔已達上限")
 		give(inv,"seaweed",1)
+		_record_discovery(player,"shore","seaweed")
 		state.seaweed_ready=float(state.time)+SEAWEED_REGROW_SECONDS
 		player.gathering_points=mini(1000000000,int(player.get("gathering_points",0))+1)
-		return ok("採到海苔 ×1，約 60 秒後可以再採集")
+		return ok("採到海苔 ×1，約 %d 秒後可以再採集"%SEAWEED_REGROW_SECONDS)
+	if action==SEAWEED_POINT:return fail("請到望安南岸的海苔採集點。")
+	if action==WANGAN_COAST.STAR_REPAIR_POINT:
+		if _region!=REGIONS.HOME or p!=WANGAN_COAST.STAR_REPAIR or not extra.is_empty():return fail("請靠近星砂海岸的步道工程牌。")
+		if state.wangan_star_walk:return fail("星砂海岸的步道已經修好了。")
+		for material in WANGAN_COAST.STAR_COST:
+			if int(inv.get(material,0))<WANGAN_COAST.STAR_COST[material]:return fail("步道需要 8 木板和 4 纖維。")
+		for material in WANGAN_COAST.STAR_COST:give(inv,material,-WANGAN_COAST.STAR_COST[material])
+		state.wangan_star_walk=true
+		return ok("星砂海岸的步道修好了！沿木棧道去找晶砂。")
+	if action==WANGAN_COAST.STAR_SAND_POINT:
+		if _region!=REGIONS.HOME or p!=WANGAN_COAST.STAR_SAND or not state.wangan_star_walk:return fail("先修好星砂海岸的步道。")
+		var remaining:=ceili(float(state.wangan_star_sand_ready)-float(state.time))
+		if remaining>0:return fail("晶砂約 %d 秒後會重新露出。"%remaining)
+		if int(inv.get("crystal_sand",0))>=1000000000:return fail("背包的晶砂已達上限。")
+		give(inv,"crystal_sand",1)
+		state.wangan_star_sand_ready=float(state.time)+WANGAN_COAST.STAR_SAND_RESPAWN
+		player.gathering_points=mini(1000000000,int(player.get("gathering_points",0))+1)
+		return ok("採到晶砂 ×1，可用來製作溫室玻璃。")
+	if action==WANGAN_COAST.SHELL_POINT:
+		if _region!=REGIONS.HOME or p!=WANGAN_COAST.SHELL_CELL:return fail("請到望安南岸的沙灘。")
+		if WANGAN_COAST.high_tide(float(state.time)):return fail("潮水蓋住了貝殼，退潮時再來。")
+		var remaining:=ceili(float(state.wangan_shell_ready)-float(state.time))
+		if remaining>0:return fail("這裡剛採過，約 %d 秒後可以再找。"%remaining)
+		if int(inv.get(WANGAN_COAST.SHELL_ITEM,0))>=1000000000:return fail("背包的貝殼已達上限。")
+		give(inv,WANGAN_COAST.SHELL_ITEM,1)
+		_record_discovery(player,"shore",WANGAN_COAST.SHELL_ITEM)
+		state.wangan_shell_ready=float(state.time)+WANGAN_COAST.SHELL_RESPAWN
+		player.gathering_points=mini(1000000000,int(player.get("gathering_points",0))+1)
+		return ok("撿到潮紋貝殼 ×1，可以帶到出貨箱。")
 	if action=="quarry" or (action=="pick" and _region==REGIONS.HOME and p==Vector2i(54,25)):
 		if p!=Vector2i(54,25) or not state.board:return fail("先修好公告板，再去東北方公共採石點")
 		if float(state.time)<float(state.quarry.ready):return fail("採石點正在露出新石層，約剩 %d 秒"%ceili(float(state.quarry.ready)-float(state.time)))
 		state.quarry.hits+=1
-		if int(state.quarry.hits)<3:return ok("採石 · 再 %d 下就能取出石材"%(3-int(state.quarry.hits)))
+		if int(state.quarry.hits)<3:
+			return {"ok":true,"message":"採石 · 再 %d 下就能取出石材"%(3-int(state.quarry.hits)),"gather_continue":true}
 		give(inv,"stone",6)
 		state.quarry={"hits":0,"ready":float(state.time)+45.0}
 		return ok("石材 +6！新的石層約 45 秒後就緒，可和朋友輪流採集")
 	if action in ["fish_start","fish_catch"]:
+		if _region==REGIONS.HOME and WANGAN_COAST.STAR_POOL.has_point(p) and not state.wangan_star_walk:
+			return fail("先修好星砂海岸的步道，再到潮池拋竿。")
 		if _region == REGIONS.JINGUASHI or _region in MINES.IDS:return fail("這裡沒有可垂釣的水域")
 		if _region==REGIONS.Springs.REGION and REGIONS.Springs.spot(p).is_empty():return fail("請到暖泉溪或高地冷泉的岸邊拋竿")
 		if _region==REGIONS.Bamboo.REGION and not REGIONS.Bamboo.water(p):return fail("請到竹澗的岸邊拋竿")
@@ -2650,6 +3704,8 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		var season:=WEATHER.season_on_day(day)
 		var spot:=SALT_PAN.fishing_water(p) if _region==SALT_PAN.REGION else "coast"
 		if _region==REGIONS.Springs.REGION:spot=REGIONS.Springs.spot(p)
+		if _region==REGIONS.HOME and WANGAN_COAST.FISHING_WATER.has_point(p):spot=WANGAN_COAST.FISHING_SPOT
+		if _region==REGIONS.HOME and WANGAN_COAST.STAR_POOL.has_point(p):spot=WANGAN_COAST.STAR_POOL_SPOT
 		var result:=Collections.fishing_result(_region,season,total,player,fposmod(float(state.time),WEATHER.DAY_SECONDS),spot,WEATHER.rains(day,_region))
 		var fish_id:String=result.id
 		if total>=1000000000 or int(inv.get(fish_id,0))>=1000000000:return fail("釣魚紀錄或背包數量已達上限")
@@ -2668,7 +3724,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if action in ["queue_cook","cancel_queued_cook"] or stove.has("cooking"):
 			return _cooking_action(token,stove,action,extra)
 		if action=="cook":
-			if not RECIPES.has(extra):return fail("還沒有這份食譜")
+			if not has_recipe(player,extra):return fail("還沒有這份食譜")
 			if stove.has("job"):return fail("石灶正在忙，先領取或取消目前料理")
 			var recipe:Dictionary=RECIPES[extra]
 			for item in recipe.ingredients:
@@ -2708,14 +3764,15 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			_store_chicken_egg()
 			return ok("已裝好雞圈收集籃，房間成員都能收蛋")
 		if action=="egg" and stored>0:
-			var amount:=mini(stored,1000000000-int(inv.get("egg",0)))
+			var before_quality:=int(animal.get("basket_eggs_quality",0))
+			var amount:=LIVESTOCK.transfer_products(animal,"basket_eggs",inv,"egg",EGG_BASKET_CAPACITY)
 			if amount<=0:return fail("背包中的雞蛋已達上限")
-			give(inv,"egg",amount)
-			animal.basket_eggs=stored-amount
-			return ok("從收集籃領取雞蛋 ×%d"%amount)
+			var quality:=before_quality-int(animal.get("basket_eggs_quality",0))
+			return ok("從收集籃領取雞蛋 ×%d%s"%[amount,"（含優良 %d 顆）"%quality if quality>0 else ""])
 		if action=="pet":
 			if float(state.time)-float(state.animal.last_pet)<30:return fail("糯米雞正開心地休息，過一會兒再摸摸牠")
 			state.animal.last_pet=state.time
+			CHICKEN_CUDDLE.clear(state.animal)
 			state.animal.bond+=1
 			return ok("糯米雞靠過來蹭蹭你。親密度 +1")
 		if action=="feed":
@@ -2731,7 +3788,9 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if float(state.time)<float(state.animal.egg_ready):return fail("糯米雞還在準備，剩下 %d 秒"%ceili(float(state.animal.egg_ready)-float(state.time)))
 		if int(inv.get("egg",0))>=1000000000:return fail("背包中的雞蛋已達上限")
 		give(inv,"egg",1)
-		state.animal.egg_ready=-1.0
+		if LIVESTOCK.finish_chicken_cycle(animal,int(inv.get("quality_egg",0))<1000000000)>0:
+			give(inv,"quality_egg",1)
+			return ok("收到了雞蛋和一顆優良雞蛋！")
 		return ok("收到了溫暖的雞蛋！雞蛋 +1")
 	if action=="picnic":
 		if p!=Vector2i(40,29) or not state.board:return fail("先完成渡口公告板，再準備野餐")
@@ -2773,7 +3832,7 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			player.coins-=20
 			give(inv,"sapling",1)
 			return ok("買到一棵樹苗，按 C 選樹苗，再點空地種下")
-		if not CROPS.has(extra) and not FISH.has(extra) and not OTHER_SALES.has(extra): return fail("這件商品尚未上架")
+		if not CROPS.has(extra) and not FISH.has(extra) and not OTHER_SALES.has(extra) and not CROP_CATALOG.quality_item(extra): return fail("這件商品尚未上架")
 		if action=="buy":
 			if not CROPS.has(extra):return fail("這項物品沒有販售種子")
 			if extra in FLOWER_NURSERY.FLOWERS and not FLOWER_NURSERY.home_seed_allowed(state,token,extra):return fail(FLOWER_HOME_SEED_MSG)
@@ -2787,24 +3846,42 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			return ok("買到一包"+CROPS[extra].name+"種子")
 		var count:int=inv.get(extra,0)
 		if count<=0: return fail("背包裡沒有這種收成")
-		var sale_price:int=int(CROPS[extra].price) if CROPS.has(extra) else (int(FISH[extra].price) if FISH.has(extra) else int(OTHER_SALES[extra]))
+		var sale_price:int=CROP_CATALOG.quality_price(extra) if CROP_CATALOG.quality_item(extra) else (int(CROPS[extra].price) if CROPS.has(extra) else (int(FISH[extra].price) if FISH.has(extra) else int(OTHER_SALES[extra])))
 		# T093: 存檔檢查不接受超過上限的鈴幣（save_schema.whole），這裡和出貨箱一樣先擋。
 		if int(player.coins)>SHIPPING.MAX_COINS-count*sale_price:return fail(COIN_CAP_MSG)
 		player.coins+=count*sale_price
 		_record_crop_sale(player,extra)
 		inv[extra]=0
 		return ok("售出 %d 個，獲得 %d 鈴幣"%[count,count*sale_price])
+	if action=="box_deposit_access":
+		var box:Dictionary=state.objects.get(k,{})
+		if box.get("type")!="private_chest" or box.get("owner")!=token:return fail("只有私人箱的主人能調整存入權限。")
+		if extra=="island":box.guest_deposit=true
+		elif extra=="owner":box.erase("guest_deposit")
+		else:return fail("請選擇有效的存入權限。")
+		return ok("存入權限已更新。")
+	if action=="box_withdraw_access":
+		var box:Dictionary=state.objects.get(k,{})
+		if box.get("type")!="private_chest" or box.get("owner")!=token:return fail("只有私人箱的主人能調整取出權限。")
+		if extra=="owner":
+			box.erase("withdraw_guest")
+			return ok("已收回訪客的取出權限。")
+		if not extra.begins_with("friend:"):return fail("請選擇有效的取出權限。")
+		var guest:=_regional_guest(token,extra.trim_prefix("friend:"))
+		if guest.is_empty():return fail("請選擇同區在線的玩家。")
+		box.withdraw_guest=guest
+		return ok("已開放指定島民查看與取出箱內物品。")
 	if action in CHEST_MOVES:
 		var box:Dictionary=state.objects.get(k,{})
 		if box.get("type","") not in ["chest","private_chest","supply_box"]: return fail("這裡沒有箱子")
-		var permission:=PLOT_PERMISSIONS.can_take(token,box)
+		var storing:bool=action.begins_with("deposit")
+		var permission:=PLOT_PERMISSIONS.can_deposit(token,box) if storing else PLOT_PERMISSIONS.can_withdraw(token,box)
 		if not permission.ok:return fail(permission.message)
 		if not NAMES.has(extra): return fail("無法存取這項物品")
 		if not (box.get("items") is Dictionary):return fail("這裡沒有箱子")
 		# T014: move 1 / half (ceil) / all of ONE stack between backpack and box.
 		# Both sides keep the plain item_id -> count shape. Every check runs before
 		# any mutation; a refused move changes neither side (no clamping).
-		var storing:bool=action.begins_with("deposit")
 		var source:Dictionary=inv if storing else box.items
 		var target:Dictionary=box.items if storing else inv
 		var have:=int(source.get(extra,0))
@@ -2826,24 +3903,29 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 				if Vector2(who.x,who.y).distance_to(Vector2(p)+Vector2(0.5,0.5))<0.8:return fail("有人站在門口，等他通過再關門")
 		door.open=not door.get("open",false)
 		return ok("門打開了" if door.open else "門關好了")
-	if water(p) or (protected(p) and action!="remove"): return fail("這裡是水域或公共通道，請換個位置")
-	var r:=resource(p)
 	if action=="plant_tree":
-		if r!="" or state.crops.has(k) or state.objects.has(k) or state.ground.has(k) or state.roofs.has(k):return fail("樹苗需要一格空地，不能種在農田或建物上")
-		if int(inv.get("sapling",0))<1:return fail("沒有樹苗了，砍樹會得到樹苗，也可以向小栗購買")
+		var problem:=tree_planting_problem(token,p)
+		if not problem.is_empty():return fail(problem)
 		inv.sapling-=1
 		state.forest[k]={"growth":0.0,"mature":false,"owner":token}
 		player.trees_planted=int(player.get("trees_planted",0))+1
 		return ok("種下了樹苗，島上有人時約三分鐘長成，不需要澆水")
+	# Crops from older saves can finish their current cycle on the new ferry lane.
+	var legacy_ferry_crop:bool=_region==REGIONS.HOME and WANGAN_COAST.FERRY_ACCESS.has_point(p) and state.crops.has(k) and action in ["water","harvest"]
+	if water(p) or (protected(p) and action!="remove" and not legacy_ferry_crop): return fail("這裡是水域或公共通道，請換個位置")
+	var r:=resource(p)
 	if action in ["axe","pick"]:
 		if r=="": return fail("這裡沒有可採集的資源")
 		if r=="sapling":return fail("小樹還在長大；自己的樹苗可用拆除工具移回背包")
 		if r=="rock" and action!="pick":return fail("這是石頭，請選十字鎬")
 		if r=="tree" and action!="axe":return fail("這是樹木，請選斧頭")
+		var hardwood:=r=="tree" and bool(state.forest.get(k,{}).get("mature",false))
+		if hardwood and int(inv.get("hardwood",0))>1000000000-HARDWOOD_YIELD:return fail("硬木已放不下了，請先整理背包。")
 		state.damage[k]=int(state.damage.get(k,0))+1
 		var needed:=3 if r=="tree" else 2
 		if r=="grass":needed=1
-		if state.damage[k]<needed:return ok("%s · 還需要 %d 下"%["砍樹" if r=="tree" else "採集",needed-int(state.damage[k])])
+		if state.damage[k]<needed:
+			return {"ok":true,"message":"%s · 還需要 %d 下"%["砍樹" if r=="tree" else "採集",needed-int(state.damage[k])],"gather_continue":true}
 		player.gathering_points=mini(1000000000,int(player.get("gathering_points",0))+1)
 		state.removed[k]=true
 		state.forest.erase(k)
@@ -2853,9 +3935,16 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			give(inv,"fiber",2)
 			give(inv,"sapling",1)
 			give(inv,"resin",1)
+			if hardwood:give(inv,"hardwood",HARDWOOD_YIELD)
 		elif r=="rock":give(inv,"stone",5)
-		else:give(inv,"fiber",4)
-		return ok("採集完成！"+("木材 +6、纖維 +2、樹苗 +1、樹脂 +1" if r=="tree" else ("石材 +5" if r=="rock" else "纖維 +4")))
+		var fiber:=0
+		if r=="grass":
+			fiber=6 if WEATHER.at(float(state.time),_region).id=="windy" else 4
+			give(inv,"fiber",fiber)
+		var haul:="木材 +6、纖維 +2、樹苗 +1、樹脂 +1" if r=="tree" else ("石材 +5" if r=="rock" else "纖維 +%d"%fiber)
+		if fiber==6:haul+="（微風多得 2）"
+		if hardwood:haul+="、硬木 +%d"%HARDWOOD_YIELD
+		return ok("採集完成！"+haul)
 	if action=="hoe":
 		if r!="" or state.objects.has(k) or state.ground.has(k):return fail("先清空地面，再開墾農田")
 		if state.crops.has(k):return fail("這一格已經是農田")
@@ -2876,29 +3965,47 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if state.crops[k].kind!="":return fail("這格已經種了作物")
 		if int(inv.get(extra+"_seed",0))<=0:return fail("種子用完了，可向渡口的小栗購買")
 		inv[extra+"_seed"]-=1
-		state.crops[k].kind=extra
-		state.crops[k].growth=0.0
-		state.crops[k]["remaining"]=int(CROPS[extra].get("cycles",1))
+		_plant_crop(token,k,extra)
 		if _region==FLOWER_NURSERY.REGION:FLOWER_NURSERY.note_plant(state,token,extra)
 		if not greenhouse_covers(k) and not crop_grows_in_season(extra,_region,p,float(state.time)):
 			return ok("種下%s。現在不是它的季節，會休眠到%s季再生長。"%[CROPS[extra].name,crop_season_text(extra)])
 		return ok("種下"+CROPS[extra].name+"，記得澆水")
 	if action=="water":
 		if not state.crops.has(k):return fail("請對農田澆水")
-		state.crops[k].wet=true
+		var plot:Dictionary=state.crops[k]
+		var permission:=PLOT_PERMISSIONS.can_water(self,token,plot)
+		if not permission.ok:return fail(permission.message)
+		var day:=int(WEATHER.day_index(float(state.time)))
+		var kind:String=plot.kind
+		var cared:=int(player.get("crop_care",0))
+		if cared<CROP_CATALOG.CARE_TARGET and not plot.wet and plot.get("owner","")==token and CROPS.has(kind) \
+			and float(plot.growth)<float(CROPS[kind].time) and int(plot.get("last_care_day",-1))!=day:
+			plot.last_care_day=day
+			player.crop_care=cared+1
+			plot.wet=true
+			return ok("水分充足 · 照料 %d／%d%s"%[player.crop_care,CROP_CATALOG.CARE_TARGET,"，下次收成會有優良作物。" if player.crop_care==CROP_CATALOG.CARE_TARGET else ""])
+		plot.wet=true
 		return ok("水分充足，幼苗會慢慢長大")
+	if action in ["plot_sow_access","plot_water_access"]:
+		var sowing:=action=="plot_sow_access"
+		var title:="播種" if sowing else "澆水"
+		var setting:="owner_sow" if sowing else "owner_water"
+		if _region!=REGIONS.HOME:return fail("只有家園農田可調整%s權限。"%title)
+		if not state.crops.has(k) or state.crops[k].get("owner","")!=token:return fail("只有田主能調整%s權限。"%title)
+		if extra=="owner":state.crops[k][setting]=true
+		elif extra=="island":state.crops[k].erase(setting)
+		else:return fail("請選擇有效的%s權限。"%title)
+		return ok("%s權限已更新。"%title)
 	if action=="plot_harvest_access":
 		if not state.crops.has(k) or state.crops[k].get("owner","")!=token:return fail("只有田主能調整採收權限。")
 		if _region==FLOWER_NURSERY.REGION:return fail("田尾育苗床固定由田主採收。")
 		var crop:Dictionary=state.crops[k]
 		if extra.begins_with("friend:"):
-			var public_id:=extra.trim_prefix("friend:")
-			for guest in regional_tokens():
-				if guest!=token and guest.sha256_text().left(16)==public_id:
-					crop.harvest_friend=guest
-					crop.harvest_access="friend"
-					return ok("採收權限已更新。")
-			return fail("請選擇同區在線的玩家。")
+			var guest:=_regional_guest(token,extra.trim_prefix("friend:"))
+			if guest.is_empty():return fail("請選擇同區在線的玩家。")
+			crop.harvest_friend=guest
+			crop.harvest_access="friend"
+			return ok("採收權限已更新。")
 		if extra not in ["owner","island"]:return fail("請選擇有效的採收權限。")
 		crop.erase("harvest_friend")
 		crop.harvest_access=extra
@@ -2914,14 +4021,18 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			return fail("還沒成熟，"+("先澆點水吧" if not crop.wet else "再等 %d 秒"%ceili(float(CROPS[crop.kind].time)-float(crop.growth))))
 		var crop_name:String=CROPS[crop.kind].name
 		var harvested_kind:String=crop.kind
+		var bonus:=quality_crop(crop,has_crop_guarantee(player))
+		if not bonus.is_empty() and int(inv.get(bonus,0))>=1000000000:return fail("優良作物已達背包上限，作物留在田裡。")
 		# T018: same per-item / counter ceiling as harvest_area and SaveSchema.whole; refuse before any mutation.
 		if int(inv.get(harvested_kind,0))>1000000000-int(CROPS[harvested_kind].yield):return fail("背包中的"+crop_name+"已達上限，作物留在田裡。")
 		if int(player.harvests)>=1000000000:return fail("採收紀錄已達上限，作物留在田裡。")
 		var count:=_harvest_plot(token,player,crop,k)
 		if _region==FLOWER_NURSERY.REGION:FLOWER_NURSERY.note_harvest(state,token,harvested_kind,count)
-		return ok("收成了！%s +%d。"%[crop_name,count]+("%s還能再收 %d 次，記得重新澆水"%[crop_name,int(crop.remaining)] if crop.kind!="" else "可以出售或帶去做料理"))
-	if action=="build":return _build_piece(token,p,extra)
+		var quality_note:="品質收成 · %s +1。"%NAMES[bonus] if not bonus.is_empty() else ""
+		return ok("收成了！%s +%d。"%[crop_name,count]+quality_note+("%s還能再收 %d 次，記得重新澆水"%[crop_name,int(crop.remaining)] if crop.kind!="" else "可以出售或帶去做料理"))
+	if action=="build":return _build_piece(token,p,extra,true,false,true,extra==INDUSTRY.INN_BED)
 	if action=="remove":
+		if state.objects.get(k,{}).get("aru_public",false):return fail("已捐給公共地塊的家具會留給大家使用。")
 		# protected() is bypassed for remove above, so donated cells need this guard.
 		if _region==REGIONS.HOME and PUBLIC_KITCHEN.is_site_cell(state,p):return fail(PUBLIC_KITCHEN.MSG_LOCKED)
 		if state.forest.has(k):
@@ -2950,20 +4061,40 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 		if obj.type=="conveyor" and (obj.enabled or not obj.items.is_empty()):return fail("請停用並清空輸送帶")
 		if obj.type=="mine_drill" and not MINE_DRILL.can_move(obj):return fail("請停用並清空採掘機。")
 		if obj.type=="waterworks" and not WATERWORKS.can_move(obj):return fail("請停用並清空水力加工台。")
-		if (obj.type in LOGISTICS.PROCESSORS or obj.type in ["seed_maker","loom","glass_furnace","jam_pot"]) and not LOGISTICS.processing_idle(obj):return fail(PROCESSING_MSG_BUSY)
+		if (obj.type in LOGISTICS.PROCESSORS or obj.type in INDUSTRY.MANUAL_STATIONS) and not LOGISTICS.processing_idle(obj):return fail(PROCESSING_MSG_BUSY)
 		if obj.type in LOGISTICS.PROCESSORS and not LOGISTICS.processor_ready_to_move(obj):return fail("請停用自動加工並清空設備")
 		if obj.type=="forester" and not FORESTRY.can_move(obj):return fail("請先停用林務站並取回全部材料")
+		if obj.has("collector_animal"):return fail("先領取產物並取回收集籃，再拆除收集器。")
+		if obj.type=="wall" and state.objects.get(key(p+Vector2i.DOWN),{}).get("type") in WALL_FIXTURES.KINDS:
+			return fail(WALL_FIXTURES.REMOVE_MESSAGE)
 		if obj.has("job"):return fail("設備仍在工作，先領取或取消再拆除")
 		if obj.has("cooking") and not cooking_idle(obj):return fail(COOKING_MSG_BUSY)
 		for amount in obj.get("items",{}).values():
 			if int(amount)>0:return fail("箱子還有物品，先取出再拆除")
 		var recipe:Dictionary=BUILD[obj.type]
+		if obj.type=="loom" and not obj.get("joinery_loom",false):recipe=LEGACY_LOOM_COST
+		if obj.type=="glass_furnace" and not obj.get("iron_furnace",false):recipe=LEGACY_GLASS_FURNACE_COST
+		if obj.type=="seed_maker" and not obj.get("joinery_seed_maker",false):recipe=LEGACY_SEED_MAKER_COST
+		if obj.type=="jam_pot" and not obj.get("ceramic_pot",false):recipe=LEGACY_JAM_POT_COST
+		if obj.type=="medium_sprinkler" and not obj.get("sprinkler_daily",false):recipe=LEGACY_MEDIUM_SPRINKLER_COST
+		if obj.type=="sprinkler" and not obj.get("sprinkler_daily",false):recipe=KIT_SPRINKLER_COST
+		if obj.get("assembled_sprinkler",false):recipe={INDUSTRY.SPRINKLER_KITS[obj.type]:1}
+		var guest_dismantle:bool=obj.owner!=token
+		if not state.players.has(obj.owner):return fail("找不到原物主的背包。")
+		var refund_inventory:Dictionary=state.players[obj.owner].inventory
 		for item in recipe:
-			if item!="name" and int(inv.get(item,0))+int(recipe[item])>1000000000:
+			if item!="name" and int(refund_inventory.get(item,0))+int(recipe[item])>1000000000:
 				return fail("背包中的物品已達上限")
 		for item in recipe:
-			if item!="name":give(inv,item,int(recipe[item]))
+			if item!="name":give(refund_inventory,item,int(recipe[item]))
+		if obj.type in RESIDENT_GOALS.DOUBLE_BENCHES:
+			_master_bench_clear(p)
+			source.erase(key(p+master_bench_offset(obj)))
+		if INDUSTRY.square_part(obj)==0:
+			if obj.type==INDUSTRY.FOOT_BATH:_master_bench_clear(p)
+			for offset:Vector2i in INDUSTRY.station_cells(obj.type,INDUSTRY.is_vertical(obj)):source.erase(key(p+offset))
 		source.erase(k)
+		if guest_dismantle:return {"ok":true,"message":"已拆除，建造材料已退還物主。","guest_dismantle":true}
 		return ok("已拆除，建造材料完整退還")
 	return fail("請選擇工具後再試一次")
 
@@ -3012,27 +4143,125 @@ func _salt_cfg_chest(token: String, extra: String, objects: Dictionary) -> Dicti
 	if not PLOT_PERMISSIONS.can_take(token,box).ok:return {}
 	return box
 
+static func nearby_dye_furniture(objects:Dictionary, actor:String, table:Vector2i) -> Array[String]:
+	var keys:Array[String]=[]
+	for y in range(table.y-INDUSTRY.DYE_REACH,table.y+INDUSTRY.DYE_REACH+1):
+		for x in range(table.x-INDUSTRY.DYE_REACH,table.x+INDUSTRY.DYE_REACH+1):
+			if absi(x-table.x)+absi(y-table.y)>INDUSTRY.DYE_REACH:continue
+			var tile:=key(Vector2i(x,y))
+			var furniture:Dictionary=objects.get(tile,{})
+			if furniture.get("owner")==actor and furniture.get("type") in INDUSTRY.DYEABLE_FURNITURE and INDUSTRY.square_part(furniture)<=0:
+				keys.append(tile)
+	return keys
+
+func _dye_furniture(token:String,table:Vector2i,extra:String) -> Dictionary:
+	var station:Dictionary=state.objects.get(key(table),{})
+	if station.get("type")!=INDUSTRY.DYE_TABLE or station.get("owner")!=token:
+		return fail("只能在自己的染色桌換色。")
+	var parts:=extra.split("|")
+	if parts.size()!=2 or not parts[0] in nearby_dye_furniture(state.objects,token,table):
+		return fail("請選擇染色桌附近自己的床、桌、椅或沙發。")
+	var pigment:=parts[1]
+	var furniture:Dictionary=state.objects[parts[0]]
+	if furniture.get("dye","")==pigment:return fail("這件家具已經是這個顏色。")
+	if pigment.is_empty():
+		furniture.erase("dye")
+		return ok("已恢復原色。")
+	if not INDUSTRY.FURNITURE_DYES.has(pigment):return fail("找不到這種染料。")
+	var inv:Dictionary=state.players[token].inventory
+	if int(inv.get(pigment,0))<1:return fail("需要一份"+NAMES[pigment]+"。")
+	give(inv,pigment,-1)
+	furniture.dye=pigment
+	return ok("換好了"+INDUSTRY.FURNITURE_DYES[pigment]+"。")
+
+static func assembly_recipe(kind:String) -> Dictionary:
+	if kind==INDUSTRY.ANIMAL_COLLECTOR:return INDUSTRY.COLLECTOR_MATERIALS.duplicate()
+	if not INDUSTRY.SPRINKLER_KITS.has(kind):return {}
+	var ingredients:Dictionary=BUILD[kind].duplicate()
+	ingredients.erase("name")
+	return ingredients
+
+static func sprinkler_level(kind:String) -> int:
+	return {"medium_sprinkler":MEDIUM_SPRINKLER_LEVEL,"large_sprinkler":LARGE_SPRINKLER_LEVEL}.get(kind,1)
+
+func _assemble(player:Dictionary,station:Dictionary,token:String,kind:String) -> Dictionary:
+	if station.get("type")!=INDUSTRY.ASSEMBLY_TABLE or station.get("owner")!=token:
+		return fail("只能使用自己的裝配桌。")
+	var ingredients:=assembly_recipe(kind)
+	if ingredients.is_empty():return fail("找不到這份裝配配方。")
+	if farming_level(player)<sprinkler_level(kind):return fail("農耕需達到 %d 級。"%sprinkler_level(kind))
+	var inv:Dictionary=player.inventory
+	var kit:String=INDUSTRY.assembly_items()[kind]
+	if int(inv.get(kit,0))>=1000000000:return fail("背包中的物品已達上限。")
+	for item in ingredients:
+		if int(inv.get(item,0))<int(ingredients[item]):return fail("裝配材料不足。")
+	for item in ingredients:give(inv,item,-int(ingredients[item]))
+	give(inv,kit,1)
+	player.crafting_points=mini(1000000000,int(player.get("crafting_points",0))+1)
+	return ok("已裝配："+NAMES[kit])
+
+static func build_recipe(kind:String, inventory:Dictionary) -> Dictionary:
+	var recipe:Dictionary=BUILD[kind]
+	var kit:String=INDUSTRY.SPRINKLER_KITS.get(kind,"")
+	if not kit.is_empty() and int(inventory.get(kit,0))>0:return {"name":recipe.name,kit:1}
+	if kind=="sprinkler" and int(inventory.get("sprinkler_kit",0))>0:
+		if int(inventory.get("copper_ingot",0))<int(recipe.copper_ingot) or int(inventory.get("stone",0))<int(recipe.stone):
+			return KIT_SPRINKLER_COST
+	return recipe
+
 ## Single-piece build rules shared by `build` and blueprints. Callers have
 ## already applied the region/distance/water/protected gates of _apply.
 ## charge=false (blueprint simulation only) skips ONLY the inventory check and
 ## debit; every placement, unlock, limit and collision rule still applies.
-func _build_piece(token: String, p: Vector2i, extra: String, charge: bool = true) -> Dictionary:
+func _build_piece(token: String, p: Vector2i, extra: String, charge: bool = true, bench_vertical:bool=false, wide_station:=true, station_vertical:=false) -> Dictionary:
+	if not allows_public_build(token,p):return fail(PUBLIC_BUILD_DENIED)
 	var player: Dictionary=state.players[token]
 	var inv: Dictionary=player.inventory
 	var k := key(p)
 	var r:=resource(p)
 	if not BUILD.has(extra):return fail("尚未解鎖這個物件")
+	if extra not in BLUEPRINT_DESIGN.GROUND_KINDS and extra not in BLUEPRINT_DESIGN.ROOF_KINDS:
+		var floor_permission:=PLOT_PERMISSIONS.placement_floor(self,token,p)
+		if not floor_permission.ok:return fail(floor_permission.message)
+	if extra==INDUSTRY.FOOT_BATH and _region!=REGIONS.HOME:return fail("暖石泡腳池只能在家園建造。")
+	if extra==INDUSTRY.FOOT_BATH and not RESIDENT_GOALS.done(player,"nuannuan").has(2):
+		return fail("完成暖暖的〈池邊的裂縫〉後可建造暖石泡腳池。")
+	if extra in RESIDENT_GOALS.DOUBLE_BENCHES:
+		if extra==RESIDENT_GOALS.MASTER_BENCH and (_region!=REGIONS.HOME or not RESIDENT_GOALS.done(player,"aru").has(2)):
+			return fail("先完成阿榆的長椅修繕關係事件，再回家園建造。")
+		var available:=_footprint_space(token,p,[Vector2i.ZERO,Vector2i.DOWN if bench_vertical else Vector2i.RIGHT])
+		if not available.ok:return available
 	if extra in ["author_sign","author_shelf"] and crafting_level(player)<10:return fail("手作達到十級後解鎖工匠家具。")
+	if extra==INDUSTRY.SMELTER and _region!=REGIONS.HOME:return fail("小熔爐只能在家園建造。")
+	if extra=="glass_furnace" and not MINES.hoist_ready(state.mine_depths):return fail(GLASS_FURNACE_LOCKED_MSG)
+	var square:=extra in INDUSTRY.FIXED_SQUARE_STATIONS or (extra in INDUSTRY.EXPANDABLE_STATIONS and wide_station)
+	if extra==INDUSTRY.ANIMAL_COLLECTOR and (_region!=REGIONS.HOME or not state.picnic):return fail("請在完成野餐後的風鈴渡口放置收集器。")
+	if extra==INDUSTRY.ASSEMBLY_TABLE and not player.get("workshop_upgraded",false):return fail("先到工作台完成工坊升級。")
+	if extra==INDUSTRY.DYE_TABLE and not state.flower_nursery.garden.complete:return fail("完成田尾公共花園後，即可建造染色桌。")
+	var has_footprint:=square or extra in INDUSTRY.ORIENTABLE_FOOTPRINTS
+	if has_footprint:
+		var available:=_footprint_space(token,p,INDUSTRY.station_cells(extra,station_vertical))
+		if not available.ok:return available
+	if extra==RESIDENT_GOALS.FESTIVAL_BELL and not RESIDENT_GOALS.done(player,"lingpopo").has(3):
+		return fail("先完成鈴婆婆的〈最後一枚鈴〉，才能使用紀念鐘圖樣。")
+	if extra==RESIDENT_GOALS.BASIC_TEA_SET and (_region!=REGIONS.HOME or not RESIDENT_GOALS.done(player,"chacha").has(1)):
+		return fail("完成茶茶的第一席茶後可建造基本茶具。")
+	if extra=="wood_mailbox" and (_region!=REGIONS.HOME or not RESIDENT_GOALS.done(player,"luoluo").has(1)):
+		return fail("完成洛洛的送信事件後可建造普通信箱。")
+	if extra=="guest_wardrobe" and (_region!=REGIONS.HOME or not RESIDENT_GOALS.done(player,"nuannuan").has(3)):
+		return fail("完成暖暖的客房事件後可建造旅舍更衣櫃。")
+	if extra==WELCOME_SIGN.KIND and not RESIDENT_GOALS.done(player,"nuannuan").has(1):
+		return fail("完成暖暖的〈一直沒亮的門牌〉後可建造旅舍迎賓牌。")
 	if extra=="sketch_easel" and (_region!=REGIONS.HOME or not RESIDENT_GOALS.done(player,"diandian").has(1)):
 		return fail("完成點點的速寫事件後，可在渡口建造小畫架。")
 	if extra=="expedition_tent" and exploration_level(exploration_points(player))<EXPEDITION_TENT_LEVEL:return fail("探索達到十級後解鎖探險紀念帳篷。")
-	if extra=="supply_box" and exploration_level(exploration_points(player))<SUPPLY_BOX_LEVEL:return fail("探索達到六級後可放置便攜補給箱。")
+	if extra=="supply_box" and not supply_box_unlocked(player):return fail("探索達到六級，或完成波波的休息站事件後可放置便攜補給箱。")
 	if extra=="fish_display" and Collections.angling_level(player)<Collections.FISH_DISPLAY_LEVEL:return fail("漁獵觀察達到十級後，即可建造島岸魚譜展示櫃。")
 	if extra=="master_flower_bed" and farming_level(player)<MASTER_FARMING_LEVEL:return fail("農耕達到十級後，即可建造豐收花圃。")
 	if extra=="greenhouse_rack" and not player.get("greenhouse_reported",false):return fail("完成星禾的「冬天也開花」後解鎖。")
 	if extra=="medium_sprinkler" and farming_level(player)<MEDIUM_SPRINKLER_LEVEL:return fail("農耕達到六級後，即可建造中型灑水器。")
+	if extra=="large_sprinkler" and farming_level(player)<LARGE_SPRINKLER_LEVEL:return fail("農耕達到八級後，即可建造大型灑水器。")
 	if extra=="seed_maker" and farming_level(player)<SEED_MAKER_LEVEL:return fail("農耕達到三級後，即可建造種子機。")
-	if extra=="glass_furnace" and not MINES.hoist_ready(state.mine_depths):return fail(GLASS_FURNACE_LOCKED_MSG)
 	if extra=="jam_pot" and not MARKET.unlocked(state):return fail("先完成渡口野餐，開放小島市集後再建造果醬鍋。")
 	if extra in KITCHEN_GATED and not kitchen_opened():return fail(MILL_LOCKED_MSG)
 	if _region==SALT_PAN.REGION:
@@ -3059,19 +4288,21 @@ func _build_piece(token: String, p: Vector2i, extra: String, charge: bool = true
 		var permission:=PLOT_PERMISSIONS.can_place(self,token,p,extra)
 		if not permission.ok:return fail(permission.message)
 	elif r!="" or state.crops.has(k) or state.objects.has(k):return fail("這格有東西，請選空地")
-	if extra in ["floor","path"] and state.ground.has(k):return fail("這裡已經鋪好了")
+	if extra in ["floor","path","spring_pebble_path"] and state.ground.has(k):return fail("這裡已經鋪好了")
+	if extra in WALL_FIXTURES.KINDS and not WALL_FIXTURES.has_support(state.objects,p,token):
+		return fail(WALL_FIXTURES.SUPPORT_MESSAGE)
 	if extra=="water_pump" and not INDUSTRY.near_river(self,p):return fail("水泵需放在河水兩格內的陸地")
-	if extra in ["sprinkler","medium_sprinkler","forester","conveyor"] or INDUSTRY.LIMITS.has(extra):
-		var limit:int={"sprinkler":SPRINKLER_LIMIT,"medium_sprinkler":SPRINKLER_LIMIT,"forester":FORESTRY.LIMIT,"conveyor":LOGISTICS.BELT_LIMIT}.get(extra,INDUSTRY.LIMITS.get(extra,0))
+	if extra in ["sprinkler","medium_sprinkler","large_sprinkler","forester","conveyor"] or INDUSTRY.LIMITS.has(extra):
+		var limit:int={"sprinkler":SPRINKLER_LIMIT,"medium_sprinkler":SPRINKLER_LIMIT,"large_sprinkler":SPRINKLER_LIMIT,"forester":FORESTRY.LIMIT,"conveyor":LOGISTICS.BELT_LIMIT}.get(extra,INDUSTRY.LIMITS.get(extra,0))
 		var owned:=0
 		for device in state.objects.values():
 			if device.type==extra and device.owner==token:owned+=1
 		if owned>=limit:return fail("已達此設備的每人放置上限")
-	if extra in ["ore_display","wall","window","door","chest","private_chest","supply_box","bench","bed","table","stove","long_bench","sofa","planter","sketch_easel","rope_rack","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot"]:
+	if extra in ["ore_display","wall","window","door","chest","private_chest","supply_box","bench","bed","inn_quilt_bed","inn_stone_footbath","table","stove","long_bench","sofa","planter","sketch_easel","guest_wardrobe","inn_lattice_wardrobe","inn_fabric_screen","wood_mailbox","rope_rack","towel_rack","inn_tea_table","inn_luggage_rack","flower_pot","greenhouse_rack","master_flower_bed","fish_display","author_sign","author_shelf","expedition_tent","sprinkler","medium_sprinkler","large_sprinkler","water_tank","water_tower","water_pump","waterworks","mine_drill","sawmill","charcoal_kiln","forester","mill","seed_maker","loom","glass_furnace","jam_pot","clay_kiln","dye_table","assembly_table","animal_collector"]:
 		for active_token in regional_tokens():
 			var who:Dictionary=state.players[active_token]
 			if Vector2(who.x,who.y).distance_to(Vector2(p)+Vector2(0.5,0.5))<0.8:return fail("這裡有人，請留出空間")
-	var recipe:Dictionary=BUILD[extra]
+	var recipe:Dictionary=build_recipe(extra,inv) if charge else BUILD[extra]
 	if charge:
 		for item in recipe:
 			if item=="name":continue
@@ -3081,6 +4312,14 @@ func _build_piece(token: String, p: Vector2i, extra: String, charge: bool = true
 	var obj:Dictionary={"type":extra,"owner":token,"items":{}}
 	if extra in ["author_sign","author_shelf","expedition_tent"]:obj.author=player.name
 	if INDUSTRY.SPRINKLER_CAPACITIES.has(extra):obj.merge({"water":0,"enabled":false,"next_water":float(state.time),"last_water":-1.0})
+	if INDUSTRY.SPRINKLER_CAPACITIES.has(extra) and not recipe.has("sprinkler_kit"):obj.sprinkler_daily=true
+	if INDUSTRY.SPRINKLER_KITS.has(extra) and recipe.has(INDUSTRY.SPRINKLER_KITS[extra]):obj.assembled_sprinkler=true
+	if extra=="jam_pot":obj.ceramic_pot=true
+	if extra=="seed_maker":obj.joinery_seed_maker=true
+	if extra=="loom":obj.joinery_loom=true
+	if extra=="glass_furnace":obj.iron_furnace=true
+	if has_footprint and extra!=INDUSTRY.SMELTER:obj[INDUSTRY.square_part_field(extra)]=0
+	if extra in INDUSTRY.ORIENTABLE_FOOTPRINTS and station_vertical:obj[INDUSTRY.vertical_field(extra)]=true
 	if extra=="conveyor":obj.merge(LOGISTICS.fresh())
 	# Legacy sawmill/kiln keep `input_wood`; the mill buffers wheat in `input_wheat`.
 	if extra in LOGISTICS.PROCESSORS:obj.merge({LOGISTICS.input_field(extra):0,"auto_enabled":false})
@@ -3093,8 +4332,12 @@ func _build_piece(token: String, p: Vector2i, extra: String, charge: bool = true
 	if extra==INDUSTRY.TOWER_KIND:obj.merge({"water":0,"enabled":true})
 	if extra=="door":obj.open=false
 	if extra in BLUEPRINT_DESIGN.ROOF_KINDS:state.roofs[k]=obj
-	elif extra in ["floor","path"]:state.ground[k]=obj
+	elif extra in ["floor","path","spring_pebble_path"]:state.ground[k]=obj
 	else:state.objects[k]=obj
+	if extra in RESIDENT_GOALS.DOUBLE_BENCHES:
+		if bench_vertical:obj.bench_vertical=true
+		_master_bench_end(p,obj)
+	if has_footprint:_write_station_parts(p,obj)
 	player.builds+=1
 	return ok("放好了"+recipe.name+"，家園又多了一點你的心意")
 
@@ -3188,6 +4431,7 @@ func _blueprint_stage(token: String, bp: Dictionary, region: String, origin: Vec
 	# Independent candidate world (cannot preload World here: get_script()).
 	var sim=get_script().new()
 	sim.state=state.duplicate(true)
+	sim.public_build_access=public_build_access
 	sim._region=_region
 	sim.active_tokens=active_tokens.duplicate()
 	sim.switch_region(region)
@@ -3212,6 +4456,9 @@ func _blueprint_stage(token: String, bp: Dictionary, region: String, origin: Vec
 			if problems.size()<BLUEPRINT_MAX_PROBLEMS:problems.append({"x":c.x,"y":c.y,"kind":kind,"reason":reason})
 			continue
 		cells[key(c)]=true
+		if BLUEPRINT_DESIGN.is_square_piece(piece) or kind in INDUSTRY.ORIENTABLE_FOOTPRINTS:
+			for offset:Vector2i in INDUSTRY.station_cells(kind,piece.get("settings",{}).get("vertical",false)):cells[key(c+offset)]=true
+		if kind in RESIDENT_GOALS.DOUBLE_BENCHES:cells[key(c+BLUEPRINT_DESIGN.bench_offset(piece))]=true
 		if kind in AUTO_ROOF_BUILDS and not topology.has(c):
 			topology[c]=true
 			touched.append(c)
@@ -3231,6 +4478,9 @@ func _blueprint_stage(token: String, bp: Dictionary, region: String, origin: Vec
 			quote.message=str(plan.message)
 			return {}
 		for roof_key in plan.add:
+			if not sim.allows_public_build(token,cell(roof_key)):
+				quote.message=PUBLIC_BUILD_DENIED
+				return {}
 			var below=sim.state.ground.get(roof_key)
 			var roof=plan.add[roof_key]
 			if sim.state.roofs.has(roof_key) or not (below is Dictionary) or str(below.get("type",""))!="floor":
@@ -3315,7 +4565,15 @@ func _blueprint_piece(token: String, c: Vector2i, kind: String, settings: Varian
 	var k:=key(c)
 	var permission:=PLOT_PERMISSIONS.blueprint_floor(self,token,c,kind)
 	if not permission.ok:return permission.message
-	var result:=_build_piece(token,c,kind,false)
+	if kind in RESIDENT_GOALS.DOUBLE_BENCHES:
+		var end:=c+(Vector2i.DOWN if settings.get("vertical",false) else Vector2i.RIGHT)
+		var space:=PLOT_PERMISSIONS.blueprint_floor(self,token,end,kind)
+		if not space.ok:return space.message
+	if BLUEPRINT_DESIGN.is_square_piece({"kind":kind,"settings":settings}) or kind in INDUSTRY.ORIENTABLE_FOOTPRINTS:
+		for offset:Vector2i in INDUSTRY.station_cells(kind,settings.get("vertical",false)):
+			var space:=PLOT_PERMISSIONS.blueprint_floor(self,token,c+offset,kind)
+			if not space.ok:return space.message
+	var result:=_build_piece(token,c,kind,false,kind in RESIDENT_GOALS.DOUBLE_BENCHES and settings.get("vertical",false),settings.get("wide",false),settings.get("vertical",false))
 	if not result.ok:return str(result.message)
 	if not style.is_empty():state[BUILD_STYLES.expected_layer(kind)][k].style=style
 	if kind=="conveyor" and settings is Dictionary and settings.has("dir") and settings.has("filter"):
@@ -3482,7 +4740,7 @@ func operate_forester(token:String,k:String,action:String,item:String) -> Dictio
 
 func process_industry(token:String,k:String,action:String,kind:String) -> Dictionary:
 	var device:Dictionary=state.objects.get(k,{})
-	if device.get("type") in ["seed_maker","loom","glass_furnace","jam_pot"] and device.owner==token:return _processing_action(token,device,action,kind)
+	if device.get("type") in INDUSTRY.MANUAL_STATIONS and device.owner==token:return _processing_action(token,device,action,kind)
 	if device.get("type","") not in LOGISTICS.PROCESSORS or device.owner!=token:
 		return fail("只能使用自己的加工設備")
 	var inv:Dictionary=state.players[token].inventory
@@ -3520,11 +4778,12 @@ func process_industry(token:String,k:String,action:String,kind:String) -> Dictio
 func _processing_action(token: String, device: Dictionary, action: String, extra: String) -> Dictionary:
 	var inv:Dictionary=state.players[token].inventory
 	var now:=float(state.time)
-	var catalog:=processing_recipes(str(device.type))
+	var catalog:=processing_recipes(str(device.type),true)
 	if device.has("processing") and (device.has("job") or device.get("auto_enabled",false)):return fail(PROCESSING_MSG_CORRUPT)
 	if action in ["queue_processing","start_processing"]:
 		if device.get("auto_enabled",false):return fail("先停用自動加工")
 		if not catalog.has(extra):return fail("這台設備不能加工此物品")
+		if device.type=="seed_maker" and extra.trim_suffix("_seed") in SEED_MAKER.NURSERY_CROPS:return fail("這種花請帶到田尾花園的留種台。")
 		var base:Dictionary
 		if device.has("processing"):
 			if not device.processing is Dictionary:return fail(PROCESSING_MSG_CORRUPT)
@@ -3613,6 +4872,8 @@ func mine_action(token: String, action: String, p: Vector2i, extra: String, inv:
 	var player: Dictionary = state.players[token]
 	var depth := MINES.IDS.find(_region)
 	var progress: Dictionary = state.mine_depths
+	if action in ["mine_mud_lure","mine_mud_claim","mine_mud_duel"]:
+		return _mine_mud_event(player,action,p,extra)
 	if action == "mine_travel":
 		var destination := MINES.IDS.find(extra)
 		var allowed := false
@@ -3668,7 +4929,10 @@ func mine_action(token: String, action: String, p: Vector2i, extra: String, inv:
 		for item in MINES.COSTS[depth]:inv[item]-=MINES.COSTS[depth][item]
 		progress.unlocked=int(progress.unlocked)+1
 		return ok("已開通下一層礦道。")
-	if p not in MINES.NODES or int(inv.get("reinforced_pick",0))<1:return fail("請帶強化石鎬到礦點。")
+	if p not in MINES.NODES:return fail("請靠近可開採的礦點。")
+	if int(inv.get("reinforced_pick",0))<1:
+		if depth+1>MINES.SHALLOW_DEPTH:return fail("深層礦道需要自己的強化石鎬。")
+		if not player.get("borrowed_mine_pick",false):return fail("請帶強化石鎬，或到休息站借用公用鎬。")
 	if p==MINE_DRILL.NODE and MINE_DRILL.reserved(state.objects):return fail("這個礦點正由採掘機開採。")
 	var ready: Dictionary = progress.ready.get(_region,{})
 	if float(ready.get(key(p),0.0))>float(state.time):return fail("礦點正在整理。")
@@ -3681,7 +4945,7 @@ func mine_action(token: String, action: String, p: Vector2i, extra: String, inv:
 		rest=safe_arrival(Vector2(MINES.REST)+Vector2(0.5,0.5))
 		if rest==Vector2.ZERO:return fail("休息站目前無法抵達。")
 	give(inv,ore,quantity)
-	# B5 keeps its crystal sand; B6–B15 add the catalog finds (+1 each, skipped at the cap).
+	# Shallow strata and the deep catalog can supply +1 finds, skipped at the cap.
 	var sand_note := ""
 	for found:String in MINES.finds(depth+1):
 		if int(inv.get(found,0)) >= 1000000000:continue
@@ -3698,6 +4962,45 @@ func mine_action(token: String, action: String, p: Vector2i, extra: String, inv:
 		result.mine_exhausted=true
 		return result
 	return ok("取得%s +%d%s。" % [NAMES[ore],quantity,sand_note])
+
+func _mine_mud_event(player:Dictionary,action:String,p:Vector2i,extra:String) -> Dictionary:
+	if _region!=MINES.MUD_REGION or not state.picnic:return fail("請到第一層礦道的北側洞口。")
+	var phase:=int(player.get("mud_alcove",0))
+	var inv:Dictionary=player.inventory
+	var adventure:bool=state.get("world_mode")=="adventure"
+	if action=="mine_mud_duel":
+		if not adventure or p!=MINES.MUD_GATE or phase!=0:return fail("這裡無法挑戰小泥團。")
+		return _mine_mud_duel(player,extra)
+	if not extra.is_empty():return fail("無效的側洞操作。")
+	if action=="mine_mud_lure":
+		if adventure:return fail("小泥團正準備衝刺，先側移閃避再反擊。")
+		if p!=MINES.MUD_GATE or phase!=0:return fail("這裡已經可以通過。")
+		var carrot_bait:="radish" if int(inv.get("radish",0))>0 else "quality_radish"
+		if int(inv.get(carrot_bait,0))<=0:return fail("帶一顆蘿蔔來，小泥團會跟著香味走。")
+		give(inv,carrot_bait,-1)
+		player.mud_alcove=1
+		return ok("小泥團追著蘿蔔移到旁邊。沿北側洞口進去看看。")
+	if p!=MINES.MUD_REWARD or phase!=1 or float(player.y)>=MINES.MUD_ALCOVE_EDGE:return fail("從北側洞口走進去，才能拾取露出的礦料。")
+	if int(inv.get("copper_ore",0))>1000000000-MINES.MUD_COPPER:return fail("背包中的銅礦料已達上限。")
+	give(inv,"copper_ore",MINES.MUD_COPPER)
+	player.mud_alcove=2
+	return ok("拾到銅礦料 ×%d。"%MINES.MUD_COPPER)
+
+func _mine_mud_duel(player:Dictionary,choice:String) -> Dictionary:
+	var now:=float(state.time)
+	var duel:Dictionary=player.get("mud_duel",{})
+	var strike_at:=float(duel.get("strike_at",-MINES.MUD_RECOVERY-1.0))
+	if choice=="start":
+		if now<strike_at+MINES.MUD_RECOVERY:return fail("小泥團還在這一輪挑戰中。")
+		player.mud_duel={"strike_at":now+MINES.MUD_WINDUP,"origin_x":player.x,"dodged":false}
+		return ok("小泥團正要衝過來！向左或右側移閃避。")
+	if choice!="strike":return fail("無效的挑戰操作。")
+	if now<strike_at:return fail("等小泥團衝過去，再反擊。")
+	if now>=strike_at+MINES.MUD_RECOVERY or not duel.get("dodged",false):
+		return fail("這一輪沒抓到時機，等牠停下後可以再試。")
+	player.erase("mud_duel")
+	player.mud_alcove=1
+	return ok("時機正好！小泥團退到了旁邊。")
 
 func lanyang_action(token: String, action: String, p: Vector2i, inventory: Dictionary) -> Dictionary:
 	if _region != REGIONS.LANYANG:
@@ -3782,22 +5085,89 @@ func _record_discovery(player:Dictionary,category:String,item_id:String) -> void
 		first.name=player.name
 		state[island_field][item_id]=first
 
+func _fox_action(player:Dictionary,action:String,p:Vector2i,dist:float) -> Dictionary:
+	var at_site:=_region==Fox.REGION and p==Fox.SITE and dist<=3.2
+	var tracks:=int(player.get("fox_tracks",0))
+	if action=="fox_track":
+		if tracks==0:
+			if not at_site:return fail("先到霧竹溪谷找葉耳狐。")
+			player.fox_tracks=1
+			return ok("葉耳狐停下腳步，好像在請你看看附近的兩處足印。")
+		var bit:=int(Fox.TRACKS.get(p,0))
+		if _region!=Fox.REGION or dist>3.2 or bit==0:return fail("到足印旁再觀察。")
+		if tracks&bit:return fail("這處足印已經記下了。")
+		player.fox_tracks=tracks|bit
+		return ok("兩處足印都看過了，回去找葉耳狐。" if player.fox_tracks==7 else "記下一處足印，再找找另一處。")
+	if action=="fox_adopt":
+		if not at_site or tracks!=7:return fail("走完足印小徑，再回霧竹溪谷找葉耳狐。")
+	if action=="fox_hint":
+		if not player.get(Fox.FIELD,{}).get("following",false) or _region!=REGIONS.HOME:
+			return fail("帶葉耳狐回渡口，牠才會指給你看熟悉的海岸採集點。")
+		var clues:=Fox.home_clues(get_script(),state)
+		if clues.is_empty():return fail("葉耳狐嗅了嗅，海岸的東西還沒重新長出來。")
+		player.fox_hint_until=float(state.time)+60.0
+		return ok("葉耳狐朝南岸豎起耳朵。打開島嶼地圖可查看採集位置。")
+	return Rabbit.act(self,player,action.get_slice("_",1),at_site,Fox.FIELD,Fox.NAME)
+
+func _plant_crop(token:String,tile_key:String,kind:String) -> void:
+	var plot:Dictionary=state.crops[tile_key]
+	if _region in RESIDENT_GOALS.GROWTH_REGIONS:
+		var owner:String=plot.get("owner","")
+		var owner_record:Dictionary=state.players.get(owner,{})
+		var tracked:Dictionary=owner_record.get(RESIDENT_GOALS.GROWTH_KEY,{})
+		if tracked.get("region")==_region and tracked.get("tile")==tile_key:
+			owner_record.erase(RESIDENT_GOALS.GROWTH_KEY)
+		if owner!=token:plot["other_sown"]=true
+		else:plot.erase("other_sown")
+	plot.kind=kind
+	plot.growth=0.0
+	plot.remaining=int(CROPS[kind].get("cycles",1))
+
+static func has_crop_guarantee(player:Dictionary) -> bool:
+	return int(player.get("crop_care",0))>=CROP_CATALOG.CARE_TARGET
+
+static func harvest_fertility(crop:Dictionary) -> int:
+	var last_kind:=str(crop.get("last_harvest_kind",""))
+	var fertility:=int(crop.get("fertility",0))
+	if last_kind.is_empty():return fertility
+	return clampi(fertility+(-1 if last_kind==crop.kind else 1),0,2)
+
+static func quality_crop(crop:Dictionary,guarantee:bool) -> String:
+	return CROP_CATALOG.QUALITY_PREFIX+str(crop.kind) if guarantee or harvest_fertility(crop)>=2 else ""
+
 func _harvest_plot(token:String,player:Dictionary,crop:Dictionary,tile_key:String) -> int:
 	if greenhouse_covers(tile_key) and not crop_grows_in_season(crop.kind,_region,cell(tile_key),float(state.time)):
 		if state.roofs[tile_key].owner==token and crop.get("owner","")==token:
 			player.greenhouse_cross_season_crop=crop.kind
 	var count:int=CROPS[crop.kind].yield
 	give(player.inventory,crop.kind,count)
+	var guarantee:=has_crop_guarantee(player)
+	var bonus:=quality_crop(crop,guarantee)
+	var fertility:=harvest_fertility(crop)
+	crop.last_harvest_kind=crop.kind
+	crop.fertility=0 if fertility>=2 else fertility
+	if not bonus.is_empty():
+		give(player.inventory,bonus,1)
+		if guarantee:player.crop_care=0
 	_record_discovery(player,"crops",crop.kind)
 	CHAPTER_ONE.record_harvest(state,token,crop.kind,count)
 	player.harvests+=1
 	crop["remaining"]=maxi(0,int(crop.get("remaining",1))-1)
 	if int(crop.remaining)==0:
+		crop.erase("other_sown")
 		crop.kind=""
 		crop.growth=0.0
 	else:crop.growth=regrow_start(str(crop.kind))
 	crop.wet=false
 	return count
+
+static func luggage_count(items:Dictionary) -> int:
+	var count:=0
+	for amount in items.values():count+=int(amount)
+	return count
+
+static func inn_tea_count(items:Dictionary) -> int:
+	return int(items.get(INN_TEA_ITEM,0))+int(items.get(GINGER_TEA,0))
 
 static func give(inv:Dictionary,item:String,amount:int) -> void:
 	inv[item]=int(inv.get(item,0))+amount
@@ -3818,54 +5188,99 @@ static func fail(message:String) -> Dictionary:
 	return {"ok":false,"message":message}
 
 func save() -> bool:
+	save_error=""
 	if _region != REGIONS.HOME:
 		save_error = "Cannot save while a regional projection is active."
 		return false
 	if save_path.is_empty():return true
-	var file:=FileAccess.open(save_path+".tmp",FileAccess.WRITE)
+	var temporary:=save_path+".tmp"
+	var backup:=save_path+".bak"
+	var staged_backup:=backup+".staged"
+	if DirAccess.dir_exists_absolute(save_path) or DirAccess.dir_exists_absolute(backup) or DirAccess.dir_exists_absolute(staged_backup):
+		save_error="Expected a save file, found a directory."
+		return false
+	var file:=FileAccess.open(temporary,FileAccess.WRITE)
 	if file==null:
 		save_error="Cannot open temporary save: %s"%FileAccess.get_open_error()
 		return false
-	file.store_string(JSON.stringify(state))
+	var saved:=state.duplicate()
+	saved.players=state.players.duplicate()
+	for token in saved.players:
+		var person:Dictionary=saved.players[token]
+		if not person.has(REGIONS.Springs.REST_SEAT_KEY):continue
+		var standing:=person.duplicate()
+		standing.erase(REGIONS.Springs.REST_SEAT_KEY)
+		saved.players[token]=standing
+	var written:=file.store_string(JSON.stringify(saved))
 	file.flush()
 	var err:=file.get_error()
 	file.close()
-	if err!=OK:
-		save_error="Cannot flush save: %s"%err
-		return false
+	if not written or err!=OK:
+		return _discard_uncommitted_save(temporary,"Cannot write and flush the temporary save: %s"%err)
 	# After recovery, keep the known-good backup and retain the damaged original.
 	# Normal rotation would otherwise replace the good backup with bad data.
 	if recovered_from_backup:
 		var quarantined:=""
 		if FileAccess.file_exists(save_path):
 			quarantined=save_path+".rejected-%d"%Time.get_ticks_usec()
-			if DirAccess.rename_absolute(save_path,quarantined)!=OK:return false
-		if DirAccess.rename_absolute(save_path+".tmp",save_path)!=OK:
-			if not quarantined.is_empty():DirAccess.rename_absolute(quarantined,save_path)
-			return false
+			err=DirAccess.rename_absolute(save_path,quarantined)
+			if err!=OK:return _discard_uncommitted_save(temporary,"Cannot quarantine the damaged save: %s"%err)
+		err=DirAccess.rename_absolute(temporary,save_path)
+		if err!=OK:
+			var restore_error:=OK
+			if not quarantined.is_empty():restore_error=DirAccess.rename_absolute(quarantined,save_path)
+			return _discard_uncommitted_save(temporary,"Cannot publish the recovered save: %s (restore: %s)"%[err,restore_error])
 		rejected_path=quarantined
 		recovered_from_backup=false
+		last_saved_at=int(Time.get_unix_time_from_system())
 		return true
-	if FileAccess.file_exists(save_path):
-		if FileAccess.file_exists(save_path+".bak"):DirAccess.remove_absolute(save_path+".bak")
-		if DirAccess.rename_absolute(save_path,save_path+".bak")!=OK:return false
-	if DirAccess.rename_absolute(save_path+".tmp",save_path)!=OK:
-		if FileAccess.file_exists(save_path+".bak"):DirAccess.rename_absolute(save_path+".bak",save_path)
-		return false
+	var rotated:=FileAccess.file_exists(save_path)
+	if rotated:
+		# Windows may remove an existing rename destination before moving its source.
+		# Move the primary to an unused name first, so a locked primary leaves the backup intact.
+		if FileAccess.file_exists(staged_backup):
+			err=DirAccess.rename_absolute(staged_backup,backup)
+			if err!=OK:return _discard_uncommitted_save(temporary,"Cannot finish the previous backup rotation: %s"%err)
+		err=DirAccess.rename_absolute(save_path,staged_backup)
+		if err!=OK:return _discard_uncommitted_save(temporary,"Cannot rotate the previous save: %s"%err)
+		err=DirAccess.rename_absolute(staged_backup,backup)
+		if err!=OK:
+			var restore_error:=DirAccess.rename_absolute(staged_backup,save_path)
+			return _discard_uncommitted_save(temporary,"Cannot publish the backup: %s (restore: %s)"%[err,restore_error])
+	err=DirAccess.rename_absolute(temporary,save_path)
+	if err!=OK:
+		var restore_error:=OK
+		if rotated:restore_error=DirAccess.rename_absolute(backup,save_path)
+		return _discard_uncommitted_save(temporary,"Cannot publish the new save: %s (restore: %s)"%[err,restore_error])
+	last_saved_at=int(Time.get_unix_time_from_system())
 	return true
+
+func _discard_uncommitted_save(temporary:String,message:String) -> bool:
+	save_error=message
+	if FileAccess.file_exists(temporary):DirAccess.remove_absolute(temporary)
+	return false
 
 func load_world(path:String) -> bool:
 	save_path=path
-	if not FileAccess.file_exists(path):
-		if FileAccess.file_exists(path+".bak"):
-			recovered_from_backup=_load_file(path+".bak")
-			return recovered_from_backup
-		return true
-	if _load_file(path):recovered_from_backup=false;return true
-	if FileAccess.file_exists(path+".bak"):
-		recovered_from_backup=_load_file(path+".bak")
-		return recovered_from_backup
-	return false
+	recovered_from_backup=false
+	rejected_path=""
+	save_error=""
+	last_saved_at=0
+	var backup:=path+".bak"
+	var staged_backup:=backup+".staged"
+	if DirAccess.dir_exists_absolute(path) or DirAccess.dir_exists_absolute(backup) or DirAccess.dir_exists_absolute(staged_backup):
+		save_error="Expected a save file, found a directory."
+		return false
+	var main_exists:=FileAccess.file_exists(path)
+	if main_exists and _load_file(path):return true
+	var found_save:=main_exists
+	for candidate in [staged_backup,backup]:
+		if not FileAccess.file_exists(candidate):continue
+		found_save=true
+		if _load_file(candidate):
+			recovered_from_backup=true
+			return true
+	return not found_save
 
 func _load_file(path:String) -> bool:
 	var parser:=JSON.new()
@@ -3874,6 +5289,12 @@ func _load_file(path:String) -> bool:
 	if not parsed is Dictionary:return false
 	if not preload("res://scripts/save_schema.gd").validate(parsed,CROPS,BUILD,RECIPES,SIZE,TREE_TIME):return false
 	state=parsed
+	CHICKEN_CUDDLE.clear(state.animal) # A restart returns the hen; care cooldown remains.
+	if not state.has(WARM_SPRINGS.BATH_KEY):
+		for person:Dictionary in state.players.values():
+			if not RESIDENT_GOALS.done(person,"nuannuan").has(2):continue
+			state[WARM_SPRINGS.BATH_KEY]=true
+			break
 	_region=REGIONS.HOME
 	# Monotonic ticks only bind records captured by THIS process and world.
 	_undo_ticks_at={}

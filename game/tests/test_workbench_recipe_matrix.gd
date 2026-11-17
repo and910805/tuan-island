@@ -52,7 +52,7 @@ func exact_inventory(ingredients: Dictionary, recipe_id: String, recipe: Diction
 func run() -> void:
 	var ids: Array = World.CRAFT.keys()
 	ids.sort()
-	expect(ids.size() == 23,"the matrix covers all 23 recipes in World.CRAFT")
+	expect(ids.size() == 25,"the matrix covers all 25 recipes in World.CRAFT, including the water tower")
 	for recipe_id in ids:
 		var recipe: Dictionary = World.CRAFT[recipe_id]
 		var w := ready_world(true)

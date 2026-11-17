@@ -577,10 +577,25 @@ func loaded_motion()->void:
 	app.view.reduced_motion=false
 	app.view.elapsed=E0  # PRESET
 
-func interact(label:String)->void:
+func interact(label:String,verify_roll:=false)->void:
 	app.action_clock=0
 	app.session.rates[1].clear()
+	if verify_roll:
+		app.sound.master_volume=1.0
+		app.sound.volume=0.45
 	app._interact()
+	if verify_roll:
+		var voice:AudioStreamPlayer=app.sound.cart_roll
+		var duration:float=app.view.ore_cart_travel_seconds(int(record().stage))
+		check(voice.playing and is_equal_approx(voice.stream.get_length()/voice.pitch_scale,duration),
+			"Accepted push starts the wheel sound for the duration of the slide (%s)"%tag)
+		app.sound.master_volume=0.0
+		app.sound.refresh_gains()
+		check(not voice.playing,"Master mute stops the rolling sound immediately (%s)"%tag)
+		app.sound.master_volume=1.0
+		app.sound.refresh_gains()
+		app.session._send_snapshot(1)
+		check(not voice.playing,"Duplicate snapshot does not restart the sound (%s)"%tag)
 	await settle()
 	await refresh()
 	print("NOTE %s %s: interact -> stage %d"%[label,tag,int(record().stage)])
@@ -589,16 +604,80 @@ func aim_for(stage:int)->Vector2:
 	return EAST if Route.cart_cell(stage).x>=23 else WEST
 
 ## First delivery: six pushes and the unload through main._interact at each stop.
+func route_map_shot(step:String,stage:int,delivered:int)->void:
+	for down in [true,false]:
+		var event:=InputEventKey.new()
+		event.keycode=KEY_M
+		event.physical_keycode=KEY_M
+		event.pressed=down
+		root.push_input(event)
+	await settle()
+	check(is_instance_valid(app.map_view),"M opens the mountain local map (%s)"%tag)
+	if not is_instance_valid(app.map_view):return
+	var map_state:Dictionary=app.map_view.mine_route(app.map_view.data)
+	check(map_state.cell==Route.cart_cell(stage) and map_state.loaded==(stage>0) and map_state.delivered==delivered,
+		"The map reflects the cart and delivery count from the current snapshot (%s, %s)"%[step,tag])
+	await shot(step)
+	if delivered>0:
+		await press("JinguashiMapHistory")
+		var mining_note:=control("MineHistoryHauling") as Label
+		check(mining_note!=null and "1933 年" in mining_note.text,"Unloading a cart unlocks the mining transport entry (%s)"%tag)
+		await shot("map_history_unlocked")
+		await press("JinguashiHistoryBack")
+		check(is_instance_valid(app.map_view),"The history entry returns to the local map (%s)"%tag)
+	app._close_modal()
+	await settle()
+
 func route_flow()->void:
 	for stage in range(1,Route.LAST):
 		var stop:Vector2i=Route.cart_cell(stage)
-		await stand(Vector2(stop)+Vector2(0.5,0.5),aim_for(stage))
+		var approach:=Vector2(stop)+Vector2(0.5,0.5)
+		if stage==2:
+			# From the northwest, the mineral is closer than the cart or mine entrance.
+			var too_far:=Vector2(26.75,20.25)
+			await stand(too_far,aim_for(stage))
+			check(focus()=="mine:28,20","The copper remains selectable outside cart reach (%s)"%tag)
+			approach=Vector2(27.55,20.4)
+		await stand(approach,aim_for(stage))
 		check(focus()==Art.POINT,"On the cart at %s: ore_cart focused (%s): %s"%[str(stop),tag,focus()])
-		await interact("push %d"%stage)
+		await interact("push %d"%stage,stage==1)
 		check(not UI.is_open(app),"Interact on a loaded cart does not open the page (stage %d, %s)"%[stage,tag])
 		expect_record(stage+1,0,0,"after push %d"%stage)
 		var now:=stage+1
 		var cell:=Route.cart_cell(now)
+		if stage==1:
+			var started:float=app.view.ore_cart_push_started
+			app.view.elapsed=started+1.5/app.view.ORE_CART_TILES_PER_SECOND
+			check(app.view.ore_cart_position(now).is_equal_approx(Vector2(30.5,21)),"Cart follows the first rail corner (%s)"%tag)
+			var player_position:=Vector2(float(person().x),float(person().y))
+			var push_pose:Dictionary=app.view.ore_cart_push_pose(now,player_position)
+			check(push_pose.get("facing")==Vector2i.DOWN and push_pose.get("lean",0)>0,"Player leans into the first rail direction (%s)"%tag)
+			check(app.view.ore_cart_push_pose(now,player_position+Vector2(1,0)).get("facing")==Vector2i.LEFT,
+				"Player beside the cart turns toward it (%s)"%tag)
+			# Keep the adjacent copper tag out of the cart capture.
+			app.set_process(false)
+			app.view.hide_interaction_prompt=true
+			app.view.queue_redraw()
+			var pushing_frame:Image=await shot("world_cart_rounding_corner")
+			app.view.hide_interaction_prompt=false
+			app.set_process(true)
+			app.view.reduced_motion=true
+			check(app.view.ore_cart_position(now)==Vector2(cell),"Reduced motion skips cart travel (%s)"%tag)
+			check(app.view.ore_cart_push_pose(now,player_position).is_empty(),"Reduced motion skips the push pose (%s)"%tag)
+			app.view.reduced_motion=false
+			app.view.elapsed=started+1.0
+			check(app.view.ore_cart_position(now)==Vector2(cell),"Cart settles at the authoritative stop (%s)"%tag)
+			check(app.view.ore_cart_push_pose(now,player_position).is_empty() and Vector2(float(person().x),float(person().y))==player_position,
+				"Pose ends without moving the player (%s)"%tag)
+			app.view.queue_redraw()
+			var resting_frame:Image=await grab()
+			var scale:float=app.view.view_zoom()
+			var foot:Vector2=app.view.screen(player_position)*scale
+			var head:=Rect2i(Vector2i(foot+Vector2(-11,-43)*scale),Vector2i(Vector2(22,23)*scale))
+			check(exact_changed(pushing_frame,resting_frame,head)>0,"Native render shows the sprite leaning (%s)"%tag)
+		# Keep the remaining reference frames at the same fixed glint clock.
+		app.view.ore_cart_push_started=-INF
+		app.view.elapsed=E0
 		await stand(PARK,aim_for(now))
 		await look_at(aim_for(now))
 		var frame:Image=await shot("world_stage_%d"%now)
@@ -631,6 +710,7 @@ func route_flow()->void:
 				var n:=exact_changed(idle_west,frame,unload)
 				check(n==0,"Unload platform without cart equals the idle frame (%d px) %s %s"%[n,label,tag])
 		track_continuous(frame,cell,label)
+		if now==4:await route_map_shot("map_cart_transit",now,0)
 	check(Route.cart_cell(Route.LAST)==Route.STOPS[-1],"cart_cell(LAST) is the unload platform")
 	# Unload at the last stop.
 	var purse:=coins()
@@ -646,6 +726,7 @@ func route_flow()->void:
 	var n:=exact_changed(idle_east,back,cart_box(Route.STOPS[0]))
 	check(n==0,"Empty cart back at the load platform, identical to the idle frame (%d px) %s"%[n,tag])
 	track_continuous(back,Route.STOPS[0],"world_back")
+	await route_map_shot("map_cart_returned",0,1)
 	await look_at(WEST)
 	var west:Image=await grab()
 	var m:=exact_changed(idle_west,west,inner_box(Route.STOPS[-1]))
@@ -769,8 +850,9 @@ func chip_for(stage:int,index:int)->String:
 	return "○ "+title
 
 func away_for(stage:int)->String:
-	var cell:=Route.cart_cell(stage)
-	return "請走到台車旁（%d,%d）再操作。"%[cell.x,cell.y]
+	if stage<=1:return "請沿軌道到裝礦台找台車。"
+	if stage==Route.LAST:return "請沿軌道到卸礦台找台車。"
+	return "請沿軌道到%d 號停靠點找台車。"%(stage-1)
 
 func top_of(control_name:String)->float:
 	var c:=control(control_name)
@@ -882,6 +964,9 @@ func open_page(label:String)->void:
 ## Page at stage 0 (first visit): idle -> load through the button -> walk away.
 func page_first()->void:
 	await open_page("first")
+	await press("OrHistory")
+	check(is_instance_valid(app.modal) and app.modal.get_meta("history_mode","")=="jinguashi","The cart opens the same historical page (%s)"%tag)
+	await press("JinguashiHistoryBack")
 	page_state("idle",0,0,0,"")
 	var idle:Image=await page_shot("page_idle",false)
 	var idle_box:=picture_box()
@@ -961,7 +1046,7 @@ func run()->void:
 		await size_flow()
 		print("NOTE size %s done at %.1f s"%[tag,(Time.get_ticks_msec()-started)/1000.0])
 	check(panel_shots==8,"4 page screenshots per size (%d)"%panel_shots)
-	check(shots==36,"18 screenshots per size (%d)"%shots)
+	check(shots==44,"22 screenshots per size (%d)"%shots)
 	w.state.erase(Route.STATE_KEY)  # PRESET cleanup before the final save
 	app.session.shutdown();await create_timer(0.3).timeout
 	app.queue_free();await process_frame;await process_frame

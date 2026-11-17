@@ -176,6 +176,11 @@ func _drill(source: String, dir: String) -> void:
 	expect(from_bak.save() and FileAccess.file_exists(copy), "missing-main recovery writes a new main")
 	expect(FileAccess.get_sha256(copy + ".bak") == source_sha, ".bak untouched by missing-main recovery save")
 
+	# A process can stop between moving the primary and publishing the backup.
+	# The staged primary is newer than the existing backup in this layout.
+	var staged_before := read_previous_rotation(copy, from_bak)
+	expect(not staged_before.is_empty(), "staged primary recovery preserves newest state")
+
 	# 5. Rejections: no adoption, no writes.
 	var migrated_text := JSON.stringify(second.state)
 	var future = JSON.parse_string(migrated_text)
@@ -190,6 +195,22 @@ func _drill(source: String, dir: String) -> void:
 	expect(FileAccess.get_sha256(source) == source_sha, "source fixture bytes unchanged")
 	expect(FileAccess.get_modified_time(source) == source_mtime, "source fixture mtime unchanged")
 	expect(_artefacts_beside(source) == siblings_before, "no .bak/.tmp/.rejected-* created beside source")
+
+func read_previous_rotation(path:String,world) -> String:
+	world.state.committed+=1
+	expect(world.save(),"publish newer primary before interrupted rotation")
+	var staged:=path+".bak.staged"
+	var newest:=FileAccess.get_sha256(path)
+	var older:=FileAccess.get_sha256(path+".bak")
+	expect(newest!=older and DirAccess.rename_absolute(path,staged)==OK,"simulate interrupted rotation with distinct backup generations")
+	var reopened:=World.new()
+	if not reopened.load_world(path):
+		expect(false,"load staged primary")
+		return ""
+	expect(reopened.recovered_from_backup and reopened.state.committed==world.state.committed,"load newest committed state from staged primary")
+	expect(reopened.save() and FileAccess.get_sha256(staged)==newest and FileAccess.get_sha256(path+".bak")==older,"recovery saves primary and retains both backups")
+	expect(reopened.save() and not FileAccess.file_exists(staged),"next normal save resolves staged backup")
+	return FileAccess.get_sha256(path)
 
 func _expect_rejected(path: String, main_bytes: PackedByteArray, bak_bytes: PackedByteArray, label: String) -> void:
 	_write(path, main_bytes)

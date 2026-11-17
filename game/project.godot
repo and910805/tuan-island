@@ -3,7 +3,8 @@ config_version=5
 [application]
 config/name="糰糰島 原型"
 run/main_scene="res://main.tscn"
-config/update_url=""
+run/flush_stdout_on_print=true
+config/update_url="https://github.com/and910805/tuan-island/releases"
 config/update_manifest_url=""
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
@@ -23,3 +24,13 @@ environment/defaults/default_clear_color=Color(0.08,0.17,0.16,1)
 
 [audio]
 driver/enable_input=false
+
+[input]
+ui_accept={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":16,"keycode":4194309), Object(InputEventKey,"device":16,"keycode":4194310), Object(InputEventKey,"device":16,"keycode":32,"unicode":32), Object(InputEventJoypadButton,"device":-1,"button_index":0)]
+}
+ui_cancel={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":16,"keycode":4194305), Object(InputEventJoypadButton,"device":-1,"button_index":1)]
+}

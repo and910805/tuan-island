@@ -5,8 +5,8 @@ extends RefCounted
 ##
 ## Calendar: day N (one-based) covers world time [(N-1)*DAY_SECONDS, N*DAY_SECONDS).
 ## A time exactly on a midnight belongs to the NEW day. The same seven-day cycle
-## applies to every outdoor region (not a climate/geography simulation); the
-## five mine levels are indoor and never rain. Day 1 is sunny (onboarding).
+## supplies the rain calendar. Some regions add dry-weather variations. The
+## mines are indoors and never receive surface weather. Day 1 stays sunny.
 ##
 ## Crop rule (advance_plot): soil wetness lasts until the next game midnight.
 ## At each midnight every plot dries; an exposed plot (outdoor, no roof) is
@@ -19,7 +19,8 @@ const DAYS_PER_SEASON := 14
 const SEASONS := ["spring", "summer", "autumn", "winter"]
 const SEASON_LABELS := {"spring": "春", "summer": "夏", "autumn": "秋", "winter": "冬"}
 const CYCLE := ["sunny","cloudy","rainy","sunny","sunny","rainy","cloudy"]
-const LABELS := {"sunny":"晴天","cloudy":"多雲","rainy":"小雨","indoor":"洞內"}
+const LABELS := {"sunny":"晴天","cloudy":"多雲","rainy":"小雨","windy":"微風","snowy":"細雪","indoor":"洞內"}
+const BREEZE_REGIONS := ["home","bamboo_grove"]
 const INDOOR_REGIONS := ["mine_1","mine_2","mine_3","mine_4","mine_5","mine_6","mine_7","mine_8","mine_9","mine_10","mine_11","mine_12","mine_13","mine_14","mine_15"]
 ## Largest day index converted to int; keeps int() well defined for absurd times.
 const MAX_DAY_INDEX := 9.0e15
@@ -54,6 +55,11 @@ static func rains(day: float, region: String = "home") -> bool:
 static func at(time: float, region: String = "home") -> Dictionary:
 	var day := day_index(time)
 	var id := "indoor" if is_indoor(region) else outdoor_id(day)
+	var slot:=int(fmod(day,float(CYCLE.size())))
+	if region in BREEZE_REGIONS and day>=DAYS_PER_SEASON and slot==4:
+		id="windy"
+	if region=="jiaoxi" and slot==6 and season_on_day(day)=="winter":
+		id="snowy"
 	return {"id": id, "label": LABELS[id], "raining": id == "rainy", "day": int(day) + 1}
 
 ## Advances one plot over world time [start, start+dt].

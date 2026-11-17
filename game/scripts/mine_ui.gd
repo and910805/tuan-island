@@ -33,7 +33,11 @@ static func refresh(app)->void:
 	# Q07: hoist repair flag + surface landings (empty until repaired); the whole
 	# inventory is already part of the fingerprint (HOIST_COST have／need).
 	var hoist_fixed:bool=World.MINES.hoist_ready(progress)
-	var fingerprint:=JSON.stringify([site,region,nearby,person.get("mine_energy",0),person.get("inventory",{}),unlocked,progress.get("pumped",0),World.MINES.lift_targets(unlocked),hoist_fixed,World.MINES.surface_landings(progress)])
+	var own_rest_kit:=int(s.get("own_bobo_rest_kit",0))
+	var assigned:=int(s.get("resident_bonds",{}).get("bobo",{}).get("stage",0))>=3
+	var fixtures:=int(s.get("bobo_rest_fixtures",0))
+	var borrowed:bool=person.get("borrowed_mine_pick",false)
+	var fingerprint:=JSON.stringify([site,region,nearby,person.get("mine_energy",0),person.get("inventory",{}),unlocked,progress.get("pumped",0),World.MINES.lift_targets(unlocked),hoist_fixed,World.MINES.surface_landings(progress),own_rest_kit,assigned,fixtures,borrowed])
 	if app.modal.get_meta("mine_fingerprint","")==fingerprint:return
 	app.modal.set_meta("mine_fingerprint",fingerprint)
 	var focus:=body.get_viewport().gui_get_focus_owner()
@@ -89,7 +93,11 @@ static func refresh(app)->void:
 			var lore:=caption(app,"深層地質為遊戲設定。",15)
 			lore.name="MineFictionNote"
 			notes.add_child(lore)
-			add_action(app,text,"MineEnter","進入第一層",func():app.session.perform("mine_travel",World.MINES.ENTRY,"mine_1"),nearby and region=="jinguashi")
+			var entrance_actions:=HBoxContainer.new()
+			text.add_child(entrance_actions)
+			add_action(app,entrance_actions,"MineEnter","進入第一層",func():app.session.perform("mine_travel",World.MINES.ENTRY,"mine_1"),nearby and region=="jinguashi")
+			if int(person.get("inventory",{}).get("reinforced_pick",0))==0:
+				add_pick_loan(app,entrance_actions,World.MINES.ENTRY,nearby and region=="jinguashi" and s.get("picnic",false),borrowed)
 			if unlocked>=6 and not hoist_fixed:
 				add_hoist_repair(app,text,person,nearby and region=="jinguashi")
 			elif hoist_fixed:
@@ -137,7 +145,14 @@ static func refresh(app)->void:
 				var found:=caption(app,finds,15)
 				found.name="MineFinds"
 				text.add_child(found)
-			add_action(app,text,"MineRest","休息喝水",func():app.session.perform("mine_rest",World.MINES.REST),nearby and depth>0)
+			var rest_actions:=HBoxContainer.new()
+			text.add_child(rest_actions)
+			add_action(app,rest_actions,"MineRest","休息喝水",func():app.session.perform("mine_rest",World.MINES.REST),nearby and depth>0)
+			if depth>0 and depth<=World.MINES.SHALLOW_DEPTH and int(person.get("inventory",{}).get("reinforced_pick",0))==0:
+				add_pick_loan(app,rest_actions,World.MINES.REST,nearby and depth<=unlocked and s.get("picnic",false),borrowed)
+			if depth==1 and assigned:
+				text.add_child(caption(app,"波波的託付 · 不往深處也可以",16))
+				add_rest_kit_tasks(app,text,person,nearby,own_rest_kit,fixtures)
 		"service":
 			var pending:=depth>0 and depth==unlocked and depth<World.MINES.MAX_DEPTH
 			if not pending:
@@ -239,7 +254,7 @@ static func add_hoist_repair(app,parent:Control,person:Dictionary,reachable:bool
 	add_action(app,section,"MineHoistRepairButton","交付修理材料",func():app.session.perform("mine_hoist_repair",World.MINES.ENTRY),reachable and stocked)
 
 ## Display-only uses of the deep-mine quest finds (rules: mine_expansion_catalog.RESOURCE_USES).
-const FIND_USES:={"ochre_earth":"玻璃爐用","vein_quartz":"熔晶砂用","warm_stone":"共餐桌保溫底座用"}
+const FIND_USES:={"iron_ore":"可用小熔爐熔成鐵錠","ochre_earth":"玻璃爐用","vein_quartz":"熔晶砂用","warm_stone":"共餐桌保溫底座用"}
 
 ## 「敲礦另得：石材、暖岩片（共餐桌保溫底座用）」 for floors with catalog finds; "" otherwise.
 static func finds_text(depth:int)->String:
@@ -290,6 +305,32 @@ static func meter(value:int,capacity:int)->ProgressBar:
 	bar.add_theme_stylebox_override("background",Pixel.texture_style("button_normal",3,0))
 	bar.add_theme_stylebox_override("fill",Pixel.texture_style("button_pressed",3,0))
 	return bar
+
+static func add_rest_kit_tasks(app,parent:VBoxContainer,person:Dictionary,nearby:bool,installed:int,fixtures:int) -> void:
+	var goals:=World.RESIDENT_GOALS
+	var inv:Dictionary=person.get("inventory",{})
+	for id:String in goals.REST_KIT_PARTS:
+		var part:Dictionary=goals.REST_KIT_PARTS[id]
+		var bit:=int(part.bit)
+		if (installed&bit)!=0:
+			parent.add_child(caption(app,"✓ 已備好%s"%part.label,15))
+			continue
+		var costs:=PackedStringArray()
+		var enough:=true
+		for item:String in part.cost:
+			costs.append("%s %d"%[World.NAMES[item],part.cost[item]])
+			enough=enough and int(inv.get(item,0))>=int(part.cost[item])
+		var verb:="補整" if (fixtures&bit)!=0 else "製作"
+		add_action(app,parent,"BoboRest_"+id,"%s%s · %s"%[verb,part.label,"、".join(costs)],
+			func():app.session.perform(goals.REST_KIT_ACTION,World.MINES.REST,id),nearby and enough)
+	if installed==goals.REST_KIT_MASK:
+		parent.add_child(caption(app,"備好了，回金瓜石山城找波波。",15))
+
+static func add_pick_loan(app,parent:Control,site:Vector2i,nearby:bool,borrowed:bool)->void:
+	if borrowed:
+		parent.add_child(caption(app,"公用鎬可在 B1–B5 使用。",15))
+		return
+	add_action(app,parent,"MineBorrowPick","借用公用鎬",func():app.session.perform("borrow_mine_pick",site),nearby)
 
 static func add_action(app,parent:Control,id:String,title:String,callback:Callable,enabled:bool)->void:
 	var button:Button=app.button(title,callback)
