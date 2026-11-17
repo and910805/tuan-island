@@ -382,6 +382,7 @@ static func livestock_menu(app,id:String)->void:
 	var inventory:Dictionary=Tasks.player(app).get("inventory",{})
 	var body:VBoxContainer=app._open_modal(spec.name+"的飼料站")
 	app.modal.set_meta("life_modal_layout","livestock_card")
+	if id=="cow":app.modal.set_meta("cow_care",true)
 	add_animal_sketch(app,body,id,spec.cell)
 	if id=="sheep" and int(Tasks.bond_view(app,"mianmian").get("stage",0))>=2:
 		var corner:Button=app.button("雲朵羊的遮雨角落",Tasks.sheep_corner.bind(app))
@@ -410,6 +411,9 @@ static func livestock_menu(app,id:String)->void:
 	if managed and not enclosed:status="圈舍有缺口，已暫停生產。修好後會繼續。"
 	Tasks.line(app,details,status,15)
 	if id=="duck":Tasks.line(app,details,"花斑鴨會在河畔淺水游泳，鴨蛋在飼料站領取。",15)
+	if id=="cow":
+		var follow_status:=Tasks.line(app,details,"摸頭後，奶糖牛會在站旁慢慢跟幾步；牛奶仍在原飼料站領取。",15)
+		follow_status.name="CowFollowStatus"
 	Tasks.line(app,details,"親密度 %d／%d"%[int(state.get("bond",0)),World.LIVESTOCK.BOND_LIMIT],15)
 	var personality:Dictionary=World.LIVESTOCK.PERSONALITIES[id]
 	Tasks.line(app,details,"%s · %s"%[personality.traits,personality.favorite],15)
@@ -446,6 +450,7 @@ static func livestock_menu(app,id:String)->void:
 	if enclosed and not managed:
 		actions.add_child(app.button("登記為生產圈舍",func():app.session.perform("livestock_pen",spec.cell,id);app._close_modal()))
 	var pet:Button=app.button("摸摸"+str(spec.name),func():app.session.perform("livestock_pet",spec.cell,id);app._close_modal())
+	pet.name="LivestockPet"
 	pet.disabled=float(snapshot.get("time",0))-float(state.get("last_pet",-World.LIVESTOCK.PET_INTERVAL))<World.LIVESTOCK.PET_INTERVAL
 	actions.add_child(pet)
 	if id=="sheep":

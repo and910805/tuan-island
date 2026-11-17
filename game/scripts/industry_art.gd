@@ -1,6 +1,7 @@
 extends RefCounted
 const ForestryArt=preload("res://scripts/forestry_art.gd")
 const SteamArt=preload("res://scripts/tea_revisit_art.gd")
+const FinishFeedback=preload("res://scripts/processing_finish_feedback.gd")
 
 const PATH:="res://assets/industry/atlas.png"
 const ITEMS:=["plank","resin","charcoal","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit"]
@@ -43,7 +44,7 @@ static func finished_output(obj:Dictionary,kind:String,time:float) -> String:
 	var job:Dictionary=obj.get("job",{})
 	return item if not job.is_empty() and not job.get("auto",false) and float(job.get("ready",INF))<=time else ""
 
-static func draw_device(canvas:CanvasItem,at:Vector2,kind:String,obj:Dictionary,time:float,reduced_motion:bool,tint:=Color.WHITE,elapsed:float=-1.0) -> void:
+static func draw_device(canvas:CanvasItem,at:Vector2,kind:String,obj:Dictionary,time:float,reduced_motion:bool,tint:=Color.WHITE,elapsed:float=-1.0,finish_age:float=-1.0) -> void:
 	var index:=DEVICES.find(kind)
 	if index<0 or not load_atlas():return
 	# Local time animates existing art between authoritative snapshots only.
@@ -73,7 +74,8 @@ static func draw_device(canvas:CanvasItem,at:Vector2,kind:String,obj:Dictionary,
 			var pad:=at+Vector2(22,16)
 			canvas.draw_rect(Rect2(pad+Vector2(0,10),Vector2(13,4)),Color("593b2b")*tint)
 			canvas.draw_rect(Rect2(pad+Vector2(1,10),Vector2(11,2)),Color("b28a59")*tint)
-			canvas.draw_texture_rect(icon(output),Rect2(pad-Vector2(1,2),Vector2(16,16)),false,tint)
+			var offset:=Vector2.ZERO if reduced_motion else FinishFeedback.output_offset(finish_age)
+			canvas.draw_texture_rect(icon(output),Rect2(pad-Vector2(1,2)+offset,Vector2(16,16)),false,tint)
 		if not processing_active(obj,time):return
 		# Snapshot time decides whether work is real; local time only animates art.
 		if kind=="sawmill" and not reduced_motion:

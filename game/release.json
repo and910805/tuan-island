@@ -1,7 +1,7 @@
 {
   "version": "0.50-dev",
-  "build": 20,
-  "protocol": 47,
+  "build": 21,
+  "protocol": 48,
   "engine": "4.7.2",
   "tests": [
     "test_snapshot_wire",
@@ -78,6 +78,9 @@
     "test_material_source_schema",
     "test_material_source_session",
     "test_processing_queue_world",
+    "test_processing_finish_feedback",
+    "test_cow_care",
+    "test_cow_care_session",
     "test_processing_queue_schema",
     "test_processing_queue_session",
     "test_cooking_action_reply",
@@ -360,6 +363,7 @@
     "test_season_dormancy_ui"
   ],
   "render_tests": [
+    "test_notice_lane",
     "test_loom_ui",
     "test_salt_pan_scene",
     "test_weather_scene",

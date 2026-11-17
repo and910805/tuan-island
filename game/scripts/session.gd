@@ -29,7 +29,8 @@ const SnapshotWire = preload("res://scripts/snapshot_wire.gd")
 ## charcoal_kiln `processing` queues (save 21). 38: stove cooking queues.
 ## 47: chicken cuddle/release; optional owner marker is hashed in public snapshots.
 ## 46: sheep grooming action and optional last_care marker; older clients must update.
-const PROTOCOL := 47
+## 48: cow care actor marker, redacted to public ID in snapshots.
+const PROTOCOL := 48
 const VERSION_MISMATCH_NOTICE := "遊戲版本過舊或不相容，請更新遊戲後再加入。"
 const ROOM_CAPACITY := Membership.LIMIT
 const CONNECTION_CAPACITY := ROOM_CAPACITY + 4
@@ -474,6 +475,7 @@ func _peer_left(id:int) -> void:
 			world.cancel_trades(peers[id])
 			world.active_tokens.erase(peers[id])
 			if str(world.state.animal.get(World.CHICKEN_CUDDLE.FIELD,""))==peers[id]:World.CHICKEN_CUDDLE.clear(world.state.animal)
+			if str(world.state.livestock.get("cow",{}).get(World.COW_CARE.FIELD,""))==peers[id]:World.COW_CARE.clear(world.state)
 			world.harvest_disconnect(peers[id]) # T071：放下模型蔬菜並退出這一輪（下面一起存檔）
 			world.fish_meet_disconnect(peers[id]) # T071：退出河岸釣魚會這一輪（貢獻保留，下面一起存檔）
 			world.showcase_disconnect(peers[id]) # T071：退出家園布置題這一輪（道具留在地塊上，下面一起存檔）
@@ -1117,6 +1119,10 @@ func public_state(region:String="home",recipient:String="") -> Dictionary:
 	var cuddler:=World.CHICKEN_CUDDLE.holder(world.state,world.active_tokens)
 	out.animal.erase(World.CHICKEN_CUDDLE.FIELD)
 	if region=="home" and not cuddler.is_empty():out.animal[World.CHICKEN_CUDDLE.FIELD]=_public_actor(cuddler)
+	var cow_actor:=World.COW_CARE.active_actor(world.state,world.active_tokens)
+	if out.get("livestock",{}).has("cow"):
+		out.livestock.cow.erase(World.COW_CARE.FIELD)
+		if region=="home" and not cow_actor.is_empty():out.livestock.cow[World.COW_CARE.FIELD]=_public_actor(cow_actor)
 	var exhibits:Dictionary={}
 	for token:String in world.state.players:
 		var exhibitor:Dictionary=world.state.players[token]

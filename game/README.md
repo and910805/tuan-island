@@ -2,13 +2,13 @@
 
 Godot 4.7.2 原生2D像素生活模擬遊戲開發版，包含耕作、建造、島民故事及供水／林業加工等逐步解鎖的玩法。
 
-目前公開試玩包為 **0.50-dev r20**，多人協定 **47**、世界存檔格式 **26**。客戶端及世界伺服器需同版；版本資料以[release.json](release.json)為準。
+本批試玩包為 **0.50-dev r21**，多人協定 **48**、世界存檔格式 **26**。客戶端及世界伺服器需同版；版本資料以[release.json](release.json)為準。r20使用協定47，不能與r21混用。
 
-- [Windows安裝包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r20/TuanIslandSetup-0.50-dev-r20.exe)
-- [Linux世界伺服器包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r20/TuanIslandServer-0.50-dev-r20-linux-x64.zip)
-- [r20更新說明與驗證範圍](https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r20)
+- [Windows安裝包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r21/TuanIslandSetup-0.50-dev-r21.exe)
+- [Linux世界伺服器包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r21/TuanIslandServer-0.50-dev-r21-linux-x64.zip)
+- [r21更新說明與驗證範圍](https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r21)
 
-選「住進自己的小島」可單機遊玩，不需要IP。r20加入小羊躲雨及糯米雞短暫抱抱，保留既有存檔及生產規則。Windows EXE與本機獨立Linux世界程序已有連線、照料互斥及重啟驗證；公開雲端WSS、完整真人旅程及整體規劃仍在開發驗收中。
+選「住進自己的小島」可單機遊玩，不需要IP。r21新增奶糖牛短程照料跟隨、釣魚等待動作、加工成品落架及精簡操作提示，保留羊躲雨、雞抱抱和既有存檔及生產規則。Windows EXE與本機獨立Linux世界程序已有連線、照料互斥及重啟驗證；雲端尚未升級到r21，公開雲端WSS、完整真人旅程及整體規劃仍在開發驗收中。
 
 版本更新網址尚未配置為公開簽署清單，現階段請從上方Release下載安裝包。部署及持久資料設定見[部署說明](deploy/README.md)。
 
@@ -124,5 +124,3 @@ L 開啟生活圖鑑：親手收成、釣魚、領取料理會記錄種類，出
 角色新增四向行走與不同居民造型，樹木、農田、作物、家具加入像素細節；靠近互動對象才顯示 E。Esc 選單可設定輕柔提示音音量（0 靜音）、減少裝飾動態、預設近遠景。設定儲存在本機 settings.cfg，測試可傳 --settings= 隔離路徑。提示音為原創程式合成，尚無完整背景配樂。
 
 已新增圖鑑規則、兩客戶端重連領獎、四向姿態、提示音與設定，以及十八建物逐件材料與通行測試。主選單與背包仍是原型介面；正式帳號、完整內容、美術與真人舒適度驗收仍待完成。實作工作板將原驗收與局部完成分開，避免把自動測試數當整體完工百分比。
-
-

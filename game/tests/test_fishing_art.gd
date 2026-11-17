@@ -96,6 +96,18 @@ func run()->void:
 	var rod_area:=Rect2i(110,43,48,45)
 	expect(cast_back.get_region(rod_area).get_data()!=cast_forward.get_region(rod_area).get_data(),
 		"Rod swings through distinct cast poses")
+	var breathe_in:=await frame("wait",0.0,0.87)
+	var breathe_out:=await frame("wait",0.0,2.62)
+	expect(breathe_in.get_region(rod_area).get_data()!=breathe_out.get_region(rod_area).get_data(),
+		"Waiting moves the held rod, not only the water")
+	expect(Art.angler_lean({"phase":"wait"},0.87,false)>0.0 and Art.angler_lean({"phase":"wait"},2.62,false)<0.0,
+		"Waiting breathes gently in both directions")
+	expect(Art.angler_lean({"phase":"wait"},0.87,true)==0.0,
+		"Reduced motion keeps the waiting character still")
+	var flutter_a:=await frame("catch",0.38,0.0,false,"carp")
+	var flutter_b:=await frame("catch",0.53,0.0,false,"carp")
+	expect(flutter_a.get_region(Rect2i(125,30,45,55)).get_data()!=flutter_b.get_region(Rect2i(125,30,45,55)).get_data(),
+		"Landed catch settles through distinct frames")
 	var trophy:Image=Art.ICONS.get_image().get_region(Rect2i(Art.TROPHY))
 	expect(fish.get_data()!=generic.get_data(),"Unknown catch differs from actual carp")
 	for species in ["sardine","flounder","moon_squid","gold_shrimp"]:

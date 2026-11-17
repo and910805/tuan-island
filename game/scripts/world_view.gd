@@ -21,6 +21,8 @@ const CommunityFeedback=preload("res://scripts/community_feedback.gd")
 const AutomationArt=preload("res://scripts/automation_art.gd")
 const Industry=preload("res://scripts/industry.gd")
 const IndustryArt=preload("res://scripts/industry_art.gd")
+const ProcessingFinishFeedback=preload("res://scripts/processing_finish_feedback.gd")
+const CowFollowView=preload("res://scripts/cow_follow_view.gd")
 const WaterworksArt=preload("res://scripts/waterworks_art.gd")
 const MineDrillArt=preload("res://scripts/mine_drill_art.gd")
 const Forestry=preload("res://scripts/forestry.gd")
@@ -135,6 +137,7 @@ var supply_networks:Dictionary={}
 var tiller_world=World.new()
 var seed_kind:="radish"
 var farm_feedback:=FarmFeedback.new()
+var processing_finish_feedback:=ProcessingFinishFeedback.new()
 var tool_feedback:=ToolActionFeedback.new()
 ## T017 evidence counters, only ever incremented by the real draw path:
 ## held = held-tool icons drawn, particles = target particles drawn,
@@ -142,6 +145,7 @@ var tool_feedback:=ToolActionFeedback.new()
 var tool_draw_stats:={"held":0,"particles":0,"lunge":0,"angles":{}}
 var fishing_feedback:=FishingFeedback.new()
 var sheep_shelter:=SheepShelter.new()
+var cow_follow:=CowFollowView.new()
 var chicken_draw_stats:={"ground":0,"carried":0}
 var sprinkler_sprays:Dictionary={}
 var brine_transfer_started:=-INF
@@ -188,8 +192,10 @@ func tree_planting_preview(tile:Vector2i)->String:
 func update_snapshot(snapshot:Dictionary,id:String) -> Array:
 	var changed_region:=region_id()!=str(snapshot.get("region_id","home"))
 	var recenter_camera:=data.is_empty() or changed_region or id!=player_id or float(snapshot.get("time",0))<float(data.get("time",0))
+	processing_finish_feedback.observe(data,snapshot,elapsed,recenter_camera)
 	_observe_sprinklers(snapshot,recenter_camera)
 	sheep_shelter.observe(snapshot,elapsed,recenter_camera)
+	cow_follow.observe(snapshot,recenter_camera)
 	if recenter_camera or not World.TRANSIT.boat_open(snapshot):
 		dock_launch_started=-INF
 	elif not data.is_empty() and region_id()==World.REGIONS.HOME and not World.TRANSIT.boat_open(data):
@@ -309,6 +315,7 @@ func _ready() -> void:
 
 func _process(dt:float) -> void:
 	elapsed+=dt
+	cow_follow.advance(dt)
 	interpolation_clock=minf(interpolation_clock+dt,0.1)
 	for who in display_positions:
 		var previous:Vector2=display_positions[who]
@@ -966,13 +973,18 @@ func _draw() -> void:
 				var brushing:bool=id=="sheep" and record.get("last_care","")=="brush"
 				var quiet:=reduced_motion or photograph_mode
 				var animal_foot:=foot+sheep_shelter.offset(elapsed,quiet) if id=="sheep" else foot
+				if id=="cow":animal_foot+=cow_follow.offset(quiet).round()
 				var offset:=Vector2.ZERO if brushing else LivestockArt.reaction_offset(id,reaction_age,int(record.get("bond",0)),quiet)
 				if id=="duck":draw_duck(foot,record,reaction_age)
 				else:
 					var sheep:bool=id=="sheep"
 					var walking_frame:=sheep_shelter.walking_frame(elapsed,quiet) if sheep else -1
+					if id=="cow":walking_frame=cow_follow.walking_frame(quiet)
 					if sheep:LivestockArt.draw_station(self,foot,id,LivestockArt.state_for(record),elapsed,quiet)
-					LivestockArt.draw(self,animal_foot,id,LivestockArt.state_for(record),quiet,elapsed,Vector2i(offset),brushing and reaction_age>=0.0 and reaction_age<LivestockArt.PET_SECONDS,walking_frame,sheep,sheep and sheep_shelter.walking(elapsed,quiet) and sheep_shelter.facing_right(),view_zoom())
+					var facing_right:bool=sheep and sheep_shelter.walking(elapsed,quiet) and sheep_shelter.facing_right()
+					if id=="cow":facing_right=cow_follow.moving and cow_follow.face_right
+					LivestockArt.draw(self,animal_foot,id,LivestockArt.state_for(record),quiet,elapsed,Vector2i(offset),brushing and reaction_age>=0.0 and reaction_age<LivestockArt.PET_SECONDS,walking_frame,true,facing_right,view_zoom())
+					if id=="cow":LivestockArt.draw_station(self,foot,id,LivestockArt.state_for(record),elapsed,quiet)
 				if id=="sheep" and (corner&1)!=0:draw_sheep_comfort(foot+Vector2(16,-34),0)
 				if brushing:LivestockArt.draw_brushing(self,animal_foot,reaction_age,quiet)
 				if id=="sheep":
@@ -2016,8 +2028,9 @@ func object_sprite(at:Vector2,kind:String,object_data:Dictionary={}) -> void:
 			world_label(at+Vector2(16,-26),World.BUILD[kind].name+BakeryArt.MillFeedback.caption(mill_status),mill_key)
 		return
 	if kind in ["water_tank","water_pump","sawmill","charcoal_kiln"]:
-		IndustryArt.draw_device(self,at,kind,object_data,float(data.get("time",0)),reduced_motion or photograph_mode,Color.WHITE,elapsed)
 		var device_key:=World.key(draw_cell(at))
+		var finish_age:=processing_finish_feedback.age(device_key,object_data,elapsed,reduced_motion or photograph_mode)
+		IndustryArt.draw_device(self,at,kind,object_data,float(data.get("time",0)),reduced_motion or photograph_mode,Color.WHITE,elapsed,finish_age)
 		if focused_label==device_key:
 			var caption:String=World.BUILD[kind].name
 			if kind=="water_tank":caption+=" · 水 %d／48"%int(object_data.get("water",0))

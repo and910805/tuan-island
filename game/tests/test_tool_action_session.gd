@@ -227,7 +227,7 @@ var beta:Client
 var gamma:Client
 
 func scenario()->bool:
-	expect(Session.PROTOCOL==47,"tool events use the current chicken-care protocol")
+	expect(Session.PROTOCOL==48,"tool events use the current cow-care protocol")
 	expect(seed_fixture(),"SEEDED FIXTURE written to TEMP and accepted by SaveSchema.validate")
 	if save_path.is_empty() or not FileAccess.file_exists(save_path):return false
 	var port:=start_server()

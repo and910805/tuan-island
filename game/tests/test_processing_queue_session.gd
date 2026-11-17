@@ -93,7 +93,9 @@ func build_queue(station:String,kind:String,jobs:Array,now:float)->Dictionary:
 func _initialize()->void:run.call_deferred()
 
 func run()->void:
-	check(Session.PROTOCOL==45,"Session.PROTOCOL is 39 for processing queues")
+	check(Session.PROTOCOL>=39,"Session supports the processing-queue protocol introduced in 39")
+	var release:Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://release.json"))
+	check(Session.PROTOCOL==int(release.protocol),"Session protocol matches current release manifest")
 	for action in OLD_CORRELATED+PROCESSING_ACTIONS:
 		check(Session.CORRELATED_ACTIONS.has(action),"%s is on the correlated action_completed path"%action)
 	await snapshot_section()

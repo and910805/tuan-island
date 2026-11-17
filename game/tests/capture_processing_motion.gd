@@ -48,6 +48,7 @@ func run()->void:
 	await create_timer(0.3).timeout
 	app.view.set_process(false)
 	app.view.reduced_motion=app.arg_value("qa-reduced","")=="true"
+	app.view.photograph_mode=app.arg_value("qa-photo","")=="true"
 	var camera:Vector2=app.view.camera
 	var original:Dictionary=world.state.objects.duplicate(true)
 	for frame in 20:
@@ -64,6 +65,21 @@ func run()->void:
 	expect(world.step(20.0,true),"Fast-forward remaining jobs")
 	app.session._send_snapshot(1)
 	await shot("all_ready")
+	if app.arg_value("qa-finish","")=="true":
+		# Real second-batch completion just above; do not inject presentation events.
+		var stable:Dictionary=world.state.duplicate(true)
+		var quiet:bool=app.view.reduced_motion or app.view.photograph_mode
+		for spec in specs:
+			var key:=World.key(spec[0])
+			expect(app.view.processing_finish_feedback.age(key,app.view.data.objects[key],app.view.elapsed,quiet)>=0.0 if not quiet else app.view.processing_finish_feedback.age(key,app.view.data.objects[key],app.view.elapsed,quiet)<0.0,"Actual snapshot controls finish feedback")
+		for frame in 18:
+			await shot("finished_%02d"%frame)
+			expect(stable==world.state,"Rendering never changes world state")
+			expect(camera==app.view.camera,"Finish keeps camera anchored")
+			app.view.elapsed+=0.05
+		for spec in specs:
+			var key:=World.key(spec[0])
+			expect(app.view.processing_finish_feedback.age(key,app.view.data.objects[key],app.view.elapsed)<0.0,"Finish ends without another world tick")
 	app.view.elapsed+=0.6
 	await shot("all_ready_later")
 	for spec in specs:

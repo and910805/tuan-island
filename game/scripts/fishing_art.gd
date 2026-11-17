@@ -13,9 +13,11 @@ const TROPHY:=Rect2(64,96,32,32)
 const LINE_COLOR:=Color("eee3c2")
 static var ready_tag:StyleBoxTexture
 
-static func angler_lean(state:Dictionary,_elapsed:float,reduced_motion:bool)->float:
+static func angler_lean(state:Dictionary,elapsed:float,reduced_motion:bool)->float:
 	if reduced_motion:return 0.0
 	match state.get("phase",""):
+		"wait":
+			return 1.2*sin(elapsed*1.8)
 		"cast":
 			return 5.0*sin(PI*clampf(float(state.age)/Feedback.CAST_DURATION,0.0,1.0))
 		"ready":
@@ -75,6 +77,10 @@ static func draw(canvas:CanvasItem,foot:Vector2,target:Vector2,state:Dictionary,
 			var lift:=clampf(age/0.32,0.0,1.0)
 			var reel:=lift*lift*(3.0-2.0*lift)
 			at=target.lerp(at,reel)+Vector2(0,-sin(PI*lift)*30.0-minf(age*18.0,12.0)*reel)
+			# A short settling flutter, using the actual catch PNG without scaling its pixels.
+			if age>0.32:
+				var settle:=clampf((age-0.32)/(Feedback.CATCH_DURATION-0.32),0.0,1.0)
+				at+=Vector2(roundf(sin(settle*TAU*2.0)*3.0*(1.0-settle)), -roundf(absf(sin(settle*TAU*2.0))*3.0*(1.0-settle)))
 			size=roundf(lerpf(18.0,32.0,reel))
 			if reel<1.0:
 				var reel_tip:=draw_rod(canvas,hand,side,-side*0.55*sin(reel*PI*0.8),zoom)
@@ -90,6 +96,8 @@ static func draw(canvas:CanvasItem,foot:Vector2,target:Vector2,state:Dictionary,
 			canvas.draw_texture_rect_region(ICONS,badge,TROPHY)
 		return
 	var reach:=0.0
+	if not reduced_motion and phase=="wait":
+		hand.y+=roundf(sin(elapsed*1.8))
 	if not reduced_motion and phase=="cast":
 		reach=roundf(5.0*sin(PI*clampf(age/Feedback.CAST_DURATION,0.0,1.0)))
 	hand.x+=side*reach
@@ -101,6 +109,8 @@ static func draw(canvas:CanvasItem,foot:Vector2,target:Vector2,state:Dictionary,
 			angle=side*sin(swing*TAU)*lerpf(-0.78,-0.36,swing)
 		elif bite:
 			angle=side*0.44*bite_pull(age)
+		elif phase=="wait":
+			angle=side*0.035*sin(elapsed*1.8)
 	var tip:=draw_rod(canvas,hand,side,angle,zoom)
 	var float_at:=target.round()
 	var airborne:=phase=="cast" and not reduced_motion

@@ -1,5 +1,6 @@
 extends RefCounted
 const CHICKEN_CUDDLE=preload("res://scripts/chicken_cuddle.gd")
+const COW_CARE=preload("res://scripts/cow_care.gd")
 const ISLAND_NOTES=preload("res://scripts/island_notes.gd")
 const DOCK_REPAIRS := [{"plank":12,"stone":8},{"plank":8,"fiber":10,"copper_joint":2}]
 const OUTLYING_COMMISSIONS=preload("res://scripts/outlying_commissions.gd")
@@ -828,6 +829,9 @@ func step(dt: float, active: bool, persist:bool=true) -> bool:
 	if state.animal.has(CHICKEN_CUDDLE.FIELD) and (not active_tokens.has(str(state.animal[CHICKEN_CUDDLE.FIELD])) or CHICKEN_CUDDLE.holder(state,active_tokens).is_empty()):
 		CHICKEN_CUDDLE.clear(state.animal)
 		changed=true
+	if state.livestock.get("cow",{}).has(COW_CARE.FIELD) and COW_CARE.active_actor(state,active_tokens).is_empty():
+		COW_CARE.clear(state)
+		changed=true
 	for token:String in state.players:
 		var sailor:Dictionary=state.players[token]
 		if not sailor.has(RESIDENT_GOALS.VOYAGE_START):continue
@@ -1649,6 +1653,8 @@ func act(token: String, request_id: String, action: String, p: Vector2i, extra: 
 		player.erase(REGIONS.Springs.REST_SEAT_KEY)
 	if result.ok and str(state.animal.get(CHICKEN_CUDDLE.FIELD,""))==token and (player_region(token)!=REGIONS.HOME or player.has(RESIDENT_GOALS.VOYAGE_START) or player.has(RESIDENT_GOALS.MASTER_BENCH_SEAT) or player.has(REGIONS.Springs.REST_SEAT_KEY)):
 		CHICKEN_CUDDLE.clear(state.animal)
+	if result.ok and str(state.livestock.get("cow",{}).get(COW_CARE.FIELD,""))==token and (player_region(token)!=REGIONS.HOME or player.has(RESIDENT_GOALS.VOYAGE_START) or player.has(RESIDENT_GOALS.MASTER_BENCH_SEAT) or player.has(REGIONS.Springs.REST_SEAT_KEY)):
+		COW_CARE.clear(state)
 	if not result.ok:
 		switch_region(REGIONS.HOME)
 		# Most rejected base actions have not mutated anything. Keep their live
@@ -3160,7 +3166,9 @@ func _apply(token: String, action: String, p: Vector2i, extra: String, build_sty
 			return fail("完成田尾公共花園後解鎖畜牧收集器。")
 		if action=="livestock_pen" and not LIVESTOCK.pen_status(state.objects,extra):
 			return fail("請先圍好圈舍並留一扇木門。")
-		return LIVESTOCK.perform(state.livestock,inv,extra,action,float(state.time))
+		var care_result:Dictionary=LIVESTOCK.perform(state.livestock,inv,extra,action,float(state.time))
+		if care_result.ok and extra=="cow" and action=="livestock_pet":state.livestock.cow[COW_CARE.FIELD]=token
+		return care_result
 	# T042 public kitchen: HOME only, after the normal 3.2 reach gate (p = stove).
 	if action in PUBLIC_KITCHEN.ACTIONS:
 		if _region!=REGIONS.HOME:return fail("請回到風鈴渡口使用公共廚房。")
@@ -5290,6 +5298,7 @@ func _load_file(path:String) -> bool:
 	if not preload("res://scripts/save_schema.gd").validate(parsed,CROPS,BUILD,RECIPES,SIZE,TREE_TIME):return false
 	state=parsed
 	CHICKEN_CUDDLE.clear(state.animal) # A restart returns the hen; care cooldown remains.
+	COW_CARE.clear(state) # Restart at the feed station, retaining bond and cooldown.
 	if not state.has(WARM_SPRINGS.BATH_KEY):
 		for person:Dictionary in state.players.values():
 			if not RESIDENT_GOALS.done(person,"nuannuan").has(2):continue

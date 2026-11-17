@@ -1305,7 +1305,8 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		var animal=s.livestock[id]
 		if not ranch.ANIMALS.has(id) or not animal is Dictionary:return false
 		for field in animal:
-			if field not in ["feed","ready","next","bond","last_pet","last_care","collector","managed_pen","bonus_progress","ready_quality","collector_quality"]:return false
+			if field not in ["feed","ready","next","bond","last_pet","last_care","follow_actor","collector","managed_pen","bonus_progress","ready_quality","collector_quality"]:return false
+		if animal.has("follow_actor") and (id!="cow" or not animal.follow_actor is String or not s.players.has(animal.follow_actor) or not number(animal.get("last_pet"),0,float(s.time))):return false
 		if animal.has("last_care") and (id!="sheep" or not animal.last_care is String or animal.last_care!="brush" or not animal.has("bond") or not animal.has("last_pet")):return false
 		if animal.has("bonus_progress") and not whole(animal.bonus_progress,ranch.BONUS_INTERVAL):return false
 		if animal.has("managed_pen") and not animal.managed_pen is bool:return false

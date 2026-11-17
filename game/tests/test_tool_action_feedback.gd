@@ -87,7 +87,7 @@ func server_events()->void:
 	session.sequences={1:0,2:0,3:0}
 	session.rates={1:[],2:[],3:[]}
 	expect(not session.tool_action_epoch.is_empty(),"server session has a random tool-action epoch")
-	expect(Session.PROTOCOL==47,"tool events use the current chicken-care protocol")
+	expect(Session.PROTOCOL==48,"tool events use the current cow-care protocol")
 	me().inventory.wood=100
 	me().inventory.stone=50
 	var plot:=Vector2i(38,34)

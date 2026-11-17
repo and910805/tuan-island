@@ -108,6 +108,7 @@ var address_input:LineEdit
 var key_input:LineEdit
 var port_input:LineEdit
 var toast_time:=0.0
+var toast_success:=true
 var selected:="hoe"
 var crop:="radish"
 var building:="floor"
@@ -651,7 +652,7 @@ func _capture_farm_sequence() -> void:
 	# Opt-in local QA recording: execute the same authoritative action as a click.
 	var action:=arg_value("capture-action","")
 	var loopback_qa:bool="--capture-loopback" in OS.get_cmdline_user_args() and address_input.text.strip_edges()=="ws://127.0.0.1:%d"%int(port_input.text)
-	if not (local_mode or loopback_qa) or not playing or action not in ["till_area","seed_area","harvest_area","hoe","seed","water","harvest","livestock_brush","chicken_hug","observe_weather"]:
+	if not (local_mode or loopback_qa) or not playing or action not in ["till_area","seed_area","harvest_area","hoe","seed","water","harvest","livestock_brush","livestock_pet","chicken_hug","observe_weather"]:
 		push_error("Farm sequence requires a local farm action")
 		get_tree().quit(1)
 		return
@@ -662,8 +663,8 @@ func _capture_farm_sequence() -> void:
 		return
 	await RenderingServer.frame_post_draw
 	var before:Dictionary=session.snapshot.duplicate(true)
-	if action in ["livestock_brush","chicken_hug"]:
-		var button_name:="SheepBrush" if action=="livestock_brush" else "ChickenHug"
+	if action in ["livestock_brush","livestock_pet","chicken_hug"]:
+		var button_name:String={"livestock_brush":"SheepBrush","livestock_pet":"LivestockPet","chicken_hug":"ChickenHug"}[action]
 		var brush:=modal.find_child(button_name,true,false) as Button if is_instance_valid(modal) else null
 		if brush==null or brush.disabled:
 			push_error("Local capture requires the available care button: "+button_name)
@@ -689,7 +690,9 @@ func _capture_farm_sequence() -> void:
 			return
 		if index==6:picture.save_png(destination)
 		var shelter_at:Vector2=view.sheep_shelter.offset(view.elapsed,view.reduced_motion or view.photograph_mode)
+		var cow_at:Vector2=view.cow_follow.offset(view.reduced_motion or view.photograph_mode)
 		records.append({"file":filename,"ms":Time.get_ticks_msec()-started,"camera":view.camera,
+			"cow_offset":[cow_at.x,cow_at.y],"toast_visible":toast.visible,"caption_visible":activity_caption.visible,
 			"shelter_offset":[shelter_at.x,shelter_at.y],"chickens":view.chicken_draw_stats.duplicate(),
 			"tool_hint_visible":selected_label.visible,
 			"tool_pose":view.tool_action_plan(session.own_id),"animal_feedback":view.livestock_pet_feedback.duplicate(true),
@@ -1114,12 +1117,8 @@ func _layout_preview() -> void:
 	LifeShell.layout_hud(self,bounds)
 	WanganUI.layout(self,bounds)
 	if playing:
-		var toast_right:float=bounds.x
-		if is_instance_valid(blueprint_strip) and (_blueprint_mode()!="idle" or blueprints.busy()) and modal==null:
-			toast_right=blueprint_strip.position.x-16.0
-		var toast_width:float=minf(740.0,maxf(240.0,toast_right-32.0))
-		toast.size=Vector2(toast_width,maxf(36,toast.get_minimum_size().y))
-		toast.position=Vector2((toast_right-toast_width)/2,bounds.y-160-toast.size.y)
+		_layout_transient_notice(toast,bounds)
+		if is_instance_valid(activity_caption):_layout_transient_notice(activity_caption,bounds)
 	if is_instance_valid(modal):
 		if modal is InventoryPanel or modal is ShippingPanel:
 			modal.layout_for(bounds)
@@ -1134,7 +1133,7 @@ func _layout_preview() -> void:
 			modal.position=(bounds-modal.size)/2
 		match str(modal.get_meta("life_modal_layout","")):
 			"livestock_card":
-				modal.size=Vector2(minf(510,bounds.x-48),minf(470 if modal.has_meta("sheep_brushing") else 415,bounds.y-48))
+				modal.size=Vector2(minf(510,bounds.x-48),minf(500 if modal.has_meta("cow_care") else (470 if modal.has_meta("sheep_brushing") else 415),bounds.y-48))
 				modal.position=Vector2(bounds.x-modal.size.x-24,bounds.y-modal.size.y-24)
 			"build_folio":
 				modal.size=Vector2(minf(920,bounds.x-40),minf(590,bounds.y-64))
@@ -1421,6 +1420,8 @@ func _disconnected() -> void:
 		identity_entry.join_result(false,"無法連上這座島，請確認地址或稍後重試。")
 	if view:
 		view.farm_feedback.reset()
+		view.processing_finish_feedback.reset()
+		view.cow_follow.reset()
 		view.tool_feedback.reset() # T017：重連後第一份快照只當基準，不重播舊的工具動作。
 		view.fishing_feedback.reset()
 	WanganUI.dismiss(self)
@@ -1604,6 +1605,10 @@ func _notice(message:String,success:bool) -> void:
 		if success:sound.defer_action(kind)
 		else:sound.play_cue(kind)
 	if toast:
+		# A new action result replaces the old transient caption in the same lane.
+		activity_caption_time=0.0
+		if is_instance_valid(activity_caption):activity_caption.hide()
+		toast_success=success
 		toast.text=message
 		toast_time=6.0
 		if village_art_preview:
@@ -1616,7 +1621,11 @@ func _notice(message:String,success:bool) -> void:
 
 func _caption(message:String,priority:int) -> void:
 	if not is_instance_valid(activity_caption) or not sound.activity_captions:return
+	# An automatic background completion must not hide an unresolved error.
+	if toast_time>0.0 and not toast_success:return
 	if activity_caption_time>0.0 and priority<activity_caption_priority:return
+	toast_time=0.0
+	if is_instance_valid(toast):toast.hide()
 	activity_caption.text=binding_text(message)
 	activity_caption_priority=priority
 	activity_caption_time=3.8
@@ -1627,10 +1636,21 @@ func _update_activity_caption(dt:float) -> void:
 	activity_caption_time=maxf(0.0,activity_caption_time-dt)
 	activity_caption.visible=playing and sound.activity_captions and activity_caption_time>0.0 and modal==null and not voyage_active
 	if not activity_caption.visible:return
-	var caption_width:=minf(toast.size.x,400.0)
-	activity_caption.size.x=caption_width
-	activity_caption.size.y=maxf(32,activity_caption.get_minimum_size().y)
-	activity_caption.position=Vector2(toast.position.x+(toast.size.x-activity_caption.size.x)*0.5,toast.position.y-activity_caption.size.y-6.0)
+	_layout_transient_notice(activity_caption,get_viewport().get_visible_rect().size)
+
+func _layout_transient_notice(control:Label,bounds:Vector2)->void:
+	var right:=bounds.x
+	if is_instance_valid(blueprint_strip) and (_blueprint_mode()!="idle" or blueprints.busy()) and modal==null:
+		right=blueprint_strip.position.x-16.0
+	var available:=minf(740.0,maxf(80.0,right-32.0))
+	var content_width:=0.0
+	var notice_font:=control.get_theme_font("font")
+	var notice_size:=control.get_theme_font_size("font_size")
+	for line in control.text.split("\n"):
+		content_width=maxf(content_width,notice_font.get_string_size(line,HORIZONTAL_ALIGNMENT_LEFT,-1,notice_size).x)
+	control.size.x=minf(available,maxf(220.0,ceilf(content_width)+32.0))
+	control.size.y=maxf(36.0,control.get_minimum_size().y)
+	control.position=Vector2(roundf((right-control.size.x)/2.0),roundf(bounds.y-160.0-control.size.y))
 
 func _process(dt:float) -> void:
 	if test_seconds>0:
