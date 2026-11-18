@@ -23,6 +23,7 @@ const Industry=preload("res://scripts/industry.gd")
 const IndustryArt=preload("res://scripts/industry_art.gd")
 const ProcessingFinishFeedback=preload("res://scripts/processing_finish_feedback.gd")
 const CowFollowView=preload("res://scripts/cow_follow_view.gd")
+const ResidentIdle=preload("res://scripts/resident_idle.gd")
 const WaterworksArt=preload("res://scripts/waterworks_art.gd")
 const MineDrillArt=preload("res://scripts/mine_drill_art.gd")
 const Forestry=preload("res://scripts/forestry.gd")
@@ -891,7 +892,7 @@ func _draw() -> void:
 			if resident_cell.y==y:
 				var at:=screen(Vector2(resident_cell)+Vector2(0.5,0.7))
 				if resident!="bobo" or not BoboArt.draw(self,at-Vector2(24,44),"person"):
-					person_sprite(at,Color(npc.color),resident)
+					person_sprite(at,Color(npc.color),resident,Vector2i.DOWN,0.0,false,false,false,0.0,true)
 				var label_offset:=Vector2(-25,-26) if Vector2(bell_cell-resident_cell).length()<=1.0 else Vector2(0,-47)
 				if resident!="bobo" or focused_label=="bobo":world_label(at+label_offset,npc.name,resident)
 		if not resident_at_station.is_empty() and resident_at_station.cell.y==y:
@@ -907,7 +908,7 @@ func _draw() -> void:
 			var walk_cell:Vector2i=walk_spot[1]
 			if str(walk_spot[0])!=region_id() or walk_cell.y!=y or not World.RESIDENT_BOND.present(data,walk_id):continue
 			var walk_foot:=screen(Vector2(walk_cell)+Vector2(0.5,0.7))
-			person_sprite(walk_foot,Color("e8d9c4"),walk_id)
+			person_sprite(walk_foot,Color("e8d9c4"),walk_id,Vector2i.DOWN,0.0,false,false,false,0.0,true)
 			world_label(walk_foot+Vector2(0,-47),World.RESIDENT_BOND.name_of(walk_id),walk_id)
 		if in_springs:
 			if in_inn and y in range(springs.INN_ROOM.position.y,springs.INN_ROOM.end.y):
@@ -2204,8 +2205,11 @@ func _draw_cooking_feedback(at:Vector2,obj:Dictionary) -> void:
 	if int(status.ready)>0:
 		world_label(at+Vector2(16,-18),"料理好了 · %d 鍋待領"%int(status.ready),World.key(draw_cell(at)))
 
-func person_sprite(at:Vector2,shirt:Color,style:="guest",facing:=Vector2i.DOWN,phase:=0.0,walking_now:=false,blue_workwear:=false,milu_apron:=false,cart_push:=0.0) -> void:
+func person_sprite(at:Vector2,shirt:Color,style:="guest",facing:=Vector2i.DOWN,phase:=0.0,walking_now:=false,blue_workwear:=false,milu_apron:=false,cart_push:=0.0,resident_idle:=false) -> void:
 	character_label_obstacles.append(LabelLayout.body_rect(at))
+	if resident_idle and not walking_now:
+		var visitor:=screen(display_positions[player_id]) if display_positions.has(player_id) else Vector2.ZERO
+		facing=ResidentIdle.facing(style,facing,at,visitor,display_positions.has(player_id),elapsed,reduced_motion or photograph_mode)
 	if character_art:
 		character_art.draw_person(self,at,shirt,style,facing,phase,walking_now,reduced_motion,blue_workwear,milu_apron,cart_push)
 		return
@@ -2228,7 +2232,7 @@ func shop(at:Vector2) -> void:
 	if village_art:
 		village_art.draw_prop(self,at,8)
 		if character_art:
-			person_sprite(at+Vector2(16,27),Color("b9a66d"),"xiaoli")
+			person_sprite(at+Vector2(16,27),Color("b9a66d"),"xiaoli",Vector2i.DOWN,0.0,false,false,false,0.0,true)
 			village_art.draw_shop_occluders(self,at)
 		CommunityArt.draw_shop_detail(self,at,data)
 		world_label(at+Vector2(16,-39),"小栗・渡口小店" if data.get("picnic",false) else ("小栗・種子攤" if character_art else "種子攤"),"shop")
@@ -2836,7 +2840,12 @@ func draw_tool_target(tool_plan:Dictionary,foot:Vector2) -> void:
 	var cell:Vector2i=record.to if record.tool=="move_object" else record.cell
 	var cell_at:=screen(Vector2(cell))
 	var impact:=ToolActionFeedback.soil_impact(record.tool,tool_plan.progress,tool_plan.reduced)
-	if not impact.is_empty():
+	if record.tool=="seed":
+		for contact in ToolActionFeedback.seed_contacts(tool_plan.progress,tool_plan.reduced):
+			var center:Vector2=cell_at+contact.center
+			for side in [-1.0,1.0]:
+				draw_rect(Rect2(center+Vector2(side*contact.spread,-contact.lift),Vector2(2,1)),contact.color)
+	elif not impact.is_empty():
 		var spread:float=impact.spread
 		var center:=cell_at+Vector2(16,22)
 		for offset in [Vector2(-spread,-2),Vector2(spread,-2),Vector2(-spread+2,2),Vector2(spread-2,2)]:

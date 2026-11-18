@@ -88,12 +88,20 @@ static func local_track(snapshot:Dictionary,region:String,person:Dictionary) -> 
 	return home_zone(snapshot,position) if region=="home" else ""
 
 func set_world(snapshot:Dictionary,own_id:String) -> void:
-	if DisplayServer.get_name()=="headless" or not story_return_track.is_empty():return
+	if DisplayServer.get_name()=="headless":return
 	var region:=str(snapshot.get("region_id","home"))
 	var base_track:=track_for(region,float(snapshot.get("time",0.0)))
 	var person:Dictionary=snapshot.get("players",{}).get(own_id,{})
 	var zone:=local_track(snapshot,region,person)
 	var target:=base_track if zone.is_empty() else zone
+	if not story_return_track.is_empty():
+		# Keep the story playing, but remember where its reader actually is now.
+		# Time, roofs and server-directed travel can change behind the story UI.
+		if not person.is_empty():
+			story_return_track=target
+			world_region=region
+		cancel_pending()
+		return
 	if region!=world_region:
 		milestone_return_track=""
 		world_region=region

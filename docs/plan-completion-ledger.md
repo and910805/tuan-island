@@ -2,6 +2,16 @@
 
 權威來源為 [完整遊戲規劃書](../outputs/糰糰島_完整遊戲規劃書.html)。以下按原書01–39章與T001–T096追蹤。
 
+2026-11-18／T076、T010 r23本機試玩候選：build23／protocol48／schema26，納入播種落地、站立居民回應、故事BGM返回與部署包純密碼備份。真正Windows EXE→Linux匯出ELF鋤地／播種／澆水各24幀，原角色座標與相機固定、種子扣1；同卷重建容器EXE重入，兩原角色／背包／257幣／故事／箱內3木／濕蘿蔔保留。相同承載檔QA隔離安裝、捷徑目標啟動、登錄及畫面r23，正常user資料位置讀r13副本保留原玩家和建築、原檔hash不變、解除保留存檔。版本39與正式公鑰驗候選清單通過，公鑰位元組在實際EXE，ZIP CRC與實測binary hash核對。Windows安裝97,855,152 bytes、更新ZIP98,015,443、LinuxZIP88,410,834；證據work/release-r23，報告docs/playtest/playtest-2026-11-18-release-r23.md，產物outputs/TuanIslandSetup-0.50-dev-r23.exe。不是全357套重跑／真人／跨機；未GitHub發布、更新feed或雲端切換，公開r22不變，完整目標未結案。
+
+2026-11-18／T043 場景配樂及故事返回：現有49首（44循環、5劇情短曲）全部實際解碼，PCM無重複且非靜音、單曲未超滿刻度。修正故事閱讀期間略過場景更新造成關閉後回舊曲，現在只追蹤新返回目標而不中斷故事；夜晚／屋內／溫室／蘭陽／B7真AudioStreamPlayer重現29項原13失敗→0失敗，原生完整遊戲音樂／設定／音效274項通過，曲目去重改檔案SHA256。證據work/music-story-return-qa，報告docs/playtest/playtest-2026-11-18-music-story-return.md。無新曲、無存檔格式改動；預置時間與位置，非真人聽感／跨機聲場，未打包發布，完整目標未結案。
+
+2026-11-18／T059、T080、T095 純密碼房離線匯出與還原：新增 export-world 格式2，不假造名冊／身分庫，存在members.json*拒絕；帳號格式1保留。兩種匯出持有正式OS世界寫入鎖。Windows/Linux各10項規則通過，正式r22 Windows EXE與Linux匯出ELF運行中均實際拒絕匯出，停服後代檔雜湊完全一致還原；Windows雙API真WS加入Linux還原房14項，原兩角色／背包／257幣／故事／箱內3木／蘿蔔保留，實際蓋椅扣6木與澆水，停起同卷再入10項且原來源hash不變。證據work/world-only-backup-qa/run-f41af11118/verification.json，報告docs/playtest/playtest-2026-11-18-world-only-backup.md。隔離QA預置、非跨電腦／公開WSS；未動雲端、未加入r22既有包，無異地排程／自動加密／正式遷移證據。完整目標未結案。
+
+2026-11-18／T017、T043、T066 居民站立回應：一般村民、小栗攤位與三位關係居民站點明確選用既有方向 PNG；近距離朝向本機玩家，遠處錯開時間短暫左右張望，減少動畫／拍照靜止。玩家、坐姿、船上同行及專用 NPC 圖系排除，無新同步／座標／存檔欄位。Windows 原生 983 項、角色圖93項、居民對話／送禮／關係事件UI 11,437項通過；實際居民區域一般3種、靜態各1種、近距離4方向，原互動能開對話，繪製不改完整世界或鏡頭。報告 docs/playtest/playtest-2026-11-18-resident-idle.md，圖 outputs/resident-idle/visitor-facing.png；隔離預置站位，非真人走路、跨機或雲端。公開r22未含、未重新打包；專用居民分幀及完整規劃未結案。
+
+2026-11-18／T017 播種逐顆落地：沿既有三粒軌跡，在各自落點與到達時機加入獨立短土屑，取代一次整格播種閃線；不改玩法資料。工具307項、原生一般／減少動畫／拍照各121項通過，鋤地至收成、相機座標固定、只扣一份種子、收成保存重載確認。報告 docs/playtest/playtest-2026-11-18-seed-contact-motion.md，原生局部動畫 outputs/seed-contact-motion/farm-loop.gif。未打包發布，非公開多人或真人完整開荒。
+
 T053／主選單可開獨立存檔的冒險小島和冒險區網房，專服可由 GAME_WORLD_MODE 選擇新世界模式。金瓜石 B1 小泥團有預備提示、實際側移閃避和互動反擊，失敗可重試。生活模式用蘿蔔引誘，雙模式共用側洞與每人一次 4 份銅礦料。Godot 五組 1,942 項、Windows 原生礦場 458 項、世界目錄 21 項通過，另驗 Windows 新冒險存檔。冒險房跨機和正式雲端仍待驗。
 
 T053／生活模式首個事件接入金瓜石 B1 北側凹處。用一顆蘿蔔引開小泥團後，玩家走進凹處可拾取 4 份銅礦料，每人一次並保存。主礦道與原踏查點仍可通行。四組 3,368 項與 Windows 原生 444 項通過，含實際互動、堵路、原踏查、領取及存檔重讀。冒險模式共享場景及同等獎勵仍待實作。
@@ -2092,3 +2102,6 @@ T076 r20 GitHub公開下載：原公開版仍文字／農田修正版，本輪�
 
 ### 2026-11-18 T076 r21 GitHub公開下載
 已將上一回合實測的原Windows安裝檔97,851,912 bytes與Linux ZIP88,404,323 bytes公開為prerelease v0.50-dev-r21；兩檔遠端SHA256／大小與本機一致，匿名HEAD均200。另附更新說明、驗證摘要及checksums JSON。tag指向e03bc261ee944c793eff7253a94db015d63c476b，來源release/r21-20261118，2380個game檔案受控同步、40路徑變更含累積進度與報告；基本秘密格式無命中、無舊檔刪除，移除純EOF噪音；預設mainer與雲端未切換。來源runtime腳本早於實測匯出，複製逐檔核對。Release https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r21 。證據work/release-r21/github-publication-verified.json及.log，報告docs/playtest/playtest-2026-11-18-github-r21.md，產物manifest public_uploaded=true／cloud_deployed=false。可分享Windows連結單機玩；多人需48同版伺服器。未啟用正式簽署自動更新、遠端資料備份遷移或雲端部署；完整目標仍未完成。
+
+### 2026-11-18 T081／T076 r22公開簽章更新與真正下載至啟動
+新增正式RSA3072公鑰與raw.githubusercontent.com/and910805/tuan-island/update-feed/windows-manifest.json來源，私鑰在專案外且僅本機使用者／SYSTEM，未進repo或包。r22安裝檔97,852,584 bytes、Windows更新ZIP98,012,852、LinuxZIP88,404,689已GitHub公開且遠端hash／匿名下載一致；tag0bbc70eed601af841715a840a3c7a5359eea480e，來源release/r22-20261118，預設mainer未變。獨立update-feed提交47b292c75fc6c194a2d27be8205db27d2d2e05d2，先公開實測ZIP再發簽章；清單與EXE／DLL均含雜湊。Godot讀正式HTTPS11項通過；隔離安裝的更新感知舊版測試入口，實際從公開GitHub下載→驗證→啟動正式r22→原入口重開進新版→改候選一個位元拒絕並保留舊入口，全通過。正式EXE內找到同一625-byte公鑰且EXE hash匹配更新ZIP；未把CLI探測逾時當驗證。另本機真Windows→Linux照料48畫格／雙客戶端12／重建4、隔離安裝舊r13副本／留檔、版本39通過。正式公開附checksums與update-validation驗證SHA／匿名內容。注意測試入口不是公開r20/r21；真實r21及更早須手動安裝一次r22，之後啟動有新版才提示，最新版不重複。Release https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r22 。證據work/release-r22/public-update-final-verified.log及e2e JSON，報告docs/playtest/playtest-2026-11-18-public-windows-update.md。協定仍48／schema26；雲端未更動、非跨實體機或真人手把，Windows程式碼簽署與完整遊戲仍待，整體目標未結案。

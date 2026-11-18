@@ -428,6 +428,14 @@ func watered_plant_response()->void:
 		expect(Feedback.hand_grip(foot,pose)==(foot+pose.hand+pose.lunge).round()+Vector2(shoulder.x,absf(shoulder.y)),"Water trail follows the same hand as the PNG: "+str(facing))
 
 func tool_plans()->void:
+	expect(Feedback.seed_contacts(0.67,false).is_empty(),"No soil response before the first seed lands")
+	var first_contact:=Feedback.seed_contacts(0.69,false)
+	var all_contacts:=Feedback.seed_contacts(0.80,false)
+	expect(first_contact.size()==1 and first_contact[0].center==Vector2(7,21),"First kernel contacts its actual landing position")
+	expect(all_contacts.size()==3 and all_contacts[1].center==Vector2(16,21) and all_contacts[2].center==Vector2(25,21),"Three staggered landings match the existing seed trajectories")
+	expect(all_contacts[0].color.a<all_contacts[1].color.a and all_contacts[1].color.a<all_contacts[2].color.a,"Earlier landing fades before the later kernels")
+	expect(Feedback.seed_contacts(0.90,false).size()==2 and Feedback.seed_contacts(1.0,false).is_empty(),"Each contact expires independently before the action ends")
+	expect(Feedback.seed_contacts(0.80,true).is_empty(),"Reduced motion and photograph mode suppress seed flecks")
 	var impact_colors:Dictionary={}
 	for tool in ["hoe","seed","water"]:
 		var first:=Feedback.soil_impact(tool,0.70,false)

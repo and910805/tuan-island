@@ -2,7 +2,7 @@
 
 開發版 Windows 安裝包在 `release.json` 使用 `version` 與 `build`。例如主畫面的 `0.50-dev r11` 在簽署更新清單中對應 `0.50.11-dev`，舊版可用原本的數字版號比較辨識新版。發布同一系列時請遞增 `build`，最低版號若要指定 r10 則用 `0.50.10-dev`。多人協定由其獨立欄位決定。
 
-多人協定以 `release.json` 為準；本批 r22 與 r21 均為 48（r20為47），世界伺服器與 Windows 客戶端須使用相容協定。此開發版使用世界存檔格式 26。升級前請停止世界寫入，另存世界主檔、備份檔、名冊與身分資料庫。若要回退舊版，須使用升級前的完整備份。
+多人協定以 `release.json` 為準；r23、r22 與 r21 均為 48（r20為47），世界伺服器與 Windows 客戶端須使用相容協定。此開發版使用世界存檔格式 26。升級前請停止世界寫入，另存世界主檔、備份檔、名冊與身分資料庫。若要回退舊版，須使用升級前的完整備份。
 
 八人登入、分區移動、耕種、捐修閘門與跨區轉乘已有本機驗證紀錄。Zeabur 已公告將於 2026 年 12 月 31 日結束營運，雲端發行改以騰訊雲為目標。公開 Windows 客戶端、WSS 登入及重連、持久磁碟重啟後的存檔仍須在目標主機驗收。[Zeabur 遷移時程](https://zeabur.com/en-US/blogs/migration-refunds-and-security-claims)
 
@@ -62,7 +62,7 @@ docker run -d --name tuan-island --restart unless-stopped \
 
 ### 搬遷備份與驗證
 
-停止世界與身分服務後，從部署包目錄使用 Python 3.11 或更新版本。輸出目錄的上層須存在。每次匯出與還原使用新的輸出目錄。
+停止世界與身分服務後，從部署包目錄使用 Python 3.11 或更新版本。輸出目錄的上層須存在。每次匯出與還原使用新的輸出目錄。工具在匯出期間持有與遊戲相同的作業系統寫入鎖，運行中的世界會被拒絕；停止後留下的 `world.json.writer-lock` 檔案不需刪除。
 
 ```sh
 python3 world_backup.py export --world-directory /srv/island/world-data \
@@ -71,6 +71,19 @@ python3 world_backup.py export --world-directory /srv/island/world-data \
 python3 world_backup.py verify /srv/backup/transfer-01
 python3 world_backup.py restore /srv/backup/transfer-01 --output /srv/island/restored-01
 ```
+
+只有房間密碼、沒有帳號服務及成員名冊的測試房，使用明確的純世界模式：
+
+```sh
+python3 world_backup.py export-world --world-directory /srv/island/world-data \
+  --world-id friends-room --output /srv/backup/room-01
+python3 world_backup.py verify /srv/backup/room-01
+python3 world_backup.py restore /srv/backup/room-01 --output /srv/island/restored-room-01
+```
+
+這裡的 `friends-room` 是管理者自行命名的備份標籤，不是登入憑證或帳號世界編號。此模式保留 `world.json`、存在的 `world.json.bak` 與 `world.json.bak.staged`，不含密碼或伺服器設定。啟動新容器時，將 `restored-room-01/data/world` 掛載到 `/data`，沿用原房間設定。若目錄存在任何 `members.json*`，工具會拒絕純世界模式，請使用上方帳號世界匯出流程，不能藉此省略成員或身分資料。
+
+兩種模式皆核對檔案雜湊並拒絕覆蓋既有輸出。純世界模式使用格式 2／`world-only` 清單，帳號模式保持格式 1，原備份仍可驗證還原。工具的世界檢查確認至少一代檔案可解析且含玩家字典；完整遊戲資料格式仍須由相同版本的伺服器啟動驗證。先在獨立副本啟動、以原角色加入並核對資產，再切換正式入口。這是離線手動工具，不是線上快照、遠端排程或自動加密備份。
 
 驗證檔案內容的 SHA-256、SQLite 完整性、世界編號、島主帳號與名冊版本。還原完成後，將 `restored-01/data/world` 和 `restored-01/data/identity` 分別用於兩項服務，並沿用原本的世界編號、島主及世界服務憑證。另行保存憑證、部署設定及入島歷史副本。若身分資料庫共用於多座島，在同一維護時段匯出各世界。備份含玩家資料與身分資料庫，請透過私有通道傳輸並限制目錄存取。保留可信的原備份，移轉後才核對摘要與啟動。
 

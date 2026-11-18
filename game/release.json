@@ -1,6 +1,6 @@
 {
   "version": "0.50-dev",
-  "build": 22,
+  "build": 23,
   "protocol": 48,
   "engine": "4.7.2",
   "tests": [
@@ -363,6 +363,7 @@
     "test_season_dormancy_ui"
   ],
   "render_tests": [
+    "test_music_story_return",
     "test_notice_lane",
     "test_loom_ui",
     "test_salt_pan_scene",

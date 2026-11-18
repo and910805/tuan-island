@@ -315,6 +315,21 @@ static func farm_trail(tool:String,progress:float,grip:Vector2,cell_at:Vector2) 
 		points.append((grip.lerp(cell_at+landing,travel)-Vector2(0,arc)).round())
 	return points
 
+## Each kernel lands at the end of its existing staggered flight (0.2 +
+## i*0.055 + 0.48). Tiny local soil flecks replace a whole-cell seed flash.
+## Presentation only: kernels are decorative, never three inventory items.
+static func seed_contacts(progress:float,reduced:bool) -> Array[Dictionary]:
+	var contacts:Array[Dictionary]=[]
+	if reduced or progress>=1.0:return contacts
+	for i in 3:
+		var age:=(progress-(0.68+i*0.055))/0.20
+		if age<0.0 or age>=1.0:continue
+		var tint:=Color("d7b386")
+		tint.a=1.0-smoothstep(0.0,1.0,age)
+		contacts.append({"center":Vector2(7+i*9,21),"spread":roundf(1.0+age*4.0),
+			"lift":roundf(sin(age*PI)*2.0),"color":tint})
+	return contacts
+
 ## Four short dashes follow the furrows outward from the impact.
 static func soil_impact(tool:String,progress:float,reduced:bool) -> Dictionary:
 	if reduced or not SOIL_IMPACT.has(tool):return {}

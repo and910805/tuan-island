@@ -31,9 +31,9 @@ func run() -> void:
 		var stream:=load(path) as AudioStreamOggVorbis
 		expect(stream!=null and stream.get_length()>30.0,"Exportable theme: "+scene)
 		if stream!=null:
-			var packet_id:=stream.packet_sequence.get_instance_id()
-			expect(not lengths.has(packet_id),"Different recording for "+scene)
-			lengths[packet_id]=stream
+			var recording_hash:=FileAccess.get_sha256(path)
+			expect(not recording_hash.is_empty() and not lengths.has(recording_hash),"Different recording bytes for "+scene)
+			lengths[recording_hash]=scene
 	for scene:String in Music.MILESTONE_TRACKS:
 		var cue:=load("res://assets/music/%s.ogg"%scene) as AudioStreamOggVorbis
 		expect(cue!=null and cue.get_length()>7.0 and cue.get_length()<13.0,"Short musical cue for "+scene)
@@ -332,8 +332,18 @@ func run() -> void:
 	app.session.snapshot.festival_story={"opened":true}
 	Almanac.festival_story(app,false,1)
 	expect(mixer.current==voice and mixer.fade==tween,"Snapshot and turning dialogue pages leave the recording alone")
+	world.state.time=600.0
+	app.session._send_snapshot(1)
+	expect(mixer.scene_id=="festival_epilogue" and mixer.current==voice and mixer.story_return_track=="home",
+		"Daybreak while reading updates the return theme without interrupting the story")
+	# Let the reader actually hear the story before checking which voice fades
+	# out. A quick close legitimately retains the louder preceding recording.
+	await create_timer(Music.FADE_SECONDS+0.05).timeout
 	app._close_modal()
-	expect(mixer.scene_id=="home_night" and mixer.outgoing==voice,"Leaving the epilogue crossfades back to the village")
+	expect(mixer.scene_id=="home" and mixer.outgoing==voice,"Leaving the epilogue crossfades to the current daytime village")
+	world.state.time=1200.0
+	app.session._send_snapshot(1)
+	expect(mixer.scene_id=="home_night","Subsequent snapshots still select the current time normally")
 
 	var prefs:="user://music-prefs-%d.cfg"%OS.get_process_id()
 	expect(app.sound.save_preferences(prefs,0.4,true,2,null,null,null,0.0),"Music mute saves")

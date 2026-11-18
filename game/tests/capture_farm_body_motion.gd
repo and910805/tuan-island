@@ -41,6 +41,7 @@ func run()->void:
 	var position_before:=Vector2(person.x,person.y)
 	var sequence:=0
 	var records:Array=[]
+	var seed_before:int=person.inventory.get("radish_seed",0)
 	for step in [["hoe",""],["seed","radish"],["water",""],["harvest",""]]:
 		var tool:String=step[0]
 		if tool=="harvest":world.state.crops[World.key(plot)].growth=float(World.CROPS.radish.time)
@@ -55,6 +56,7 @@ func run()->void:
 		var started:float=app.view.elapsed
 		var state_before:Dictionary=world.state.duplicate(true)
 		var presses:={}
+		var seed_contact_counts:={}
 		expect(app.view.tool_action_plan(app.session.own_id).get("tool","")==tool,"Confirmed action starts: "+tool)
 		expect(app.view.tool_action_plan(app.session.own_id).get("facing")==facing,"Action faces target: "+tool)
 		for frame in 12:
@@ -64,6 +66,7 @@ func run()->void:
 			await RenderingServer.frame_post_draw
 			var quiet:bool=app.view.reduced_motion or app.view.photograph_mode
 			presses[app.view.tool_feedback.crop_press(plot,app.view.elapsed,quiet)]=true
+			if tool=="seed":seed_contact_counts[Feedback.seed_contacts(float(frame)/12.0,quiet).size()]=true
 			expect(world.state==state_before,"Drawing cannot change any saved world field: "+tool)
 			var path:="%s_%02d.png"%[tool,frame]
 			expect(root.get_texture().get_image().save_png(directory.path_join(path))==OK,"Capture "+path)
@@ -73,7 +76,20 @@ func run()->void:
 		if tool=="water":
 			var quiet:bool=app.view.reduced_motion or app.view.photograph_mode
 			expect(presses.size()==1 if quiet else presses.size()>=3,"Watered plant settles only with normal motion")
+		if tool=="seed":
+			var quiet:bool=app.view.reduced_motion or app.view.photograph_mode
+			expect(int(person.inventory.get("radish_seed",0))==seed_before-1,"Three visual kernels consume exactly one seed item")
+			expect(seed_contact_counts.size()==1 if quiet else seed_contact_counts.size()>=3,"Separate seed contacts appear only in normal motion")
 	expect(world.state.crops.get(World.key(plot),{}).get("kind","")=="" and int(person.inventory.get("radish",0))>0,"Harvest reaches inventory and leaves reusable soil")
+	expect(world.save(),"Farm result saves to the isolated QA world")
+	var loaded=World.new()
+	expect(loaded.load_world(directory.path_join("world.json")),"Farm result reloads through normal save validation")
+	expect(loaded.state.players[token].inventory==person.inventory,"Inventory survives reload unchanged")
+	expect(loaded.state.ground==world.state.ground,"Soil survives reload unchanged")
+	# JSON represents all numeric fields as floats on reload; compare both sides
+	# after the same serialization, including owner, care and harvest metadata.
+	var persisted_crops=JSON.parse_string(JSON.stringify(world.state.crops))
+	expect(loaded.state.crops==persisted_crops,"Every crop field survives the JSON save round trip")
 	var record:=FileAccess.open(directory.path_join("frames.json"),FileAccess.WRITE)
 	record.store_string(JSON.stringify(records,"\t"))
 	print("FARM_BODY_CAPTURE checks=%d failures=%d frames=%d"%[checks,failures,records.size()])

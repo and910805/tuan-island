@@ -2,16 +2,18 @@
 
 Godot 4.7.2 原生2D像素生活模擬遊戲開發版，包含耕作、建造、島民故事及供水／林業加工等逐步解鎖的玩法。
 
-本批試玩包為 **0.50-dev r22**，多人協定 **48**、世界存檔格式 **26**。版本資料以[release.json](release.json)為準；r21同用協定48，r20使用47，不能混用不同協定。
+本批預先發行試玩包為 **0.50-dev r23**，多人協定 **48**、世界存檔格式 **26**。版本資料以[release.json](release.json)為準；r22與r21也用協定48，r20使用47，不能混用不同協定。
 
-- [Windows安裝包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r22/TuanIslandSetup-0.50-dev-r22.exe)
-- [Windows更新ZIP](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r22/TuanIslandWindows-0.50-dev-r22.zip)
-- [Linux世界伺服器包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r22/TuanIslandServer-0.50-dev-r22-linux-x64.zip)
-- [r22更新說明與驗證範圍](https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r22)
+- [Windows安裝包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r23/TuanIslandSetup-0.50-dev-r23.exe)
+- [Windows更新ZIP](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r23/TuanIslandWindows-0.50-dev-r23.zip)
+- [Linux世界伺服器包](https://github.com/and910805/tuan-island/releases/download/v0.50-dev-r23/TuanIslandServer-0.50-dev-r23-linux-x64.zip)
+- [更新說明與驗證範圍](https://github.com/and910805/tuan-island/releases/tag/v0.50-dev-r23)
 
-選「住進自己的小島」可單機遊玩，不需要IP。保留r21的奶糖牛短程照料跟隨、釣魚動作、加工落架及精簡提示，以及羊躲雨、雞抱抱和既有存檔及生產規則。Windows EXE與本機獨立Linux世界程序已有連線、照料互斥及重啟驗證；本批未更動雲端，公開雲端WSS、完整真人旅程及整體規劃仍在開發驗收中。
+r23新增播種逐顆落地回饋、共用圖系站立居民朝向玩家與短暫張望，修正故事關閉後返回舊場景BGM。Linux部署包附純密碼房離線匯出／還原工具。拍照與減少動畫保留靜態呈現。
 
-r22加入發行公鑰與公開簽章更新來源；有較新版本時可提示、下載、核對EXE／DLL及切換。r21及更早公開包需先手動安裝一次r22，之後才具備這個更新入口。部署及持久資料設定見[部署說明](deploy/README.md)。
+選「住進自己的小島」可單機遊玩，不需要IP。真正r23 Windows EXE已連本機獨立Linux匯出世界鋤地、播種、澆水並重啟重連；相同承載檔隔離安裝驗證r13存檔副本與解除安裝留檔。測試使用隔離預置世界，不是人工完整旅程、跨電腦或正式雲端WSS驗收。
+
+r22開始具備正式公開金鑰及簽章更新來源，r21與更早版本需手動安裝一次r22或更新版本。r23來源標籤不等於正式更新清單已切換；更新來源另於二進位公開及核對後發布，具體結果以Release附件為準。完整遊戲仍在開發，雲端未因本次Release自動升級。部署與持久資料設定見[部署說明](deploy/README.md)。
 
 ## 早期開發紀錄
 
