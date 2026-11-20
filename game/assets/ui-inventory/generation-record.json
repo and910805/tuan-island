@@ -6,5 +6,5 @@
   "discarded_source": "source/items-v1.png had a translucent pale backdrop; not used by the final game atlas.",
   "atlas": "items.png",
   "processing": "Godot nearest-neighbor resampling to 32px cells; binary alpha cutoff 0.6; centered within 28x28 safe bounds. Atlas 192x160, six columns and five rows. First 28 cells preserve World.NAMES IDs; last two are backpack and coins decorations.",
-  "ui_texture": "Hand-authored pixel PNG nine-slice textures, generated locally through Godot. Inventory-scoped StyleBoxTexture Theme. No changed item data or multiplayer protocol."
+  "ui_texture": "Hand-authored pixel PNG nine-slice textures drawn in Python with Pillow. The 13 rebuildable inventory and HUD textures are produced by source/render-inventory-skins.py and imported by Godot. Inventory-scoped StyleBoxTexture Theme. No changed item data or multiplayer protocol."
 }

@@ -37,7 +37,9 @@ static func refresh(app)->void:
 	var assigned:=int(s.get("resident_bonds",{}).get("bobo",{}).get("stage",0))>=3
 	var fixtures:=int(s.get("bobo_rest_fixtures",0))
 	var borrowed:bool=person.get("borrowed_mine_pick",false)
-	var fingerprint:=JSON.stringify([site,region,nearby,person.get("mine_energy",0),person.get("inventory",{}),unlocked,progress.get("pumped",0),World.MINES.lift_targets(unlocked),hoist_fixed,World.MINES.surface_landings(progress),own_rest_kit,assigned,fixtures,borrowed])
+	var meal:=World.MEAL_BUFF.read(person,float(s.get("time",0.0)))
+	var meal_stamp:=[meal.get("id",""),ceili(float(meal.get("left",0.0))/10.0)]
+	var fingerprint:=JSON.stringify([site,region,nearby,World.MEAL_BUFF.whole_points(person),meal_stamp,person.get("inventory",{}),unlocked,progress.get("pumped",0),World.MINES.lift_targets(unlocked),hoist_fixed,World.MINES.surface_landings(progress),own_rest_kit,assigned,fixtures,borrowed])
 	if app.modal.get_meta("mine_fingerprint","")==fingerprint:return
 	app.modal.set_meta("mine_fingerprint",fingerprint)
 	var focus:=body.get_viewport().gui_get_focus_owner()
@@ -96,7 +98,7 @@ static func refresh(app)->void:
 			var entrance_actions:=HBoxContainer.new()
 			text.add_child(entrance_actions)
 			add_action(app,entrance_actions,"MineEnter","進入第一層",func():app.session.perform("mine_travel",World.MINES.ENTRY,"mine_1"),nearby and region=="jinguashi")
-			if int(person.get("inventory",{}).get("reinforced_pick",0))==0:
+			if World.active_mining_pick(person.get("inventory",{})).is_empty():
 				add_pick_loan(app,entrance_actions,World.MINES.ENTRY,nearby and region=="jinguashi" and s.get("picnic",false),borrowed)
 			if unlocked>=6 and not hoist_fixed:
 				add_hoist_repair(app,text,person,nearby and region=="jinguashi")
@@ -136,9 +138,13 @@ static func refresh(app)->void:
 			else:
 				text.add_child(caption(app,"這裡是最深的提燈大廳。",16))
 		"rest":
-			var energy:=int(person.get("mine_energy",0))
+			var energy:=World.MEAL_BUFF.whole_points(person)
 			text.add_child(caption(app,"礦內體力  %d／100"%energy,17))
 			text.add_child(meter(energy,100))
+			if meal.get("id","")==World.MEAL_BUFF.SALAD:
+				var effect:=caption(app,"沙拉效果 · 採礦耗體 −5%% · 剩 %s"%World.MEAL_BUFF.clock_text(ceili(float(meal.left))),15)
+				effect.name="MineMealEffect"
+				text.add_child(effect)
 			# T067: what a strike on this floor adds besides the ore (B6–B15 catalog finds).
 			var finds:=finds_text(depth)
 			if not finds.is_empty():
@@ -148,7 +154,7 @@ static func refresh(app)->void:
 			var rest_actions:=HBoxContainer.new()
 			text.add_child(rest_actions)
 			add_action(app,rest_actions,"MineRest","休息喝水",func():app.session.perform("mine_rest",World.MINES.REST),nearby and depth>0)
-			if depth>0 and depth<=World.MINES.SHALLOW_DEPTH and int(person.get("inventory",{}).get("reinforced_pick",0))==0:
+			if depth>0 and depth<=World.MINES.SHALLOW_DEPTH and World.active_mining_pick(person.get("inventory",{})).is_empty():
 				add_pick_loan(app,rest_actions,World.MINES.REST,nearby and depth<=unlocked and s.get("picnic",false),borrowed)
 			if depth==1 and assigned:
 				text.add_child(caption(app,"波波的託付 · 不往深處也可以",16))
@@ -254,7 +260,7 @@ static func add_hoist_repair(app,parent:Control,person:Dictionary,reachable:bool
 	add_action(app,section,"MineHoistRepairButton","交付修理材料",func():app.session.perform("mine_hoist_repair",World.MINES.ENTRY),reachable and stocked)
 
 ## Display-only uses of the deep-mine quest finds (rules: mine_expansion_catalog.RESOURCE_USES).
-const FIND_USES:={"iron_ore":"可用小熔爐熔成鐵錠","ochre_earth":"玻璃爐用","vein_quartz":"熔晶砂用","warm_stone":"共餐桌保溫底座用"}
+const FIND_USES:={"iron_ore":"可用小熔爐熔成鐵錠","ochre_earth":"可由出貨箱出售","vein_quartz":"熔晶砂用","warm_stone":"共餐桌保溫底座用"}
 
 ## 「敲礦另得：石材、暖岩片（共餐桌保溫底座用）」 for floors with catalog finds; "" otherwise.
 static func finds_text(depth:int)->String:

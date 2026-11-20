@@ -14,6 +14,8 @@ func expect(ok: bool, message: String) -> void:
 		push_error(message)
 
 func _initialize() -> void:
+	verify_field_supply()
+	verify_station_changes()
 	var world := World.new()
 	var path := "user://order-board-%d.json" % Time.get_ticks_usec()
 	world.save_path = path
@@ -26,6 +28,24 @@ func _initialize() -> void:
 	world.state.time = 100.0
 	expect(not world.act("alice", "board-1", "order_accept", Board, "radish").ok, "Unrepaired board refuses orders")
 	world.state.board = true
+	var last_spring:=World.WEATHER.DAYS_PER_SEASON*Village.DAY
+	world.state.time=last_spring-30.0
+	var offers:=func(token:String,id:String)->bool:
+		return world.order_board(token).rows.any(func(row):return row.id==id and row.status=="open")
+	world.state.players.bob.inventory.radish=2
+	expect(offers.call("alice","radish") and not offers.call("bob","radish"),"Only a full personal batch covers a crop that cannot grow before season ends")
+	expect(not world.act("bob","late-spring","order_accept",Board,"radish").ok,"Server refuses the same late-season order shown as unavailable")
+	world.state.time=last_spring-World.CROPS.radish.time
+	expect(offers.call("bob","radish"),"A crop that matures at the season boundary can still be delivered within three days")
+	world.state.time=World.WEATHER.DAYS_PER_SEASON*Village.DAY*4-Village.DAY
+	expect(offers.call("bob","radish"),"The next growing season counts when it starts before the delivery deadline")
+	world.state.time=World.WEATHER.DAYS_PER_SEASON*Village.DAY*3+60.0
+	world.state.players.bob.inventory.bread=1
+	world.state.players.bob.inventory.wheat=1
+	expect(not offers.call("bob","bread"),"Partial bread and insufficient wheat cannot make the winter batch")
+	world.state.players.bob.inventory.wheat=2
+	expect(offers.call("bob","bread"),"Use stored bread and enough wheat for the remaining loaf")
+	world.state.time=100.0
 	expect(not world.act("alice","jam-locked","order_accept",Board,"market_jam").ok,"Jam commission is gated without a pot")
 	expect(not world.act("alice", "board-2", "order", Board, "radish").ok, "Delivery requires prior acceptance")
 	expect(world.act("alice", "board-3", "order_accept", Board, "radish").ok, "Acceptance commits")
@@ -87,3 +107,61 @@ func _initialize() -> void:
 			DirAccess.remove_absolute(path + suffix)
 	print("ORDER BOARD WORLD checks=%d failures=%d" % [checks, failures])
 	quit(1 if failures else 0)
+
+func verify_field_supply() -> void:
+	var world:=World.new()
+	var plot:=Vector2i(45,28)
+	var boundary:=World.WEATHER.DAYS_PER_SEASON*Village.DAY
+	var growing:float=World.CROPS.radish.time
+	world.state.time=boundary-growing-10.0
+	world.state.board=true
+	for token:String in ["grower","neighbor"]:
+		world.add_player(token,token)
+		world.state.players[token].inventory.radish=2
+	var grower:Dictionary=world.state.players.grower
+	grower.x=45.5
+	grower.y=30.5
+	expect(world.act("grower","hoe","hoe",plot).ok and world.act("grower","seed","seed",plot,"radish").ok and world.act("grower","water","water",plot).ok,"Prepare an owned parcel through the normal farm actions")
+	expect(world.step(growing-20.0,true),"Move into the final crop window")
+	var open:=func(token:String)->bool:
+		return world.order_board(token).rows.any(func(row):return row.id=="radish" and row.status=="open")
+	expect(open.call("grower") and not open.call("neighbor"),"Forecast fills the owner's missing radish only")
+	var channels:Array[String]=["village","dock","lanyang"]
+	var contexts:=World.ORDER_CATALOG.contexts_from_world(world,"grower",channels)
+	expect(contexts.village.pantry.radish==3 and contexts.dock.pantry.radish==2 and contexts.lanyang.pantry.radish==2,"The village's forecast does not leak into other boards")
+	expect(contexts.lanyang.has("rice_window") and not contexts.village.has("rice_window"),"Rice availability is evaluated for Lanyang separately")
+	expect(World.ORDER_CATALOG.contexts_from_world(world,"grower",["lanyang","dock","village"])==contexts,"Channel order does not affect crop forecasts")
+	var boards:=world.order_boards("grower",channels)
+	for channel in channels:
+		expect(boards[channel]==world.order_board("grower",channel),"Combined and standalone order boards agree for "+channel)
+	grower.x=40.5
+	grower.y=30.5
+	expect(world.act("grower","accept","order_accept",Board,"radish").ok,"Accept a late order backed by an almost mature crop")
+	expect(not world.act("grower","early","order",Board,"radish").ok and int(grower.inventory.radish)==2,"Forecast never grants items or bypasses delivery")
+	expect(world.step(35.0,true),"Let the crop mature just before the season changes")
+	grower.x=45.5
+	grower.y=30.5
+	expect(world.act("grower","harvest","harvest",plot).ok,"Gather the ripe crop after changing seasons")
+	grower.x=40.5
+	grower.y=30.5
+	expect(world.act("grower","deliver","order",Board,"radish").ok and int(grower.inventory.radish)==0,"Deliver the crop and stored radishes together")
+
+func verify_station_changes() -> void:
+	var world:=World.new()
+	world.add_player("owner","島主")
+	world.add_player("guest","訪客")
+	world.state.objects={
+		"20,20":{"type":"stove","owner":"owner"},
+		"21,20":{"type":"bench","owner":"guest"},
+		"22,20":{"type":"mill","owner":"guest"},
+		"23,20":{"type":"jam_pot","owner":"owner"},
+	}
+	var channels:Array[String]=["village","dock","lanyang"]
+	var owner:=World.ORDER_CATALOG.contexts_from_world(world,"owner",channels)
+	var guest:=World.ORDER_CATALOG.contexts_from_world(world,"guest",channels)
+	expect(owner.dock.stations==["bench","jam_pot","mill","stove"],"All discovered station types are sorted and the owner sees the jam pot")
+	expect(guest.village.stations==["bench","mill","stove"],"A guest sees shared workstations without the owner's jam pot")
+	world.state.objects.erase("23,20")
+	world.state.objects.erase("22,20")
+	var updated:=World.ORDER_CATALOG.contexts_from_world(world,"owner",channels)
+	expect(updated.village.stations==["bench","stove"] and updated.lanyang.stations==updated.village.stations,"Removed stations are absent from the next evaluation for all boards")

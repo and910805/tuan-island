@@ -245,13 +245,19 @@ func socket_cells() -> Array:
 		for c in Salt.chest_sockets(lot):cells.append(c)
 	return cells
 
-func free_home_cell(w,avoid:Array) -> Vector2i:
+func free_home_cell(w,avoid:Array,wide:=false) -> Vector2i:
 	for y in range(38,50):
 		for x in range(24,52):
 			var c:=Vector2i(x,y)
 			var key:=k(c)
 			if c in avoid or not w.is_land(c) or w.water(c) or w.protected(c) or w.blocked(c) or w.resource(c)!="":continue
 			if w.state.crops.has(key) or w.state.objects.has(key) or w.state.ground.has(key) or w.state.roofs.has(key) or w.state.forest.has(key):continue
+			# C08: a new workbench also needs the cell to its right (the far end of its 2x1 footprint).
+			if wide:
+				var far:=c+Vector2i.RIGHT
+				var far_key:=k(far)
+				if far in avoid or not w.is_land(far) or w.water(far) or w.protected(far) or w.blocked(far) or w.resource(far)!="":continue
+				if w.state.crops.has(far_key) or w.state.objects.has(far_key) or w.state.ground.has(far_key) or w.state.roofs.has(far_key) or w.state.forest.has(far_key):continue
 			return c
 	return Vector2i(-1,-1)
 
@@ -461,7 +467,7 @@ func test_chapter_flow() -> void:
 	r=travel(w,A,Regions.HOME)
 	expect(r.ok and w.player_region(A)==Regions.HOME,"A returns home for free: "+r.message)
 	inv(w,A).wood=80;inv(w,A).stone=40;inv(w,A).copper_ore=6;inv(w,A).plank=14;inv(w,A).resin=2;inv(w,A).fiber=4 # FIXTURE raw stock
-	var bench:=free_home_cell(w,[])
+	var bench:=free_home_cell(w,[],true)
 	stand(w,A,bench)
 	r=act(w,A,"build",bench,"bench")
 	expect(r.ok,"A builds a bench: "+r.message)
@@ -581,6 +587,19 @@ func test_chapter_flow() -> void:
 	expect(Salt.status(w.state,A,beimen_objects(w),float(w.state.time)).id=="off","status off before enabling")
 	r=act(w,A,"salt_auto_toggle",rake_cell)
 	expect(r.ok and salt(w).lots[0].on,"collector enabled")
+	var full_world:Dictionary=w.state.duplicate(true)
+	var full_objects:Dictionary=full_world.regions[Salt.REGION].objects
+	var full_items:Dictionary=full_objects[k(chest_cell)].items
+	for item:String in World.NAMES:
+		if item!="sea_salt":full_items[item]=1
+		if full_items.size()==World.BOX_CAPACITY.SLOTS:break
+	var start_time:=float(full_world.time)
+	var full_stock:=full_items.duplicate()
+	expect(Salt.status(full_world,A,full_objects,start_time).id=="full","a collector with no salt still reports a full box when all 16 slots are occupied")
+	expect(Salt.step(full_world,start_time,5000.0,full_objects).ok,"salt pans continue drying while the collector is full")
+	expect(full_items==full_stock and full_world.salt_pan.pans[0].s=="salt","salt stays in the pan and the full box stays intact")
+	full_items.erase(full_items.keys()[0])
+	expect(Salt.step(full_world,5000.0,5001.0,full_objects).ok and full_items.get("sea_salt",0)==6,"freeing one slot lets the collector deliver both batches into one stack")
 
 	# --- automation into the chest, full, off, invalid
 	expect(step_to(w,5000.0,20.0),"step through a sunny morning")
@@ -612,6 +631,13 @@ func test_chapter_flow() -> void:
 	# FAULT-INJECTION FIXTURE, not gameplay: an invalid pan state ("mud", which
 	# valid() rejects on load) deterministically forces SaltPan.step ok:false.
 	# MAX_EVENTS is not reached by valid caps here; this only proves propagation.
+	var history_field:=SaveSchema.CHEST_HISTORY.FIELD
+	var before_withdraw:int=beimen_objects(w)[k(chest_cell)].get(history_field,[]).size()
+	var withdrawal:=act(w,A,"withdraw",chest_cell,"sea_salt")
+	var withdrawal_id:="sw-%d"%serial
+	expect(withdrawal.ok,"record a real transfer in the regional chest")
+	var history_before:Array=beimen_objects(w)[k(chest_cell)][history_field].duplicate(true)
+	expect(history_before.size()==before_withdraw+1,"one transfer added before the rejected tick")
 	var saved_pan:Dictionary=salt(w).pans[3].duplicate(true)
 	salt(w).pans[3].s="mud" # FAULT injection
 	var world_before:Dictionary=w.state.duplicate(true)
@@ -620,11 +646,27 @@ func test_chapter_flow() -> void:
 	var t_before:=float(w.state.time)
 	expect(not w.step(30.0,true),"World.step returns false on a rejected salt step")
 	expect(w.state==world_before and JSON.stringify(w.state)==json_before,"rejected tick: full world snapshot restored (time, committed, regions, inventories, chests, undo)")
+	expect(beimen_objects(w)[k(chest_cell)][history_field]==history_before,"rejected tick retains the regional chest history")
 	expect(float(w.state.time)==t_before and w.step_error==World.STEP_FAIL_SALT,"rejected tick: time not advanced, salt failure reported")
 	expect(w._region==Regions.HOME and w._undo_used.is_empty(),"rejected tick: HOME projection, no undo scratch")
 	expect(FileAccess.get_file_as_string(w.save_path)==file_before and not FileAccess.file_exists(w.save_path+".tmp"),"rejected tick: no durable save")
 	salt(w).pans[3]=saved_pan # undo FAULT injection
 	expect(w.step(30.0,true) and float(w.state.time)==t_before+30.0 and w.step_error=="","repaired pan: the next tick advances normally")
+	# FIXTURE: ripe salt makes the next automatic delivery deterministic.
+	salt(w).pans[0]={"s":"salt","p":Salt.NEED,"t":float(w.state.time),"f":"wheel"}
+	var before_save_fault:Dictionary=w.state.duplicate(true)
+	var good_save:String=w.save_path
+	w.save_path=dir # FAULT: an existing directory cannot receive the save.
+	expect(not w.step(60.0,true) and w.step_error==World.STEP_FAIL_SAVE,"a salt delivery reaches a failed save")
+	expect(w.state==before_save_fault,"failed save restores the chest contents and transfer rows with the rest of the world")
+	w.save_path=good_save
+	expect(w.step(60.0,true),"the same tick succeeds when the save path is restored")
+	var history_after:Array=beimen_objects(w)[k(chest_cell)][history_field]
+	var previous_rows:Array=before_save_fault.regions[Regions.BEIMEN].objects[k(chest_cell)][history_field]
+	expect(history_after.size()>previous_rows.size() and history_after.slice(0,previous_rows.size())==previous_rows,"retried automation appends only the committed transfers")
+	var after_save_retry:Dictionary=w.state.duplicate(true)
+	expect(w.act(A,withdrawal_id,"withdraw",chest_cell,"sea_salt")==withdrawal and w.state==after_save_retry,
+		"the original withdrawal receipt survives failed ticks and still suppresses a replay")
 
 	# --- cook salt_grilled_fish (real fishing + stove), order once
 	expect(travel(w,A,Regions.HOME).ok,"A home for the order")

@@ -27,11 +27,12 @@ const SALT_MODE := "花圃接駁・縱貫線鐵路南下・轉沿海公車（合
 const LOCAL := ["toucheng", "ruifang", "jiufen"]
 const HOME_FERRY_MODE := "交通船・轉乘"
 const PLAZA := Rect2i(9,12,31,18)
+# arrival 一律落在站牌（POINTS 的 cell）旁邊一格，不與站牌同格；距離 1 格，仍在 3.2 的搭車互動範圍內。
 const STATIONS := {
 	"home":{"name":"風鈴渡口","cell":Vector2i(47,30),"arrival":Vector2(46.5,30.5),"size":Vector2i(80,60)},
-	"toucheng":{"name":"頭城車站","cell":Vector2i(25,19),"arrival":Vector2(12.5,25.5),"size":Vector2i(80,60)},
-	"ruifang":{"name":"瑞芳轉乘廣場","cell":Vector2i(31,25),"arrival":Vector2(14.5,19.5),"size":Vector2i(80,60)},
-	"jiufen":{"name":"九份山城","cell":Vector2i(29,20),"arrival":Vector2(12.5,25.5),"size":Vector2i(80,60)},
+	"toucheng":{"name":"頭城車站","cell":Vector2i(25,19),"arrival":Vector2(13.5,25.5),"size":Vector2i(80,60)},
+	"ruifang":{"name":"瑞芳轉乘廣場","cell":Vector2i(31,25),"arrival":Vector2(15.5,19.5),"size":Vector2i(80,60)},
+	"jiufen":{"name":"九份山城","cell":Vector2i(29,20),"arrival":Vector2(13.5,25.5),"size":Vector2i(80,60)},
 	"jinguashi":{"name":"金瓜石山城","cell":Vector2i(11,20),"arrival":Vector2(12.5,20.5),"size":Vector2i(80,60)},
 	"maokong":{"name":"貓空合作茶園","cell":Vector2i(12,25),"arrival":Vector2(13.5,25.5),"size":Vector2i(80,60)},
 	"yingge":{"name":"鶯歌合作陶坊","cell":Vector2i(12,25),"arrival":Vector2(13.5,25.5),"size":Vector2i(80,60)},
@@ -156,5 +157,5 @@ static func arrival(origin:String,destination:String)->Vector2:
 	if origin in ["ruifang",Springs.REGION] and destination=="toucheng":return Vector2(24.5,19.5)
 	if origin=="jiufen" and destination=="ruifang":return Vector2(30.5,25.5)
 	if origin=="jinguashi" and destination=="jiufen":return Vector2(28.5,20.5)
-	if origin=="maokong" and destination=="ruifang":return Vector2(14.5,19.5)
+	if origin=="maokong" and destination=="ruifang":return Vector2(15.5,19.5)
 	return STATIONS[destination].arrival

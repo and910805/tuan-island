@@ -58,6 +58,17 @@ const MAX_DEPTH := 32
 const MAX_NODES := 65536
 const MAX_REVISION_FLOAT := 9007199254740992.0  # 2^53: larger floats are not exact
 const LAYERS := ["ground", "objects", "roofs"]
+## Optional fourth sparse layer: snapshot.edges / changes.edges, keyed by canonical EdgeGrid
+## keys ("x,y,N" / "x,y,W"). LAYERS deliberately stays the legacy three so v1 records (3 change
+## layers) validate and hash exactly as before. changes.edges exists ONLY when at least one
+## edge row changed; snapshots may omit "edges" entirely (both before and after, or neither).
+## Rows: edge_wall/edge_window = exactly {type, owner}; edge_door = exactly {type, owner, open:bool}.
+## Edge rows must be owned by the actor. Key bounds are structural only (any canonical key up to
+## EDGE_LIMITS); ConstructionHistory bounds them against the real region size.
+const EDGES := "edges"
+const EDGE_TYPES := ["edge_wall", "edge_window", "edge_door"]
+const EDGE_LIMITS := Vector2i(999999, 999999)
+const EdgeGrid := preload("res://scripts/edge_grid.gd")
 
 const MSG_ACTOR := "無法確認施工者，無法復原"
 const MSG_NOT_YOURS := "這筆施工紀錄不屬於你，無法復原"
@@ -131,6 +142,33 @@ static func capture(before: Dictionary, after: Dictionary, actor: String, revisi
 				if layer == "roofs" and _is_auto(entry):roof_owners[owner] = true
 			layer_changes[tile] = {"before": _copy(eb) if has_b else null, "after": _copy(ea) if has_a else null}
 		changes[layer] = layer_changes
+	# --- edge differences (optional layer; both snapshots or neither) -------
+	if before.has(EDGES) != after.has(EDGES):return _capture_fail(MSG_LAYERS)
+	if before.has(EDGES):
+		var raw_eb: Variant = before.get(EDGES)
+		var raw_ea: Variant = after.get(EDGES)
+		if not (raw_eb is Dictionary) or not (raw_ea is Dictionary):return _capture_fail(MSG_LAYERS)
+		var xb: Dictionary = raw_eb
+		var xa: Dictionary = raw_ea
+		var xkeys: Array = xb.keys()
+		for k in xa:
+			if not xb.has(k):xkeys.append(k)
+		var edge_changes := {}
+		for k in xkeys:
+			if typeof(k) != TYPE_STRING or not _valid_edge_key(k):return _capture_fail(MSG_LAYERS)
+			var ekey: String = k
+			var has_b: bool = xb.has(ekey)
+			var has_a: bool = xa.has(ekey)
+			var eb: Variant = xb.get(ekey)
+			var ea: Variant = xa.get(ekey)
+			if has_b and has_a and _deep_equal(eb, ea, 0):continue
+			total += 1
+			if total > MAX_CHANGES:return _capture_fail(MSG_TOO_MANY)
+			var problem := _edge_check(has_b, eb, actor)
+			if problem == "":problem = _edge_check(has_a, ea, actor)
+			if problem != "":return _capture_fail(problem)
+			edge_changes[ekey] = {"before": _copy(eb) if has_b else null, "after": _copy(ea) if has_a else null}
+		if not edge_changes.is_empty():changes[EDGES] = edge_changes
 	if total == 0:return _capture_fail(MSG_NONE)
 	# --- inventory deltas -------------------------------------------------
 	var deltas := {}
@@ -200,7 +238,8 @@ static func validate_record(record: Dictionary) -> Dictionary:
 	var raw_changes: Variant = record.get("changes")
 	if not (raw_changes is Dictionary):return _bad(MSG_RECORD)
 	var changes: Dictionary = raw_changes
-	if changes.size() != LAYERS.size():return _bad(MSG_RECORD)
+	var has_edges: bool = changes.has(EDGES)
+	if changes.size() != LAYERS.size() + (1 if has_edges else 0):return _bad(MSG_RECORD)
 	var total := 0
 	var roof_owners := {}
 	for layer_name in LAYERS:
@@ -225,6 +264,25 @@ static func validate_record(record: Dictionary) -> Dictionary:
 				var problem := _entry_check(layer, true, entry, actor)
 				if problem != "":return _bad(MSG_RECORD)
 				if layer == "roofs" and _is_auto(entry):roof_owners[_owner_of(entry)] = true
+	if has_edges:
+		var raw_edges: Variant = changes[EDGES]
+		if not (raw_edges is Dictionary) or (raw_edges as Dictionary).is_empty():return _bad(MSG_RECORD)
+		var edge_changes: Dictionary = raw_edges
+		for k in edge_changes:
+			if typeof(k) != TYPE_STRING or not _valid_edge_key(String(k)):return _bad(MSG_RECORD)
+			total += 1
+			if total > MAX_CHANGES:return _bad(MSG_RECORD)
+			var raw_change: Variant = edge_changes[k]
+			if not (raw_change is Dictionary):return _bad(MSG_RECORD)
+			var change: Dictionary = raw_change
+			if change.size() != 2 or not change.has("before") or not change.has("after"):return _bad(MSG_RECORD)
+			var eb: Variant = change["before"]
+			var ea: Variant = change["after"]
+			if eb == null and ea == null:return _bad(MSG_RECORD)
+			if eb != null and ea != null and _deep_equal(eb, ea, 0):return _bad(MSG_RECORD)
+			for entry in [eb, ea]:
+				if entry == null:continue
+				if _edge_check(true, entry, actor) != "":return _bad(MSG_RECORD)
 	if total == 0:return _bad(MSG_RECORD)
 	# inventory deltas
 	var raw_deltas: Variant = record.get("inventory_deltas")
@@ -250,7 +308,26 @@ static func validate_record(record: Dictionary) -> Dictionary:
 # prepare
 # ---------------------------------------------------------------------------
 
-static func prepare(current: Dictionary, actor: String, record: Dictionary, revisions: Dictionary) -> Dictionary:
+## Only the read-only HUD preview supplies a cache. A hit reuses a detached
+## proposal. Callers must not edit it or use it to commit an undo.
+static func prepare(current: Dictionary, actor: String, record: Dictionary, revisions: Dictionary, preview:Variant=null) -> Dictionary:
+	if not preview is Dictionary:return _prepare(current,actor,record,revisions)
+	var players:Variant=current.get("players")
+	if not players is Dictionary:return _prepare_fail(MSG_LAYERS)
+	# The proposal depends on inventory and layer contents, including in-place
+	# edits, but never on player coordinates or elapsed time.
+	var inventories:Dictionary={}
+	for owner in players:inventories[owner]=_raw_inventory(players[owner])
+	var key:=var_to_bytes([actor,record,revisions,inventories,current.get("ground"),current.get("objects"),
+		current.get("roofs"),current.has(EDGES),current.get(EDGES)])
+	if not key.is_empty() and preview.get("inputs")==key:return preview.prepared
+	var result:=_prepare(current,actor,record,revisions)
+	if result.ok and not key.is_empty():
+		preview["inputs"]=key
+		preview["prepared"]=result
+	return result
+
+static func _prepare(current: Dictionary, actor: String, record: Dictionary, revisions: Dictionary) -> Dictionary:
 	if not _valid_owner(actor):return _prepare_fail(MSG_ACTOR)
 	if not _snapshot_valid(current):return _prepare_fail(MSG_LAYERS)
 	var checked: Dictionary = validate_record(record)
@@ -292,6 +369,21 @@ static func prepare(current: Dictionary, actor: String, record: Dictionary, revi
 			elif not cur.has(tile) or not _deep_equal(cur[tile], ea, 0):
 				return _prepare_fail(MSG_STALE)
 			if eb != null and not players.has(_owner_of(eb)):return _prepare_fail(MSG_RESTORE_OWNER)
+	# --- edge rows (optional layer): same stale / owner rules ---------------
+	var edge_changes: Dictionary = changes.get(EDGES, {})
+	var current_edges: Dictionary = {}
+	var has_current_edges: bool = current.has(EDGES)
+	if has_current_edges:current_edges = current[EDGES]  # shape proven by _snapshot_valid
+	if not edge_changes.is_empty() and not has_current_edges:return _prepare_fail(MSG_LAYERS)
+	for ekey in edge_changes:
+		var change: Dictionary = edge_changes[ekey]
+		var ea: Variant = change["after"]
+		var eb: Variant = change["before"]
+		if ea == null:
+			if current_edges.has(ekey):return _prepare_fail(MSG_STALE)
+		elif not current_edges.has(ekey) or not _deep_equal(current_edges[ekey], ea, 0):
+			return _prepare_fail(MSG_STALE)
+		if eb != null and not players.has(_owner_of(eb)):return _prepare_fail(MSG_RESTORE_OWNER)
 	# --- inventories: current + recorded delta, per owner -----------------
 	var deltas: Dictionary = record["inventory_deltas"]
 	var missing := false
@@ -329,6 +421,13 @@ static func prepare(current: Dictionary, actor: String, record: Dictionary, revi
 			if eb == null:staged.erase(tile)
 			else:staged[tile] = _copy(eb)
 		layers[layer] = staged
+	if has_current_edges:
+		var staged_edges: Dictionary = current_edges.duplicate(true)
+		for ekey in edge_changes:
+			var eb: Variant = (edge_changes[ekey] as Dictionary)["before"]
+			if eb == null:staged_edges.erase(ekey)
+			else:staged_edges[ekey] = _copy(eb)
+		layers[EDGES] = staged_edges
 	return {"ok": true, "message": MSG_OK, "layers": layers, "inventories": inventories}
 
 # ---------------------------------------------------------------------------
@@ -352,7 +451,40 @@ static func _snapshot_valid(snapshot: Dictionary) -> bool:
 			var entry=entries[tile]
 			if not _entry_shape(layer,entry):return false
 			if not players.has(entry.owner):return false
+	if snapshot.has(EDGES):
+		var rows=snapshot[EDGES]
+		if not rows is Dictionary:return false
+		if _scan(rows,0,MAX_NODES)<0:return false
+		for ekey in rows:
+			if not ekey is String or not _valid_edge_key(ekey):return false
+			var row=rows[ekey]
+			if not _edge_shape(row):return false
+			if not players.has(row.owner):return false
 	return true
+
+static func _valid_edge_key(key:String)->bool:
+	return key.length()<=MAX_KEY_LEN and EdgeGrid.is_valid_key(key,EDGE_LIMITS)
+
+## Exact edge row shape: wall/window {type,owner}; door {type,owner,open:bool}. All keys Strings.
+static func _edge_shape(row:Variant)->bool:
+	if not row is Dictionary:return false
+	for k in row:
+		if typeof(k)!=TYPE_STRING:return false
+	var kind=row.get("type")
+	if not kind is String or kind not in EDGE_TYPES:return false
+	var owner=row.get("owner")
+	if not owner is String or not _valid_owner(owner):return false
+	if kind=="edge_door":
+		return row.size()==3 and typeof(row.get("open"))==TYPE_BOOL
+	return row.size()==2
+
+## "" when an edge row is acceptable for `actor` (shape ok and owned by the actor).
+static func _edge_check(present:bool,row:Variant,actor:String)->String:
+	if not present:return ""
+	if not _edge_shape(row):return MSG_LAYERS
+	if _scan(row,0,MAX_NODES)<0:return MSG_LAYERS
+	if String((row as Dictionary)["owner"])!=actor:return MSG_OWNER
+	return ""
 
 static func _entry_shape(layer:String,entry:Variant)->bool:
 	if not entry is Dictionary:return false
@@ -361,7 +493,8 @@ static func _entry_shape(layer:String,entry:Variant)->bool:
 	var owner=entry.get("owner")
 	if not owner is String or not _valid_owner(owner):return false
 	if not _counts(entry.get("items"),true).ok:return false
-	if layer=="roofs" and kind!="roof":return false
+	if layer=="roofs" and kind not in ["roof",preload("res://scripts/greenhouse_glass.gd").XINGHE_ROOF,preload("res://scripts/terracotta_roof.gd").KIND]:return false
+	if layer=="roofs" and kind!="roof" and entry.has("auto"):return false
 	if entry.has("auto") and (layer!="roofs" or typeof(entry.auto)!=TYPE_BOOL):return false
 	return true
 

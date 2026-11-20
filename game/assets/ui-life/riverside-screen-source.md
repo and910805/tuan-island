@@ -1,0 +1,5 @@
+# 河岸屏風素材
+
+以內建 ImageGen 製作透明底像素素材，匯入橫向 62×48、縱向 30×78 及折起 18×34。三張共用竹框與布面的水紋圖案。
+
+提示詞：Original cozy Taiwanese 32px farming-life game pixel-art sprite sheet, three isolated sprites on genuine transparent background, arranged left/middle/right with generous gaps. A moveable folded privacy screen made from honey bamboo frames and muted teal fabric painted with cream wave patterns, short feet, discreet dark outlines. Left sprite is fully unfolded horizontally left-to-right, front-facing with tops visible, exactly two connected panels, long wide low silhouette designed for 62x48 game pixels. Middle is same unfolded screen rotated 90 degrees in the plane so the two panels recede vertically away from the viewer, tall narrow silhouette for 30x78 pixels. Right is the same two panels tightly folded into a compact freestanding stack, two cloth edges visible, narrow silhouette designed for 18x34 pixels. Same bamboo knots and blue-green cloth design in all three. Crisp discrete pixel clusters and warm light from upper left. No people, rooms, lettering, shadows around cutout, or bases beyond the feet.

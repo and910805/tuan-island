@@ -85,7 +85,7 @@ func run()->void:
 	place("mine_1",first)
 	check(app.view.interaction_focus()=="mine_survey","Empty side cave point offers the observation interaction")
 	app._refresh_hud()
-	check("往北找觀察點" in app.objective.text and "礦務站可整備下層" in app.objective.text,"Mine HUD guides the undiscovered side cave while preserving engineering")
+	check("往北找觀察點" in app.objective.text and "休息站補水\n礦務站整備下層" in app.objective.text,"Mine HUD guides the undiscovered side cave and keeps the two station hints on separate lines")
 	for size in [Vector2i(1024,640),Vector2i(1280,800)]:
 		root.size=size
 		app._interact()

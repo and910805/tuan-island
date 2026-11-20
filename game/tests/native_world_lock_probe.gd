@@ -26,4 +26,3 @@ func _initialize() -> void:
 		other.release()
 		assert(not other.is_held())
 	quit(0)
-

@@ -13,7 +13,7 @@ extends "res://tests/test_festival_earned_journey.gd"
 ##  * test_flower_journey.chapter_one(): chapter one earned on a fresh world
 ##    (crops, ship, donate, irrigation, stove, picnic). The picnic opens transit
 ##    and the mine entry; nothing else of chapters two to five is needed.
-##  * test_festival_earned_journey.commission_deep_mine(): B1→B5 earned (own
+##  * test_festival_earned_journey.commission_mine(false): B1→B5 earned (own
 ##    bench/sawmill/kiln, practice copper vein, pump/pipe/tank kits, B3 drained by
 ##    a real pump, transit there and back). Its B1–B4 commissions are checked by
 ##    act() success and the final unlocked==5 only, NOT by an exact debit; its
@@ -155,7 +155,7 @@ func run() -> void:
 	expect(int(world.state.mine_depths.unlocked)==1,"fresh world: mine unlocked 1")
 	chapter_one()
 	if failed:return
-	commission_deep_mine()
+	commission_mine(false)
 	if failed:return
 	print("MINE_DEEP prerequisite B1-B5 earned (checks %d, actions %d, world_seconds %.1f, runtime_ms %d)"%[checks,actions,now(),Time.get_ticks_msec()-started_ms])
 	deep_started=true
@@ -589,6 +589,8 @@ func smelt_furnace_iron() -> void:
 	var smelter:=open_square_site()
 	if not expect(smelter.x>=0,"Open four-cell site for the metal smelter"):return
 	stand_for_square_station(smelter)
+	# C11: labelled fixture, the island's stone workbench (earned path: test_stone_workbench).
+	preload("res://tests/stone_station_fixture.gd").install(world,tok)
 	act("build",smelter,"small_smelter")
 	for batch in range(3):act("queue_processing",smelter,"iron_ingot")
 	wait(180.1)

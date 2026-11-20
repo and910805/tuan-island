@@ -40,7 +40,35 @@ func run()->void:
 			for i in range(6):await process_frame
 			app._layout_preview();await process_frame
 			check(Rect2(Vector2.ZERO,Vector2(extent)).encloses(app.modal.get_global_rect()),stage+" modal fits "+str(extent))
-			for control in app.modal.find_children("*","BaseButton",true,false):check(visible(control),stage+" button visible: "+control.text)
+			for control in app.modal.find_children("*","BaseButton",true,false):
+				if stage!="sources" or control.is_visible_in_tree():check(visible(control),stage+" button visible: "+control.text)
+			if stage=="sources":
+				var feature=app.modal.find_child("HistorySourceScene",true,false)
+				var next:=app.modal.find_child("HistorySourceNext",true,false) as Button
+				var line:=app.modal.find_child("HistorySourceBeatLine",true,false) as Label
+				var toggle:=app.modal.find_child("HistorySourceFullToggle",true,false) as Button
+				var full:=app.modal.find_child("HistorySourceFull",true,false) as Control
+				check(feature!=null and feature.art!=null and visible(feature),"Illustration fits the page")
+				check(next!=null and toggle!=null and full!=null and not full.visible,"Short view opens first")
+				if feature!=null:
+					feature.motion=false
+					feature.replay()
+					check(not feature.is_processing() and feature.elapsed==feature.REVEAL_SECONDS,"Reduced motion immediately shows the static illustration")
+					feature.motion=true
+					feature.replay()
+					feature._process(0.15)
+					check(feature.is_processing() and feature.elapsed>0.0,"The illustrated sequence advances with motion enabled")
+				if next!=null and line!=null:
+					var first:=line.text
+					next.pressed.emit()
+					check(line.text!=first,"Next advances the narrated scene")
+					next.pressed.emit()
+					next.pressed.emit()
+					check(line.text==first,"Replay restarts the first beat")
+				if toggle!=null and full!=null:
+					toggle.button_pressed=true
+					check(full.visible and full.find_children("*","LinkButton",true,false).size()==1,"Full text and linked source expand on request")
+					toggle.button_pressed=false
 			if stage=="replay":
 				var replay=app.modal.find_child("MemoryReplay",true,false)
 				var return_button:Control=replay.get_parent().get_child(replay.get_index()+1)

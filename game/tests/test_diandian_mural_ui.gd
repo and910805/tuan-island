@@ -39,6 +39,7 @@ func capture(file_name:String) -> void:
 	if DisplayServer.get_name()=="headless":return
 	for arg in OS.get_cmdline_user_args():
 		if not arg.begins_with("--capture-dir="):continue
+		await create_timer(0.35).timeout
 		await RenderingServer.frame_post_draw
 		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
 
@@ -54,7 +55,7 @@ func open_mural() -> void:
 	await press("PublicMural")
 
 func run() -> void:
-	root.size=Vector2i(1024,640)
+	root.size=Vector2i(1280,800) if "--wide" in OS.get_cmdline_user_args() else Vector2i(1024,640)
 	app=load("res://main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
@@ -77,14 +78,14 @@ func run() -> void:
 	person[Goals.PAINT_INVITES_KEY]=["aru","xinghe","nuannuan"]
 	stand(board)
 	await open_mural()
+	await capture("00-preview-before-hanging.png")
 	await press("HangMural")
 	var public_art:Dictionary=app.session.snapshot[Goals.MURAL_KEY]
 	expect(public_art.get("subjects")==["aru","xinghe","nuannuan"] and public_art.get("author_name")=="掛畫島民","Mounted art has original portraits and public credit")
 	expect(not public_art.has("author") and not public_art.has("signatures"),"Server never publishes contributor tokens")
 	expect(public_art.get("names",[])==[] and app.session.snapshot.own_diandian_mural,"Mounting leaves the guest slot empty")
 	expect(not world.act(token,"hang-twice",Goals.MURAL_HANG_ACTION,board).ok,"Another mount cannot replace the shared composition")
-	await open_mural()
-	expect(text_is_visible("留給下一位"),"Exhibit shows the spare place")
+	expect(text_is_visible("留給下一位") and text_is_visible("你的名字已留在合畫上。"),"Hanging refreshes the current exhibit with credit and the spare place")
 	await capture("01-ready-for-a-guest.png")
 	app._close_modal()
 
@@ -108,6 +109,11 @@ func run() -> void:
 	person.region=spot[0]
 	stand(spot[1])
 	Tasks.bond_goal(app,"diandian",4)
+	await process_frame
+	await press("DiandianExhibitFromGoal")
+	expect(text_is_visible("入畫島民 1 位") and button("SignMural")==null,"The exhibit can be read again from the story at the pond")
+	for node:Node in app.modal.find_children("*","Button",true,false):
+		if node.text=="返回":node.pressed.emit();break
 	await process_frame
 	await press("BondGoalDo")
 	expect(app.session.snapshot.resident_goals.diandian["4"].state=="done","Report completes the public exhibition story")

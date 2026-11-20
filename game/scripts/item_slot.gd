@@ -77,4 +77,3 @@ func _fit_quantity() -> void:
 
 func set_selected(value:bool) -> void:
 	set_pressed_no_signal(value)
-

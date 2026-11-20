@@ -21,6 +21,7 @@ func _initialize()->void:
 		world.state.players[token].y=37.5
 	expect(not world.act(ONE,"locked","livestock_pet",SITE,"cow").ok,"Existing picnic gate retained")
 	world.state.picnic=true
+	expect(world.act(ONE,"adopt","livestock_adopt",SITE,"cow").ok,"D07: the cow is adopted before it can be cared for")
 	var bag:Dictionary=world.state.players[ONE].inventory.duplicate(true)
 	expect(world.act(ONE,"pet","livestock_pet",SITE,"cow").ok,"Original pet action starts care response")
 	expect(Care.active_actor(world.state,world.active_tokens)==ONE and world.state.livestock.cow.bond==1,"Shared actor and one bond")

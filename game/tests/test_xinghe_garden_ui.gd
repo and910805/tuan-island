@@ -39,6 +39,7 @@ func capture(file_name:String) -> void:
 	if DisplayServer.get_name()=="headless":return
 	for arg in OS.get_cmdline_user_args():
 		if not arg.begins_with("--capture-dir="):continue
+		await create_timer(0.25).timeout
 		await RenderingServer.frame_post_draw
 		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
 
@@ -66,9 +67,17 @@ func test_three_players() -> void:
 
 func run() -> void:
 	root.size=Vector2i(1024,640)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--size="):
+			var dimensions:=arg.trim_prefix("--size=").split("x")
+			if dimensions.size()==2:root.size=Vector2i(int(dimensions[0]),int(dimensions[1]))
 	app=load("res://main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
+	if "--large-text" in OS.get_cmdline_user_args():
+		app.sound.preferred_text_scale=3
+		app._apply_font_scale_tree()
+		await process_frame
 	var path:="user://xinghe-garden-test-%d.json"%OS.get_process_id()
 	if app.session.host(0,"園藝島民",path)!=OK:
 		quit(1)
@@ -84,22 +93,35 @@ func run() -> void:
 	person.bonds={"xinghe":{"points":24,"talk_day":-1,"gift_day":-1}}
 	stand(service)
 	await open_garden()
+	var back:=button("XingheGardenBack")
+	var scroll:ScrollContainer
+	if back!=null:
+		var ancestor:=back.get_parent()
+		while ancestor!=null and not ancestor is ScrollContainer:ancestor=ancestor.get_parent()
+		scroll=ancestor as ScrollContainer
+	expect(back!=null and (scroll==null or scroll.get_global_rect().encloses(back.get_global_rect())),"The return button fits below the selection controls")
+	await capture("00-garden-choices.png")
+	var original_page:Control=app.modal
 	await press("XinghePlant_bluebell")
 	expect(world.state[Goals.GARDEN_KEY].size()==1,"First pot is placed")
 	expect(app.session.snapshot[Goals.GARDEN_KEY][0].author==app.session.own_id and app.session.snapshot[Goals.GARDEN_KEY][0].name=="園藝島民","Snapshot projects the public author, not their profile token")
 	var checkpoint:=World.new()
 	expect(checkpoint.load_world(path) and checkpoint.state[Goals.GARDEN_KEY].size()==1,"Partial garden is already saved")
-	await open_garden()
+	expect(app.modal==original_page and button("XinghePlant_bluebell")==null,"The garden refreshes in place and no longer offers another player pot")
 	await press("XingheInvite_milu")
-	await open_garden()
+	expect(button("XingheInvite_milu")==null,"The open garden removes the invitation once that resident contributes")
 	await press("XingheInvite_xinghe")
-	await open_garden()
 	await capture("01-garden-authors.png")
 	expect(app.session.snapshot[Goals.GARDEN_KEY].map(func(pot):return pot.name)==["園藝島民","米露","星禾"],"The three chosen pots display their authors")
 	await press("XingheGardenReport")
 	await press("BondGoalDo")
 	var sign_kind:="keepsake_xinghe_sign"
 	expect(int(person.inventory.get(Goals.keepsake_item(sign_kind),0))==1,"Reporting awards one garden sign")
+	await capture("03-garden-reward.png")
+	await press("XingheGardenFromGoal")
+	expect(button("XingheGardenReport")!=null and button("XingheGardenReport").text=="查看共同花園牌","The garden links back to the earned sign")
+	await press("XingheGardenReport")
+	app._close_modal()
 	stand(service+Vector2i(1,1))
 	await create_timer(0.35).timeout
 	await capture("02-lanyang-pots.png")

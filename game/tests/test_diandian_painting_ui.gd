@@ -39,6 +39,7 @@ func capture(file_name:String) -> void:
 	if DisplayServer.get_name()=="headless":return
 	for arg in OS.get_cmdline_user_args():
 		if not arg.begins_with("--capture-dir="):continue
+		await create_timer(0.35).timeout
 		await RenderingServer.frame_post_draw
 		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
 
@@ -57,7 +58,7 @@ func visit(id:String) -> void:
 	if id in ["xinghe","chacha"]:await press("BondOpen")
 
 func run() -> void:
-	root.size=Vector2i(1024,640)
+	root.size=Vector2i(1280,800) if "--wide" in OS.get_cmdline_user_args() else Vector2i(1024,640)
 	app=load("res://main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
@@ -73,6 +74,10 @@ func run() -> void:
 	stand(aru)
 	expect(not world.act(token,"too-soon",Goals.PAINT_INVITE_ACTION,aru,"aru").ok,"Invitation requires trust")
 	person.bonds={"diandian":{"points":14,"talk_day":-1,"gift_day":-1}}
+	expect(not world.act(token,"before-pose",Goals.PAINT_INVITE_ACTION,aru,"aru").ok,"Trust alone cannot skip the pond story")
+	await visit("aru")
+	expect(app.modal.find_child("DiandianInvite",true,false)==null,"Unready residents do not show an invitation")
+	person[Goals.RECORD_KEY]={"diandian":{"1":"","2":"knees"}}
 	await visit("diandian")
 	await press("DiandianPainting")
 	expect(contains_text("已邀請 0／3"),"Sketch opens with three available places")
@@ -80,6 +85,11 @@ func run() -> void:
 	await visit("aru")
 	await press("DiandianInvite")
 	expect(app.session.snapshot.own_diandian_invites==["aru"],"Aru occupies the first place")
+	Tasks.journal(app)
+	await process_frame
+	await press("DiandianPaintingBookmark")
+	expect(contains_text("已邀請 1／3"),"The handbook reopens an unfinished draft away from Diandian")
+	app._close_modal()
 	expect(not app.session.snapshot.players[app.session.own_id].has(Goals.PAINT_INVITES_KEY),"Invitation list is private")
 	expect(not world.act(token,"repeat",Goals.PAINT_INVITE_ACTION,aru,"aru").ok,"Same resident does not take another place")
 	var partial:=World.new()
@@ -104,6 +114,8 @@ func run() -> void:
 	await process_frame
 	await press("BondGoalDo")
 	expect(app.session.snapshot.resident_goals.diandian["3"].state=="done","Report marks the composition complete")
+	var revealed=app.modal.find_child("ResidentPainting",true,false)
+	expect(revealed!=null and revealed.finished,"Reporting immediately reveals the finished painting")
 	Tasks.journal(app)
 	await process_frame
 	var book:Button
@@ -116,6 +128,8 @@ func run() -> void:
 	expect(drawing!=null and drawing.subjects==["aru","xinghe","nuannuan"],"Composition preserves the selected portrait order")
 	expect(contains_text("阿榆") and contains_text("星禾") and contains_text("暖暖"),"Every portrait has its own readable name")
 	await capture("02-finished.png")
+	await press("DiandianPaintingBack")
+	expect(button("DiandianPaintingBookmark")!=null,"Back returns to the handbook")
 	expect(app.session.shutdown(),"Save and close")
 	var loaded:=World.new()
 	expect(loaded.load_world(path),"Reload the saved island")

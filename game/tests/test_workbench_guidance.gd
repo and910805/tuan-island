@@ -8,6 +8,8 @@ const AutomationUI = preload("res://scripts/automation_ui.gd")
 const LifePanels = preload("res://scripts/life_ui_panels.gd")
 const BuildFolio = preload("res://scripts/build_folio.gd")
 const Village = preload("res://scripts/village.gd")
+const ItemArt = preload("res://scripts/inventory_item_art.gd")
+const LifeShell = preload("res://scripts/life_ui_shell.gd")
 const BENCH := Vector2i(38, 34)
 const SITE := Vector2i(42, 34)
 const MAX_CHARS := 48
@@ -75,7 +77,7 @@ func check_guide_against_data() -> void:
 		var guide: Dictionary = AutomationUI.GUIDE.get(id, {})
 		var kind: String = guide.get("kind", "")
 		var text: String = AutomationUI.recipe_use(id, Keys.new())
-		expect(kind in ["place", "alternate_place", "collection", "part", "key_tool", "tool", "salt_facility", "animal_facility"], "%s has a known kind" % id)
+		expect(kind in ["place", "alternate_place", "collection", "part", "key_tool", "tool", "salt_facility", "animal_facility", "table_display"], "%s has a known kind" % id)
 		expect(AutomationUI.PORTABLE_TOOLS.has(id) == (kind == "tool"), "%s is portable equipment exactly when kind is tool" % id)
 		if kind != "tool":
 			for word in FALSE_EQUIPMENT:
@@ -169,9 +171,16 @@ func check_crafts_and_uses() -> void:
 	var guide: Dictionary = AutomationUI.GUIDE.reinforced_pick
 	near(World.COPPER_CELL)
 	var ore := int(inv.get("copper_ore", 0))
+	var upgraded:Dictionary={}
+	for pick:String in World.MINING_PICK_EFFECTS:
+		upgraded[pick]=int(inv.get(pick,0))
+		inv[pick]=0
+	inv.reinforced_pick=1
 	expect(act("pick", guide.action, World.COPPER_CELL).ok, "reinforced pick enables %s" % guide.action)
 	var gained := int(inv.get("copper_ore", 0)) - ore
 	expect(gained > 0 and AutomationUI.recipe_use("reinforced_pick").contains("每次 %d 個" % gained), "copper yield in guidance matches world (%d)" % gained)
+	inv.reinforced_pick=0
+	inv.merge(upgraded,true)
 	near(BENCH)
 	for item in World.CRAFT.reinforced_pick.ingredients:
 		inv[item] = int(World.CRAFT.reinforced_pick.ingredients[item])
@@ -197,15 +206,6 @@ func check_crafts_and_uses() -> void:
 	expect(act("display", "build", SITE, "ore_display").ok and int(inv.gold_sample) == 0 and world.state.objects.get(World.key(SITE), {}).get("type") == "ore_display",
 		"gold sample is spent on the ore display")
 
-func find_button(node: Node, caption: String) -> Button:
-	if node is Button and node.text == caption and node.is_visible_in_tree():
-		return node
-	for child in node.get_children():
-		var found := find_button(child, caption)
-		if found:
-			return found
-	return null
-
 func check_layout() -> void:
 	var app = load("res://main.tscn").instantiate()
 	app.village_art_preview = true
@@ -217,9 +217,14 @@ func check_layout() -> void:
 	app.session.snapshot = world.state
 	app.session.own_id = "tester"
 	world.state.objects[World.key(BENCH)] = {"type": "bench", "owner": "tester", "items": {}}
+	var contents:Dictionary=world.state.players.tester.inventory
 	app.automation_ui.workbench(app, BENCH)
 	for id in World.CRAFT:
-		var entry := find_button(app.modal, World.CRAFT[id].name)
+		var is_upgrade:bool=World.MINING_PICK_EFFECTS.has(id) or World.FORESTRY_AXE_EFFECTS.has(id) or World.TILLER.HAND_PATTERNS.has(id) or World.FishingTracking.ROD_EFFECTS.has(id)
+		if is_upgrade:
+			contents[id]=0
+			for item in World.CRAFT[id].ingredients:contents[item]=World.CRAFT[id].ingredients[item]
+		var entry := app.modal.find_child("WorkbenchRecipe_"+str(id),true,false) as Button
 		expect(entry != null, "recipe button exists for %s" % id)
 		if entry == null:
 			continue
@@ -232,7 +237,37 @@ func check_layout() -> void:
 			expect(use.get_line_count() <= 4, "%s guidance fits in four lines (%d)" % [id, use.get_line_count()])
 		expect(root.get_visible_rect().encloses(app.modal.get_global_rect()), "%s workbench fits 1024x640" % id)
 		expect(app.modal.find_child("CraftRecipe", true, false) != null, "craft button keeps its node name")
+		if is_upgrade:
+			var craft:Button=app.modal.find_child("CraftRecipe",true,false)
+			expect(entry.icon!=null and entry.icon.get_size()==Vector2(32,32) and craft!=null and not craft.disabled,"%s has its 32px icon, and exact materials enable the upgrade"%id)
+			var flag:="--%s-preview="%str(id).replace("_","-")
+			for arg:String in OS.get_cmdline_user_args():
+				if not arg.begins_with(flag):continue
+				await RenderingServer.frame_post_draw
+				expect(root.get_texture().get_image().save_png(arg.trim_prefix(flag))==OK,"Capture the upgrade recipe for "+id)
 	app._close_modal()
 	app.automation_ui.refresh(app)
+	check_gathering_hotbar(app,contents,"pick",["copper_pick","iron_pick","precision_pick"],"十字鎬")
+	check_gathering_hotbar(app,contents,"axe",["copper_axe","iron_axe","precision_axe"],"斧頭")
+	check_gathering_hotbar(app,contents,"hoe",["copper_hoe","iron_hoe","precision_hoe"],"鋤頭")
+	check_gathering_hotbar(app,contents,"seed",["copper_seed_pouch","iron_seed_pouch","precision_seed_pouch"],"播種")
+	check_gathering_hotbar(app,contents,"water",["copper_can","iron_can","precision_can"],"澆水")
+	check_gathering_hotbar(app,contents,"harvest",["copper_sickle","iron_sickle","precision_sickle"],"採收")
+	check_gathering_hotbar(app,contents,"fish",["copper_rod","iron_rod","precision_rod"],"釣竿")
 	app.queue_free()
 	await process_frame
+
+func check_gathering_hotbar(app, contents:Dictionary, action:String, tiers:Array, base_name:String)->void:
+	var button:Button=app.preview_toolbar.find_child("FishingSlot",true,false) if action=="fish" else app.tool_buttons[LifeShell.TOOL_IDS.find(action)]
+	var hotbar_art:=button.get_node("ToolArt") as TextureRect
+	for id:String in tiers:contents[id]=0
+	for id:String in tiers:
+		contents[id]=1
+		app._refresh_hud()
+		expect(hotbar_art.texture==ItemArt.icon(id) and button.tooltip_text.begins_with(World.NAMES[id]),"The toolbar displays the highest carried tier: " + id)
+	for id:String in tiers:contents[id]=0
+	app._refresh_hud()
+	var base_icon:=LifeShell.icon(action)
+	var restored:Texture2D=hotbar_art.texture
+	var same_icon:bool=restored==base_icon or (restored is AtlasTexture and base_icon is AtlasTexture and restored.atlas==base_icon.atlas and restored.region==base_icon.region)
+	expect(same_icon and button.tooltip_text.begins_with(base_name),"Putting the upgraded tools away restores the base indicator: " + action)

@@ -2,6 +2,11 @@ extends SceneTree
 
 const Main=preload("res://scripts/main.gd")
 const Entry=preload("res://scripts/identity_entry.gd")
+const Session=preload("res://scripts/session.gd")
+class OlderRoomClient extends Session:
+	func _connected() -> void:
+		register_player.rpc_id(1,PROTOCOL-1,profile.token,desired_name,room_key)
+
 class RefreshProbe extends "res://scripts/identity_entry.gd":
 	var reply:Dictionary={}
 	var requests:=0
@@ -25,6 +30,41 @@ func has_button_text(node:Node,wanted:String) -> bool:
 	for child in node.get_children():
 		if has_button_text(child,wanted):return true
 	return false
+
+func network_branch(branch_name:String) -> Node:
+	var branch:=Node.new()
+	branch.name=branch_name
+	root.add_child(branch)
+	set_multiplayer(MultiplayerAPI.create_default_interface(),branch.get_path())
+	return branch
+
+func join_outdated_room(app:Main) -> void:
+	var listener:=TCPServer.new()
+	var listening:=listener.listen(0,"127.0.0.1")==OK
+	check(listening,"Reserve an isolated WebSocket port")
+	if not listening:return
+	var port:=listener.get_local_port()
+	listener.stop()
+	var host:=Session.new()
+	network_branch("VersionProofServer").add_child(host)
+	var path:="user://update-prompt-room-%d.json"%OS.get_process_id()
+	const KEY:="update-prompt-test"
+	var started:=host.host(port,"更新驗收",path,KEY,"127.0.0.1",true,"websocket")==OK
+	check(started,"Start the real current-protocol WebSocket room")
+	if not started:return
+	var client:=OlderRoomClient.new()
+	network_branch("VersionProofClient").add_child(client)
+	client.notice.connect(app._notice)
+	var connected:=client.join("ws://127.0.0.1:%d"%port,port,"版本驗收",KEY)==OK
+	check(connected,"Start the old-protocol client connection")
+	var deadline:=Time.get_ticks_msec()+5000
+	while connected and not is_instance_valid(app.room_update_dialog) and Time.get_ticks_msec()<deadline:
+		await process_frame
+	check(is_instance_valid(app.room_update_dialog) and client.snapshot.is_empty() and host.peers.is_empty(),"Server rejection creates a dialog without admitting the old client")
+	client.shutdown()
+	host.shutdown()
+	for suffix in ["",".bak",".tmp",".writer-lock"]:
+		if FileAccess.file_exists(path+suffix):DirAccess.remove_absolute(path+suffix)
 
 func run() -> void:
 	var app:=Main.new()
@@ -79,25 +119,57 @@ func run() -> void:
 	entry.joining=true
 	entry.join_result(false,"遊戲版本過舊或不相容，請更新遊戲後再加入。","VERSION_MISMATCH")
 	check(is_instance_valid(entry.update_dialog) and entry.update_dialog.visible,"Protocol rejection opens update prompt")
-	check(has_button_text(entry.update_dialog,"前往下載新版"),"Configured update page is offered")
+	check(has_button_text(entry.update_dialog,"查看公開下載頁"),"Configured public download page is offered")
 	if is_instance_valid(entry.update_dialog):entry.update_dialog.queue_free();entry.update_dialog=null
+	for required:int in [Main.Session.PROTOCOL-1,Main.Session.PROTOCOL+1]:
+		var prompt:=Entry.make_update_prompt(entry,app,required)
+		var detail:=prompt.find_child("UpdateRequiredDetail",true,false) as Label
+		var protocol:=prompt.find_child("UpdateRequiredProtocol",true,false) as Label
+		var comparison:="較新" if required>Main.Session.PROTOCOL else "較舊"
+		check(detail.text.contains(comparison) and detail.text.contains("島主"),"Known room protocol gives directional advice")
+		check(protocol.text.contains("島嶼連線版本 %d"%required),"Known room protocol is disclosed separately")
+		prompt.queue_free()
+		await process_frame
+	ProjectSettings.set_setting("application/config/update_url","")
+	var without_url:=Entry.make_update_prompt(entry,app)
+	check(not has_button_text(without_url,"查看公開下載頁"),"Missing download page leaves only the dismissal")
+	without_url.queue_free()
+	await process_frame
+	ProjectSettings.set_setting("application/config/update_url","https://updates.example.test/game")
 	app.session.receive_notice("房間密碼不正確，無法加入。",false)
 	check(not is_instance_valid(app.room_update_dialog),"Wrong room password does not suggest an update")
-	app.session.receive_notice(Main.Session.VERSION_MISMATCH_NOTICE,false)
-	check(is_instance_valid(app.room_update_dialog) and has_button_text(app.room_update_dialog,"前往下載新版"),
+	await join_outdated_room(app)
+	check(is_instance_valid(app.room_update_dialog) and has_button_text(app.room_update_dialog,"查看公開下載頁"),
 		"Direct room protocol rejection uses the same update prompt")
 	var room_prompt:Control=app.room_update_dialog
+	var unknown:=room_prompt.find_child("UpdateRequiredDetail",true,false) as Label
+	check(unknown.text.contains("向島主確認") and room_prompt.find_child("UpdateRequiredProtocol",true,false)==null,
+		"Direct room with unknown protocol gives neutral advice")
 	app.session.receive_notice(Main.Session.VERSION_MISMATCH_NOTICE,false)
 	check(app.room_update_dialog==room_prompt,"Repeated room rejection keeps one prompt")
+	check(app.toast_time==0.0 and not app.toast.visible,"Room rejection does not duplicate its message behind the dialog")
 	app._disconnected()
 	check(is_instance_valid(room_prompt) and room_prompt.is_visible_in_tree(),"Disconnect does not erase the reason")
 	if DisplayServer.get_name()!="headless" and not OS.get_environment("TUAN_UPDATE_CAPTURE").is_empty():
 		root.size=Vector2i(1024,640)
+		app.sound.preferred_text_scale=3
+		app._apply_font_scale_tree()
 		await process_frame
+		await process_frame
+		var prompt_panel:=room_prompt.find_child("UpdateRequiredPanel",true,false) as Control
+		check(root.get_visible_rect().encloses(prompt_panel.get_global_rect()),"Largest text room prompt fits 1024x640")
 		await RenderingServer.frame_post_draw
 		check(root.get_texture().get_image().save_png(OS.get_environment("TUAN_UPDATE_CAPTURE"))==OK,"Capture room update prompt")
-	for control in room_prompt.find_children("*","Button",true,false):
-		if control.text=="稍後再說":control.pressed.emit()
+	await process_frame
+	var focus:=root.gui_get_focus_owner() as Button
+	check(focus!=null and room_prompt.is_ancestor_of(focus),"Update prompt has keyboard focus")
+	if focus:
+		var next:=focus.get_node(focus.focus_next) as Button
+		check(room_prompt.is_ancestor_of(next) and next.get_node(next.focus_next)==focus,"Focus cycles between modal actions")
+		var cancel:=InputEventKey.new()
+		cancel.keycode=KEY_ESCAPE
+		cancel.pressed=true
+		root.push_input(cancel)
 	await process_frame
 	check(not is_instance_valid(app.room_update_dialog) and app.menu.visible,"Dismiss returns to the title")
 	listed.status="offline"
@@ -152,4 +224,3 @@ func run() -> void:
 	await process_frame
 	print("IDENTITY_ENTRY_UI_TEST checks=%d failures=%d" % [checks,failures])
 	quit(1 if failures else 0)
-

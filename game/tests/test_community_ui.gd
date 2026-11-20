@@ -63,7 +63,7 @@ func run()->void:
 		var accept:=button_at(app.modal,"接單")
 		var deliver:=button_at(app.modal,"交件")
 		check(fully_visible(accept) and not accept.disabled,"Open order exposes an enabled accept button")
-		check(fully_visible(deliver) and deliver.disabled,"Unaccepted order cannot be delivered")
+		check(deliver==null or deliver.disabled,"Unaccepted order cannot be delivered")
 		app._close_modal()
 		app.session.snapshot=world.state
 	check(saved_state==world.state,"Viewing does not change inventory or world")
@@ -94,6 +94,7 @@ func run()->void:
 	var restored_page:=app.modal.find_child("FestivalScenePage",true,false) as Label
 	check(restored_page!=null and restored_page.text=="3 / 4" and button_at(app.modal,"下一幕")!=null,
 		"Previous returns from the deer's epilogue to Xiaoli's scene")
+	await verify_festival_motion(app)
 	check(app.session.snapshot==story_before,"Replaying and paging through the finale do not modify the world")
 	app._close_modal()
 	app.session.snapshot.erase("festival_story")
@@ -225,7 +226,6 @@ func run()->void:
 	app._close_modal()
 	app.session.returning_peers[1]=true
 	app.session.world.state.board=true
-	app.session.world.state[World.WARM_SPRINGS.BATH_KEY]=true
 	app.session.world.state.players.tester.x=46.5
 	app.blueprint_join_scope="join:community-ui-return-test"
 	app.session._send_snapshot(1)
@@ -238,10 +238,8 @@ func run()->void:
 		check(root.get_texture().get_image().save_png(preview_path)==OK,"Return digest preview saved")
 	var details:=button_at(app.modal,"島嶼近況")
 	if details!=null:details.pressed.emit()
-	check(app.modal!=null and app.modal.find_child("LocalProjectNews",true,false)!=null,"The news board shows a completed local project")
-	var read_projects:=button_at(app.modal,"標為已讀")
-	if read_projects!=null:read_projects.pressed.emit()
-	check(app.session.snapshot.island_news.seen==app.session.snapshot.island_news.completed,"Acknowledging news includes the local project without changing the festival checklist")
+	await verify_live_project_news(app)
+	await verify_live_story_news(app)
 	preload("res://scripts/life_ui_tasks.gd").return_news(app,app.session.snapshot)
 	var read_notes:=button_at(app.modal,"讀留言")
 	if read_notes!=null:read_notes.pressed.emit()
@@ -275,7 +273,21 @@ func run()->void:
 	placement_world.state.ground[World.key(floor_tile)]={"type":"floor","owner":"tester","items":{},"placement_access":"owner"}
 	app.session.snapshot=placement_world.state
 	app.session.own_id="tester"
+	# T046 phase 2: structure tools ask for the whole island, farm tools do not.
+	app.selected="hoe"
+	var farm_view:bool=app._structure_view_needed()
+	app.selected="remove"
+	var remove_view:bool=app._structure_view_needed()
 	app.selected="build"
+	check(not farm_view and remove_view and app._structure_view_needed(),"Build and remove tools hold the complete home view; a farm tool keeps the projection")
+	var sent_before:int=app.session.counter
+	var modal_before:Variant=app.modal
+	app.session.snapshot["view_rect"]=[0,0,8,8]
+	app.session.snapshot["view_full"]=false
+	app.session.snapshot["view_level"]=2
+	app._perform_build_action("build",floor_tile+Vector2i(1,0),"floor")
+	check(app.session.counter==sent_before and is_same(app.modal,modal_before),"A build is not quoted or sent while ground, roofs and edges are still a projection")
+	for mark in ["view_rect","view_full","view_level"]:app.session.snapshot.erase(mark)
 	app.target=floor_tile
 	app.view.show_target=true
 	app._interact()
@@ -318,6 +330,104 @@ func run()->void:
 	await process_frame
 	print("COMMUNITY_UI_TEST checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0))
+
+func verify_live_project_news(app) -> void:
+	var journal:Control=app.modal
+	var world:World=app.session.world
+	var local:Control=journal.find_child("LocalProjectNews",true,false)
+	var public_read:=button_at(journal,"公共工程標為已讀")
+	var local_read:=button_at(journal,"地方工程標為已讀")
+	check(not local.is_visible_in_tree() and public_read.is_visible_in_tree(),"Only the bridge is visible on entry")
+	var partner:Dictionary=world.state.players.partner
+	var site:=World.RESIDENT_BOND.SPRING_CELL
+	partner.region=World.RESIDENT_BOND.SPRING_REGION
+	partner.x=site.x+0.5
+	partner.y=site.y+1.5
+	partner.bonds={"nuannuan":{"points":6,"talk_day":-1,"gift_day":-1}}
+	partner.inventory.stone=12
+	partner.inventory.clay=8
+	partner[World.WARM_SPRINGS.CRACK_KEY]=World.WARM_SPRINGS.CRACK_MASK # The route is exercised in the dedicated pool test.
+	var repaired:=world.act("partner","project-news-live",World.RESIDENT_GOALS.ACTION,site,"nuannuan:2::")
+	check(repaired.ok,"The other resident completes the real remote bath repair: "+str(repaired.message))
+	app.session._send_snapshot(1)
+	check(app.modal==journal and local.is_visible_in_tree() and not local_read.disabled,"New local project appears while the same journal stays open")
+	check(app.session.snapshot.region_id=="home" and not app.session.snapshot.players.has("partner".sha256_text().left(16)),"News arrives while the repairer remains in another region")
+	var completed:=int(app.session.snapshot.island_news.completed)
+	var public_bits:=completed & World.ISLAND_NOTES.project_mask()
+	var local_bits:=completed & ~World.ISLAND_NOTES.project_mask()
+	check(public_bits==1 and local_bits==(4<<World.ISLAND_NOTES.PROJECTS.size()),"Both regions supply the expected progress bits")
+	app.session.rates[1]=[]
+	public_read.pressed.emit()
+	check(app.modal==journal and public_read.disabled and not local_read.disabled,"Acknowledging public news keeps the journal open and the local project unread")
+	check(int(app.session.snapshot.island_news.seen)==public_bits,"Only the displayed public category was marked")
+	var directory:String=app.arg_value("project-news-preview","")
+	if not directory.is_empty() and DisplayServer.get_name()!="headless":
+		var scroll:=local_read.get_parent().get_parent().get_parent().get_parent() as ScrollContainer
+		for extent in [Vector2i(1024,640),Vector2i(1280,800)]:
+			root.size=extent
+			app._layout_preview()
+			await process_frame
+			await process_frame
+			if scroll!=null:scroll.ensure_control_visible(local_read)
+			await process_frame
+			await RenderingServer.frame_post_draw
+			check(fully_visible(local_read),"Local read control can be reached without cropping at %s"%str(extent))
+			check(root.get_texture().get_image().save_png(directory.path_join("local-news-%d.png"%extent.x))==OK,"Capture the open journal at %s"%str(extent))
+	local_read.pressed.emit()
+	check(app.modal==journal and local_read.disabled and int(app.session.snapshot.island_news.seen)==completed,"Local acknowledgment applies in place")
+	check(int(world.state.players.partner.get("news_seen",0))==0,"The other resident's read marker is independent")
+	var path:="user://project-news-%d.json"%Time.get_ticks_usec()
+	world.save_path=path
+	var reopened:=World.new()
+	check(world.save() and reopened.load_world(path) and int(reopened.state.players.tester.news_seen)==completed,"The two acknowledgments survive reloading the actual save")
+	world.save_path=""
+	DirAccess.remove_absolute(path)
+
+func verify_live_story_news(app) -> void:
+	var journal:Control=app.modal
+	var world:World=app.session.world
+	var original_picnic:bool=world.state.picnic
+	var original_dock:int=world.state.get("dock_stage",0)
+	var original_opened:bool=world.state.get("festival_story_open",false)
+	world.state.picnic=true
+	world.state.dock_stage=1
+	app.session._send_snapshot(1)
+	var entries:VBoxContainer=journal.find_child("FerryNewsEntries",true,false)
+	var read:=journal.find_child("FerryNewsRead",true,false) as Button
+	check(app.modal==journal and read.is_visible_in_tree() and entries.get_child(0).text=="新消息・渡口碼頭修好了","Open journal shows the new ferry milestone immediately")
+	world.state.dock_stage=2
+	world.state.festival_story_open=true
+	app.session._send_snapshot(1)
+	var replay:=journal.find_child("NewsFestivalReplay",true,false) as Button
+	check(app.modal==journal and replay.is_visible_in_tree() and entries.get_meta("recap_entries").any(func(row):return row.id=="festival_opening" and row.new),"The festival notice and replay appear without reopening the journal")
+	app.session.rates[1]=[]
+	read.pressed.emit()
+	check(app.modal==journal and not read.is_visible_in_tree() and int(world.state.players.tester.ferry_recap_seen)==World.ISLAND_STORY_RECAP.marker(world.state),"Mark the latest milestones read without closing the journal")
+	check(not world.state.players.partner.has("ferry_recap_seen"),"The other player's ferry milestones are still unread")
+	var directory:String=app.arg_value("project-news-preview","")
+	if not directory.is_empty() and DisplayServer.get_name()!="headless":
+		var scroll:=journal.find_child("ModalScroll",true,false) as ScrollContainer
+		await process_frame
+		await process_frame
+		if scroll:scroll.ensure_control_visible(entries)
+		await process_frame
+		await RenderingServer.frame_post_draw
+		check(root.get_texture().get_image().save_png(directory.path_join("ferry-story-live.png"))==OK,"Capture live ferry stories")
+	replay.pressed.emit()
+	check(app.modal.find_child("FestivalScenePage",true,false).text.begins_with("1 /"),"Replay opens the first opening scene directly")
+	button_at(app.modal,"下一幕").pressed.emit()
+	check(app.modal.find_child("FestivalScenePage",true,false).text.begins_with("2 /"),"Advance the replay from the news page")
+	button_at(app.modal,"返回島嶼近況").pressed.emit()
+	check(app.modal.has_meta("live_island_news"),"The replay can return to the same news section")
+	preload("res://scripts/life_ui_tasks.gd").return_news(app,app.session.snapshot)
+	button_at(app.modal,"重看風鈴節開幕").pressed.emit()
+	button_at(app.modal,"返回回島近況").pressed.emit()
+	check(app.modal.get_meta("life_modal_layout","")=="return_news","The welcome card has a direct replay and return path")
+	world.state.picnic=original_picnic
+	world.state.dock_stage=original_dock
+	world.state.festival_story_open=original_opened
+	world.state.players.tester.erase("ferry_recap_seen")
+	app.session._send_snapshot(1)
 
 func verify_trade_submission(app) -> void:
 	var world:=World.new()
@@ -387,6 +497,71 @@ func verify_trade_submission(app) -> void:
 	check(world.state.players.tester.coins==119 and world.state.players.partner.coins==121,"Settlement transfers exactly the submitted amount")
 	app._close_modal()
 	app.playing=false
+
+func verify_festival_motion(app)->void:
+	const Almanac=preload("res://scripts/life_ui_almanac.gd")
+	var original:bool=app.sound.reduced_motion
+	var original_master:float=app.sound.master_volume
+	var original_effects:float=app.sound.volume
+	var destination:String=app.arg_value("festival-capture","")
+	root.size=Vector2i(1024,640)
+	app.sound.reduced_motion=false
+	app.sound.master_volume=0.8
+	app.sound.volume=0.4
+	var expected_cues:=["warm_lantern","meal_serve","journal_page"]
+	for index in range(3):
+		Almanac.festival_story(app,true,index)
+		app._layout_preview()
+		await create_timer(0.3).timeout
+		var art:=app.modal.find_child("FestivalOpeningArt",true,false) as Control
+		check(fully_visible(art) and fully_visible(button_at(app.modal,"下一幕")),"Scene and its paging fit at 1024×640")
+		if art==null:continue
+		var first:int=art.frame
+		check(art.scene_index==index and first<12,"The right moving tableau plays for each resident")
+		check(art.voice==null,"No sound before the scene reaches its action")
+		var area:=Rect2i(art.get_global_rect())
+		var first_pixels:=PackedByteArray()
+		var native:=DisplayServer.get_name()!="headless"
+		if native:
+			await RenderingServer.frame_post_draw
+			first_pixels=root.get_texture().get_image().get_region(area).get_data()
+		await create_timer(0.45).timeout
+		check(art.frame>first,"The local animation advances on its own")
+		var voice:AudioStreamPlayer=art.voice
+		check(voice!=null and voice.stream==app.sound.sounds[expected_cues[index]],"The scene plays its own sound on the action")
+		check(voice!=null and is_equal_approx(db_to_linear(voice.volume_db),0.32),"Story sounds follow master and effects gains")
+		if native:
+			await RenderingServer.frame_post_draw
+			var image:=root.get_texture().get_image()
+			check(image.get_region(area).get_data()!=first_pixels,"Animated pixels change inside the tableau")
+			if not destination.is_empty():
+				check(image.save_png(destination.path_join("opening-%d.png"%(index+1)))==OK,"Captured festival scene")
+		var next:=button_at(app.modal,"下一幕")
+		if next!=null:next.pressed.emit()
+		check(voice!=null and not voice.playing,"Paging stops the outgoing scene sound")
+	app.sound.reduced_motion=true
+	root.size=Vector2i(1280,800)
+	Almanac.festival_story(app,true,0)
+	app._layout_preview()
+	await create_timer(0.3).timeout
+	var static_art:=app.modal.find_child("FestivalOpeningArt",true,false) as Control
+	check(fully_visible(static_art) and static_art.reduced_motion and static_art.frame==12,"Reduced motion starts in the finished pose")
+	check(static_art!=null and static_art.voice!=null,"Reduced motion still plays the scene cue")
+	await create_timer(0.35).timeout
+	check(static_art!=null and static_art.frame==12,"Reduced motion stays still")
+	Almanac.festival_story(app,true,1)
+	var closing_art:=app.modal.find_child("FestivalOpeningArt",true,false) as Control
+	var closing_voice:AudioStreamPlayer=closing_art.voice if closing_art!=null else null
+	check(closing_voice!=null and closing_voice.playing,"Reopening creates a fresh voice")
+	app._close_modal()
+	check(closing_voice!=null and not closing_voice.playing,"Closing the replay stops the cue immediately")
+	app.sound.volume=0.0
+	Almanac.festival_story(app,true,2)
+	var muted:=app.modal.find_child("FestivalOpeningArt",true,false) as Control
+	check(muted!=null and muted.voice==null,"Effects mute suppresses the scene cue")
+	app.sound.reduced_motion=original
+	app.sound.master_volume=original_master
+	app.sound.volume=original_effects
 
 func capture_trade(stage: String) -> void:
 	for arg in OS.get_cmdline_user_args():

@@ -1,11 +1,26 @@
 extends RefCounted
+const MUSHROOM_MAIL=preload("res://scripts/mushroom_mail.gd")
 const ISLAND_NOTES=preload("res://scripts/island_notes.gd")
+const MealBuff=preload("res://scripts/meal_buff.gd")
 const OutlyingCommissions=preload("res://scripts/outlying_commissions.gd")
 const IslandStoryRecap=preload("res://scripts/island_story_recap.gd")
 const ResidentBond=preload("res://scripts/resident_bond.gd")
 const BUILD_STYLES = preload("res://scripts/build_style_catalog.gd")
+const BARK_FRAME = preload("res://scripts/bark_frame.gd")
 const WALL_FIXTURES = preload("res://scripts/wall_fixtures.gd")
+const POSTCARDS = preload("res://scripts/travel_postcards.gd")
+const OAR_SIGN = preload("res://scripts/oar_sign.gd")
+const ROOF_FIXTURES = preload("res://scripts/roof_fixtures.gd")
 const WELCOME_SIGN = preload("res://scripts/welcome_sign.gd")
+const CHEST_HISTORY = preload("res://scripts/chest_history.gd")
+const SPRING_GARDEN = preload("res://scripts/spring_garden_day.gd")
+const SEA_BREEZE_FAIR = preload("res://scripts/sea_breeze_fair.gd")
+const AUTUMN_FEAST = preload("res://scripts/autumn_feast.gd")
+const LANTERN_STROLL = preload("res://scripts/lantern_stroll.gd")
+const WARM_LANTERN_NIGHT = preload("res://scripts/warm_lantern_night.gd")
+const BEACH_TREASURE = preload("res://scripts/beach_treasure.gd")
+const LOST_CHICKS = preload("res://scripts/lost_chicks.gd")
+const COOKING_RELAY = preload("res://scripts/cooking_relay.gd")
 
 const MineDrill=preload("res://scripts/mine_drill.gd")
 const Waterworks=preload("res://scripts/waterworks.gd")
@@ -27,15 +42,26 @@ const Collections=preload("res://scripts/collections.gd")
 const AnimalCollector=preload("res://scripts/animal_collector.gd")
 const Weather=preload("res://scripts/weather.gd")
 const Industry=preload("res://scripts/industry.gd")
+## C11 optional root `bridge_project` (no version bump; absent = legacy/complete, see stone_workshop.gd).
+const StoneWorkshop=preload("res://scripts/stone_workshop.gd")
 const Forestry=preload("res://scripts/forestry.gd")
 const Logistics=preload("res://scripts/logistics.gd")
 const ConstructionHistory=preload("res://scripts/construction_history.gd")
+const RoomEnclosure=preload("res://scripts/room_enclosure.gd")
 const CookingQueue=preload("res://scripts/cooking_queue.gd")
 const FlowerNursery=preload("res://scripts/flower_nursery.gd")
 const SaltPan=preload("res://scripts/salt_pan.gd")
 const OrderCatalog=preload("res://scripts/order_catalog.gd")
 ## No cycle: item_catalog.gd preloads nothing and reads World.NAMES via load().
 const ItemCatalog=preload("res://scripts/item_catalog.gd")
+const EdgeGrid=preload("res://scripts/edge_grid.gd")
+## 27: persistent edge layer (C02-C04). Every layer (home = top level, plus every
+## region) carries `edges`: sparse {edge_key:row}. Keys are canonical
+## EdgeGrid.decode(key,size) keys; rows are exactly {"type":"edge_wall"|"edge_window",
+## "owner"} or {"type":"edge_door","owner","open":bool}, owner a live player token.
+## Older saves get an empty `edges` on the top level and on every stored region
+## (old tile objects untouched). Empty placeholders from a current-world fixture
+## are accepted, while prior versions with edge rows are rejected.
 ## 26: chapter 4 Beimen cooperative salt pans. New region "beimen" (appended to
 ## Regions.ALL), items sea_salt/salt_wheel_kit/salt_rake_kit/salt_grilled_fish,
 ## recipe salt_grilled_fish and the required root `salt_pan` (SaltPan.valid,
@@ -68,10 +94,12 @@ const ItemCatalog=preload("res://scripts/item_catalog.gd")
 ## shape, Industry.PROCESS recipes filtered to the station type).
 ## 20: optional stove `cooking` queue state (CookingQueue canonical shape).
 ## 19: construction history action "blueprint" (builds 1..768). Migration
-## cutoffs below are literal and must NOT follow VERSION (salt <26, flowers <25, bakery <24,
+## cutoffs below are literal and must NOT follow VERSION (edges <27, salt <26, flowers <25, bakery <24,
 ## public kitchen <23, material box id <22, processing queue <21, cooking queue
 ## <20, blueprint history <19, undo history <18, auto roofs <17).
-const VERSION:=26
+const VERSION:=27
+const EDGE_VERSION:=27
+const EDGE_TYPES:=["edge_wall","edge_door","edge_window"]
 const EGG_BASKET_CAPACITY:=6
 const BLUEPRINT_HISTORY_VERSION:=19
 const COOKING_QUEUE_VERSION:=20
@@ -88,6 +116,19 @@ const BAKERY_RECIPES:=["pumpkin_pie"]
 ## Exact public_kitchen key set and per-meal requirement (= inclusive cap).
 const KITCHEN_KEYS:=["stove","seats","meals","opened"]
 const KITCHEN_MEALS:={"soup":4,"bread":2,"salad":2}
+## C12/D04 pre-mill flour at Xiaoli's stall. Per-account, optional player field
+## `flour_stall`={"day":world day index,"bought":0..FLOUR_STALL_DAILY}; absent in every older save
+## (= nothing bought yet). Stock resets when the world day changes (World.flour_left()).
+const FLOUR_STALL_KEY:="flour_stall"
+const FLOUR_STALL_DAILY:=4
+const FLOUR_STALL_PRICE:=64
+## 內容設定集 §11 early sugar at the same stall. Per-account optional player field
+## `sugar_stall`={"day":world day index,"bought":0..SUGAR_STALL_DAILY}; absent in every older save
+## (= nothing bought yet). Resets when the world day changes (World.sugar_left()). Independent of the
+## 田尾 market's own `sugar_day`/`sugar_bought` record.
+const SUGAR_STALL_KEY:="sugar_stall"
+const SUGAR_STALL_DAILY:=2
+const SUGAR_STALL_PRICE:=72
 const KITCHEN_SEAT_COUNT:=2
 ## Euclidean tile distances (inclusive), compared squared on integer cells.
 const KITCHEN_STOVE_RANGE:=8
@@ -103,6 +144,26 @@ const BOX_ID_LENGTH:=32
 
 # Validate the parsed candidate before replacing a live world. Additive defaults
 # migrate older prototype saves; invalid nested records never reach game code.
+static func nursery_slots_valid(slots:Variant,crops:Dictionary)->bool:
+	if not slots is Dictionary or slots.is_empty():return false
+	for id in slots:
+		if id not in ["0","1","2","3"]:return false
+		var crop=slots[id]
+		if not crop is Dictionary or not crop.get("kind") is String or not crop.get("wet") is bool:return false
+		for field in crop:
+			if field not in ["kind","wet","growth","remaining","last_care_day","last_harvest_kind","fertility"]:return false
+		if crop.kind!="" and not crops.has(crop.kind):return false
+		var max_growth:=0.0 if crop.kind=="" else float(crops[crop.kind].time)
+		var cycles:=0 if crop.kind=="" else int(crops[crop.kind].get("cycles",1))
+		if not number(crop.get("growth"),0,max_growth) or not whole(crop.get("remaining"),cycles):return false
+		if crop.kind=="":
+			if crop.wet:return false
+		elif int(crop.remaining)<1:return false
+		if crop.has("last_care_day") and not whole(crop.last_care_day):return false
+		if crop.has("fertility") and not whole(crop.fertility,1):return false
+		if crop.has("last_harvest_kind") and (not crop.last_harvest_kind is String or not crops.has(crop.last_harvest_kind)):return false
+	return true
+
 static func number(value,minimum:float=0.0,maximum:float=1000000000000.0) -> bool:
 	return (value is float or value is int) and is_finite(float(value)) and float(value)>=minimum and float(value)<=maximum
 
@@ -166,6 +227,46 @@ static func valid_outlying_commissions(s:Dictionary) -> bool:
 			if not entry.get("done") is bool or not entry.done:return false
 	return true
 
+const GATHER_ITEMS := ["wood","fiber","sapling","resin","hardwood","stone",Regions.Bamboo.ITEM]
+
+static func valid_woodland_stock(state:Dictionary,size:Vector2i)->bool:
+	var rules=preload("res://scripts/woodland_stock.gd")
+	var stock=state.get(rules.KEY)
+	var removed=state.get("removed")
+	if not stock is Dictionary or stock.size()!=3 or not stock.get("stumps") is Dictionary or not removed is Dictionary:return false
+	var cycle:int=rules.cycle_at(float(state.time))
+	if not whole(stock.get("cycle"),cycle) or not whole(stock.get("grown"),rules.TREES_PER_CYCLE):return false
+	if stock.stumps.size()>rules.GROVE.size.x*rules.GROVE.size.y:return false
+	for tile in stock.stumps:
+		if not location(tile,size) or removed.get(tile)!=true:return false
+		var axis:PackedStringArray=tile.split(",")
+		if not rules.GROVE.has_point(Vector2i(int(axis[0]),int(axis[1]))):return false
+		if not whole(stock.stumps[tile],cycle+1) or int(stock.stumps[tile])<1:return false
+	return true
+
+static func valid_gather_drops(value:Variant,size:Vector2i,now:float,players:Dictionary) -> bool:
+	if not value is Dictionary:return false
+	for region in value:
+		if region not in Regions.ALL or not value[region] is Dictionary:return false
+		for tile in value[region]:
+			if not location(tile,size):return false
+			var drop:Variant=value[region][tile]
+			if not drop is Dictionary or drop.size() not in [2,4] or not number(drop.get("ready_at"),0,now+1.0):return false
+			var items:Variant=drop.get("items")
+			if not items is Dictionary or items.is_empty():return false
+			for item in items:
+				if item not in GATHER_ITEMS or not whole(items[item],float(ItemCatalog.saved_count_limit(item))) or items[item]<=0:return false
+				if item==Regions.Bamboo.ITEM:
+					if region!=Regions.Bamboo.REGION:return false
+					if not Regions.Bamboo.CLUMPS.any(func(cell:Vector2i):return Regions.Bamboo.clump_key(cell)==tile):return false
+			if drop.size()==4:
+				var owner:Variant=drop.get("reserved_for")
+				var reserved:Variant=drop.get("reserved")
+				if not owner is String or not players.has(owner) or not reserved is Dictionary or reserved.is_empty():return false
+				for item in reserved:
+					if not items.has(item) or not whole(reserved[item],float(items[item])) or reserved[item]<=0:return false
+	return true
+
 static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dictionary,size:Vector2i,tree_time:float) -> bool:
 	var version = s.get("version",0)
 	if not whole(version,VERSION) or version < 1:return false
@@ -174,10 +275,23 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 		if s.has("regions"):return false
 		s.regions = {Regions.LANYANG:Regions.fresh()}
 	if not s.get("regions") is Dictionary:return false
+	# Version 27: add the empty edge layers FIRST, before any region is touched
+	# below (the pre-current deep-mine check reads every Regions.LAYERS field, and
+	# the later region-size check counts `edges`). Regions created further down by
+	# Regions.fresh() already carry their own empty layer. A version-1 region was
+	# just created fresh above. An older save may only carry empty placeholders.
+	if int(version)<EDGE_VERSION:
+		if not s.get("edges",{}) is Dictionary or not s.get("edges",{}).is_empty():return false
+		s.edges={}
+		if version!=1:
+			for region in s.regions:
+				var stored=s.regions[region]
+				if not stored is Dictionary or not stored.get("edges",{}) is Dictionary or not stored.get("edges",{}).is_empty():return false
+			for region in s.regions:s.regions[region].edges={}
 	# T067 deep floors B6–B15 have no save version of their own. A pre-current save
 	# may only carry them as untouched empty layers; drop those before the
 	# historical region-count checks and re-add them below.
-	if int(version)<VERSION:
+	if int(version)<SALT_VERSION:
 		for region in Regions.DEEP_MINES:
 			if not s.regions.has(region):continue
 			var layer=s.regions[region]
@@ -220,6 +334,8 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 	# entered after mine_depths.unlocked passes 5, which Mines.valid checks below.
 	for region in Regions.DEEP_MINES:
 		if not s.regions.has(region):s.regions[region]=Regions.fresh()
+	if not s.regions.has(Regions.Cart.REGION):s.regions[Regions.Cart.REGION]=Regions.fresh()
+	if s.regions.get(Regions.Cart.REGION)!=Regions.fresh():return false
 	if s.regions.size() != Regions.ALL.size()-1:return false
 	if version<8:
 		if not s.has("bobo_workshop"):
@@ -231,7 +347,20 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 			for person in players.values():
 				if person is Dictionary and person.get("stories") is Dictionary and not person.stories.has("bobo"):person.stories.bobo=0
 	if not validate_region(s,crops,build,recipes,size,tree_time):return false
+	for token:String in s.players:
+		var person:Dictionary=s.players[token]
+		if not person.has(Industry.HOME_REST_FIELD):continue
+		var rest_cell:Variant=person[Industry.HOME_REST_FIELD]
+		if not rest_cell is String:return false
+		var rest_bed:Dictionary=s.objects.get(rest_cell,{})
+		if rest_bed.get("type")!=Industry.CEDAR_BED or rest_bed.get("owner")!=token or Industry.square_part(rest_bed)!=0:return false
+	var active_carts:Dictionary={}
+	for cart:Dictionary in s.objects.values():
+		if not cart.has("market_cart_open"):continue
+		if active_carts.has(cart.owner) or not s.players.get(cart.owner,{}).get("market",{}).get("pending",false):return false
+		active_carts[cart.owner]=true
 	var resident_goals:=preload("res://scripts/resident_goals.gd")
+	var garden_seats:Dictionary={}
 	for person:Dictionary in s.players.values():
 		var seat:Dictionary=person.get(resident_goals.MASTER_BENCH_SEAT,{})
 		if not seat.is_empty():
@@ -240,7 +369,34 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 			var bench:Dictionary=objects.get(seat.cell,{})
 			if bench.get("type")==Industry.FOOT_BATH:
 				if Industry.square_part(bench)!=0 or region!="home":return false
+			elif bench.get("type")==Industry.BEACH_CHAIR:
+				var seat_id:=region+":"+str(seat.cell)
+				if Industry.square_part(bench)!=0 or bench.get("beach_chair_folded",false) or int(seat.side)!=0 or garden_seats.has(seat_id):return false
+				garden_seats[seat_id]=true
+			elif bench.get("type")==Industry.BAMBOO_LOUNGER:
+				var seat_id:=region+":"+str(seat.cell)
+				if Industry.square_part(bench)!=0 or int(seat.side)!=0 or garden_seats.has(seat_id):return false
+				garden_seats[seat_id]=true
+			elif bench.get("type")==Industry.HOLLOW_BED:
+				var seat_id:=region+":"+str(seat.cell)
+				if Industry.square_part(bench)!=0 or int(seat.side)!=0 or garden_seats.has(seat_id):return false
+				garden_seats[seat_id]=true
+			elif bench.get("type") in [Industry.SHELL_TABLE]+Industry.FOUR_SEAT_TABLES:
+				var seat_id:="%s:%s:%d"%[region,seat.cell,int(seat.side)]
+				var seats:=4 if bench.type in Industry.FOUR_SEAT_TABLES else 2
+				if int(seat.side)>=seats or Industry.square_part(bench)>0 or garden_seats.has(seat_id):return false
+				garden_seats[seat_id]=true
+			elif bench.get("type") in [resident_goals.GARDEN_CHAIR,Industry.MUSHROOM_STOOL,Industry.WOOD_CHAIR,Industry.INDIGO_CUSHION]:
+				var seat_id:=region+":"+str(seat.cell)
+				if int(seat.side)!=0 or garden_seats.has(seat_id):return false
+				garden_seats[seat_id]=true
+			elif resident_goals.aru_public_bench(bench):
+				if region!="home" or int(seat.side)>=resident_goals.ARU_PARK_SEAT_X.size():return false
 			elif bench.get("type") not in resident_goals.DOUBLE_BENCHES or bench.get("bench_end",false) or int(seat.side)>1:return false
+			if bench.type in resident_goals.INDEPENDENT_TWO_SEATS or resident_goals.aru_public_bench(bench):
+				var seat_id:="%s:%s:%d"%[region,seat.cell,int(seat.side)]
+				if garden_seats.has(seat_id):return false
+				garden_seats[seat_id]=true
 			if bench.type==resident_goals.MASTER_BENCH and region!="home":return false
 	if not resident_goals.valid_mural(s):return false
 	if s.has(resident_goals.GARDEN_KEY):
@@ -259,6 +415,9 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 	if s.has(resident_goals.SHEEP_PLAY_KEY):
 		var play=s[resident_goals.SHEEP_PLAY_KEY]
 		if not play is Dictionary or play.size()!=2 or not resident_goals.SHEEP_TOYS.has(play.get("toy")) or not number(play.get("at"),0,float(s.time)):return false
+	if not valid_gather_drops(s.get("gather_drops",{}),size,float(s.time),s.players):return false
+	if s.has("woodland_stock") and not valid_woodland_stock(s,size):return false
+	if not Regions.Bamboo.valid(s):return false
 	if not ISLAND_NOTES.valid(s.get("island_notes",[]),float(s.time)):return false
 	if s.has("island_note_revision") and (not whole(s.island_note_revision,ISLAND_NOTES.REVISION_LIMIT) or int(s.island_note_revision)<s.get("island_notes",[]).size()):return false
 	if not s.get("players") is Dictionary:return false
@@ -279,6 +438,13 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 	# T071 家園布置題（不升版）：state.showcase 與 player.showcase 都可省略；
 	# 存在時由 Showcase.valid 檢查型別、上限、主題／道具種類、地塊範圍與一致性。
 	if not preload("res://scripts/showcase.gd").valid(s):return false
+	if not AUTUMN_FEAST.valid(s):return false
+	if not WARM_LANTERN_NIGHT.valid(s):return false
+	if not BEACH_TREASURE.valid(s):return false
+	if not COOKING_RELAY.valid(s):return false
+	if not LOST_CHICKS.valid(s):return false
+	if not LANTERN_STROLL.valid(s):return false
+	if not Regions.Cart.valid(s):return false
 	# T071 紀念票兌換裝飾（不升版）：player.souvenir 可省略；存在時由 SouvenirExchange.valid
 	# 檢查型別、已知兌換品、spent＝兌換次數×價目、且不超過三個活動已驗好的累計紀念票。
 	if not preload("res://scripts/souvenir_exchange.gd").valid(s):return false
@@ -303,6 +469,7 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 		if version < 6:person.mine_energy=100
 		if not whole(person.get("mine_energy"),100):return false
 		if person.has("ginger_warm_until") and not number(person.ginger_warm_until,0,float(s.time)+480.0):return false
+		if not MealBuff.valid(person,float(s.time)):return false
 		if person.has("blue_outfit") and not person.blue_outfit is bool:return false
 		if person.has("blue_outfit_unlocked") and not person.blue_outfit_unlocked is bool:return false
 		if person.region in Mines.IDS and Mines.IDS.find(person.region)>=int(s.mine_depths.get("unlocked",0)):return false
@@ -318,6 +485,7 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 			projection[field] = local[field]
 		projection.community = {"table":""}
 		if not validate_region(projection,crops,build,recipes,size,tree_time):return false
+		if projection.objects.values().any(func(obj):return obj.type==Industry.COAST_CART):return false
 		for field in ["crops","objects","ground","roofs","forest","removed","damage"]:
 			for key in local[field]:
 				var parts: PackedStringArray = key.split(",")
@@ -326,6 +494,11 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 				if field not in ["removed","damage"] and (Regions.water(tile,region) or Regions.protected(tile,region)):return false
 				if region==Regions.Springs.REGION and field not in ["removed","damage"]:
 					if field!="objects" or local[field][key].get("type")!=resident_goals.STONE_BENCH:return false
+	# Version 27 edge layers: home is the top level, every region its own layer; all
+	# share the global player table (owners are persistent players) and map size.
+	if not edge_layer_valid(s.get("edges"),s.players,size):return false
+	for region in Regions.ALL:
+		if region!=Regions.HOME and not edge_layer_valid(s.regions[region].get("edges"),s.players,size):return false
 	if not discovery_groups_valid(s,{"fish":Collections.FISH,"crops":crops,"meals":recipes,"shore":Collections.SHORE_FINDS},true):return false
 	if not auto_roofs_valid(s,version):return false
 	if version < 3 and not s.has("lanyang_life"):s.lanyang_life=LanyangLife.fresh()
@@ -405,6 +578,9 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 	if version<BLUEPRINT_HISTORY_VERSION:
 		for token in s.construction.last:
 			if s.construction.last[token].action=="blueprint":return false
+	if version<EDGE_VERSION:
+		for entry:Dictionary in s.construction.last.values():
+			if entry.action in ["build_edge","remove_edge","edge_blueprint"] or entry.record.get("changes",{}).has("edges"):return false
 	# Version 20: stove cooking queues were already validated per layer by
 	# validate_region (which read the ORIGINAL input version). Record ids must
 	# also be unique across every stove in the world. Legacy `stove.job` is kept
@@ -426,6 +602,7 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 		if s.has("public_kitchen"):return false
 		s.public_kitchen=public_kitchen_fresh()
 	if not public_kitchen_valid(s,size):return false
+	if not preload("res://scripts/mill_restoration.gd").valid(s):return false
 	# T067 共餐桌保溫底座（不升版）：state.table_warmer 可省略；存在時只能是
 	# {"installed":true}，且需已野餐、共餐桌有位置；保溫一輪（hotpot 有 total）需已加裝。
 	# Top level only, like the public kitchen: region projections replace community.
@@ -478,6 +655,29 @@ static func validate(s:Dictionary,crops:Dictionary,build:Dictionary,recipes:Dict
 	if not preload("res://scripts/transaction_ledger.gd").valid(s,Regions.ALL):return false
 	# Stamp only after every region projection/history check used the input version.
 	s.version = VERSION
+	return true
+
+## One sparse edge layer. Exact, no repair: Dictionary; every key a canonical
+## EdgeGrid key inside `size` (decode rejects non-String, S/E letters, signs, leading
+## zeros, whitespace, off-map); every row a Dictionary with exactly type + owner
+## (+ open only for edge_door, which requires it as a bool); owner is a non-empty
+## token of at most 64 characters (owner()) that exists in `players`. Size can never
+## exceed the number of real edges 2*area+width+height (distinct canonical keys),
+## which is also checked so a malformed layer cannot be oversized. No per-player cap.
+static func edge_layer_valid(layer:Variant,players:Variant,size:Vector2i) -> bool:
+	if not layer is Dictionary or not players is Dictionary:return false
+	if layer.size()>2*size.x*size.y+size.x+size.y:return false
+	for key in layer:
+		if EdgeGrid.decode(key,size).is_empty():return false
+		var row:Variant=layer[key]
+		if not row is Dictionary:return false
+		var kind:Variant=row.get("type")
+		if not kind is String or kind not in EDGE_TYPES:return false
+		var token:Variant=row.get("owner")
+		if not owner(token) or not players.has(token):return false
+		if kind=="edge_door":
+			if row.size()!=3 or not row.get("open") is bool:return false
+		elif row.size()!=2 or row.has("open"):return false
 	return true
 
 ## Unregistered public kitchen: no stove, no seats, nothing contributed, closed.
@@ -534,7 +734,10 @@ static func public_kitchen_valid(s:Dictionary,size:Vector2i) -> bool:
 	var players = s.get("players")
 	if not objects is Dictionary or not players is Dictionary:return false
 	var stove = objects.get(data.stove)
-	if not stove is Dictionary or stove.get("type")!=KITCHEN_STOVE_TYPE:return false
+	# C12: the donated stove is the early 1x1 小石灶 or the 2x2 公共廚房灶台 (anchor cell only; the other
+	# three cells are validated with the rest of the footprint by the construction rules).
+	if not stove is Dictionary or stove.get("type") not in [KITCHEN_STOVE_TYPE,Industry.KITCHEN_STOVE]:return false
+	if stove.get("type")==Industry.KITCHEN_STOVE and int(stove.get(Industry.KITCHEN_STOVE_PART,0))!=0:return false
 	var donor = stove.get("owner")
 	if not owner(donor) or not players.has(donor):return false
 	if (stove_cell-table).length_squared()>KITCHEN_STOVE_RANGE*KITCHEN_STOVE_RANGE:return false
@@ -574,7 +777,7 @@ static func public_kitchen_public(state:Dictionary) -> Dictionary:
 static func cooking_valid(s:Dictionary,obj:Dictionary,recipes:Dictionary) -> bool:
 	var version = s.get("version",0)
 	if not whole(version,VERSION) or int(version)<COOKING_QUEUE_VERSION:return false
-	if obj.get("type")!="stove" or obj.has("job"):return false
+	if not Industry.is_stove(str(obj.get("type",""))) or obj.has("job"):return false
 	var cooking = obj.cooking
 	if not cooking is Dictionary:return false
 	if not CookingQueue.validate(cooking,recipes,float(s.time)):return false
@@ -832,7 +1035,7 @@ static func auto_roofs_valid(s:Dictionary,version) -> bool:
 			if roof.type!="roof":return false
 			if version<17:return false
 			var below = layer.ground.get(key)
-			if not below is Dictionary or below.get("type")!="floor":return false
+			if not RoomEnclosure.is_floor_piece(below):return false
 			if not s.players.has(roof.owner):return false
 	return true
 
@@ -870,8 +1073,13 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 	for event in s.events:
 		if not event is String:return false
 	if not whole(s.donations.get("wood"),30) or not whole(s.donations.get("stone"),10):return false
+	if not StoneWorkshop.valid(s):return false
 	for token in s.players:
 		var personal = s.players[token]
+		if personal is Dictionary and personal.has(MUSHROOM_MAIL.RECORD) and not MUSHROOM_MAIL.valid(personal[MUSHROOM_MAIL.RECORD]):return false
+		if personal is Dictionary and personal.has(Industry.DESK_DRAFT_FIELD):
+			var draft:Variant=personal[Industry.DESK_DRAFT_FIELD]
+			if not draft is String or draft.is_empty() or ISLAND_NOTES.clean(draft)!=draft:return false
 		if personal is Dictionary and personal.has("news_seen") and not whole(personal.news_seen,ISLAND_NOTES.news_project_limit()):return false
 		if personal is Dictionary and personal.has("ferry_recap_seen"):
 			var marker:Variant=personal.ferry_recap_seen
@@ -896,12 +1104,17 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		if p.has("bonds") and not ResidentBond.valid(p.bonds,float(s.time)):return false
 		# T066「一起做的事」：可省略；存在時需為有行動的階、合法選項，且好感已到那一階。
 		if p.has("bond_goals") and not preload("res://scripts/resident_goals.gd").valid(p.bond_goals,p):return false
+		# C12 D05 森林菇湯委託：可省略；存在時是 1..3 的階段，且渡口公告板已修好。
+		var forest_commission:=preload("res://scripts/forest_mushroom_commission.gd")
+		if p.has(forest_commission.KEY) and not forest_commission.valid(p[forest_commission.KEY],s):return false
 		# T066 第三批紀念小物：可省略；存在時只能是已完成行動的紀念小物（值為 true）。
 		var goals:=preload("res://scripts/resident_goals.gd")
+		if p.has(goals.DIANDIAN_SEAT_KEY) and (not p[goals.DIANDIAN_SEAT_KEY] is bool or not p[goals.DIANDIAN_SEAT_KEY] or not goals.done(p,"diandian").has(1) or goals.Bond.stage(p,"diandian")<2):return false
 		if p.has(goals.MASTER_BENCH_SEAT):
 			var seat=p[goals.MASTER_BENCH_SEAT]
 			if not seat is Dictionary or seat.size()!=2 or not seat.get("cell") is String or not whole(seat.get("side"),3):return false
 			if not seat.cell.is_valid_filename():return false
+			seat.side=int(seat.side)
 		if p.has(goals.VOYAGE_START) and (not number(p[goals.VOYAGE_START],0,float(s.time)) or p.get("region","home")!="home" or goals.Bond.stage(p,"achao")<3):return false
 		if p.has(goals.VOYAGE_CAPTAIN) and (not p.has(goals.VOYAGE_START) or not owner(p[goals.VOYAGE_CAPTAIN])):return false
 		if p.has(goals.VOYAGE_PHOTO) and (not p[goals.VOYAGE_PHOTO] is bool or not p[goals.VOYAGE_PHOTO] or goals.Bond.stage(p,"achao")<4):return false
@@ -912,6 +1125,7 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		if p.has(goals.SHEEP_SHELTER_KEY) and (not whole(p[goals.SHEEP_SHELTER_KEY],goals.SHEEP_COMFORT_MASK) or goals.Bond.stage(p,"mianmian")<2):return false
 		if p.has(goals.TEA_CHAIR_KEY) and (not p[goals.TEA_CHAIR_KEY] is String or not goals.TEA_CHAIRS.has(p[goals.TEA_CHAIR_KEY]) or goals.Bond.stage(p,"chacha")<4):return false
 		if p.has(goals.TEA_SETUP_KEY) and (p[goals.TEA_SETUP_KEY] not in goals.TEA_AXES or goals.Bond.stage(p,"chacha")<1):return false
+		if p.has(goals.TEA_TOPICS_KEY) and not goals.valid_tea_topics(p[goals.TEA_TOPICS_KEY],p):return false
 		if p.has(goals.PAINT_INVITES_KEY) and (not goals.valid_paint_invites(p[goals.PAINT_INVITES_KEY]) or goals.Bond.stage(p,"diandian")<3):return false
 		if p.has(goals.GROWTH_KEY):
 			var tracked=p[goals.GROWTH_KEY]
@@ -923,11 +1137,18 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 			for crop_id in logbook:
 				if not crops.has(crop_id) or not logbook[crop_id] is bool or not logbook[crop_id]:return false
 		if p.has(goals.ADDRESS_KEY) and (not whole(p[goals.ADDRESS_KEY],goals.ADDRESS_DELIVERED) or goals.Bond.stage(p,"luoluo")<1):return false
+		if not goals.valid_postcard_clues(p):return false
+		if not goals.valid_future_note(p):return false
+		if p.has(goals.COURIER_CAP_KEY) and (not p[goals.COURIER_CAP_KEY] is bool or not p[goals.COURIER_CAP_KEY] or p.has(goals.WOOL_HAT_KEY) or not goals.done(p,"luoluo").has(4)):return false
 		if p.has(goals.INN_CLEAR_KEY) and (p[goals.INN_CLEAR_KEY]!=true or not p[goals.INN_CLEAR_KEY] is bool or goals.Bond.stage(p,"nuannuan")<1):return false
+		var springs:=goals.Springs
+		if p.has(springs.CRACK_KEY) and (not whole(p[springs.CRACK_KEY],springs.CRACK_MASK) or int(p[springs.CRACK_KEY])==0 or goals.Bond.stage(p,"nuannuan")<2):return false
 		if p.has(goals.GUEST_ROOM_KEY) and (not p[goals.GUEST_ROOM_KEY] is bool or not p[goals.GUEST_ROOM_KEY] or goals.Bond.stage(p,"nuannuan")<3):return false
 		if p.has(goals.GUEST_CLOTH_KEY) and (not p[goals.GUEST_CLOTH_KEY] is bool or not p[goals.GUEST_CLOTH_KEY] or not goals.done(p,"nuannuan").has(3)):return false
 		var bell_key:=preload("res://scripts/resident_goals.gd").BELL_INSPECT_KEY
 		if p.has(bell_key) and not whole(p[bell_key],preload("res://scripts/resident_goals.gd").BELL_INSPECT_MASK):return false
+		# T066 N03-4 最後一趟空車：可省略；存在時為有限整數 1..7，且波波好感已到第四階（JSON 浮點數正規化為 int）。
+		if not preload("res://scripts/bobo_empty_cart.gd").valid_person(p):return false
 		var rest_key:=preload("res://scripts/resident_goals.gd").REST_KIT_KEY
 		if p.has(rest_key) and not whole(p[rest_key],preload("res://scripts/resident_goals.gd").REST_KIT_MASK):return false
 		var page_key:=preload("res://scripts/resident_goals.gd").RECIPE_PAGE_KEY
@@ -938,14 +1159,43 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		if p.has(sketch_key) and not preload("res://scripts/resident_goals.gd").valid_sketches(p[sketch_key],crops):return false
 		var apron_key:=preload("res://scripts/resident_goals.gd").APRON_KEY
 		if p.has(apron_key) and (not p[apron_key] is bool or not p[apron_key] or not preload("res://scripts/resident_goals.gd").apron_unlocked(p)):return false
+		var supper_module:=preload("res://scripts/milu_supper.gd")
+		if p.has(supper_module.KEY) and not supper_module.valid(p[supper_module.KEY],p):return false # N02-4 optional supper record (strict, no migration)
 		if p.has("bond_keepsakes") and not preload("res://scripts/resident_goals.gd").valid_keepsakes(p.bond_keepsakes,p):return false
 		if p.has("market") and not preload("res://scripts/market_stall.gd").valid(p.market,float(s.time),{}):return false # T071 市集攤位（可省略）
+		if p.has("market_decor") and not preload("res://scripts/market_decor.gd").valid_for_player(p.market_decor,preload("res://scripts/resident_goals.gd").done(p,"xiaoli").has(3)):return false
+		if not preload("res://scripts/xiaoli_shop.gd").valid_save(p,preload("res://scripts/resident_goals.gd").done(p,"xiaoli").has(4)):return false
+		if p.has(SPRING_GARDEN.KEY):
+			if not p[SPRING_GARDEN.KEY] is Dictionary or not SPRING_GARDEN.valid(p[SPRING_GARDEN.KEY]):return false
+			p[SPRING_GARDEN.KEY].mask=int(p[SPRING_GARDEN.KEY].mask)
+		if p.has(SEA_BREEZE_FAIR.KEY):
+			var fair:Variant=p[SEA_BREEZE_FAIR.KEY]
+			if not fair is Dictionary or not SEA_BREEZE_FAIR.valid(fair):return false
+			fair.served=int(fair.served)
+			fair.offset=int(fair.offset)
+		if p.has("summer_market") and not preload("res://scripts/summer_market.gd").valid(p.summer_market,float(s.time)):return false # C12 D14 夏季市集食譜（可省略）
+		if p.has(FLOUR_STALL_KEY):
+			var flour_row=p[FLOUR_STALL_KEY]
+			var flour_day:=int(preload("res://scripts/weather.gd").day_index(float(s.time)))
+			if not flour_row is Dictionary or flour_row.size()!=2 or not whole(flour_row.get("day"),flour_day) or not whole(flour_row.get("bought"),FLOUR_STALL_DAILY):return false
+			flour_row.day=int(flour_row.day)
+			flour_row.bought=int(flour_row.bought)
+		if p.has(SUGAR_STALL_KEY):
+			var sugar_row=p[SUGAR_STALL_KEY]
+			var sugar_day:=int(preload("res://scripts/weather.gd").day_index(float(s.time)))
+			if not sugar_row is Dictionary or sugar_row.size()!=2 or not whole(sugar_row.get("day"),sugar_day) or not whole(sugar_row.get("bought"),SUGAR_STALL_DAILY):return false
+			sugar_row.day=int(sugar_row.day)
+			sugar_row.bought=int(sugar_row.bought)
 		if p.has("greenhouse_reported"):
 			if not p.greenhouse_reported is bool:return false
 			if p.greenhouse_reported and (p.get("greenhouse_glass_crafted")!=true or not crops.has(p.get("greenhouse_cross_season_crop",""))):return false
 		if p.has(preload("res://scripts/resident_goals.gd").CHICKEN_FED_KEY) and not number(p[preload("res://scripts/resident_goals.gd").CHICKEN_FED_KEY],0,float(s.time)):return false
+		if p.has(preload("res://scripts/resident_goals.gd").SHEEP_STEP_KEY) and not number(p[preload("res://scripts/resident_goals.gd").SHEEP_STEP_KEY],0,float(s.time)):return false
+		var hat_key:=preload("res://scripts/resident_goals.gd").WOOL_HAT_KEY
+		if p.has(hat_key) and (not p[hat_key] is bool or not p[hat_key] or not preload("res://scripts/resident_goals.gd").wool_hat_unlocked(p)):return false
 		var trade_key:=preload("res://scripts/resident_goals.gd").CROP_TRADE_KEY
 		if p.has(trade_key) and (not whole(p[trade_key],preload("res://scripts/resident_goals.gd").SEED_BOUGHT) or int(p[trade_key])<1):return false
+		if not preload("res://scripts/transaction_ledger.gd").valid_first_shop_trade(p,int(p.get(trade_key,0)),preload("res://scripts/resident_goals.gd").CROP_SOLD,preload("res://scripts/resident_goals.gd").SEED_BOUGHT,crops):return false
 		if p.has("greenhouse_glass_crafted") and not p.greenhouse_glass_crafted is bool:return false
 		if p.has("greenhouse_cross_season_crop") and (not p.greenhouse_cross_season_crop is String or not crops.has(p.greenhouse_cross_season_crop)):return false
 		if p.name.length()>12 or not number(p.get("x"),0,size.x) or not number(p.get("y"),0,size.y):return false
@@ -1004,6 +1254,16 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		if p.has("crafting_points") and not whole(p.crafting_points):return false
 		if p.has("workshop_upgraded") and typeof(p.workshop_upgraded)!=TYPE_BOOL:return false
 		if p.has("gathering_points") and not whole(p.gathering_points):return false
+		if p.has("gathering_assists") and not whole(p.gathering_assists,int(p.get("gathering_points",0))):return false
+		# D06 星砂步道海鹽包（選填、各玩家自己的）：兩個欄位成對出現，日序不超過現在、份數不超過終身上限。
+		var parcel_rules=preload("res://scripts/wangan_coast.gd")
+		if p.has(parcel_rules.SALT_PARCEL_DAY_KEY) or p.has(parcel_rules.SALT_PARCEL_TOTAL_KEY):
+			var parcel_day_now:=int(preload("res://scripts/weather.gd").day_index(float(s.time)))+1
+			if not p.has(parcel_rules.SALT_PARCEL_DAY_KEY) or not p.has(parcel_rules.SALT_PARCEL_TOTAL_KEY):return false
+			if not whole(p[parcel_rules.SALT_PARCEL_DAY_KEY],parcel_day_now) or int(p[parcel_rules.SALT_PARCEL_DAY_KEY])<1:return false
+			if not whole(p[parcel_rules.SALT_PARCEL_TOTAL_KEY],parcel_rules.SALT_PARCEL_LIFETIME) or int(p[parcel_rules.SALT_PARCEL_TOTAL_KEY])<1:return false
+			p[parcel_rules.SALT_PARCEL_DAY_KEY]=int(p[parcel_rules.SALT_PARCEL_DAY_KEY])
+			p[parcel_rules.SALT_PARCEL_TOTAL_KEY]=int(p[parcel_rules.SALT_PARCEL_TOTAL_KEY])
 		for counter in ["harvests","builds","fish_caught"]:
 			if not p.has(counter):p[counter]=0
 			if not whole(p[counter]):return false
@@ -1017,7 +1277,38 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		if not p.has("crafted_reinforced_pick"):p.crafted_reinforced_pick=int(p.inventory.get("reinforced_pick",0))>0
 		if not p.crafted_reinforced_pick is bool:return false
 		if p.has("borrowed_mine_pick") and (not p.borrowed_mine_pick is bool or (p.borrowed_mine_pick and not s.get("picnic",false))):return false
+		if not preload("res://scripts/public_tiller.gd").valid(p,s):return false
 		if p.has("mud_alcove") and (not whole(p.mud_alcove,2) or int(p.mud_alcove)<1 or not s.get("picnic",false)):return false
+		if p.has("sleepy_guardian"):
+			# 打瞌睡石像 (B4): optional per-player record; old saves simply lack it.
+			var guardian_record=p.sleepy_guardian
+			if not preload("res://scripts/sleepy_stone_guardian.gd").valid(guardian_record) or not s.get("picnic",false):return false
+			p.sleepy_guardian={"round":int(guardian_record.round),"calm":int(guardian_record.calm),"claimed":guardian_record.claimed}
+		if p.has("shy_mushroom"):
+			# 害羞菇 (B2): optional per-player record; old saves simply lack it.
+			var shy_record=p.shy_mushroom
+			if not preload("res://scripts/shy_mushroom.gd").valid(shy_record) or not s.get("picnic",false):return false
+			p.shy_mushroom={"stage":int(shy_record.stage),"claimed":shy_record.claimed}
+		if p.has("stone_crab"):
+			# 石殼蟹 (B5): optional per-player record; old saves simply lack it. B5 must be open.
+			var crab_record=p.stone_crab
+			# mine_depths is validated later (Mines.valid), so read it defensively here.
+			var crab_depths=s.get("mine_depths")
+			if not crab_depths is Dictionary or not whole(crab_depths.get("unlocked")) or int(crab_depths.unlocked)<5:return false
+			if not preload("res://scripts/stone_shelled_crab.gd").valid(crab_record) or not s.get("picnic",false):return false
+			p.stone_crab={"stage":int(crab_record.stage),"claimed":crab_record.claimed}
+		var porter:=preload("res://scripts/lost_porter_mouse.gd")
+		if p.has(porter.FIELD):
+			var depths:Variant=s.get("mine_depths")
+			if not depths is Dictionary or not whole(depths.get("unlocked")) or int(depths.unlocked)<porter.DEPTH:return false
+			if not s.get("picnic",false) or not porter.valid(p[porter.FIELD]):return false
+			p[porter.FIELD]=int(p[porter.FIELD])
+		var meadow:=preload("res://scripts/meadow_guardian.gd")
+		if p.has(meadow.FIELD):
+			var depths:Variant=s.get("mine_depths")
+			if not depths is Dictionary or not whole(depths.get("unlocked")) or int(depths.unlocked)<meadow.DEPTH:return false
+			if not s.get("picnic",false) or not meadow.valid(p[meadow.FIELD]):return false
+			p[meadow.FIELD]=int(p[meadow.FIELD])
 		if p.has("mud_duel"):
 			var duel=p.mud_duel
 			if s.get("world_mode")!="adventure" or not s.get("picnic",false) or p.has("mud_alcove") or not duel is Dictionary or duel.size()!=3:return false
@@ -1048,6 +1339,7 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		if p.has("fishing"):
 			var fish=p.fishing
 			if not fish is Dictionary or not whole(fish.get("x"),size.x-1) or not whole(fish.get("y"),size.y-1) or not number(fish.get("ready")):return false
+			if fish.has("rod") and not fish.rod in preload("res://scripts/fishing_tracking.gd").ROD_TIERS:return false
 			if fish.has("band") or fish.has("aligned_at") or fish.has("tracked"):
 				if not number(fish.get("band"),0.0,1.0) or not number(fish.get("tracked"),0.0,3.0):return false
 				if not number(fish.get("aligned_at"),float(fish.ready)):return false
@@ -1082,8 +1374,21 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 		for tile:String in s[field]:
 			var obj=s[field][tile]
 			if not obj is Dictionary or not build.has(obj.get("type")) or not owner(obj.get("owner")) or not counts(obj.get("items")):return false
-			if obj.has("placement_access") and (field!="ground" or obj.type!="floor" or obj.placement_access not in ["owner","island"]):return false
-			if obj.has("owner_visit") and (field!="ground" or obj.type!="floor" or not obj.owner_visit is bool or not obj.owner_visit):return false
+			if obj.has("cabinet_shared") and (obj.type not in [Industry.ACORN_CABINET,Industry.TEA_SNACK_SHELF] or not obj.cabinet_shared is bool or not obj.cabinet_shared):return false
+			if obj.type==Industry.TEA_SNACK_SHELF:
+				# T11: both tiers are the only stock; the generic `items` must stay empty so nothing is counted twice.
+				if field!="objects" or not obj.items.is_empty():return false
+				if not obj.has(Industry.SNACK_FIELD):obj[Industry.SNACK_FIELD]=Industry.fresh_snack_tiers()
+				if not Industry.valid_snack_tiers(obj[Industry.SNACK_FIELD],recipes):return false
+				for tier:Dictionary in obj[Industry.SNACK_FIELD]:
+					for item:String in tier.keys():tier[item]=int(tier[item])
+			elif obj.has(Industry.SNACK_FIELD):return false
+			if obj.type==Industry.ACORN_CABINET:
+				if field!="objects" or obj.items.size()>Industry.CABINET_SLOTS:return false
+				for item:String in obj.items:
+					if int(obj.items[item])<=0 or not ItemCatalog.is_known(item):return false
+			if obj.has("placement_access") and (field!="ground" or not RoomEnclosure.is_floor_kind(obj.type) or obj.placement_access not in ["owner","island"]):return false
+			if obj.has("owner_visit") and (field!="ground" or not RoomEnclosure.is_floor_kind(obj.type) or not obj.owner_visit is bool or not obj.owner_visit):return false
 			if obj.has("visit_guest"):
 				var visitor=obj.visit_guest
 				if obj.get("owner_visit")!=true or not owner(visitor) or visitor==obj.owner or not s.players.has(visitor):return false
@@ -1097,37 +1402,166 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 			if obj.has("loom_part") and obj.type!="loom":return false
 			if obj.has("furnace_part") and obj.type!="glass_furnace":return false
 			if obj.has("kiln_part") and obj.type!=Industry.CLAY_KILN:return false
-			if obj.has("collector_count") or obj.has("collector_animal") or obj.has("collector_count_quality"):
+			if obj.has("collector_count") or obj.has("collector_animal") or obj.has("collector_count_quality") or obj.has("collector_items"):
 				if field!="objects" or obj.type!=Industry.ANIMAL_COLLECTOR or not obj.get("collector_animal") is String:return false
-				var coords:=tile.split(",")
-				var cell:=Vector2i(int(coords[0]),int(coords[1]))
-				if not AnimalCollector.in_range(cell,obj.collector_animal) or not whole(obj.get("collector_count"),AnimalCollector.CAPACITY):return false
-				if obj.has("collector_count_quality"):
-					if not whole(obj.collector_count_quality,int(obj.collector_count)):return false
-				if AnimalCollector.bound_elsewhere(s.objects,obj.collector_animal,tile):return false
+				if obj.collector_animal==AnimalCollector.PEN:
+					# C24 pen-bound basket: per-item counts only. Enclosure topology and other
+					# collectors are not validated, because walls change after binding.
+					if not whole(obj.get("collector_count"),AnimalCollector.CAPACITY) or not AnimalCollector.valid_pen_basket(obj):return false
+				else:
+					if obj.has("collector_items"):return false
+					var coords:=tile.split(",")
+					var cell:=Vector2i(int(coords[0]),int(coords[1]))
+					if not AnimalCollector.in_range(cell,obj.collector_animal) or not whole(obj.get("collector_count"),AnimalCollector.CAPACITY):return false
+					if obj.has("collector_count_quality"):
+						if not whole(obj.collector_count_quality,int(obj.collector_count)):return false
+					if AnimalCollector.bound_elsewhere(s.objects,obj.collector_animal,tile):return false
 				obj.collector_count=int(obj.collector_count)
+			if obj.type=="table" and obj.items.keys().any(func(item):return item in Industry.WOOD_TABLE_DISPLAY):
+				if field!="objects" or obj.items.size()!=1 or int(obj.items.values()[0])!=1:return false
+			if obj.type in [Industry.MUSHROOM_STOOL,Industry.HEDGEHOG_BASKET] and (field!="objects" or not obj.items.is_empty()):return false
+			if obj.type==Industry.SHELL_TABLE:
+				if field!="objects" or obj.items.size()>1:return false
+				for item in obj.items:
+					if not ItemCatalog.is_known(item) or not whole(obj.items[item],1) or int(obj.items[item])!=1:return false
 			if obj.type==Industry.ANIMAL_COLLECTOR and (field!="objects" or not obj.items.is_empty()):return false
 			if obj.has("dye") and (field!="objects" or obj.type not in Industry.DYEABLE_FURNITURE or not obj.dye is String or not Industry.FURNITURE_DYES.has(obj.dye)):return false
 			if obj.has("dye_part") and obj.type!=Industry.DYE_TABLE:return false
 			if obj.has("assembly_part") and obj.type!=Industry.ASSEMBLY_TABLE:return false
+			if obj.has("stone_bench_part") and obj.type!=Industry.STONE_WORKBENCH:return false
+			if obj.has(Industry.KITCHEN_STOVE_PART) and obj.type!=Industry.KITCHEN_STOVE:return false
+			if obj.has("stone_bench_vertical") and (obj.type!=Industry.STONE_WORKBENCH or not obj.stone_bench_vertical is bool):return false
 			if obj.has("screen_part") and obj.type!=Industry.FABRIC_SCREEN:return false
 			if obj.has("screen_vertical") and (obj.type!=Industry.FABRIC_SCREEN or not obj.screen_vertical is bool):return false
 			if obj.has("bath_part") and obj.type!=Industry.FOOT_BATH:return false
 			if obj.has("bath_vertical") and (obj.type!=Industry.FOOT_BATH or not obj.bath_vertical is bool):return false
 			if obj.has("luggage_part") and obj.type!=Industry.LUGGAGE_RACK:return false
 			if obj.has("luggage_vertical") and (obj.type!=Industry.LUGGAGE_RACK or not obj.luggage_vertical is bool):return false
+			if obj.has(MUSHROOM_MAIL.RECORD) or (obj.type in [Industry.MUSHROOM_POST,Industry.QUIET_BIRDHOUSE] and (field!="objects" or not obj.items.is_empty())):return false
+			if obj.has("leaf_desk_part") and obj.type!=Industry.LEAF_DESK:return false
+			if obj.has("leaf_desk_vertical") and (obj.type!=Industry.LEAF_DESK or not obj.leaf_desk_vertical is bool):return false
+			if obj.has(Industry.DESK_DRAFT_FIELD):return false
+			if obj.has("observation_part") and obj.type!=Industry.OBSERVATION_DESK:return false
+			if obj.has("observation_vertical") and (obj.type!=Industry.OBSERVATION_DESK or not obj.observation_vertical is bool):return false
+			if obj.has("seed_cabinet_part") and obj.type!=Industry.SEED_CABINET:return false
+			if obj.has("seed_cabinet_vertical") and (obj.type!=Industry.SEED_CABINET or not obj.seed_cabinet_vertical is bool):return false
+			if obj.has("nursery_box_part") and obj.type!=Industry.NURSERY_BOX:return false
+			if obj.has("fish_counter_part") and obj.type!=Industry.COAST_FISH_COUNTER:return false
+			if obj.has("fish_counter_vertical") and (obj.type!=Industry.COAST_FISH_COUNTER or not obj.fish_counter_vertical is bool):return false
+			if obj.has("tea_cabinet_part") and obj.type!=Industry.TEA_DISPLAY_CABINET:return false
+			if obj.has("tea_cabinet_vertical") and (obj.type!=Industry.TEA_DISPLAY_CABINET or not obj.tea_cabinet_vertical is bool):return false
+			if obj.has("awning_part") and obj.type!=Industry.COAST_AWNING:return false
+			if obj.has("awning_vertical") and (obj.type!=Industry.COAST_AWNING or not obj.awning_vertical is bool):return false
+			# C13: a legacy 1x1 mill has neither field. A new 3x3 mill carries `mill_part` 0..8 and the same
+			# `mill_facing` 0..3 on all nine cells (the nine-cell group is verified in the footprint block below).
+			if obj.has(Industry.MILL_PART) and (obj.type!=Industry.MILL or field!="objects"):return false
+			if obj.has(Industry.MILL_FACING) and (obj.type!=Industry.MILL or not obj.has(Industry.MILL_PART) or not whole(obj[Industry.MILL_FACING],Industry.MILL_FACING_COUNT-1)):return false
+			if obj.has(Industry.MILL_PART) and not obj.has(Industry.MILL_FACING):return false
+			if obj.has("imperfect_pavilion_part") and obj.type!=Industry.IMPERFECT_TEA_PAVILION:return false
+			if obj.has("imperfect_pavilion_vertical"):return false
+			if obj.has("market_cart_part") and obj.type!=Industry.COAST_CART:return false
+			if obj.has("market_cart_open") and (field!="objects" or obj.type!=Industry.COAST_CART or Industry.square_part(obj)!=0 or not obj.market_cart_open is bool or not obj.market_cart_open):return false
+			if obj.has("register_part") and obj.type!=Industry.COAST_REGISTER:return false
+			if obj.has("register_vertical") and (obj.type!=Industry.COAST_REGISTER or not obj.register_vertical is bool):return false
+			if obj.has("rounded_table_part") and obj.type!=Industry.ROUNDED_TABLE:return false
+			if obj.has("rounded_table_vertical") and (obj.type!=Industry.ROUNDED_TABLE or not obj.rounded_table_vertical is bool):return false
+			if obj.has("bookcase_part") and obj.type!=Industry.GRID_BOOKCASE:return false
+			if obj.has("cedar_bed_part") and obj.type!=Industry.CEDAR_BED:return false
+			if obj.has("cedar_bed_vertical") and (obj.type!=Industry.CEDAR_BED or not obj.cedar_bed_vertical is bool):return false
+			if obj.has("bookcase_vertical") and (obj.type!=Industry.GRID_BOOKCASE or not obj.bookcase_vertical is bool):return false
+			if obj.has("tool_board_part") and obj.type!=WALL_FIXTURES.TOOL_BOARD:return false
+			if obj.has("tool_board_vertical"):return false
+			if obj.has(WALL_FIXTURES.TOOL_BOARD_FIELD):
+				if obj.type!=WALL_FIXTURES.TOOL_BOARD or Industry.square_part(obj)!=0 or not WALL_FIXTURES.valid_tool_board_tools(obj[WALL_FIXTURES.TOOL_BOARD_FIELD]):return false
+			if obj.has("riverside_screen_part") and obj.type!=Industry.RIVERSIDE_SCREEN:return false
+			if obj.has("riverside_screen_vertical") and (obj.type!=Industry.RIVERSIDE_SCREEN or not obj.riverside_screen_vertical is bool):return false
+			if obj.has(Industry.RIVERSIDE_FOLDED_FIELD) and (field!="objects" or obj.type!=Industry.RIVERSIDE_SCREEN or typeof(obj[Industry.RIVERSIDE_FOLDED_FIELD])!=TYPE_BOOL or not obj[Industry.RIVERSIDE_FOLDED_FIELD]):return false
+			if obj.has("beach_chair_part") and obj.type!=Industry.BEACH_CHAIR:return false
+			if obj.has("beach_chair_vertical") and (obj.type!=Industry.BEACH_CHAIR or not obj.beach_chair_vertical is bool):return false
+			if obj.has("beach_chair_folded") and (obj.type!=Industry.BEACH_CHAIR or not obj.beach_chair_folded is bool):return false
+			if obj.has("bamboo_lounger_part") and obj.type!=Industry.BAMBOO_LOUNGER:return false
+			if obj.has("bamboo_lounger_vertical") and (obj.type!=Industry.BAMBOO_LOUNGER or not obj.bamboo_lounger_vertical is bool):return false
+			if obj.has("nursery_box_vertical") and (obj.type!=Industry.NURSERY_BOX or not obj.nursery_box_vertical is bool):return false
+			if obj.has("nursery_slots"):
+				if field!="objects" or obj.type!=Industry.NURSERY_BOX or Industry.square_part(obj)!=0 or not nursery_slots_valid(obj.nursery_slots,crops):return false
+			if obj.has("aquarium_part") and obj.type!=Industry.AQUARIUM:return false
+			if obj.has("aquarium_vertical") and (obj.type!=Industry.AQUARIUM or not obj.aquarium_vertical is bool):return false
+			if obj.has("glass_table_part") and obj.type!=Industry.GLASS_FLOWER_TABLE:return false
+			if obj.has("glass_table_vertical") and (obj.type!=Industry.GLASS_FLOWER_TABLE or not obj.glass_table_vertical is bool):return false
+			if obj.has("leaf_mat_part") and obj.type!=Industry.LEAF_MAT:return false
+			if obj.has("braided_rug_part") and obj.type!=Industry.BRAIDED_RUG:return false
+			if obj.has("lamp_off") and (obj.type not in Industry.SWITCHABLE_LAMPS or field!="objects" or not obj.lamp_off is bool):return false
+			if obj.has("leaf_mat_shade"):
+				if obj.type!=Industry.LEAF_MAT or field!="ground" or not obj.leaf_mat_shade is String or not Industry.MAT_SHADES.has(obj.leaf_mat_shade):return false
+			if obj.has("forest_arch_part") and obj.type!=Industry.FOREST_ARCH:return false
+			if obj.has("forest_arch_vertical") and (obj.type!=Industry.FOREST_ARCH or not obj.forest_arch_vertical is bool):return false
+			if obj.has("vine_arch_part") and obj.type!=Industry.VINE_ARCH:return false
+			if obj.has("vine_arch_vertical") and (obj.type!=Industry.VINE_ARCH or not obj.vine_arch_vertical is bool):return false
+			if obj.has("copper_rack_part") and obj.type!=Industry.POT_RACK:return false
+			if obj.has("copper_rack_vertical") and (obj.type!=Industry.POT_RACK or not obj.copper_rack_vertical is bool):return false
+			if obj.has("rack_pots"):
+				if obj.type!=Industry.POT_RACK or field!="objects" or Industry.square_part(obj)!=0 or not Industry.valid_rack_pots(obj.rack_pots):return false
+			if obj.has("vine_color"):
+				if obj.type!=Industry.VINE_ARCH or field!="objects" or Industry.square_part(obj)!=0 or not obj.vine_color is String or not Industry.VINE_COLORS.has(obj.vine_color):return false
+			if obj.has(Industry.SEED_SAMPLES):
+				if obj.type!=Industry.SEED_CABINET or field!="objects" or Industry.square_part(obj)!=0:return false
+				var samples:Variant=obj[Industry.SEED_SAMPLES]
+				if not samples is Array or samples.is_empty() or samples.size()>Industry.SEED_SAMPLE_SLOTS:return false
+				var known:Dictionary=s.players.get(obj.owner,{}).get("collection",{}).get("crops",{})
+				var seen:Dictionary={}
+				for crop in samples:
+					if not crop is String or not known.has(crop) or seen.has(crop):return false
+					seen[crop]=true
+			if obj.has("mushroom_table_part") and obj.type!=Industry.MUSHROOM_TABLE:return false
+			if obj.has("bamboo_tea_table_part") and obj.type!=Industry.BAMBOO_TEA_TABLE:return false
+			if obj.has("bamboo_tea_table_vertical") and (obj.type!=Industry.BAMBOO_TEA_TABLE or not obj.bamboo_tea_table_vertical is bool):return false
+			if obj.has(Industry.TEA_SET_FIELD):
+				if obj.type!=Industry.BAMBOO_TEA_TABLE or field!="objects" or Industry.square_part(obj)!=0 or typeof(obj[Industry.TEA_SET_FIELD])!=TYPE_BOOL or not obj[Industry.TEA_SET_FIELD]:return false
+			if obj.has("hollow_bed_part") and obj.type!=Industry.HOLLOW_BED:return false
 			if obj.has("inn_bed_part") and obj.type!=Industry.INN_BED:return false
 			if obj.has("inn_bed_vertical") and (obj.type!=Industry.INN_BED or not obj.inn_bed_vertical is bool):return false
 			if obj.type==Industry.INN_BED and obj.has("dye") and Industry.square_part(obj)>0:return false
 			if obj.has("assembly_vertical") and (obj.type!=Industry.ASSEMBLY_TABLE or obj.assembly_vertical!=true or typeof(obj.assembly_vertical)!=TYPE_BOOL):return false
 			if obj.has("dye_vertical") and (obj.type!=Industry.DYE_TABLE or obj.dye_vertical!=true or typeof(obj.dye_vertical)!=TYPE_BOOL):return false
-			if obj.type in Industry.FIXED_SQUARE_STATIONS or obj.type in Industry.ORIENTABLE_FOOTPRINTS or obj.has("loom_part") or obj.has("furnace_part"):
+			# C08: a legacy 1x1 bench has neither field and is left alone. A wide bench must carry the
+			# part marker on every cell, and an orientation flag is only valid with it.
+			if obj.has(Industry.WORKBENCH_PART) and obj.type!=Industry.WORKBENCH:return false
+			if obj.has(Industry.WORKBENCH_VERTICAL) and (obj.type!=Industry.WORKBENCH or not obj.has(Industry.WORKBENCH_PART) or typeof(obj[Industry.WORKBENCH_VERTICAL])!=TYPE_BOOL):return false
+			if obj.has(Industry.WORKBENCH_PART) and typeof(obj[Industry.WORKBENCH_PART])!=TYPE_INT and typeof(obj[Industry.WORKBENCH_PART])!=TYPE_FLOAT:return false
+			if obj.type in Industry.FIXED_SQUARE_STATIONS or obj.type in Industry.ORIENTABLE_FOOTPRINTS or obj.has("loom_part") or obj.has("furnace_part") or obj.has(Industry.WORKBENCH_PART) or obj.has(Industry.MILL_PART):
 				var part_field:=Industry.square_part_field(obj.type)
 				var fallback:=0 if obj.type==Industry.SMELTER else -1
 				var station_cells:=Industry.station_cells(obj.type,Industry.is_vertical(obj))
-				if field!="objects" or not whole(obj.get(part_field,fallback),station_cells.size()-1):return false
+				var station_layer:="ground" if obj.type==Industry.LEAF_MAT else "objects"
+				if field!=station_layer or not whole(obj.get(part_field,fallback),station_cells.size()-1):return false
 				var part:=int(obj.get(part_field,fallback))
-				if not obj.items.is_empty():
+				if obj.type==Industry.LEAF_MAT and part!=0 and obj.has("leaf_mat_shade"):return false
+				if obj.type==Industry.AQUARIUM and not obj.items.is_empty():
+					if part!=0 or obj.items.size()!=1 or not whole(obj.items.get(Industry.AQUARIUM_FISH),1) or int(obj.items[Industry.AQUARIUM_FISH])!=1:return false
+				elif obj.type==Industry.COAST_FISH_COUNTER and not obj.items.is_empty():
+					if part!=0 or obj.items.size()>Industry.COUNTER_CAPACITY:return false
+					for fish in obj.items:
+						if not Collections.FISH.has(fish) or not whole(obj.items[fish],1) or int(obj.items[fish])!=1:return false
+				elif obj.type==Industry.TEA_DISPLAY_CABINET and not obj.items.is_empty():
+					if part!=0 or not Industry.valid_tea_cabinet_items(obj.items):return false
+					for tea:String in obj.items.keys():
+						if not ItemCatalog.is_known(tea):return false
+						obj.items[tea]=int(obj.items[tea])
+				elif obj.type==Industry.ROUNDED_TABLE and not obj.items.is_empty():
+					if part!=0 or Industry.rounded_table_count(obj.items)>Industry.ROUNDED_CAPACITY:return false
+					for item:String in obj.items:
+						if not Industry.rounded_table_item(item,recipes) or int(obj.items[item])<1:return false
+				elif obj.type in Industry.FOUR_SEAT_TABLES and not obj.items.is_empty():
+					if part!=0:return false
+					var portions:=0
+					for item:String in obj.items:
+						if not Industry.four_seat_meal(obj.type,item,recipes) or not whole(obj.items[item],Industry.MUSHROOM_TABLE_CAPACITY) or int(obj.items[item])<1:return false
+						portions+=int(obj.items[item])
+					if portions>Industry.MUSHROOM_TABLE_CAPACITY:return false
+				elif obj.type==Industry.MILL:
+					# C13: only the anchor may hold output (its own cap is checked with the processor buffers).
+					if part>0 and not obj.items.is_empty():return false
+				elif not obj.items.is_empty():
 					if obj.type!=Industry.LUGGAGE_RACK or part!=0:return false
 					var shown:=0
 					for item in obj.items:
@@ -1135,15 +1569,25 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 						shown+=int(obj.items[item])
 					if shown>Industry.LUGGAGE_SLOTS:return false
 				if obj.has(part_field):obj[part_field]=part
+				if obj.type==Industry.MILL:
+					if field!="objects" or not obj.has(part_field) or not obj.has(Industry.MILL_FACING):return false
+					obj[Industry.MILL_FACING]=int(obj[Industry.MILL_FACING])
+					# Cells 1..8 are never a second machine: no buffer or switch (job/processing are rejected below).
+					if part>0 and (obj.has("input_wheat") or obj.has("auto_enabled")):return false
 				var xy:=tile.split(",")
 				var anchor:Vector2i=Vector2i(int(xy[0]),int(xy[1]))-station_cells[part]
-				if part>0 and (obj.has("processing") or obj.has("job")):return false
+				if part>0 and (obj.has("processing") or obj.has("job") or obj.has("cooking")):return false
 				if part==0 and obj.type=="loom" and obj.get("joinery_loom")!=true:return false
 				if part==0 and obj.type=="glass_furnace" and obj.get("iron_furnace")!=true:return false
 				for index in station_cells.size():
 					var spot:Vector2i=anchor+station_cells[index]
 					var other=s[field].get("%d,%d"%[spot.x,spot.y])
-					if not other is Dictionary or other.get("type")!=obj.type or other.get("owner")!=obj.owner or other.get(part_field,fallback)!=index or Industry.is_vertical(other)!=Industry.is_vertical(obj):return false
+					if not other is Dictionary or other.get("type")!=obj.type or other.get("owner")!=obj.owner:return false
+					var other_part:Variant=other.get(part_field,fallback)
+					if not whole(other_part,station_cells.size()-1) or int(other_part)!=index or Industry.is_vertical(other)!=Industry.is_vertical(obj):return false
+					if obj.type==Industry.MILL and (not whole(other.get(Industry.MILL_FACING),Industry.MILL_FACING_COUNT-1) or int(other[Industry.MILL_FACING])!=int(obj[Industry.MILL_FACING])):return false
+					if obj.type==Industry.BEACH_CHAIR and other.get("beach_chair_folded",false)!=obj.get("beach_chair_folded",false):return false
+					if obj.type==Industry.RIVERSIDE_SCREEN and other.get(Industry.RIVERSIDE_FOLDED_FIELD,false)!=obj.get(Industry.RIVERSIDE_FOLDED_FIELD,false):return false
 			if obj.get("type") in preload("res://scripts/resident_goals.gd").DOUBLE_BENCHES:
 				if field!="objects" or not obj.items.is_empty():return false
 				var coords:=tile.split(",")
@@ -1157,13 +1601,27 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 				if not partner is Dictionary or partner.get("type")!=obj.type or partner.get("owner")!=obj.owner or partner.get("bench_end",false)==is_end or partner.get("bench_vertical",false)!=vertical:return false
 				if is_end and obj.has("inscription"):return false
 			if obj.has("bell_at") and (field!="objects" or obj.type not in preload("res://scripts/resident_goals.gd").FESTIVAL_BELL_KINDS or not number(obj.bell_at,0,float(s.time))):return false
+			if obj.has(BARK_FRAME.FIELD) and (obj.type!=WALL_FIXTURES.BARK_FRAME or not BARK_FRAME.valid_display(obj[BARK_FRAME.FIELD])):return false
 			if obj.type in WALL_FIXTURES.KINDS:
 				if field!="objects":return false
+				if obj.type in [WALL_FIXTURES.LIFEBUOY,WALL_FIXTURES.BARK_FRAME,WALL_FIXTURES.HOME_SIGN,WALL_FIXTURES.BAMBOO_CURTAIN] and not obj.items.is_empty():return false
 				var coords:=tile.split(",")
 				# Undo records only contain changed cells. World checks attachment support on restoration.
-				if not partial_history and not WALL_FIXTURES.has_support(s[field],Vector2i(int(coords[0]),int(coords[1])),str(obj.owner)):return false
+				if not partial_history and not WALL_FIXTURES.has_support(s[field],Vector2i(int(coords[0]),int(coords[1])),str(obj.owner),str(obj.type),s.get("edges",{})):return false
+			if obj.has(POSTCARDS.SLOTS):
+				if field!="objects" or obj.type!=POSTCARDS.RACK or not POSTCARDS.valid_display(obj[POSTCARDS.SLOTS]):return false
+				if not partial_history:
+					var earned:=POSTCARDS.earned(s.players.get(obj.owner,{}))
+					for card_id:String in obj[POSTCARDS.SLOTS]:
+						if card_id not in earned:return false
+			if obj.type==POSTCARDS.RACK and (field!="objects" or not obj.items.is_empty()):return false
+			if obj.has(OAR_SIGN.FIELD) and (obj.type!=OAR_SIGN.KIND or field!="objects" or not location(obj[OAR_SIGN.FIELD],size)):return false
+			if obj.type==OAR_SIGN.KIND and (field!="objects" or not obj.items.is_empty()):return false
+			if obj.type==ROOF_FIXTURES.HANGING_POT:
+				if field!="objects" or not obj.get("items",{}).is_empty():return false
+				if not partial_history and not ROOF_FIXTURES.supported(s.get("roofs",{}).get(tile),str(obj.owner)):return false
 			if obj.has("inscription") and (field!="objects" or obj.type not in ["sign","long_bench","master_bench"] or not preload("res://scripts/resident_goals.gd").valid_inscription(obj.inscription) or obj.inscription.is_empty()):return false
-			if obj.has("welcome") and (field!="objects" or obj.type!=WELCOME_SIGN.KIND or not WELCOME_SIGN.valid(obj.welcome)):return false
+			if obj.has("welcome") and (field!="objects" or obj.type not in [WELCOME_SIGN.KIND,WALL_FIXTURES.HOME_SIGN] or not WELCOME_SIGN.valid(obj.welcome)):return false
 			if obj.type=="inn_tea_table" and not obj.items.is_empty():
 				var cups:=0
 				for tea in obj.items:
@@ -1171,10 +1629,10 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 					cups+=int(obj.items[tea])
 				if cups>2:return false
 			if obj.has("style") and (not obj.style is String or BUILD_STYLES.entry(obj.style+"."+obj.type).is_empty()):return false
-			if obj.type in ["author_sign","author_shelf","expedition_tent"] and (not obj.get("author") is String or obj.author.length()>12):return false
-			if field=="ground" and obj.type not in ["floor","path","spring_pebble_path"]:return false
-			if field=="roofs" and obj.type not in ["roof","greenhouse_roof"]:return false
-			if field=="objects" and obj.type in ["floor","path","spring_pebble_path","roof","greenhouse_roof"]:return false
+			if obj.type in ["author_sign","author_shelf","expedition_tent",WALL_FIXTURES.HOME_SIGN] and (not obj.get("author") is String or obj.author.length()>12):return false
+			if field=="ground" and obj.type not in ["floor","stone_floor","path","spring_pebble_path",Industry.LEAF_MAT]:return false
+			if field=="roofs" and obj.type not in ["roof","greenhouse_roof",preload("res://scripts/greenhouse_glass.gd").XINGHE_ROOF,preload("res://scripts/terracotta_roof.gd").KIND]:return false
+			if field=="objects" and obj.type in ["floor","stone_floor","path","spring_pebble_path",Industry.LEAF_MAT,"roof","greenhouse_roof",preload("res://scripts/greenhouse_glass.gd").XINGHE_ROOF,preload("res://scripts/terracotta_roof.gd").KIND]:return false
 			if obj.type=="conveyor":
 				conveyor_owners[obj.owner]=int(conveyor_owners.get(obj.owner,0))+1
 				if conveyor_owners[obj.owner]>Logistics.BELT_LIMIT:return false
@@ -1184,7 +1642,10 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 			# any older save; input_wheat never appears on another object type.
 			if obj.type in BAKERY_STATIONS and not bakery_ok(s):return false
 			if obj.has("input_wheat") and obj.type!="mill":return false
-			if obj.type in Logistics.PROCESSORS:
+			if obj.type in Logistics.PROCESSORS and Industry.is_mill_extension(obj):
+				# C13: the eight extra cells of a new mill hold nothing (also covered above for job/processing).
+				if not obj.items.is_empty() or obj.has("auto_enabled") or obj.has("input_wheat") or obj.has("job") or obj.has("processing"):return false
+			elif obj.type in Logistics.PROCESSORS:
 				var input_key:=Logistics.input_field(obj.type)
 				for other in Logistics.INPUT_FIELDS:
 					if other!=input_key and obj.has(other):return false
@@ -1237,11 +1698,15 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 					if not whole(obj.get("quota_day"),floorf(float(s.time)/Industry.TOWER_DAY)) or not whole(obj.get("quota_used"),Industry.TOWER_QUOTA_MAX):return false
 				elif obj.has("quota_day") or obj.has("quota_used"):return false
 			if obj.has("iron_furnace") and (obj.type!="glass_furnace" or typeof(obj.iron_furnace)!=TYPE_BOOL or not obj.iron_furnace):return false
+			if obj.has("wood_window") and (obj.type!="window" or typeof(obj.wood_window)!=TYPE_BOOL or not obj.wood_window):return false
 			if obj.has("joinery_loom") and (obj.type!="loom" or typeof(obj.joinery_loom)!=TYPE_BOOL or not obj.joinery_loom):return false
 			if obj.has("joinery_seed_maker") and (obj.type!="seed_maker" or typeof(obj.joinery_seed_maker)!=TYPE_BOOL or not obj.joinery_seed_maker):return false
 			if obj.has("ceramic_pot") and (obj.type!="jam_pot" or typeof(obj.ceramic_pot)!=TYPE_BOOL or not obj.ceramic_pot):return false
 			if obj.type=="large_sprinkler" and obj.get("sprinkler_daily")!=true:return false
 			if obj.has("assembled_sprinkler") and (not Industry.SPRINKLER_KITS.has(obj.type) or typeof(obj.assembled_sprinkler)!=TYPE_BOOL or not obj.assembled_sprinkler or obj.get("sprinkler_daily")!=true):return false
+			if obj.has(Industry.STARTER_SPRINKLER_FIELD):
+				if obj.type!="sprinkler" or not obj[Industry.STARTER_SPRINKLER_FIELD] is bool or not obj[Industry.STARTER_SPRINKLER_FIELD]:return false
+				if obj.get("sprinkler_daily")!=true or obj.has("assembled_sprinkler"):return false
 			if obj.has("sprinkler_daily") and (obj.type not in ["sprinkler","medium_sprinkler","large_sprinkler"] or typeof(obj.sprinkler_daily)!=TYPE_BOOL or not obj.sprinkler_daily):return false
 			if Industry.SPRINKLER_CAPACITIES.has(obj.type):
 				if not whole(obj.get("water"),Industry.SPRINKLER_CAPACITIES[obj.type]) or not obj.get("enabled") is bool:return false
@@ -1255,6 +1720,9 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 				sprinkler_owners[sprinkler_key]=int(sprinkler_owners.get(sprinkler_key,0))+1
 				if sprinkler_owners[sprinkler_key]>Industry.SPRINKLER_LIMIT:return false
 			if obj.has("freight_id") and (obj.type!="private_chest" or not Freight.valid_id(obj.freight_id)):return false
+			if obj.has(CHEST_HISTORY.FIELD):
+				if field!="objects" or not CHEST_HISTORY.valid(obj, ItemCatalog.is_known):return false
+				CHEST_HISTORY.normalize(obj)
 			if obj.has("guest_deposit") and (obj.type!="private_chest" or not obj.guest_deposit is bool or not obj.guest_deposit):return false
 			if obj.has("withdraw_guest"):
 				var visitor=obj.withdraw_guest
@@ -1322,6 +1790,8 @@ static func validate_region(s:Dictionary,crops:Dictionary,build:Dictionary,recip
 	if not s.animal is Dictionary or not whole(s.animal.get("bond")):return false
 	if s.animal.has("hug_actor"):
 		if not s.animal.hug_actor is String or not s.players.has(s.animal.hug_actor) or not number(s.animal.get("last_pet"),0,float(s.time)):return false
+	if s.animal.has("feed_follow_actor"):
+		if not s.animal.feed_follow_actor is String or not s.players.has(s.animal.feed_follow_actor):return false
 	if s.animal.has("basket_eggs") and not whole(s.animal.basket_eggs,EGG_BASKET_CAPACITY):return false
 	if s.animal.has("basket_eggs_quality") and (not s.animal.has("basket_eggs") or not whole(s.animal.basket_eggs_quality,int(s.animal.basket_eggs))):return false
 	if s.animal.has("bonus_progress") and not whole(s.animal.bonus_progress,ranch.BONUS_INTERVAL):return false

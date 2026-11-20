@@ -1,12 +1,69 @@
 extends SceneTree
 
 const World = preload("res://scripts/world.gd")
+const StoneStation = preload("res://tests/stone_station_fixture.gd")
 const TILE := Vector2i(38, 34)
-const MATERIALS := ["acorn_ornament_kit","seashell","animal_collector_kit","woodwork_parts","iron_ingot","copper_ingot","clay","rope","flower_pot","cotton_cloth","wool_cloth","supply_box_kit", "wood", "stone", "fiber", "hardwood", "copper_ore", "sprinkler_kit","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit","forester_kit","conveyor_kit","gold_sample","waterworks_kit","mine_drill_kit","mill_kit","plank","copper_joint","glass","ochre_earth","veg_basket_rack_kit","relay_crate_stack_kit","carp_banner_kit","float_garland_kit","lantern_post_kit","flower_arch_kit","trio_keepsake_kit","water_share_plaque_kit","diversion_gate_kit","mine_lantern_kit","tea_ware_kit","salt_basket_kit","water_tower_kit","keepsake_aru_kit","keepsake_milu_kit","keepsake_bobo_kit","keepsake_chacha_kit","keepsake_achao_kit","keepsake_mianmian_kit","keepsake_xinghe_kit","keepsake_lingpopo_kit","keepsake_xiaoli_kit","keepsake_luoluo_kit","keepsake_diandian_kit","keepsake_nuannuan_kit","keepsake_nuannuan_room_kit","keepsake_aru_bird_kit","keepsake_achao_oar_kit","keepsake_xinghe_sign_kit","keepsake_lingpopo_memorial_kit"]
+## 3×3 shelter site: clear west-side grass, off the village footpaths and every reserved cell.
+const PAVILION_TILE := Vector2i(31, 35)
+const MATERIALS := ["roof_tile","bamboo","blue_dye","acorn_ornament_kit","star_mushroom","resin","seashell","animal_collector_kit","woodwork_parts","iron_ingot","copper_ingot","clay","rope","flower_pot","cotton_cloth","wool_cloth","supply_box_kit", "wood", "stone", "fiber", "hardwood", "copper_ore", "sprinkler_kit","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit","forester_kit","conveyor_kit","gold_sample","waterworks_kit","mine_drill_kit","mill_kit","plank","copper_joint","glass","crystal_sand","chime_herb","ochre_earth","veg_basket_rack_kit","relay_crate_stack_kit","carp_banner_kit","float_garland_kit","lantern_post_kit","flower_arch_kit","trio_keepsake_kit","water_share_plaque_kit","diversion_gate_kit","mine_lantern_kit","tea_ware_kit","salt_basket_kit","water_tower_kit","keepsake_aru_kit","keepsake_milu_kit","keepsake_bobo_kit","keepsake_chacha_kit","keepsake_achao_kit","keepsake_mianmian_kit","keepsake_xinghe_kit","keepsake_lingpopo_kit","keepsake_xiaoli_kit","keepsake_luoluo_kit","keepsake_diandian_kit","keepsake_nuannuan_kit","keepsake_nuannuan_room_kit","keepsake_bobo_cart_kit","keepsake_aru_bird_kit","keepsake_achao_oar_kit","keepsake_xinghe_sign_kit","keepsake_lingpopo_memorial_kit"]
 # Expected placement layer and closed-state collision for each catalog entry.
 const PLACEMENT := {
+	World.GREENHOUSE_GLASS.XINGHE_ROOF: ["roofs", false],
+	World.TERRACOTTA_ROOF.KIND: ["roofs", false],
 	"acorn_ornament": ["objects", false],
-	"floor": ["ground", false], "path": ["ground", false], "spring_pebble_path": ["ground", false], "roof": ["roofs", false], "greenhouse_roof": ["roofs", false], "greenhouse_rack": ["objects", true], "master_flower_bed": ["objects", true], "fish_display": ["objects", true], "rope_rack": ["objects", true], "sketch_easel": ["objects", true], "guest_wardrobe": ["objects", true], "inn_lattice_wardrobe": ["objects", true], "inn_fabric_screen": ["objects", true], "wood_mailbox": ["objects", true], "basic_tea_set": ["objects", false], "supply_box": ["objects", true], "expedition_tent": ["objects", true], "author_sign": ["objects", true], "author_shelf": ["objects", true],
+	"garden_basin": ["objects", true],
+	World.STAR_GARDEN_LAMP: ["objects", false],
+	World.RESIDENT_GOALS.GARDEN_CHAIR: ["objects", true],
+	World.INDUSTRY.SEED_CABINET: ["objects", true],
+	World.NURSERY_BOX.KIND: ["objects", true],
+	World.INDUSTRY.AQUARIUM: ["objects", true],
+	World.INDUSTRY.COAST_FISH_COUNTER: ["objects", true],
+	World.INDUSTRY.TEA_DISPLAY_CABINET: ["objects", true],
+	World.INDUSTRY.TEA_SNACK_SHELF: ["objects", true],
+	World.INDUSTRY.RIVERSIDE_SCREEN: ["objects", true],
+	World.INDUSTRY.COAST_AWNING: ["objects", false],
+	World.INDUSTRY.IMPERFECT_TEA_PAVILION: ["objects", false],
+	World.INDUSTRY.MUSHROOM_STOOL: ["objects", true],
+	World.INDUSTRY.LEAF_MAT: ["ground", false],
+	World.INDUSTRY.BRAIDED_RUG: ["objects", false],
+	"indigo_cushion": ["objects", false],
+	World.INDUSTRY.SPORE_LAMP: ["objects", false],
+	World.INDUSTRY.ACORN_CABINET: ["objects", true],
+	World.INDUSTRY.HEDGEHOG_BASKET: ["objects", false],
+	World.INDUSTRY.MUSHROOM_TABLE: ["objects", true],
+	World.INDUSTRY.BAMBOO_TEA_TABLE: ["objects", true],
+	World.INDUSTRY.HOLLOW_BED: ["objects", true],
+	World.INDUSTRY.COAST_CART: ["objects", true],
+	World.INDUSTRY.COAST_REGISTER: ["objects", true],
+	World.INDUSTRY.SHELL_TABLE: ["objects", true],
+	World.INDUSTRY.ROUNDED_TABLE: ["objects", true],
+	World.INDUSTRY.GRID_BOOKCASE: ["objects", true],
+	World.INDUSTRY.CEDAR_BED: ["objects", true],
+	World.INDUSTRY.BEACH_CHAIR: ["objects", true],
+	World.INDUSTRY.BAMBOO_LOUNGER: ["objects", true],
+	World.INDUSTRY.GLASS_FLOWER_TABLE: ["objects", true],
+	World.INDUSTRY.VINE_ARCH: ["objects", true],
+	World.INDUSTRY.FOREST_ARCH: ["objects", true],
+	World.INDUSTRY.LEAF_DESK: ["objects", true],
+	World.INDUSTRY.MUSHROOM_POST: ["objects", true],
+	World.INDUSTRY.QUIET_BIRDHOUSE: ["objects", true],
+	World.INDUSTRY.POT_RACK: ["objects", true],
+	World.ROOF_FIXTURES.HANGING_POT: ["objects", false],
+	World.RESIDENT_GOALS.COAST_WARDROBE: ["objects", true],
+	World.RESIDENT_GOALS.FOREST_WARDROBE: ["objects", true],
+	World.WALL_FIXTURES.LIFEBUOY: ["objects", false],
+	World.WALL_FIXTURES.BARK_FRAME: ["objects", false],
+	World.WALL_FIXTURES.HOME_SIGN: ["objects", false],
+	World.WALL_FIXTURES.TOOL_BOARD: ["objects", false],
+	"bamboo_curtain": ["objects", false],
+	"paper_tea_lamp": ["objects", false],
+	"water_listening_chime": ["objects", false],
+	World.POSTCARDS.RACK: ["objects", true],
+	World.OAR_SIGN.KIND: ["objects", false],
+	World.INDUSTRY.OBSERVATION_DESK: ["objects", true],
+	World.INDUSTRY.STONE_WORKBENCH: ["objects", true],
+	World.INDUSTRY.KITCHEN_STOVE: ["objects", true],
+	"floor": ["ground", false], "stone_floor": ["ground", false], "path": ["ground", false], "spring_pebble_path": ["ground", false], "roof": ["roofs", false], "greenhouse_roof": ["roofs", false], "greenhouse_rack": ["objects", true], "master_flower_bed": ["objects", true], "fish_display": ["objects", true], "rope_rack": ["objects", true], "sketch_easel": ["objects", true], "guest_wardrobe": ["objects", true], "inn_lattice_wardrobe": ["objects", true], "inn_fabric_screen": ["objects", true], "wood_mailbox": ["objects", true], "basic_tea_set": ["objects", false], "supply_box": ["objects", true], "expedition_tent": ["objects", true], "author_sign": ["objects", true], "author_shelf": ["objects", true],
 	"wall": ["objects", true], "window": ["objects", true], "door": ["objects", true],
 	"chest": ["objects", true], "private_chest": ["objects", true], "bench": ["objects", true],
 	"bed": ["objects", true], "inn_quilt_bed": ["objects", true], "inn_stone_footbath": ["objects", true], "table": ["objects", true], "stove": ["objects", true],
@@ -30,15 +87,20 @@ const PLACEMENT := {
 	"salt_basket": ["objects", false],
 	"keepsake_aru": ["objects", false], "keepsake_milu": ["objects", false], "keepsake_bobo": ["objects", false], "keepsake_chacha": ["objects", false],
 	"keepsake_achao": ["objects", false], "keepsake_mianmian": ["objects", false], "keepsake_xinghe": ["objects", false], "keepsake_lingpopo": ["objects", false],
-	"keepsake_xiaoli": ["objects", false], "keepsake_luoluo": ["objects", false], "keepsake_diandian": ["objects", false], "keepsake_nuannuan": ["objects", false], "keepsake_nuannuan_room": ["objects", false],
+	"keepsake_xiaoli": ["objects", false], "keepsake_luoluo": ["objects", false], "keepsake_diandian": ["objects", false], "keepsake_nuannuan": ["objects", false], "keepsake_nuannuan_room": ["objects", false], "keepsake_bobo_cart": ["objects", false],
 	"festival_memorial_bell": ["objects", false], "ceramic_eave_chime": ["objects", false], "shell_chime": ["objects", false], "warm_lamp_niche": ["objects", false], "towel_rack": ["objects", true], "inn_welcome_sign": ["objects", false], "inn_tea_table": ["objects", true], "inn_luggage_rack": ["objects", true], "keepsake_aru_bird": ["objects", false], "keepsake_achao_oar": ["objects", false], "keepsake_xinghe_sign": ["objects", false], "keepsake_lingpopo_memorial": ["objects", false],
 	"master_bench": ["objects", true], "spring_stone_bench": ["objects", true],
+	World.RESIDENT_GOALS.COTTON_SOFA:["objects",true],
+	World.RESIDENT_GOALS.BAMBOO_BENCH:["objects",true],
 	"small_smelter": ["objects", true],
 	"water_tower": ["objects", true],
 }
 
 var checks := 0
 var failures := 0
+var placement_evidence:Dictionary={}
+var scene_record_path:=""
+var scene_evidence:Dictionary={}
 var sequence := 0
 
 func expect(condition: bool, message: String) -> void:
@@ -50,8 +112,11 @@ func expect(condition: bool, message: String) -> void:
 func act(world, action: String, kind: String = "", who: String = "builder") -> Dictionary:
 	sequence += 1
 	var tile:=Vector2i(53,24) if kind=="water_pump" or world.state.objects.has("53,24") else TILE
+	if kind in [World.INDUSTRY.IMPERFECT_TEA_PAVILION,World.INDUSTRY.MILL] or world.state.objects.has(World.key(PAVILION_TILE)):tile=PAVILION_TILE
 	if world.player_region(who)=="mine_4":tile=World.MINE_DRILL.NODE+Vector2i.DOWN
-	return world.act(who, "catalog-%d" % sequence, action, tile, kind)
+	# C13: the catalog places the new 3x3 mill with an explicit facing (0 = entrance on the south side). A plain
+	# "mill" with the 100 mill_kits this fixture carries would instead be the legacy 1x1 placement.
+	return world.act(who, "catalog-%d" % sequence, action, tile, kind+":0" if kind==World.INDUSTRY.MILL else kind)
 
 func verify_entry(kind: String) -> void:
 	if not PLACEMENT.has(kind):
@@ -61,8 +126,27 @@ func verify_entry(kind: String) -> void:
 	world.add_player("builder", "島民")
 	var player: Dictionary = world.state.players.builder
 	var tile:=Vector2i(53,24) if kind=="water_pump" else TILE
+	if kind==World.INDUSTRY.IMPERFECT_TEA_PAVILION:
+		# The shared TILE sits on the village's southern footpath, which the shelter may not cover.
+		tile=PAVILION_TILE
+		for offset:Vector2i in World.INDUSTRY.station_cells(kind):world.state.removed[World.key(tile+offset)]=true
+		player.x=tile.x+1.5
+		player.y=tile.y+1.5
+		expect(world.can_stand(Vector2(tile)+Vector2(1.5,1.5)),"The shelter site starts on walkable ground")
+		expect(not act(world,"build",kind).ok,"The pavilion is locked before the chacha trust story")
+		player["bonds"]={"chacha":{"points":14,"talk_day":-1,"gift_day":-1}}
+		player["bond_goals"]={"chacha":{"3":""}}
+	if kind==World.INDUSTRY.MILL:
+		# C13: a clear 3x3 on the same west-side grass plus the open cell in front of the entrance (facing 0 = south).
+		tile=PAVILION_TILE
+		for offset:Vector2i in World.INDUSTRY.station_cells(kind)+[World.INDUSTRY.mill_front_offset(0),Vector2i(0,3)]:world.state.removed[World.key(tile+offset)]=true
+		player.x=tile.x+0.5
+		player.y=tile.y+3.5
 	if kind in World.WALL_FIXTURES.KINDS:
-		world.state.objects[World.key(tile+Vector2i.UP)]={"type":"wall","owner":"builder","items":{}}
+		var support:="window" if kind=="bamboo_curtain" else "wall"
+		world.state.objects[World.key(tile+Vector2i.UP)]={"type":support,"owner":"builder","items":{}}
+		if kind==World.WALL_FIXTURES.TOOL_BOARD:
+			world.state.objects[World.key(tile+Vector2i.UP+Vector2i.RIGHT)]={"type":"wall","owner":"builder","items":{}}
 	if kind=="mine_drill":
 		tile=World.MINE_DRILL.NODE+Vector2i.DOWN
 		world.state.mine_depths.unlocked=5
@@ -157,9 +241,16 @@ func verify_entry(kind: String) -> void:
 		# Labelled catalogue fixture (B6 open, Q07 hoist repaired); earned unlock is
 		# tested in test_mine_hoist_quest / test_mine_deep_journey.
 		world.state.mine_depths={"unlocked":6,"ready":{},"pumped":24,"hoist":true}
-	if kind in ["jam_pot","animal_collector"]:world.state.picnic=true
+	if kind in ["jam_pot","animal_collector",World.INDUSTRY.COAST_CART]:world.state.picnic=true
 	if kind=="dye_table":world.state.flower_nursery.garden.complete=true
 	if kind=="assembly_table":player.workshop_upgraded=true
+	if kind==World.INDUSTRY.STONE_WORKBENCH:
+		expect(not act(world,"build",kind).ok,"The stone workbench is locked before the Q03 board repair")
+		# Labelled catalogue fixture; the earned unlock is tested in test_stone_workbench.
+		world.state.board=true
+	if kind in World.STONE_WORKSHOP.STATION_BUILDS:
+		expect(not act(world,"build",kind).ok,"New %s construction needs a stone workbench"%kind)
+		StoneStation.install(world,"builder")
 	if kind=="mill":
 		# Labelled catalogue fixture; earned unlock is tested separately.
 		world.state.picnic=true
@@ -176,7 +267,24 @@ func verify_entry(kind: String) -> void:
 	if kind == "greenhouse_roof":
 		expect(not act(world,"build",kind).ok,"greenhouse requires farmland")
 		expect(act(world,"hoe").ok,"greenhouse is built over tilled soil")
-	if kind == "roof":
+	if kind in [World.GREENHOUSE_GLASS.XINGHE_ROOF,World.NURSERY_BOX.KIND]:
+		expect(not act(world,"build",kind).ok,"Xinghe's recipe is locked until the trust story")
+		player.bonds={"xinghe":{"points":14,"talk_day":-1,"gift_day":-1}}
+		player.bond_goals={"xinghe":{"3":""}}
+	if kind==World.WALL_FIXTURES.BARK_FRAME:
+		var locked:=act(world,"build",kind)
+		expect(not locked.ok and locked.get("message","")==World.RESIDENT_GOALS.BARK_FRAME_LOCK,"The bark frame is locked (with materials in hand) before the builder's own Diandian 2 is done")
+		# Labelled catalogue fixture: the builder's own finished Diandian 2. test_crop_sketch_ui completes the event.
+		player.bonds={"diandian":{"points":10,"talk_day":-1,"gift_day":-1}}
+		player.bond_goals={"diandian":{"1":"","2":"knees"}}
+	if kind==World.POSTCARDS.RACK:
+		expect(not act(world,"build",kind).ok,"Postcard rack is unlocked by LuoLuo's trust story")
+		player.bonds={"luoluo":{"points":6,"talk_day":-1,"gift_day":-1}}
+		player.bond_goals={"luoluo":{"2":""}}
+	if kind==World.ROOF_FIXTURES.HANGING_POT:
+		expect(not act(world,"build",kind).ok,"Hanging pot needs an owned roof")
+		expect(act(world,"build","floor").ok and act(world,"build","roof").ok,"Create a roof hook")
+	if kind in World.TERRACOTTA_ROOF.HOUSE_ROOFS:
 		expect(not act(world, "build", kind).ok, "roof requires a wood floor")
 		world.add_player("neighbor", "鄰居")
 		expect(act(world, "build", "floor", "neighbor").ok, "neighbor lays a wood floor")
@@ -188,23 +296,40 @@ func verify_entry(kind: String) -> void:
 	for layer in ["objects", "ground", "roofs"]:
 		before_layers[layer] = world.state[layer].duplicate(true)
 	var expected_layer: String = PLACEMENT[kind][0]
+	var scene_before:Dictionary={}
+	if not scene_record_path.is_empty():
+		scene_before=world.region_snapshot(world.player_region("builder"),true,"builder")
 	var result := act(world, "build", kind)
 	expect(result.ok, "%s placement (%s)" % [kind, result.message])
 	if not result.ok:
 		return
+	var placed:Array[String]=[]
+	for cell_key:String in world.state[expected_layer]:
+		var before:Dictionary=before_layers[expected_layer].get(cell_key,{})
+		var after:Dictionary=world.state[expected_layer][cell_key]
+		if after.get("type")==kind and after!=before:placed.append(cell_key)
+	placed.sort()
+	placement_evidence[kind]={"layer":expected_layer,"cells":placed,"anchor":key}
+	if not scene_record_path.is_empty():
+		scene_evidence[kind]={"anchor":key,"before":scene_before,
+			"after":world.region_snapshot(world.player_region("builder"),true,"builder")}
 	for layer in before_layers:
 		var expected: Dictionary = before_layers[layer].duplicate(true)
 		if layer == expected_layer:
 			expected[key] = {"type": kind, "owner": "builder", "items": {}}
 			if kind=="small_smelter":
 				for index in range(1,4):expected[World.key(tile+World.INDUSTRY.SMELTER_CELLS[index])]={"type":kind,"owner":"builder","items":{},"smelter_part":index}
-			if kind=="master_bench":expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"bench_end":true}
-			if kind in ["author_sign","author_shelf","expedition_tent"]:expected[key].author=player.name
+			if kind in ["master_bench"]+World.RESIDENT_GOALS.INDEPENDENT_TWO_SEATS:expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"bench_end":true}
+			if kind in ["author_sign","author_shelf","expedition_tent",World.WALL_FIXTURES.HOME_SIGN]:expected[key].author=player.name
 			if kind == "door":
 				expected[key].open = false
+			if kind==World.INDUSTRY.WORKBENCH:
+				expected[key][World.INDUSTRY.WORKBENCH_PART]=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},World.INDUSTRY.WORKBENCH_PART:1}
 			if World.INDUSTRY.SPRINKLER_CAPACITIES.has(kind):
 				expected[key].merge({"water":0,"enabled":false,"next_water":0.0,"last_water":-1.0})
 			if World.INDUSTRY.SPRINKLER_CAPACITIES.has(kind):expected[key].sprinkler_daily=true
+			if kind=="window":expected[key].wood_window=true
 			if kind=="jam_pot":expected[key].ceramic_pot=true
 			if kind=="seed_maker":expected[key].joinery_seed_maker=true
 			if kind=="assembly_table":
@@ -213,9 +338,96 @@ func verify_entry(kind: String) -> void:
 			if kind=="inn_fabric_screen":
 				expected[key].screen_part=0
 				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"screen_part":1}
+			if kind==World.INDUSTRY.RIVERSIDE_SCREEN:
+				expected[key].riverside_screen_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"riverside_screen_part":1}
 			if kind=="inn_luggage_rack":
 				expected[key].luggage_part=0
 				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"luggage_part":1}
+			if kind==World.INDUSTRY.LEAF_DESK:
+				expected[key].leaf_desk_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"leaf_desk_part":1}
+			if kind==World.INDUSTRY.OBSERVATION_DESK:
+				expected[key].observation_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"observation_part":1}
+			if kind==World.INDUSTRY.SEED_CABINET:
+				expected[key].seed_cabinet_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"seed_cabinet_part":1}
+			if kind==World.NURSERY_BOX.KIND:
+				expected[key].nursery_box_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"nursery_box_part":1}
+			if kind==World.INDUSTRY.COAST_FISH_COUNTER:
+				expected[key].fish_counter_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"fish_counter_part":1}
+			if kind==World.INDUSTRY.TEA_DISPLAY_CABINET:
+				expected[key].tea_cabinet_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"tea_cabinet_part":1}
+			if kind==World.INDUSTRY.TEA_SNACK_SHELF:expected[key][World.INDUSTRY.SNACK_FIELD]=World.INDUSTRY.fresh_snack_tiers()
+			if kind==World.INDUSTRY.COAST_AWNING:
+				var offsets:=World.INDUSTRY.station_cells(kind)
+				for part in offsets.size():
+					expected[World.key(tile+offsets[part])]={"type":kind,"owner":"builder","items":{},"awning_part":part}
+			if kind==World.INDUSTRY.IMPERFECT_TEA_PAVILION:
+				var offsets:=World.INDUSTRY.station_cells(kind)
+				for part in offsets.size():
+					expected[World.key(tile+offsets[part])]={"type":kind,"owner":"builder","items":{},"imperfect_pavilion_part":part}
+			if kind==World.INDUSTRY.MILL:
+				# C13: nine cells carrying part + facing; only the anchor owns the buffers merged below.
+				var mill_offsets:=World.INDUSTRY.station_cells(kind)
+				for part in mill_offsets.size():
+					expected[World.key(tile+mill_offsets[part])]={"type":kind,"owner":"builder","items":{},World.INDUSTRY.MILL_PART:part,World.INDUSTRY.MILL_FACING:0}
+			if kind in [World.INDUSTRY.LEAF_MAT,World.INDUSTRY.BRAIDED_RUG]:
+				for part in World.INDUSTRY.SQUARE_CELLS.size():
+					expected[World.key(tile+World.INDUSTRY.SQUARE_CELLS[part])]={"type":kind,"owner":"builder","items":{},World.INDUSTRY.square_part_field(kind):part}
+			if kind in World.INDUSTRY.FOUR_SEAT_TABLES:
+				var offsets:=World.INDUSTRY.station_cells(kind)
+				for part in offsets.size():
+					expected[World.key(tile+offsets[part])]={"type":kind,"owner":"builder","items":{},World.INDUSTRY.square_part_field(kind):part}
+			if kind==World.INDUSTRY.HOLLOW_BED:
+				var offsets:=World.INDUSTRY.station_cells(kind)
+				for part in offsets.size():
+					expected[World.key(tile+offsets[part])]={"type":kind,"owner":"builder","items":{},"hollow_bed_part":part}
+			if kind==World.INDUSTRY.COAST_CART:
+				var offsets:=World.INDUSTRY.station_cells(kind)
+				for part in offsets.size():
+					expected[World.key(tile+offsets[part])]={"type":kind,"owner":"builder","items":{},"market_cart_part":part}
+			if kind==World.INDUSTRY.KITCHEN_STOVE:
+				var stove_offsets:=World.INDUSTRY.station_cells(kind)
+				for part in stove_offsets.size():
+					expected[World.key(tile+stove_offsets[part])]={"type":kind,"owner":"builder","items":{},World.INDUSTRY.KITCHEN_STOVE_PART:part}
+			if kind==World.INDUSTRY.COAST_REGISTER:
+				expected[key].register_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"register_part":1}
+			if kind==World.INDUSTRY.ROUNDED_TABLE:
+				expected[key].rounded_table_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"rounded_table_part":1}
+			if kind==World.INDUSTRY.GRID_BOOKCASE:
+				expected[key].merge({"bookcase_part":0,"bookcase_vertical":true})
+				expected[World.key(tile+Vector2i.DOWN)]={"type":kind,"owner":"builder","items":{},"bookcase_part":1,"bookcase_vertical":true}
+			if kind==World.INDUSTRY.CEDAR_BED:
+				expected[key].merge({"cedar_bed_part":0,"cedar_bed_vertical":true})
+				expected[World.key(tile+Vector2i.DOWN)]={"type":kind,"owner":"builder","items":{},"cedar_bed_part":1,"cedar_bed_vertical":true}
+			if kind==World.WALL_FIXTURES.TOOL_BOARD:
+				expected[key].tool_board_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"tool_board_part":1}
+			if kind==World.INDUSTRY.BEACH_CHAIR:
+				expected[key].merge({"beach_chair_part":0,"beach_chair_vertical":true})
+				expected[World.key(tile+Vector2i.DOWN)]={"type":kind,"owner":"builder","items":{},"beach_chair_part":1,"beach_chair_vertical":true}
+			if kind==World.INDUSTRY.BAMBOO_LOUNGER:
+				expected[key].merge({"bamboo_lounger_part":0,"bamboo_lounger_vertical":true})
+				expected[World.key(tile+Vector2i.DOWN)]={"type":kind,"owner":"builder","items":{},"bamboo_lounger_part":1,"bamboo_lounger_vertical":true}
+			if kind==World.INDUSTRY.AQUARIUM:
+				expected[key].aquarium_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"aquarium_part":1}
+			if kind==World.INDUSTRY.GLASS_FLOWER_TABLE:
+				expected[key].glass_table_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"glass_table_part":1}
+			if kind in World.INDUSTRY.ARCHES:
+				var field:="vine_arch_part" if kind==World.INDUSTRY.VINE_ARCH else "forest_arch_part"
+				for part in range(3):expected[World.key(tile+Vector2i(part,0))]={"type":kind,"owner":"builder","items":{},field:part}
+			if kind==World.INDUSTRY.POT_RACK:
+				expected[key].copper_rack_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"copper_rack_part":1}
 			if kind=="inn_stone_footbath":
 				expected[key].bath_part=0
 				var cells:=World.INDUSTRY.station_cells(kind)
@@ -227,6 +439,9 @@ func verify_entry(kind: String) -> void:
 				expected[World.key(tile+Vector2i.DOWN)]={"type":kind,"owner":"builder","items":{},"inn_bed_part":1,"inn_bed_vertical":true}
 			if kind=="spring_stone_bench":
 				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"bench_end":true}
+			if kind==World.INDUSTRY.STONE_WORKBENCH:
+				expected[key].stone_bench_part=0
+				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"stone_bench_part":1}
 			if kind=="dye_table":
 				expected[key].dye_part=0
 				expected[World.key(tile+Vector2i.RIGHT)]={"type":kind,"owner":"builder","items":{},"dye_part":1}
@@ -259,6 +474,10 @@ func verify_entry(kind: String) -> void:
 	if kind == "door":
 		expect(act(world, "door").ok, "door opens")
 		expect(not world.blocked(TILE) and world.can_stand(center), "open door allows passage")
+		var feet_at_corner:=Vector2(TILE)-Vector2(0.21,0.16)
+		world.add_player("door-visitor","訪客",feet_at_corner)
+		expect(not act(world,"door").ok and world.state.objects[key].open,"door cannot close on a visitor clipping the corner")
+		world.state.players["door-visitor"].x-=1.0
 		expect(act(world, "door").ok, "door closes")
 		expect(world.blocked(TILE) and not world.can_stand(center), "closed door blocks passage again")
 	expect(act(world, "remove").ok, kind + " can be removed by its owner")
@@ -272,10 +491,15 @@ func verify_mine_drill(world: World, tile: Vector2i) -> void:
 	var player: Dictionary = world.state.players.builder
 	player.inventory.mine_drill_kit=1
 	expect(world.region_snapshot("mine_4").objects.is_empty(), "drill starts on empty mine ground")
+	var scene_before:Dictionary={}
+	if not scene_record_path.is_empty():scene_before=world.region_snapshot("mine_4",true,"builder")
 	expect(act(world,"build","mine_drill").ok and int(player.inventory.mine_drill_kit)==0, "drill consumes exactly its kit")
 	var expected := {"type":"mine_drill","owner":"builder"}
 	expected.merge(World.MINE_DRILL.fresh(0))
 	expect(world.region_snapshot("mine_4").objects.get(World.key(tile),{})==expected, "drill uses correct layer and initial state")
+	if not scene_record_path.is_empty():
+		scene_evidence["mine_drill"]={"anchor":World.key(tile),"before":scene_before,
+			"after":world.region_snapshot("mine_4",true,"builder")}
 	world.switch_region("mine_4")
 	expect(world.blocked(tile) and not world.can_stand(center), "drill blocks its footprint")
 	world.switch_region("home")
@@ -286,8 +510,23 @@ func verify_mine_drill(world: World, tile: Vector2i) -> void:
 	world.switch_region("home")
 
 func _initialize() -> void:
+	for arg:String in OS.get_cmdline_user_args():
+		if arg.begins_with("--scene-preview-record="):scene_record_path=arg.trim_prefix("--scene-preview-record=")
 	expect(PLACEMENT.size() == World.BUILD.size(), "all catalog entries covered")
 	for kind in World.BUILD:
 		verify_entry(kind)
+	for arg in OS.get_cmdline_user_args():
+		if not arg.begins_with("--catalog-record="):continue
+		var file:=FileAccess.open(arg.trim_prefix("--catalog-record="),FileAccess.WRITE)
+		expect(file!=null,"Open the requested placement evidence file")
+		if file!=null:
+			expect(file.store_string(JSON.stringify(placement_evidence,"\t")),"Write actual placement layers and occupied cells")
+			file.close()
+	if not scene_record_path.is_empty():
+		var file:=FileAccess.open(scene_record_path,FileAccess.WRITE)
+		expect(file!=null,"Open the requested scene evidence file")
+		if file!=null:
+			expect(file.store_string(JSON.stringify(scene_evidence)),"Write before and after world snapshots")
+			file.close()
 	print("BUILD_CATALOG_TESTS entries=%d checks=%d failures=%d" % [World.BUILD.size(), checks, failures])
 	quit(0 if failures == 0 else 1)

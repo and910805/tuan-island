@@ -2,6 +2,9 @@ extends SceneTree
 const World=preload("res://scripts/world.gd")
 const Rooms=preload("res://scripts/house_rooms.gd")
 const Session=preload("res://scripts/session.gd")
+const Industry=preload("res://scripts/industry.gd")
+const Goals=preload("res://scripts/resident_goals.gd")
+const WallFixtures=preload("res://scripts/wall_fixtures.gd")
 var checks:=0
 var failures:=0
 const DOOR:=Vector2i(11,9)
@@ -142,10 +145,108 @@ func run() -> void:
 		for x in range(30):big.ground[k(Vector2i(x,y))]={"type":"floor","owner":"a"}
 	r=Rooms.inspect(big,Vector2i(15,15))
 	expect(r.found and not r.complete and r.area==Rooms.MAX_CELLS,"oversized component capped")
+	check_guest_furnishing()
 	check_visit_permissions()
 	check_outdoor_visit_permissions()
 	print("HOUSE_ROOMS_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(0 if failures==0 else 1)
+
+## Puts every cell of a real multi-cell piece (part i at station_cells[i]) into the snapshot.
+func place(s:Dictionary,kind:String,anchor:Vector2i,owner:="alice",vertical:=false,skip:=-1) -> void:
+	var field:=Industry.square_part_field(kind)
+	# Plain single-tile kinds must not fall back to Industry's SQUARE_CELLS footprint.
+	var cells:Array=[Vector2i.ZERO] if field.is_empty() else Industry.station_cells(kind,vertical)
+	for i in cells.size():
+		if i==skip:continue
+		var piece:={"type":kind,"owner":owner,"items":{}}
+		if not field.is_empty():piece[field]=i
+		if vertical:piece[Industry.vertical_field(kind)]=true
+		s.objects[k(anchor+cells[i])]=piece
+
+func guest(s:Dictionary,owner:="alice") -> Dictionary:
+	return Rooms.guest_room(s,Rooms.inspect(s,Vector2i(12,12)),Vector2i(12,12),owner)
+
+func check_guest_furnishing() -> void:
+	var lamp_spot:=Vector2i(10,10)
+	var seat_spot:=Vector2i(13,10)
+	# Cedar bed + paper tea lamp + generic chair.
+	var s:=house();s.objects.erase(k(BED))
+	place(s,Industry.CEDAR_BED,Vector2i(12,13))
+	place(s,Industry.PAPER_TEA_LAMP,lamp_spot);place(s,"chair",seat_spot)
+	var r:=Rooms.inspect(s,Vector2i(12,12))
+	var g:=guest(s)
+	expect(r.complete and r.bed_count==1 and r.reachable_bed,"cedar bed counts as one reachable house bed")
+	expect(g.ready and g.furnished.bed and g.furnished.lamp and g.furnished.chair and g.contributed and g.inside,"cedar + paper lamp + chair is a ready guest room")
+	expect(g.keys().size()==4 and g.furnished.keys().size()==3,"guest_room result keys preserved")
+	# Vertical quilt bed + spore lamp + copper garden chair.
+	s=house();s.objects.erase(k(BED))
+	place(s,Industry.INN_BED,Vector2i(10,12),"alice",true)
+	place(s,Industry.SPORE_LAMP,lamp_spot);place(s,Goals.GARDEN_CHAIR,seat_spot)
+	r=Rooms.inspect(s,Vector2i(12,12));g=guest(s)
+	expect(r.complete and r.bed_count==1 and g.ready,"vertical quilt bed + spore lamp + copper chair ready")
+	# Wall lamp + hollow bed (four cells) + mushroom stool.
+	s=house();s.objects.erase(k(BED))
+	place(s,Industry.HOLLOW_BED,Vector2i(12,12))
+	place(s,WallFixtures.LIGHT,Vector2i(12,10));place(s,Industry.MUSHROOM_STOOL,seat_spot)
+	r=Rooms.inspect(s,Vector2i(12,12));g=guest(s)
+	expect(r.bed_count==1 and r.reachable_bed and g.ready,"hollow bed + wall lamp + mushroom stool ready")
+	# Plain styled bed/chair/lamp remain the same types.
+	s=house();s.objects[k(BED)].style="oak"
+	place(s,"lamp",lamp_spot);place(s,"chair",seat_spot);s.objects[k(seat_spot)].style="oak"
+	expect(guest(s).ready,"styled generic bed, lamp and chair count")
+	for lamp in [Industry.PAPER_TEA_LAMP,Industry.SPORE_LAMP,"star_garden_lamp",WallFixtures.LIGHT]:
+		s=house();place(s,lamp,lamp_spot);place(s,"chair",seat_spot)
+		expect(guest(s).ready,"lamp type counts: "+lamp)
+	for seat in [Industry.WOOD_CHAIR,Goals.GARDEN_CHAIR,Industry.MUSHROOM_STOOL,Industry.INDIGO_CUSHION,"sofa"]:
+		s=house();place(s,"lamp",lamp_spot);place(s,seat,seat_spot)
+		expect(guest(s).ready,"seat type counts: "+seat)
+	# Two-seat bench needs both ends inside the room.
+	s=house();place(s,"lamp",lamp_spot)
+	s.objects[k(seat_spot)]={"type":Goals.BAMBOO_BENCH,"owner":"alice","items":{}}
+	expect(not guest(s).furnished.chair,"bench anchor on the wall edge is incomplete")
+	s.objects[k(seat_spot+Vector2i.LEFT)]={"type":Goals.BAMBOO_BENCH,"owner":"alice","items":{},"bench_end":true}
+	expect(not guest(s).furnished.chair,"bench end on the left of its anchor is an orphan")
+	s.objects.erase(k(seat_spot));s.objects[k(seat_spot+Vector2i.LEFT)].erase("bench_end")
+	s.objects[k(seat_spot)]={"type":Goals.BAMBOO_BENCH,"owner":"alice","items":{},"bench_end":true}
+	expect(guest(s).ready,"whole two-seat bench counts")
+	# Own contribution: someone else's furniture does not qualify the viewer.
+	s=house("alice","alice");s.objects.erase(k(BED))
+	place(s,Industry.CEDAR_BED,Vector2i(12,13),"bob");place(s,"lamp",lamp_spot,"bob");place(s,"chair",seat_spot,"bob")
+	g=guest(s,"alice")
+	expect(g.furnished.bed and g.furnished.lamp and g.furnished.chair and not g.contributed and not g.ready,"furnished by others is not own contribution")
+	expect(guest(s,"bob").ready,"the furnishing owner contributes")
+	# One own piece is enough once the room is fully furnished.
+	place(s,"lamp",lamp_spot,"alice")
+	expect(guest(s,"alice").ready,"own lamp alone provides contribution")
+	# Incomplete footprints: missing filler, orphan filler, cut by wall.
+	s=house();s.objects.erase(k(BED))
+	place(s,"lamp",lamp_spot);place(s,"chair",seat_spot)
+	place(s,Industry.CEDAR_BED,Vector2i(12,13),"alice",false,1)
+	r=Rooms.inspect(s,Vector2i(12,12));g=guest(s)
+	expect(r.bed_count==0 and not g.furnished.bed and not g.ready and has_reason(r,"床"),"cedar anchor without filler is not a bed")
+	s=house();s.objects.erase(k(BED))
+	place(s,Industry.CEDAR_BED,Vector2i(12,13),"alice",false,0)
+	r=Rooms.inspect(s,Vector2i(12,12))
+	expect(r.bed_count==0 and not r.reachable_bed and not guest(s).furnished.bed,"orphan bed filler is rejected")
+	s=house();s.objects.erase(k(BED))
+	place(s,Industry.HOLLOW_BED,Vector2i(12,12),"alice",false,3)
+	expect(Rooms.inspect(s,Vector2i(12,12)).bed_count==0,"three of four hollow bed cells is incomplete")
+	s=house();s.objects.erase(k(BED))
+	place(s,Industry.CEDAR_BED,Vector2i(13,13))
+	r=Rooms.inspect(s,Vector2i(12,12))
+	expect(r.bed_count==0 and not guest(s).furnished.bed,"bed footprint crossing the wall does not count")
+	s=house();s.objects.erase(k(BED))
+	s.objects[k(BED)]={"type":Industry.INN_BED,"owner":"alice","items":{}}
+	expect(Rooms.inspect(s,Vector2i(12,12)).bed_count==0,"legacy single-cell quilt bed without filler is incomplete")
+	# Every side of a multi-cell bed is a valid approach, including the filler side.
+	s=house();s.objects.erase(k(BED))
+	place(s,Industry.CEDAR_BED,Vector2i(12,13))
+	for p in [Vector2i(11,13),Vector2i(12,12)]:s.objects[k(p)]={"type":"chest","owner":"alice","items":{}}
+	r=Rooms.inspect(s,Vector2i(12,12))
+	expect(r.bed_count==1 and r.reachable_bed,"bed reachable only from the filler side")
+	s.objects[k(Vector2i(13,12))]={"type":"chest","owner":"alice","items":{}}
+	r=Rooms.inspect(s,Vector2i(12,12))
+	expect(r.bed_count==1 and not r.reachable_bed and not r.complete,"fully walled-in bed is unreachable")
 
 func check_visit_permissions() -> void:
 	var world:=World.new()

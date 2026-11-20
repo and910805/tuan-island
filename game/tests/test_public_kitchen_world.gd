@@ -114,7 +114,8 @@ func load_contract() -> void:
 		req[meal]=int(raw_req.get(meal,-1)) if raw_req is Dictionary else -1
 	expect(req=={"soup":4,"bread":2,"salad":2},"contract requirements soup4/bread2/salad2: "+str(req))
 	expect(req==Schema.KITCHEN_MEALS,"SaveSchema meal caps follow the contract")
-	expect(int(data.get("save_version",-1))==int(Schema.VERSION),"contract save_version matches SaveSchema.VERSION")
+	var contract_version:=int(data.get("save_version",-1))
+	expect(contract_version>=Schema.PUBLIC_KITCHEN_VERSION and contract_version<=Schema.VERSION,"contract falls in the supported public-kitchen migration range")
 	var meals:={}
 	for meal in req:meals[meal]=0
 	fresh_pk={"stove":"","seats":[],"meals":meals,"opened":false}
@@ -476,7 +477,54 @@ func test_main_flow() -> void:
 	expect(replay.get("ok")==true and str(replay.get("message",""))!="","persisted receipt replays after reload: "+str(replay))
 	expect(var_to_str(w2.state)==snap2,"replay after reload mutates nothing")
 	must(w2,C,"cancel_cook",STOVE,"","queued public stove job survives reload and cancels")
+	test_mill_restoration(w2)
 	test_legacy(legacy_text)
+
+func test_mill_restoration(w)->void:
+	const Mill=World.MILL_RESTORATION
+	expect(not w.state.has(Mill.FIELD) and not Mill.repaired(w.state),"An opened kitchen save without a mill can start the repair")
+	refuse(w,A,Mill.SERVICE,Mill.BOARD,"flour","No milling before repair")
+	var first:Dictionary=w.state.players[A].inventory
+	first["plank"]=5
+	refuse(w,A,Mill.ACTION,Mill.BOARD+Vector2i.DOWN,"","Wrong board target")
+	refuse(w,A,Mill.ACTION,Mill.BOARD,"","Out of reach of the board",PARK)
+	var receipt:=next_rid()
+	var donated:=act(w,A,Mill.ACTION,Mill.BOARD,"",null,receipt)
+	expect(donated.ok and int(w.state[Mill.FIELD].plank)==5 and int(first.plank)==0,"First donor gives only the planks they hold")
+	expect(act(w,A,Mill.ACTION,Mill.BOARD,"",null,receipt)==donated and int(w.state[Mill.FIELD].plank)==5,"Replaying the donation does not add materials")
+	var second:Dictionary=w.state.players[B].inventory
+	second["plank"]=8
+	second["woodwork_parts"]=3
+	var saved_path:String=w.save_path
+	w.save_path=dir.path_join("absent").path_join("mill.json")
+	refuse(w,B,Mill.ACTION,Mill.BOARD,"","Save failure rolls back the last donation")
+	w.save_path=saved_path
+	must(w,B,Mill.ACTION,Mill.BOARD,"","Another islander completes the repair")
+	expect(Mill.repaired(w.state) and int(w.state.players[B].inventory.plank)==1 and int(w.state.players[B].inventory.woodwork_parts)==1,"Only the missing materials are consumed")
+	refuse(w,B,Mill.ACTION,Mill.BOARD,"","Repair cannot be completed twice")
+	first=w.state.players[A].inventory
+	first["wheat"]=2
+	w.state.players[B].inventory["sweet_corn"]=1
+	must(w,A,Mill.SERVICE,Mill.BOARD,"flour","The first islander starts a flour order")
+	refuse(w,A,Mill.SERVICE,Mill.BOARD,"claim","A running flour order cannot be claimed")
+	refuse(w,B,Mill.SERVICE,Mill.BOARD,"claim","Another islander cannot claim the first job")
+	must(w,B,Mill.SERVICE,Mill.BOARD,"feed","The second islander starts their own feed order")
+	var reloaded:=World.new()
+	if not reloaded.load_world(saved_path):
+		expect(false,"Primary save with both mill jobs reloads")
+		return
+	expect(not reloaded.recovered_from_backup and Mill.repaired(reloaded.state),"The repaired mill survives primary save reload")
+	expect(reloaded.state.players[A].get(Mill.JOB,{}).get("kind")=="flour" and reloaded.state.players[B].get(Mill.JOB,{}).get("kind")=="feed","The jobs retain different owners and recipes")
+	var malformed:=reloaded.state.duplicate(true)
+	malformed[Mill.FIELD]["plank"]=Mill.COST.plank+1
+	expect(not Mill.valid(malformed),"A save cannot overfill the restoration materials")
+	expect(reloaded.step(float(World.INDUSTRY.PROCESS.flour.time),true),"World time completes both recipes")
+	var flour_before:=int(reloaded.state.players[A].inventory.get("flour",0))
+	var feed_before:=int(reloaded.state.players[B].inventory.get("feed",0))
+	must(reloaded,A,Mill.SERVICE,Mill.BOARD,"claim","The first islander claims flour")
+	must(reloaded,B,Mill.SERVICE,Mill.BOARD,"claim","The second islander claims feed")
+	expect(int(reloaded.state.players[A].inventory.flour)==flour_before+1 and int(reloaded.state.players[B].inventory.feed)==feed_before+4,"Both jobs give the normal recipe quantities")
+	refuse(reloaded,A,Mill.SERVICE,Mill.BOARD,"claim","Completed jobs cannot pay twice")
 
 ## Region check: A really travels to Lanyang, then tries to register home cells.
 func region_reject(w) -> void:

@@ -72,7 +72,7 @@ func check_catalogs(world: World) -> void:
 	main._shop()
 	await process_frame
 	var shop: Control = main.modal
-	var buy_tab := find_button(shop, "買種子")
+	var buy_tab := find_button(shop, "買種子與材料")
 	buy_tab.pressed.emit()
 	var product := card_button(shop, World.NAMES.radish_seed, true)
 	expect(product != null, "radish seed can be picked from the buy grid")
@@ -132,7 +132,7 @@ func check_catalogs(world: World) -> void:
 		var place:=main.modal.find_child("BuildPlace",true,false) as Button
 		var status:=main.modal.find_child("BuildStatus",true,false) as Label
 		expect(item.button_pressed and place!=null and status!=null and place.disabled==not unlocked and
-			(status.text=="圖樣未解鎖" if not unlocked else status.text.begins_with("材料齊全") or status.text.begins_with("缺少材料")),
+			(status.text=="圖樣未解鎖" if not unlocked else status.text in ["材料齊全","材料不足"]),
 			"selected %s shows the matching lock state" % kind)
 	find_button(main.modal, "基礎").pressed.emit()
 	card_button(main.modal, World.BUILD.floor.name, true).pressed.emit()
@@ -208,8 +208,9 @@ func check_inventory(size: Vector2i) -> void:
 			"%s modal fits %s: %s" % [entry[0], size, panel.get_global_rect() if is_instance_valid(panel) else "missing"])
 		if is_instance_valid(panel):
 			for scroll in panel.find_children("*", "ScrollContainer", true, false):
+				if not scroll.is_visible_in_tree():continue
 				expect(panel.get_global_rect().encloses(scroll.get_global_rect()),
-					"%s scroll viewport fits its modal at %s" % [entry[0], size])
+					"%s / %s scroll viewport fits its modal at %s" % [entry[0], scroll.name, size])
 		press(KEY_ESCAPE)
 		await process_frame
 
@@ -239,4 +240,3 @@ func run() -> void:
 	await process_frame
 	print("UI_PHASE3_TESTS checks=%d failures=%d" % [checks, failures])
 	quit(0 if failures == 0 else 1)
-

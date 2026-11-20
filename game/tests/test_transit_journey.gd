@@ -58,6 +58,7 @@ func after_chapter() -> void:
 	expect(reopened.load_world(world.save_path) and not reopened.recovered_from_backup and reopened.player_region(TOKEN)=="home","Return survives reopening the primary save")
 	if failed:return
 	world=reopened
+	world.add_player(TOKEN,str(person().name))
 	var departure: Vector2i = World.TRANSIT.points("home").ferry.cell
 	expect(person().travel_book.visited.size()==NETWORK.size()+1 and person().travel_book.visited.has("home") and not person().travel_book.visited.has("maokong") and not person().travel_book.visited.has("yingge"),"Visited mountain route survives reload without inventing tea branch visits")
 	var shortcut_options := World.TRANSIT.route_options(world.state,TOKEN,"ferry")

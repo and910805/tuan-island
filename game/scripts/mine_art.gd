@@ -259,4 +259,3 @@ static func draw_strike(canvas:CanvasItem,at:Vector2,age:float,reduced_motion:bo
 	var tint:=Color(1,0.86,0.57,fade)
 	for offset in [Vector2(4,9),Vector2(23,4),Vector2(27,15)]:
 		canvas.draw_texture_rect_region(TERRAIN,Rect2(at+offset-Vector2(0,drift),Vector2(5,5)),Rect2(33,33,5,5),tint)
-

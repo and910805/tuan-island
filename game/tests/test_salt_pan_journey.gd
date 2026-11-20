@@ -554,7 +554,7 @@ func produce(want:Dictionary) -> void:
 	gather({"wood":wood,"stone":stone,"fiber":fiber,"resin":int(want.resin)})
 	if failed:return
 	if need_bench:
-		bench_cell=open_cell()
+		bench_cell=open_cell(true)
 		if not expect(bench_cell!=Vector2i(-1,-1),"open cell for a bench"):return
 		sact("build",bench_cell,"bench",{"stone":-5})
 	if need_pick:craft("reinforced_pick")
@@ -637,7 +637,7 @@ func water_spot() -> Vector2i:
 	return Vector2i(-1,-1)
 
 ## A free home tile with all eight neighbours standable (never seals a path).
-func open_cell() -> Vector2i:
+func open_cell(wide:=false) -> Vector2i:
 	var origin:=Vector2i(int(person().x),int(person().y))
 	for distance in range(3,14):
 		for y in range(origin.y-distance,origin.y+distance+1):
@@ -653,6 +653,12 @@ func open_cell() -> Vector2i:
 						var n:=c+Vector2i(dx,dy)
 						var nk:=World.key(n)
 						if world.blocked(n) or world.state.crops.has(nk) or world.protected(n):open=false
+				# C08: the 2x1 workbench also needs its far (right-hand) cell to be a clear buildable cell.
+				if open and wide:
+					var far:=c+Vector2i.RIGHT
+					var far_key:=World.key(far)
+					if not world.is_land(far) or world.water(far) or world.protected(far) or world.resource(far)!="" or world.blocked(far):open=false
+					elif world.state.crops.has(far_key) or world.state.objects.has(far_key) or world.state.ground.has(far_key) or world.state.roofs.has(far_key) or world.state.forest.has(far_key):open=false
 				if open and not route(c).is_empty():return c
 	return Vector2i(-1,-1)
 

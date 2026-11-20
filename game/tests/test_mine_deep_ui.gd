@@ -177,7 +177,7 @@ func run()->void:
 	progress(15)
 	w.state.mine_survey.players[id]={"seen":{},"claimed":false}
 	place("mine_12",World.MINES.REST)
-	check(SurveyUI.guidance(app.session.snapshot).begins_with("深層 0／10 · 往北"),"Deep guidance points at the B12 side cave")
+	check(SurveyUI.guidance(app.session.snapshot)=="深層 0／10\n往北找觀察點","Deep guidance gives B12 progress and the side-cave direction on different lines")
 	for size in [Vector2i(1024,640),Vector2i(1280,800)]:
 		root.size=size
 		SurveyUI.open(app,12)

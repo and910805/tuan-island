@@ -2,6 +2,7 @@ extends SceneTree
 
 const Session=preload("res://scripts/session.gd")
 const Springs=preload("res://scripts/warm_springs.gd")
+const Goals=preload("res://scripts/resident_goals.gd")
 const Music=preload("res://scripts/scene_music.gd")
 const ROOM_KEY:="inn-network-test"
 const FIRST_CHAIR:=Vector2i(67,24)
@@ -59,8 +60,10 @@ func serve(port:int) -> void:
 		actor.region=Springs.REGION
 		actor.x=Springs.INN_DOOR.x+0.5
 		actor.y=Springs.INN_DOOR.y+0.5
+		actor.bonds={"nuannuan":{"points":1,"gift_day":-1,"talk_day":-1}}
 	if await wait_for(func():return session.peers.size()==2,"Both real clients connect",12.0):
 		await wait_for(func():return session.peers.is_empty(),"Both real clients finish and disconnect",18.0)
+	expect(session.world.state.players[token("alpha")].get(Goals.INN_CLEAR_KEY,false) and not session.world.state.players[token("beta")].has(Goals.INN_CLEAR_KEY),"Only Alpha's cleanup is saved on the server")
 	expect(session.shutdown(),"Server writes final state cleanly")
 	for suffix in ["",".bak",".tmp"]:
 		if FileAccess.file_exists(path+suffix):DirAccess.remove_absolute(path+suffix)
@@ -70,6 +73,10 @@ func exercise(port:int) -> void:
 	session.notice.connect(func(_message:String,success:bool):notices.append(success))
 	if not expect(session.join("ws://127.0.0.1:%d"%port,port,role,ROOM_KEY)==OK,"Starts WebSocket join"):return
 	if not await wait_for(func():return not person("alpha").is_empty() and not person("beta").is_empty(),"Both players are visible in the shared snapshot"):return
+	expect(Springs.entrance_progress(session.snapshot)==Springs.Entrance.LEAVES,"The visible entrance begins unswept")
+	if role=="alpha":
+		if not await action(Goals.INN_CLEAR_ACTION,Springs.INN_DOOR,true):return
+		if not await wait_for(func():return Springs.entrance_progress(session.snapshot)==Springs.Entrance.SWEPT,"Alpha sees the swept entrance"):return
 	if not await action(Springs.INN_PORTAL,Springs.INN_DOOR,true):return
 	if not await wait_for(func():return Springs.in_inn(person("alpha")) and Springs.in_inn(person("beta")),"Both players independently enter the inn"):return
 	expect(track(role)==Music.INN_TRACK,"Only the local indoor position selects the inn track")
@@ -80,6 +87,7 @@ func exercise(port:int) -> void:
 		expect(seated("alpha",FIRST_CHAIR) and track("alpha")==Music.INN_TRACK,"Beta exiting does not move alpha or change alpha's music")
 	else:
 		if not await wait_for(func():return seated("alpha",FIRST_CHAIR),"Beta sees alpha's seat before trying it"):return
+		expect(Springs.entrance_progress(session.snapshot)==Springs.Entrance.LEAVES,"Alpha's cleanup does not advance Beta's story or preview")
 		if not await action(Springs.INN_USE,FIRST_CHAIR,false):return
 		if not await action(Springs.INN_USE,SECOND_CHAIR,true):return
 		if not await wait_for(func():return seated("alpha",FIRST_CHAIR) and seated("beta",SECOND_CHAIR),"Beta observes both seats occupied"):return

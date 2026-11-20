@@ -35,9 +35,10 @@ extends "res://tests/test_flower_journey.gd"
 ##     (+3), 洛洛 gets 麵包 (+3). Before each stage is reached the goal is refused with
 ##     the stage message. 鈴婆婆 at 熟悉: all five wrong bell orders refused with the
 ##     order message, malformed step strings refused, right order 102 succeeds
-##     (no items), repeat refused. 洛洛 at 信任 (14 points, four world days): missing /
-##     unknown option and stray steps refused, option "aloud" succeeds (no items),
-##     repeat refused; 洛洛 stage 4 refused with the 好友 stage message.
+##     (no items), repeat refused. 洛洛 at 信任 (14 points, four world days): the loop
+##     stops there; her stage-3 goal now waits for her stage-2 report (step 5): after it,
+##     missing / unknown option and stray steps refused, option "aloud" succeeds (no
+##     items), repeat refused; 洛洛 stage 4 refused with the 好友 stage message.
 ##  5. Batch-2 prerequisite (needs) 洛洛「沒有地址的信」luoluo:2:: (known_three):
 ##     洛洛 is past 熟悉 but only 米露 and 鈴婆婆 are known -> the view (built with the
 ##     world state) shows needs [{known_three,"…（目前 2 位）",met false}]; a stray
@@ -47,6 +48,8 @@ extends "res://tests/test_flower_journey.gd"
 ##     ordinary first talk with 阿榆 (home, 渡口長椅) makes him 認識 = the third known
 ##     resident -> needs met, label "（目前 3 位）", goal succeeds with no items, done
 ##     view carries no needs; repeat refused; save + reload; repeat refused again.
+##     Before it, stage 3 (postcard_reported) syntax is refused first, then a valid
+##     option is refused with the need message; afterwards the stage-3 leg runs.
 ##  6. Batch-2 prerequisite 阿榆「有點歪的第一塊板」aru:1:: (own_bed + 10 wood):
 ##     at 認識 with no bed of one's own -> needs own_bed met=false; stray option
 ##     refused; goal refused "還不能一起做這件事：要先「家園裡有一張你放的小床」。".
@@ -130,6 +133,7 @@ const RG_STEPS_MSG:="三個步驟都要做過一次。"
 const RG_CHOOSE:="請先選一個做法。"
 const RG_ORDER:="順序不太對。鈴婆婆說不急，再看一次圖示。"
 const RG_NEED_MSG:="還不能一起做這件事：要先「%s」。"
+const RG_CLUES_TEXT:="向已認識的居民詢問線索（目前 %d／3 位）"
 const RG_TOTAL:=48
 const RG_VILLAGE=preload("res://scripts/village.gd")
 ## World.gd literals: what one felled tree / one grass tile gives, the 小床 message.
@@ -235,6 +239,8 @@ func run() -> void:
 	rg_daily()
 	if failed:return
 	rg_known_three()
+	if failed:return
+	rg_luoluo_goal()
 	if failed:return
 	rg_aru_bed()
 	if failed:return
@@ -445,6 +451,7 @@ func rg_luoluo_goal() -> void:
 	var r:="luoluo"
 	var cell:=rg_cell(r)
 	expect(Bond.stage(person(),r)==3,"洛洛 is exactly 信任 (%d points)"%Bond.points(person(),r))
+	rg_expect_row(r,3,{"state":"open","choice":"","needs":[{"id":"postcard_reported","label":str(Goals.NEEDS.postcard_reported),"met":true}]},"stage 3 after the report")
 	rg_deny(Goals.ACTION,cell,"luoluo:3::",RG_CHOOSE,"洛洛 goal without an option")
 	rg_deny(Goals.ACTION,cell,"luoluo:3:sing:",RG_CHOOSE,"洛洛 goal with an unknown option")
 	rg_deny(Goals.ACTION,cell,"luoluo:3:aloud:012",RG_REOPEN,"洛洛 goal with steps it does not have")
@@ -453,7 +460,7 @@ func rg_luoluo_goal() -> void:
 	if failed:return
 	rg_deny(Goals.ACTION,cell,"luoluo:3:letter:","〈想說卻沒送出的話〉已經一起完成了，手帳可以重看。","洛洛 goal again with the other option")
 	rg_deny(Goals.ACTION,cell,"luoluo:4::",rg_stage_msg(r,4),"洛洛 stage-4 goal at 信任 (batch 2 added it)")
-	rg_deny(Goals.ACTION,cell,"luoluo:1::","還不能一起做這件事：要先「把洛洛的信交給正確的收件人」。","洛洛 first event waits for letter delivery")
+	rg_deny(Goals.ACTION,cell,"luoluo:1::","〈寫得太小的地址〉已經一起完成了，手帳可以重看。","The first letter remains delivered")
 
 # ---------------------------------------------------------------- prerequisites (batch 2)
 
@@ -480,10 +487,18 @@ func rg_known_three() -> void:
 	var label:="%s（目前 %d 位）"%[str(Goals.NEEDS.known_three),known]
 	expect(label=="認識洛洛以外的三位居民（目前 2 位）","known_three label with the count: %s"%label)
 	expect(not Goals.need_met("known_three",world.state,tok),"known_three not met yet")
-	rg_expect_row(r,2,{"state":"open","choice":"","needs":[{"id":"known_three","label":label,"met":false}]},"two known")
+	rg_expect_row(r,2,{"state":"open","choice":"","needs":[{"id":"known_three","label":label,"met":false},{"id":"postcard_clues","label":RG_CLUES_TEXT%0,"met":false}]},"two known")
 	rg_deny(Goals.ACTION,cell,"luoluo:2:aloud:",RG_REOPEN,"洛洛 stage-2 goal with an option it does not have (checked before needs)")
 	rg_deny(Goals.ACTION,cell,"luoluo:2::012",RG_REOPEN,"洛洛 stage-2 goal with steps it does not have (checked before needs)")
 	rg_deny(Goals.ACTION,cell,"luoluo:2::",RG_NEED_MSG%label,"洛洛 stage-2 goal knowing only %d residents"%known)
+	# Stage 3 (reached) waits for the stage-2 report: syntax first, then the need, even for a valid option.
+	var report_label:=str(Goals.NEEDS.postcard_reported)
+	expect(report_label=="完成洛洛的〈沒有地址的信〉" and not Goals.need_met("postcard_reported",world.state,tok),"postcard_reported label and not met before luoluo 2")
+	rg_expect_row(r,3,{"state":"open","choice":"","needs":[{"id":"postcard_reported","label":report_label,"met":false}]},"stage 3 waits for the report")
+	rg_deny(Goals.ACTION,cell,"luoluo:3::",RG_CHOOSE,"洛洛 stage-3 goal without an option (checked before needs)")
+	rg_deny(Goals.ACTION,cell,"luoluo:3:aloud:012",RG_REOPEN,"洛洛 stage-3 goal with steps (checked before needs)")
+	rg_deny(Goals.ACTION,cell,"luoluo:3:aloud:",RG_NEED_MSG%report_label,"洛洛 stage-3 goal with a valid option before stage 2 is done")
+	rg_deny(Goals.ACTION,cell,"luoluo:3:letter:",RG_NEED_MSG%report_label,"洛洛 stage-3 goal with the other valid option before stage 2 is done")
 	expect(not rg_done(r,2) and not person().get(Goals.RECORD_KEY,{}).get(r,{}).has("2"),"the refused prerequisite goal wrote no record")
 	if failed:return
 	# 阿榆 lives at home (渡口長椅); an ordinary first talk makes him 認識.
@@ -495,7 +510,32 @@ func rg_known_three() -> void:
 	known=Goals.known_count(person(),r)
 	expect(known==3 and Goals.need_met("known_three",world.state,tok),"three residents other than 洛洛 known now (%d)"%known)
 	label="%s（目前 %d 位）"%[str(Goals.NEEDS.known_three),3]
-	rg_expect_row(r,2,{"state":"open","choice":"","needs":[{"id":"known_three","label":label,"met":true}]},"three known")
+	var clue_label:=RG_CLUES_TEXT%0
+	rg_expect_row(r,2,{"state":"open","choice":"","needs":[{"id":"known_three","label":label,"met":true},{"id":"postcard_clues","label":clue_label,"met":false}]},"three known, no clues")
+	rg_deny(Goals.ACTION,cell,"luoluo:2::",RG_NEED_MSG%clue_label,"洛洛 stage-2 goal with three known but no clues asked")
+	if failed:return
+	var address_change:=["state.players.%s.%s"%[tok,Goals.ADDRESS_KEY]]
+	rg_deny(Goals.ACTION,cell,"luoluo:1::","還不能一起做這件事：要先「把洛洛的信交給正確的收件人」。","洛洛 first event waits for letter delivery")
+	rg_deny(Goals.POSTCARD_CLUE_ACTION,aru,"aru","先和洛洛完成〈寫得太小的地址〉。","Interviews wait for the first letter")
+	rg_ok(Goals.ADDRESS_ACTION,cell,"take","你收下了洛洛的信，可以打開信封查看線索。","Take the first letter",address_change)
+	rg_ok(Goals.ADDRESS_ACTION,aru,"aru","阿榆收下了信，回去告訴洛洛吧。","Deliver the first letter",address_change)
+	rg_goal_ok(r,1,"","",{})
+	if failed:return
+	# Ask for clues through the real action; 阿榆 stands right here after the talk.
+	rg_ask_clue("aru")
+	rg_ask_clue("aru") # duplicate: the field must keep counting 阿榆 once, whatever the message
+	for other:String in ["milu","lingpopo"]:
+		var place:Array=World.bond_place(world.state,other)
+		if str(place[0])==world.player_region(tok):rg_ask_clue(other)
+	if failed:return
+	var clues:Array=rg_clues()
+	expect(clues.count("aru")==1 and not clues.has("luoluo"),"clue field keeps 阿榆 once, never 洛洛 (%s)"%JSON.stringify(clues))
+	if clues.size()<3:
+		# FIXTURE: residents that are not standing in this region are seeded, not located.
+		for other:String in ["aru","milu","lingpopo"]:
+			if not clues.has(other):clues.append(other)
+		person()[Goals.POSTCARD_CLUES_KEY]=clues
+	rg_expect_row(r,2,{"state":"open","choice":"","needs":[{"id":"known_three","label":label,"met":true},{"id":"postcard_clues","label":RG_CLUES_TEXT%3,"met":true}]},"three known, three clues")
 	rg_goal_ok(r,2,"","",{})
 	if failed:return
 	rg_expect_row(r,2,{"state":"done","choice":""},"洛洛 stage 2 done (no needs row once done)")
@@ -504,6 +544,24 @@ func rg_known_three() -> void:
 	if failed:return
 	rg_expect_row(r,2,{"state":"done","choice":""},"after reload: 洛洛 stage 2 done")
 	rg_deny(Goals.ACTION,rg_cell(r),"luoluo:2::",done_msg,"after reload: 洛洛 stage-2 goal again")
+
+func rg_clues() -> Array:
+	var field:Variant=person().get(Goals.POSTCARD_CLUES_KEY,[])
+	var out:Array=[]
+	if field is Array:out.assign(field)
+	return out
+
+## Asks `r` (standing in the player's region) for a postcard clue; the message is not pinned,
+## only that the field ends up holding `r` exactly once.
+func rg_ask_clue(r:String) -> void:
+	if failed:return
+	var cell:=rg_cell(r)
+	walk_to(cell)
+	if failed:return
+	actions+=1
+	var result:=world.act(tok,"rg-journey-%d"%actions,Goals.POSTCARD_CLUE_ACTION,cell,r)
+	var clues:=rg_clues()
+	expect(clues.count(r)==1,"clue action on %s: field holds it once (ok=%s '%s', %s)"%[r,str(result.ok),str(result.message),JSON.stringify(clues)])
 
 func rg_owns_bed() -> bool:
 	for obj in world.state.objects.values():
@@ -643,6 +701,7 @@ func rg_aru_bed() -> void:
 
 ## "keepsake_<r>" when (r, stage) is the goal with a placeable keepsake, else "".
 func rg_kind(r:String,stage:int) -> String:
+	if r=="bobo" and stage==4:return "keepsake_bobo_cart"
 	if r=="nuannuan" and stage==4:return "keepsake_nuannuan_room"
 	if r=="lingpopo" and stage==4:return "keepsake_lingpopo_memorial"
 	if r=="xinghe" and stage==4:return "keepsake_xinghe_sign"
@@ -652,7 +711,7 @@ func rg_kind(r:String,stage:int) -> String:
 
 ## The published keepsake table matches the independent copy for all 28 goals.
 func rg_keepsake_table() -> void:
-	expect(Goals.KEEPSAKES.size()==17 and Goals.keepsake_items().size()==17,"seventeen keepsakes published (%d)"%Goals.KEEPSAKES.size())
+	expect(Goals.KEEPSAKES.size()==18 and Goals.keepsake_items().size()==18,"eighteen keepsakes published (%d)"%Goals.KEEPSAKES.size())
 	var bad:=[]
 	var with_kit:=0
 	for r:String in Goals.GOALS:
@@ -662,7 +721,7 @@ func rg_keepsake_table() -> void:
 			if not want.is_empty():with_kit+=1
 			if Goals.keepsake_kind(r,stage)!=want:bad.append("%s:%d"%[r,stage])
 			if not want.is_empty() and not (World.BUILD.has(want) and int(World.BUILD[want].get(want+"_kit",0))==1 and World.NAMES.has(want+"_kit")):bad.append("build %s"%want)
-	expect(bad.is_empty() and with_kit==17,"keepsake goals match the published table (%d with a kit, mismatches %s)"%[with_kit,JSON.stringify(bad)])
+	expect(bad.is_empty() and with_kit==18,"keepsake goals match the published table (%d with a kit, mismatches %s)"%[with_kit,JSON.stringify(bad)])
 
 func rg_aru_ks_row(claimed:bool) -> Dictionary:
 	return {"kind":RG_ARU_KS,"item":RG_ARU_KIT,"name":RG_ARU_KS_NAME,"claimed":claimed}
@@ -901,17 +960,17 @@ func rg_resident_round(r:String,stage:int,choice:String,steps:String) -> void:
 			else:rg_gift(r,item)
 	if failed:return
 	if Bond.stage(person(),r)>=stage:
+		# 洛洛's stage-3 goal now waits for her stage-2 report: run later by rg_luoluo_goal() after rg_known_three().
 		if r=="lingpopo":rg_lingpopo_goal()
-		else:rg_luoluo_goal()
 
 func rg_daily() -> void:
 	for guard in RG_DAY_LIMIT:
 		if failed:return
-		if rg_done("lingpopo",2) and rg_done("luoluo",3):break
+		if rg_done("lingpopo",2) and Bond.stage(person(),"luoluo")>=3:break
 		rg_next_day()
 		rg_day_round()
 	if failed:return
-	expect(rg_done("lingpopo",2) and rg_done("luoluo",3),"鈴婆婆 and 洛洛 goals done within %d world days (points %s)"%[RG_DAY_LIMIT,JSON.stringify(rg_points())])
+	expect(rg_done("lingpopo",2) and Bond.stage(person(),"luoluo")>=3 and not rg_done("luoluo",3),"鈴婆婆 goal done and 洛洛 at 信任 (goal not yet done) within %d world days (points %s)"%[RG_DAY_LIMIT,JSON.stringify(rg_points())])
 
 func rg_next_day() -> void:
 	if failed:return
@@ -951,7 +1010,7 @@ func rg_run_probes(label:String) -> void:
 func rg_reload_leg() -> void:
 	rg_run_probes("before reload")
 	if failed:return
-	rg_reload("five goals done")
+	rg_reload("six goals done")
 	if failed:return
 	rg_run_probes("after reload")
 
@@ -967,8 +1026,8 @@ func rg_after_reload_day() -> void:
 	if item.is_empty():print("RESIDENT_GOAL_JOURNEY no gift left for 鈴婆婆 after the reload")
 	else:rg_gift("lingpopo",item)
 	if failed:return
-	expect(Goals.completed(person())==5 and rg_goals==5,"five goals completed in total (%d)"%Goals.completed(person()))
-	expect(var_to_bytes(rg_canon(person().get(Goals.RECORD_KEY)))==var_to_bytes(rg_canon({"milu":{"1":""},"lingpopo":{"2":""},"luoluo":{"2":"","3":"aloud"},"aru":{"1":""}})),"bond_goals is exactly the five goals (%s)"%JSON.stringify(person().get(Goals.RECORD_KEY)))
+	expect(Goals.completed(person())==6 and rg_goals==6,"six goals completed in total (%d)"%Goals.completed(person()))
+	expect(var_to_bytes(rg_canon(person().get(Goals.RECORD_KEY)))==var_to_bytes(rg_canon({"milu":{"1":""},"lingpopo":{"2":""},"luoluo":{"1":"","2":"","3":"aloud"},"aru":{"1":""}})),"bond_goals is exactly the six goals (%s)"%JSON.stringify(person().get(Goals.RECORD_KEY)))
 	expect(var_to_bytes(rg_canon(person().get(Goals.KEEPSAKE_KEY)))==var_to_bytes(rg_canon({RG_ARU_KS:true})),"bond_keepsakes is exactly {keepsake_aru:true} (%s)"%JSON.stringify(person().get(Goals.KEEPSAKE_KEY)))
 	rg_expect_keepsake_obj(rg_ks_cell,"final day")
 	expect(int(bag().get(RG_ARU_KIT,0))==0,"final day: the only kit is placed, none in the bag")

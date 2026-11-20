@@ -12,8 +12,8 @@ extends SceneTree
 ##    harvest-relay sign); the crop is grown with World.step;
 ##  * override checks write state.festival.active, players[me].region="lanyang",
 ##    and state.board/picnic=true (needed to start 豐收接力) directly, then restore;
-##  * the shipment is sent with session.perform("ship", bin, payload) — the same
-##    call the shipping panel makes — instead of driving the panel.
+##  * the shipment goes through the shipping panel's quantity and confirmation
+##    buttons after opening through the usual interaction key.
 ## REALLY EXERCISED: Session.host -> main._entered -> arrival card; KEY_E / Esc /
 ##  Enter through root.push_input -> main._input/_unhandled_input; the card button's
 ##  pressed signal; held move_right through Input.parse_input_event -> main._process
@@ -25,6 +25,7 @@ const Chapter=preload("res://scripts/chapter_one.gd")
 const Opening=preload("res://scripts/wangan_opening.gd")
 const WanganUI=preload("res://scripts/wangan_opening_ui.gd")
 const Relay=preload("res://scripts/harvest_relay.gd")
+const ShippingPanel=preload("res://scripts/shipping_panel.gd")
 var app
 var w
 var id:=""
@@ -179,7 +180,7 @@ func card_ok(label:String)->void:
 		check(not Rect2(box.position*zoom,box.size*zoom).intersects(r),"Label 「%s」 not under the card (%s)"%[entry.title,label])
 	check(card_text("ArrivalHint")=="%s／Esc 收起這張卡"%app.binding_label("interact"),"Hint names the real interact key (%s): %s"%[label,card_text("ArrivalHint")])
 	var go:=c.find_child("ArrivalClose",true,false) as Button
-	check(go!=null and go.text=="出發去找小栗" and go.focus_mode==Control.FOCUS_NONE,"Card button present and never takes focus (%s)"%label)
+	check(go!=null and go.text=="去小栗留的田" and go.focus_mode==Control.FOCUS_NONE,"Card button names the plot and never takes focus (%s): %s"%[label,go.text if go else "<none>"])
 	check(root.gui_get_focus_owner()==null,"Nothing holds focus with the card open (%s): %s"%[label,str(root.gui_get_focus_owner())])
 	check(app.modal==null and app._world_keyboard_allowed(),"Card is not a modal; world keys stay live (%s)"%label)
 
@@ -241,8 +242,9 @@ func size_pass(size:Vector2i)->void:
 	card_ok("arrival "+tag)
 	check(not app.toast.visible or not str(app.toast.text).contains("歡迎！先用鋤頭"),"Card replaces the generic entry toast (%s): %s"%[tag,app.toast.text])
 	var find:=Chapter.first_crop_step(app.session.snapshot,id)
-	expect_tracker("第一件事・種一株蘿蔔\n去找小栗：種子攤東北邊的田\n%s 移動"%app.movement_hint(),"find "+tag)
+	expect_tracker("第一件事・種一株蘿蔔\n"+Chapter.FIND_FROM_DOCK,"find "+tag)
 	check(find.get("id","")=="find","Fresh step is find (%s)"%tag)
+	check(Chapter.at_starting_dock(person()) and float(find.cell.x)+0.5<float(person().x),"「往左」 is true from the starting dock: plot cell %s is west of %s (%s)"%[str(find.get("cell")),str(Vector2(person().x,person().y)),tag])
 	# Dismiss by the interact key: nothing else happens.
 	await key(bound("interact"))
 	check(card()==null,"Interact key closes the card (%s)"%tag)
@@ -274,6 +276,18 @@ func size_pass(size:Vector2i)->void:
 	await key(KEY_ESCAPE)
 	await movement_after_close(tag)
 	if size.x==1280:await overrides(tag)
+	# Away from the starting dock (PRESET: teleported to World.SPAWN, west of the plot)
+	# the copy must not say 往左: direction-neutral return-to-plot wording instead.
+	await stand(World.SPAWN)
+	var away:=Chapter.first_crop_step(app.session.snapshot,id)
+	check(away.get("id","")=="find" and not Chapter.at_starting_dock(person()),"Still find, no longer at the starting dock (%s): %s"%[tag,str(away)])
+	expect_tracker("第一件事・種一株蘿蔔\n回小栗留的田：找圍繩和木樁","find away from the dock "+tag)
+	check(not str(app.objective.text).contains("往左") and not str(app.objective.text).contains("找小栗"),"Away-from-dock hint assumes no direction and no NPC talk (%s): %s"%[tag,app.objective.text])
+	WanganUI.show_arrival(app);await settle()
+	var back:Button=null
+	if card()!=null:back=card().find_child("ArrivalClose",true,false) as Button
+	check(back!=null and back.text=="回小栗留的田","Away-from-dock card button says 回小栗留的田 (%s): %s"%[tag,back.text if back else "<none>"])
+	if back!=null:check(back.size.x+0.5>=back.get_combined_minimum_size().x and card().get_global_rect().grow(0.5).encloses(back.get_global_rect()),"Away-from-dock button caption whole inside the card (%s)"%tag)
 	# Tracker through the real first crop.
 	WanganUI.show_arrival(app);await settle()
 	await stand(Vector2(45.5,28.5))
@@ -310,9 +324,28 @@ func size_pass(size:Vector2i)->void:
 	check(int(person().inventory.get("radish",0))>=1,"Click harvested a radish (%s)"%tag)
 	expect_tracker("✓ 第一株收成了\n把蘿蔔帶到出貨箱\n靠近出貨箱按 %s"%app.binding_label("interact"),"ship "+tag)
 	await stand(Vector2(42.5,32.5))
+	await key(bound("interact"))
+	check(app.modal is ShippingPanel,"Interact opens the actual shipping panel (%s)"%tag)
+	if not app.modal is ShippingPanel:return
+	var shipping:ShippingPanel=app.modal
+	var coins_before:=int(person().coins)
+	var crop_before:=int(person().inventory.radish)
+	check(shipping.selected_id=="radish" and shipping.cart.is_empty(),"First shipment selects the harvested crop without adding it (%s)"%tag)
+	check(shipping.notice.text.contains("第一次出貨") and shipping.notice.text.contains("＋"),"Shipping explains how to put one crop in the basket (%s)"%tag)
+	var picture_dir:String=app.arg_value("qa-dir","")
+	if not picture_dir.is_empty() and DisplayServer.get_name()!="headless":
+		DirAccess.make_dir_recursive_absolute(picture_dir)
+		await create_timer(0.22).timeout
+		await RenderingServer.frame_post_draw
+		check(root.get_texture().get_image().save_png(picture_dir.path_join("first-shipment-"+tag+".png"))==OK,"Capture first shipment (%s)"%tag)
+	shipping.plus.pressed.emit()
+	shipping.confirm_button.pressed.emit()
+	check(shipping.reviewing and int(person().coins)==coins_before and int(person().inventory.radish)==crop_before,"Review leaves inventory and money intact (%s)"%tag)
 	app.session.rates[1].clear()
-	app.session.perform("ship",World.SHIPPING.cell_for(w.state),JSON.stringify([[["radish",1]],int(World.CROPS.radish.price)]))
+	shipping.confirm_button.pressed.emit()
 	await refresh()
+	check(int(person().inventory.get("radish",0))==crop_before-1 and int(person().coins)==coins_before+int(World.CROPS.radish.price),"Confirmed shipment sells exactly one crop at quoted price (%s)"%tag)
+	app._close_modal()
 	check(bool(w.state.chapter_one.shipped),"Shipment recorded (%s)"%tag)
 	check(Chapter.first_crop_step(app.session.snapshot,id).is_empty(),"First-crop steps over after shipping (%s)"%tag)
 	check(not str(app.objective.text).begins_with("第一件事") and not str(app.objective.text).begins_with("✓ 第一株"),"Tracker moves on to the chapter (%s): %s"%[tag,app.objective.text])

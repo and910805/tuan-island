@@ -66,6 +66,11 @@ func run() -> void:
 	expect(styled_picture.get_data()!=picture.get_data(),"Catalog thumbnail shows saved construction style")
 	expect(picture.get_used_rect().has_area(), "Actual multi-piece sprites draw")
 	expect(Rect2i(2,2,316,236).encloses(picture.get_used_rect()), "48px equipment stays within thumbnail margins")
+	var arch_design:={"version":1,"name":"藤蔓花門","width":3,"height":1,"pieces":[
+		{"kind":"vine_garden_arch","x":0,"y":0,"settings":{"vine_color":"lavender"}}]}
+	thumbnail.design=arch_design
+	var arch_thumbnail:=await frame()
+	expect(arch_thumbnail.get_used_rect().size.y>=66 and Rect2i(2,2,316,236).encloses(arch_thumbnail.get_used_rect()),"The complete tall arch and crown fit within the thumbnail")
 	var art = thumbnail.village_art
 	thumbnail.design = {}
 	var blank := await frame()
@@ -107,11 +112,22 @@ func run() -> void:
 	preview.queue_redraw()
 	var waiting := await frame()
 	expect(waiting.get_data() == neutral.get_data(), "Waiting quote never shows stale collision marks")
+	intent.draft=arch_design
+	intent.turns=1
+	intent.locked=false
+	intent.quote_waiting=false
+	preview.queue_redraw()
+	var purple_arch:=await frame()
+	intent.draft.pieces[0].settings.vine_color="cream"
+	preview.queue_redraw()
+	var cream_arch:=await frame()
+	expect(purple_arch.get_data()!=cream_arch.get_data(),"The real rotated placement ghost uses the saved blossom palette")
 	if not output.is_empty():
 		expect(DirAccess.make_dir_recursive_absolute(output) == OK, "Create isolated render output")
 		expect(picture.save_png(output.path_join("thumbnail.png")) == OK, "Save sprite thumbnail evidence")
 		expect(blocked.save_png(output.path_join("collision-preview.png")) == OK, "Save collision evidence")
 		expect(styled_preview.save_png(output.path_join("styled-preview.png")) == OK, "Save styled placement evidence")
+		expect(purple_arch.save_png(output.path_join("rotated-vine-arch-preview.png"))==OK,"Save the arch's rotated placement ghost")
 	preview.free()
 	source.free()
 	intent.free()

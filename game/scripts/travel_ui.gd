@@ -160,7 +160,8 @@ static func refresh(app)->void:
 		if region=="home":selected="lanyang"
 		app.modal.set_meta("travel_selected",selected)
 	var commissions:Dictionary=s.get("own_outlying_commissions",{})
-	var fingerprint:=JSON.stringify([region,station_id,selected,near,unlocked,flowers,salts,stars,dock_stage,book,p.inventory.get("reinforced_pick",0),commissions,World.JINGUASHI_REVISIT.unlocked(s) if region=="jinguashi" else false,World.SALT_REVISIT.unlocked(s) if region==SaltPan.REGION else false])
+	var mining_pick:=World.active_mining_pick(p.inventory)
+	var fingerprint:=JSON.stringify([region,station_id,selected,near,unlocked,flowers,salts,stars,Transit.tea_unlocked(s),dock_stage,book,mining_pick,commissions,World.JINGUASHI_REVISIT.unlocked(s) if region=="jinguashi" else false,World.SALT_REVISIT.unlocked(s) if region==SaltPan.REGION else false])
 	if app.modal.get_meta("travel_fingerprint","")==fingerprint:return
 	app.modal.set_meta("travel_fingerprint",fingerprint)
 	var content:VBoxContainer=app.modal.get_meta("travel_body")
@@ -169,6 +170,7 @@ static func refresh(app)->void:
 	for child in content.get_children():content.remove_child(child);child.queue_free()
 	var row:=HBoxContainer.new();row.add_theme_constant_override("separation",20);content.add_child(row)
 	var map:=Map.new();map.set_meta("current_region",region);map.set_meta("travel_book",book);map.set_meta("flower_open",flowers);map.set_meta("salt_open",salts);row.add_child(map)
+	add_map_marks(map,region,selected,known_reserves(region,book,Transit.tea_unlocked(s),flowers,stars))
 	var right:=VBoxContainer.new();right.size_flags_horizontal=Control.SIZE_EXPAND_FILL;right.add_theme_constant_override("separation",10);row.add_child(right)
 	words(app,right,str(point.get("label","田區路口"))+" · 往返免費",20)
 	if region=="home" and station_id=="ferry":
@@ -209,7 +211,7 @@ static func refresh(app)->void:
 		itinerary.append(str(chosen.label))
 		words(app,ticket," → ".join(itinerary),14)
 		words(app,ticket,note(region,selected,mode),15)
-		if selected=="jinguashi" and int(p.inventory.get("reinforced_pick",0))==0:
+		if selected=="jinguashi" and mining_pick.is_empty():
 			words(app,ticket,"可在下坑路牌借公用鎬採 B1–B5，也可在西側水邊淘砂金或到坑口推礦車。",13)
 	else:words(app,ticket,"請到車站或接駁站查看下一段旅程。",16)
 	var on_foot:bool=chosen.get("mode","") in ["步行","茶園步道","庭園步道"]
@@ -253,6 +255,115 @@ static func refresh(app)->void:
 		if next is BaseButton and not next.disabled:next.grab_focus.call_deferred()
 	app._layout_preview.call_deferred()
 
+# ---- 旅圖標記層：疊在 taiwan_map.gd 上的小圖層，不接收點擊，也不改地圖本身的標籤 ----
+# 兩處步道保護區都是遊戲原創，沒有實際座標：只畫成掛在既有站點（Transit.CONNECTIONS）下的示意支線，不落在臺灣輪廓上。
+const RESERVES:=["bamboo_grove","star_garden"]
+const RESERVE_STOP_NAMES:={"maokong":"貓空","tianwei":"田尾"}
+const RESERVE_PANEL_AT:=Vector2(176,286)
+const RESERVE_PANEL_WIDTH:=136.0
+# 與 taiwan_map.gd draw_northern_route 的站序、站距相同（該面板的站點位置沒有對外函式）。
+const NORTH_STOPS:=[["toucheng","頭城"],["ruifang","瑞芳"],["jiufen","九份"],["jinguashi","金瓜石"],["maokong","貓空"],["yingge","鶯歌"],["tianwei","田尾"]]
+const MARK_CURRENT:=Color("ad644b")
+const MARK_SELECTED:=Color("2e5f6b")
+
+## 已知的保護區：正在那裡、走訪過，或車票已經能選（與 Transit.options 相同的開放條件）；其餘不畫，避免提前暴露。
+static func known_reserves(region:String,book:Dictionary,tea_open:bool,flower_route:bool,star_open:bool)->Array:
+	var result:=[]
+	var visited:Dictionary=book.get("visited",{})
+	for id:String in RESERVES:
+		var open:bool=tea_open if id=="bamboo_grove" else (star_open and flower_route)
+		if region==id or visited.get(id,false)==true or open:result.append(id)
+	return result
+
+## 標記資料（繪製與排版檢查共用）：anchors 是各地區的圖上錨點，labels 是本層自己畫的文字。
+## 目前位置＝雙圈＋「目前」；選取的目的地＝箭頭＋「前往」，形狀與文字都不同，不只靠顏色。
+static func map_marks(map:Control,region:String,selected:String,reserves:Array)->Dictionary:
+	map.ensure_font()
+	var font:Font=map.font
+	var ends:={}
+	for label:Dictionary in map.labels():
+		ends[str(label.id)]=Vector2(label.at.x+font.get_string_size(str(label.text),HORIZONTAL_ALIGNMENT_LEFT,-1,int(label.size)).x+3,label.at.y)
+	var anchors:={
+		"home":{"at":map.home_marker().position,"dot":8.0,"from":Vector2.DOWN,"tag":ends.get("home",Vector2.ZERO)},
+		"lanyang":{"at":Map.project(Map.LANYANG_LONLAT),"dot":3.5,"from":Vector2.RIGHT,"tag":ends.get("lanyang",Vector2.ZERO)},
+		"jiaoxi":{"at":Map.project(Map.JIAOXI_LONLAT),"dot":4.0,"from":Vector2.RIGHT,"tag":ends.get("jiaoxi",Vector2.ZERO)},
+		"beimen":{"at":map.salt_marker().position,"dot":3.5,"from":Vector2.DOWN,"tag":ends.get("beimen",Vector2.ZERO)},
+	}
+	var flowers:bool=map.show_flowers()
+	var step:=16.0 if flowers else 18.0
+	for index in NORTH_STOPS.size():
+		var id:String=NORTH_STOPS[index][0]
+		if id=="tianwei" and not flowers:continue
+		var y:float=65.0+index*step
+		var text:String=str(NORTH_STOPS[index][1])+("・目前" if id==region else "")
+		anchors[id]={"at":Vector2(21,y),"dot":4.0,"from":Vector2.LEFT,"tag":Vector2(34+font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,13).x,y+4)}
+	var labels:=[]
+	var rows:=[]
+	var panel:=Rect2()
+	if not reserves.is_empty():
+		var origin:=RESERVE_PANEL_AT
+		panel=Rect2(origin,Vector2(RESERVE_PANEL_WIDTH,38+16*reserves.size()))
+		labels.append({"id":"reserve_title","text":"步道支線","at":origin+Vector2(5,15),"size":12,"color":Color("3c573e")})
+		labels.append({"id":"reserve_caption","text":"原創保護區・示意位置","at":origin+Vector2(5,30),"size":10,"color":Color("686f58")})
+		for index in reserves.size():
+			var id:String=reserves[index]
+			var parent:String=str(Transit.CONNECTIONS[id][0])
+			var y:float=origin.y+47+index*16
+			var here:bool=id==region
+			var title:String=str(Transit.STATIONS[id].name)
+			title=title.get_slice("・",title.get_slice_count("・")-1)+("・目前" if here else "")
+			var color:=MARK_CURRENT if here else Color("3c573e")
+			var at:=Vector2(origin.x+45,y-4)
+			labels.append({"id":id+"_stop","text":str(RESERVE_STOP_NAMES.get(parent,World.REGIONS.label(parent))),"at":Vector2(origin.x+5,y),"size":11,"color":Color("54774d")})
+			labels.append({"id":id,"text":title,"at":Vector2(origin.x+55,y),"size":11,"color":color})
+			rows.append({"id":id,"parent":parent,"at":at,"line":Vector2(origin.x+29,y-4),"current":here})
+			anchors[id]={"at":at,"dot":4.0,"from":Vector2.LEFT,"tag":Vector2(origin.x+58+font.get_string_size(title,HORIZONTAL_ALIGNMENT_LEFT,-1,11).x,y)}
+	var going:Dictionary=anchors.get(selected,{}) if selected!=region else {}
+	if not going.is_empty():labels.append({"id":"selected_tag","text":"前往","at":going.tag,"size":11,"color":MARK_SELECTED})
+	labels.append({"id":"key_current","text":"目前","at":Vector2(182,373),"size":11,"color":MARK_CURRENT})
+	labels.append({"id":"key_selected","text":"前往","at":Vector2(224,373),"size":11,"color":MARK_SELECTED})
+	return {"current_region":region,"selected_region":selected if not going.is_empty() else "","reserves":reserves.duplicate(),"current":anchors.get(region,{}),"selected":going,"panel":panel,"rows":rows,"labels":labels}
+
+static func add_map_marks(map:Control,region:String,selected:String,reserves:Array)->Control:
+	var layer:=Control.new()
+	layer.name="TravelMapMarks"
+	layer.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var marks:=map_marks(map,region,selected,reserves)
+	layer.set_meta("travel_marks",marks)
+	layer.draw.connect(func():draw_map_marks(layer,map.font,marks))
+	map.add_child(layer)
+	return layer
+
+static func draw_mark_arrow(layer:Control,at:Vector2,from:Vector2,gap:float)->void:
+	var tip:=at+from*gap
+	var base:=tip+from*7.0
+	var side:=Vector2(-from.y,from.x)*4.0
+	layer.draw_colored_polygon(PackedVector2Array([tip,base+side,base-side]),MARK_SELECTED)
+
+static func draw_map_marks(layer:Control,font:Font,marks:Dictionary)->void:
+	if font==null:return
+	var panel:Rect2=marks.panel
+	if panel.size.y>0:layer.draw_style_box(Pixel.paper_style(),panel)
+	for row:Dictionary in marks.rows:
+		var at:Vector2=row.at
+		var color:=MARK_CURRENT if row.current else Color("54774d")
+		layer.draw_dashed_line(row.line,at-Vector2(5,0),Color("a78764"),1.0,3.0)
+		var diamond:=PackedVector2Array([at+Vector2(0,-4),at+Vector2(4,0),at+Vector2(0,4),at+Vector2(-4,0)])
+		if row.current:layer.draw_colored_polygon(diamond,color)
+		diamond.append(diamond[0])
+		layer.draw_polyline(diamond,color,1.5)
+	for label:Dictionary in marks.labels:
+		layer.draw_string(font,label.at,str(label.text),HORIZONTAL_ALIGNMENT_LEFT,-1,int(label.size),label.color)
+	var current:Dictionary=marks.current
+	if not current.is_empty():layer.draw_arc(current.at,float(current.dot)+3.0,0.0,TAU,24,MARK_CURRENT,1.5)
+	var selected:Dictionary=marks.selected
+	if not selected.is_empty():draw_mark_arrow(layer,selected.at,selected.from,float(selected.dot)+2.0)
+	# 圖例：圈＝目前位置，箭頭＝選取的目的地。
+	layer.draw_arc(Vector2(174,369),4.0,0.0,TAU,16,MARK_CURRENT,1.5)
+	layer.draw_circle(Vector2(174,369),1.5,MARK_CURRENT)
+	draw_mark_arrow(layer,Vector2(221,369),Vector2.LEFT,0.0)
+
 static func arrival_art(mode:String)->Texture2D:
 	if mode==BOAT_MODE:return Art.icon("cooperative_boat")
 	if mode.contains("船"):return Art.icon("ferry")
@@ -267,11 +378,17 @@ static func dismiss_arrival(app)->bool:
 	ribbon.queue_free()
 	return true
 
+static func covers_arrival_notice(app,message:String)->bool:
+	if not app.village_art_preview or not is_instance_valid(app.hud):return false
+	var ribbon:=app.hud.get_node_or_null("TravelArrival") as Control
+	return is_instance_valid(ribbon) and ribbon.is_visible_in_tree() and not ribbon.is_queued_for_deletion() and ribbon.get_meta("arrival_notice","")==message
+
 static func arrived(app,origin:String,destination:String)->void:
 	if origin not in Transit.ROUTE or destination not in Transit.ROUTE:return
 	var previous=app.hud.get_node_or_null("TravelArrival")
 	if previous:app.hud.remove_child(previous);previous.queue_free()
 	var ribbon:=PanelContainer.new();ribbon.name="TravelArrival";ribbon.add_theme_stylebox_override("panel",Pixel.paper_style())
+	ribbon.set_meta("arrival_notice",World.REGIONS.arrival_notice(destination))
 	ribbon.mouse_filter=Control.MOUSE_FILTER_PASS;ribbon.z_index=8
 	var row:=HBoxContainer.new();row.add_theme_constant_override("separation",10);ribbon.add_child(row)
 	var art_space:=Control.new();art_space.custom_minimum_size=Vector2(112,64);row.add_child(art_space)
@@ -283,6 +400,10 @@ static func arrived(app,origin:String,destination:String)->void:
 	var skip:Button=app.button("略過",func():ribbon.queue_free());skip.custom_minimum_size=Vector2(48,32);skip.size_flags_vertical=Control.SIZE_SHRINK_CENTER;skip.add_theme_font_size_override("font_size",13);row.add_child(skip)
 	skip.tooltip_text="Esc／手把 B"
 	app.hud.add_child(ribbon)
+	# The success notice and region snapshot can arrive in either order.
+	if is_instance_valid(app.toast) and app.toast_success and covers_arrival_notice(app,app.toast.text):
+		app.toast_time=0.0
+		app.toast.hide()
 	var bounds:Vector2=app.get_viewport().get_visible_rect().size
 	ribbon.size=Vector2(minf(520,bounds.x-48),80);ribbon.position=Vector2((bounds.x-ribbon.size.x)/2,140)
 	var lifetime:=ribbon.create_tween()

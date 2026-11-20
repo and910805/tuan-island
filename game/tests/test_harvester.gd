@@ -151,5 +151,26 @@ func _initialize() -> void:
 	var permitted:Dictionary=World.HARVESTER.plan(world,"farmer",CENTER)
 	expect(permitted.cells==[World.key(CENTER)],"Preview includes designated shared plot")
 	expect(act(world,CENTER,"harvest_area").ok and shared.kind=="","Machine harvests the explicitly shared crop")
+	check_hand_harvest()
 	print("HARVESTER_TESTS checks=%d failures=%d" % [checks, failures])
 	quit(int(failures > 0))
+
+func check_hand_harvest()->void:
+	var world:World=fresh()
+	var player:Dictionary=world.state.players.farmer
+	player.inventory.copper_sickle=1
+	player.crop_care=World.CROP_CATALOG.CARE_TARGET
+	var shared:=plant(world,CENTER,"tomato","other")
+	shared.harvest_access="friend"
+	shared.harvest_friend="farmer"
+	var own:=plant(world,CENTER+Vector2i.LEFT,"radish")
+	var private_plot:=plant(world,CENTER+Vector2i.RIGHT,"radish","other")
+	world.state.roofs[World.key(CENTER)]={"type":World.GREENHOUSE_GLASS.LEGACY_ROOF,"owner":"other"}
+	player.inventory.tomato=999999999
+	var before:Dictionary=world.state.duplicate(true)
+	expect(not world.act("farmer","hand-full","harvest",CENTER,"spread").ok and world.state==before,"Full produce stack rejects the entire hand harvest")
+	player.inventory.tomato=0
+	var plan:=world.hand_harvest_plan("farmer",CENTER,"copper_sickle")
+	expect(plan.cells==[World.key(CENTER+Vector2i.LEFT),World.key(CENTER)] and plan.skipped.get(World.key(CENTER+Vector2i.RIGHT))=="無採收權限","Hand harvest honors shared permission under glass and skips private crops")
+	expect(world.act("farmer","hand-ripe","harvest",CENTER,"spread").ok and own.kind.is_empty() and private_plot.kind=="radish","The authorized hand harvest matches the preview")
+	expect(shared.remaining==2 and not shared.wet and int(player.inventory.quality_radish)==1 and int(player.crop_care)==0 and player.inventory.charcoal==5,"Regrowth and the one-shot quality guarantee match existing harvest rules")

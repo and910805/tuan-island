@@ -72,7 +72,7 @@ func check_migration() -> void:
 	record.kiln={"ready":world.state.time+5.0}
 	record.packed={"style":"deep","wrap":"jar","reused_jar":false}
 	record.outbound={"style":"light","wrap":"jar","reused_jar":true,"ready":world.state.time+5.0}
-	expect(valid(legacy) and legacy.version==26,"Legacy v15 jobs migrate to current schema")
+	expect(valid(legacy) and legacy.version==preload("res://scripts/save_schema.gd").VERSION,"Legacy v15 jobs migrate to current schema")
 	expect(record.empty_items=={"tea_returned_jar":3} and record.returning.items=={"tea_returned_jar":4},"Migrated buckets preserve every empty and in-flight jar")
 	expect(record.packed.return_item=="tea_returned_jar" and record.outbound.return_item=="tea_worn_jar" and not record.kiln.repair,"Legacy packed and outbound jars keep the proper grade")
 	expect(record.trials=={"jar":false,"fiber":false} and not record.comparison_complete,"Old data cannot invent trial completion")

@@ -18,6 +18,8 @@ static func open(app) -> void:
 	var players: Dictionary = snapshot.get("players", {})
 	var own: Dictionary = players.get(app.session.own_id, {})
 	var body: VBoxContainer = app._open_modal("島民交換")
+	if app.controller_navigation and is_instance_valid(app.modal_feedback):
+		app.modal_feedback.text="B 回到島上"
 	app.modal.set_meta("trade_view", offer.duplicate(true))
 	app.modal.set_meta("life_modal_layout", "trade_review")
 	if offer.is_empty():
@@ -91,8 +93,17 @@ static func edit(app, offer: Dictionary, own: Dictionary) -> void:
 	)
 	apply.name="TradeSubmit"
 	actions.add_child(apply)
-	var summary: Label = app.label("最多可放 %d 種物品 · 手把 ←／→ 調整數量"%World.TRADE.MAX_LINES,15)
-	body.add_child(summary)
+	var summary: Label = app.label(quantity_summary(offer.mine.items.size()),15)
+	summary.name="TradeQuantitySummary"
+	var footer:Label=app.modal_feedback
+	if is_instance_valid(footer):
+		# Keep the controls visible when the list scrolls to the selected item.
+		var shell:=footer.get_parent()
+		shell.add_child(summary)
+		shell.move_child(summary,footer.get_index())
+		if app.controller_navigation:footer.text="B 回到島上"
+	else:
+		body.add_child(summary)
 	var inventory: Dictionary = own.inventory
 	var tradable := World.trade_items()
 	var pad_fields: Array[Control] = [coins.get_line_edit()]
@@ -114,10 +125,13 @@ static func edit(app, offer: Dictionary, own: Dictionary) -> void:
 		count.value_changed.connect(func(_value: float):
 			var used := amounts.values().filter(func(field: SpinBox):return field.value>0).size()
 			apply.disabled = used>World.TRADE.MAX_LINES
-			summary.text = "%d／%d 種物品"%[used,World.TRADE.MAX_LINES]
+			summary.text = quantity_summary(used)
 		)
 	app.modal.set_meta("trade_pad_fields",pad_fields)
 	if app.controller_navigation:coins.get_line_edit().grab_focus()
+
+static func quantity_summary(used:int) -> String:
+	return "%d／%d 種物品 · 手把 ←／→ 調整數量，Y 跳到送出"%[used,World.TRADE.MAX_LINES]
 
 static func navigate_editor(app, index: int) -> bool:
 	if not is_instance_valid(app.modal) or not app.modal.has_meta("trade_pad_fields"):return false

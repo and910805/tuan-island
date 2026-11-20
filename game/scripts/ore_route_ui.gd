@@ -17,6 +17,7 @@ extends RefCounted
 ## 純函式：region_of / person_of / near / away_text / action_reason / action_caption / count_text /
 ##  chip_text。
 const Route=preload("res://scripts/ore_route.gd")
+const StoryCart=preload("res://scripts/bobo_empty_cart.gd")
 const Art=preload("res://scripts/ore_route_art.gd")
 const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
 
@@ -54,6 +55,38 @@ static func near(s:Dictionary,person:Dictionary) -> bool:
 	var cell:Vector2i=Route.cart_cell(Route.stage(s))
 	return Vector2(float(person.get("x",0.0)),float(person.get("y",0.0))).distance_to(Vector2(cell)+Vector2(0.5,0.5))<=Route.REACH
 
+# ------------------------------------------------- T066 波波的空車（共用選擇器） --
+## 本人正在推波波的劇情空車（1..6）時，運礦台車的互動點、世界圖和名牌都改成那台空車；
+## 空閒（0）或已抵達（7）時一切照原本的運礦台車。別人的狀態不受影響（快照只有本人那一格）。
+const STORY_PUSH:="push"
+const STORY_BUSY:="你正在幫波波推空車，先把它推到展覽位置再運礦。"
+
+static func story_active(s:Dictionary) -> bool:
+	return region_of(s)==Route.REGION and StoryCart.active(s)
+
+static func story_arrived(s:Dictionary) -> bool:
+	return region_of(s)==Route.REGION and StoryCart.stage(s)==Route.LAST
+
+## The stage (0..6) of the cart drawn / used at the cart point: the story cart's while active.
+static func cart_stage(s:Dictionary) -> int:
+	return StoryCart.stage(s) if story_active(s) else Route.stage(s)
+
+static func cart_point_cell(s:Dictionary) -> Vector2i:
+	return StoryCart.cart_cell(s) if story_active(s) else Route.cart_cell(Route.stage(s))
+
+static func cart_name(s:Dictionary) -> String:
+	if story_active(s):return StoryCart.label(s)
+	return Route.cart_label(s)
+
+## Route.preferred_interaction for whichever cart is at the cart point.
+static func preferred_interaction(s:Dictionary,position:Vector2,closest:String,points:Dictionary) -> String:
+	if not story_active(s):return Route.preferred_interaction(s,position,closest,points)
+	if not closest.begins_with("mine:"):return closest
+	var center:=Vector2(cart_point_cell(s))+Vector2(0.5,0.5)
+	var mineral:Vector2=points[closest]
+	if center.distance_squared_to(mineral)<=1.0 and position.distance_squared_to(center)<=Route.REACH*Route.REACH:return POINT
+	return closest
+
 static func away_text(stage:int) -> String:
 	var index:=_cart_index(stage)
 	var stop:=_stop_name(index)
@@ -62,6 +95,7 @@ static func away_text(stage:int) -> String:
 
 ## Why the action cannot be done ("" = it can): the rules first, then where to stand.
 static func action_reason(s:Dictionary,person:Dictionary) -> String:
+	if story_active(s):return STORY_BUSY
 	var block:String=Route.step_block(s,Route.next_step(s),person)
 	if not block.is_empty():return block
 	return "" if near(s,person) else away_text(Route.stage(s))
@@ -115,6 +149,10 @@ static func is_open(app) -> bool:
 ## step right away (the server's message shows as an ordinary notice).
 static func interact(app) -> void:
 	var s:Dictionary=app.session.snapshot
+	if story_active(s):
+		# 劇情空車：每按一次推一段，不開運礦頁、不送 ore_cart。
+		app.session.perform(StoryCart.ACTION,StoryCart.cart_cell(s),STORY_PUSH)
+		return
 	var stage:=Route.stage(s)
 	if stage<=0:
 		open(app)
@@ -249,6 +287,9 @@ static func build(app,body:VBoxContainer) -> void:
 static func _send(app) -> void:
 	if not is_open(app):return
 	var s:Dictionary=app.session.snapshot
+	if story_active(s):
+		refresh(app,true)
+		return
 	var stage:=Route.stage(s)
 	app.session.perform(Route.ACTION,Route.cart_cell(stage),Route.next_step(s))
 	refresh(app,true)

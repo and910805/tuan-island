@@ -42,6 +42,37 @@ func capture(file_name:String) -> void:
 		await RenderingServer.frame_post_draw
 		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
 
+## --size=WxH (default 1024x640); malformed or tiny values fall back to the default.
+func window_size() -> Vector2i:
+	for arg in OS.get_cmdline_user_args():
+		if not arg.begins_with("--size="):continue
+		var parts:=arg.trim_prefix("--size=").to_lower().split("x")
+		if parts.size()==2 and parts[0].is_valid_int() and parts[1].is_valid_int():
+			var wanted:=Vector2i(int(parts[0]),int(parts[1]))
+			if wanted.x>=640 and wanted.y>=480:return wanted
+	return Vector2i(1024,640)
+
+func capture_settled(file_name:String) -> void:
+	for i in 3:await process_frame
+	if DisplayServer.get_name()=="headless":return
+	for arg in OS.get_cmdline_user_args():
+		if not arg.begins_with("--capture-dir="):continue
+		await create_timer(0.25).timeout
+		await RenderingServer.frame_post_draw
+		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
+
+func has_node_named(id:String) -> bool:
+	return is_instance_valid(app.modal) and app.modal.find_child(id,true,false)!=null
+
+func modal_mentions(text:String) -> bool:
+	if not is_instance_valid(app.modal):return false
+	var pending:Array[Node]=[app.modal]
+	while not pending.is_empty():
+		var node:Node=pending.pop_back()
+		if (node is Label or node is Button) and str(node.text).contains(text):return true
+		pending.append_array(node.get_children())
+	return false
+
 func open_voyage() -> void:
 	app._interact()
 	await process_frame
@@ -53,15 +84,25 @@ func photograph(path:String,file:String) -> void:
 	await RenderingServer.frame_post_draw
 	await process_frame
 	expect(FileAccess.file_exists(path),"Actual photo file was saved")
+	if FileAccess.file_exists(path):
+		var picture:=Image.load_from_file(path)
+		expect(picture!=null and picture.get_size()==Vector2i(Vector2(root.get_texture().get_size())*0.65),"Photo frames the center of the sailing viewport")
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture-dir=") and FileAccess.file_exists(path):
 			expect(Image.load_from_file(path).save_png(arg.trim_prefix("--capture-dir=").path_join(file))==OK,"Keep photo evidence: "+file)
 
 func run() -> void:
-	root.size=Vector2i(1024,640)
+	root.size=window_size()
 	app=load("res://main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
+	var large_text:="--large-text" in OS.get_cmdline_user_args()
+	if large_text:
+		app.sound.preferred_text_scale=3
+		app._apply_font_scale_tree()
+		await process_frame
+		expect(app.font_scale_factor()>=1.2,"Large text is active")
+	var tag:="%dx%d"%[window_size().x,window_size().y]+("-large" if large_text else "")
 	var path:="user://achao-photo-test-%d.json"%OS.get_process_id()
 	app.session.profile.token="achao-photo-test-%d"%OS.get_process_id()
 	if app.session.host(0,"拍照島民",path)!=OK:
@@ -93,6 +134,7 @@ func run() -> void:
 	await open_voyage()
 	await press("AchaoVoyageAlbum")
 	expect(app.modal.find_child("AchaoAlbumPhoto",true,false)!=null,"Album shows the captured frame")
+	await capture_settled("03-voyage-album-%s.png"%tag)
 	app._close_modal()
 	await open_voyage()
 	await press("AchaoVoyage_depart")
@@ -123,6 +165,35 @@ func run() -> void:
 	await press("BondGoalDo")
 	var keepsake:="keepsake_achao_oar"
 	expect(int(person.inventory.get(Goals.keepsake_item(keepsake),0))==1,"Report awards one displayable wooden oar")
+	var oar_key:String=Goals.keepsake_item(keepsake)
+	# Finished goal: album entry -> photo, oar shortcut, back.
+	Tasks.bond_goal(app,"achao",4)
+	await process_frame
+	expect(has_node_named("AchaoGoalAlbum") and not has_node_named("BondGoalDo"),"Completed goal offers the album")
+	await capture_settled("04-goal-done-%s.png"%tag)
+	await press("AchaoGoalAlbum")
+	expect(has_node_named("AchaoAlbumPhoto"),"Goal album opens the same real photo")
+	expect(has_node_named("AchaoAlbumOar") and has_node_named("AchaoAlbumBack"),"Album offers oar shortcut and back")
+	var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	expect(scroll!=null and not scroll.get_v_scroll_bar().visible,"Photo and oar preview fit together")
+	await capture_settled("05-goal-album-%s.png"%tag)
+	await press("AchaoAlbumBack")
+	expect(has_node_named("AchaoGoalAlbum") and not has_node_named("AchaoAlbumPhoto"),"Back returns to the finished goal")
+	await press("AchaoGoalAlbum")
+	await press("AchaoAlbumOar")
+	expect(not has_node_named("AchaoAlbumPhoto") and modal_mentions("紀念木槳"),"Oar shortcut opens the old keepsake")
+	await capture_settled("06-album-oar-%s.png"%tag)
+	expect(int(person.inventory.get(oar_key,0))==1,"Viewing the keepsake does not change the inventory")
+	app._close_modal()
+	# Missing local photo: still reachable, falls back to the oar.
+	expect(FileAccess.file_exists(photo) and DirAccess.remove_absolute(photo)==OK,"Remove the local photo")
+	Tasks.bond_goal(app,"achao",4)
+	await process_frame
+	await press("AchaoGoalAlbum")
+	expect(not has_node_named("AchaoAlbumPhoto"),"No photo is shown when the local file is gone")
+	expect(modal_mentions("紀念木槳") or has_node_named("AchaoAlbumOar"),"Missing photo still opens the oar")
+	await capture_settled("07-missing-photo-oar-%s.png"%tag)
+	app._close_modal()
 	var spot:=Vector2i(38,33)
 	stand(spot)
 	expect(world.act(token,"display-oar","build",spot,keepsake).ok,"The oar can be placed as home decor")

@@ -1,8 +1,10 @@
 extends SceneTree
 
 const World=preload("res://scripts/world.gd")
+const Session=preload("res://scripts/session.gd")
 const SITE:=Vector2i(50,35)
 const TOKEN:="rabbit-adopter"
+const VIEWER:="companion-viewer"
 var failures:=0
 var checks:=0
 
@@ -50,9 +52,11 @@ func run() -> void:
 	expect(world.act(TOKEN,"cat-adopt","cat_adopt",cat_site).ok and player.companion_cat.following
 		and not player.companion_rabbit.following,"Adopting the cat sends the rabbit to rest")
 	expect(world.act(TOKEN,"cat-greet","cat_pet",cat_site).ok and player.companion_cat.last_play=="pet","The cat responds to greetings")
+	verify_guest_reaction(world,"pet")
 	expect(not world.act(TOKEN,"cat-yarn-cooldown","cat_yarn",cat_site).ok,"Yarn play respects the shared cooldown")
 	world.step(World.Rabbit.PET_INTERVAL,true)
 	expect(world.act(TOKEN,"cat-yarn","cat_yarn",cat_site).ok and player.companion_cat.last_play=="yarn","The cat plays with yarn")
+	verify_guest_reaction(world,"yarn")
 	expect(world.save() and world.load_world(path),"Both selected pet and cat interaction survive reloading")
 	player=world.state.players[TOKEN]
 	expect(int(player.companion_cat.bond)==2 and player.companion_cat.following and not player.companion_rabbit.following,
@@ -82,6 +86,19 @@ func run() -> void:
 	print("COMPANION_RABBIT_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0))
 
+func verify_guest_reaction(world:World,reaction:String) -> void:
+	if not world.state.players.has(VIEWER):world.add_player(VIEWER,"訪客")
+	var session:=Session.new()
+	session.world=world
+	session.peers={1:VIEWER,2:TOKEN}
+	session._send_snapshot(1)
+	var visible_cat:Dictionary=session.snapshot.get("players",{}).get(Session._public_actor(TOKEN),{}).get(World.Cat.FIELD,{})
+	var own_cat:Dictionary=world.state.players[TOKEN][World.Cat.FIELD]
+	expect(visible_cat.get("following",false) and visible_cat.get("last_play")==reaction
+		and visible_cat.get("last_pet")==own_cat.last_pet,"The visitor sees the cat's %s reaction"%reaction)
+	expect(not visible_cat.is_empty() and not visible_cat.has("bond") and own_cat.has("bond"),"The cat's bond stays private without altering the saved record")
+	session.free()
+
 func verify_scene(world:World,cat:=false) -> void:
 	var app=preload("res://main.tscn").instantiate()
 	app.village_art_preview=true
@@ -110,6 +127,15 @@ func verify_scene(world:World,cat:=false) -> void:
 	if cat:
 		var buttons:Array=app.modal.find_children("*","Button",true,false)
 		expect(buttons.any(func(node):return node.text=="一起玩毛線球"),"Cat card offers yarn play")
+		for arg:String in OS.get_cmdline_user_args():
+			if not arg.begins_with("--cat-perch-preview="):continue
+			app._close_modal()
+			var resting_snapshot:Dictionary=world.state.duplicate(true)
+			resting_snapshot.players[TOKEN][World.Cat.FIELD].following=false
+			app.view.update_snapshot(resting_snapshot,TOKEN)
+			await process_frame
+			await RenderingServer.frame_post_draw
+			expect(root.get_texture().get_image().save_png(arg.trim_prefix("--cat-perch-preview="))==OK,"Capture the cat resting on the old house window sill")
 	app.queue_free()
 	await process_frame
 

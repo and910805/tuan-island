@@ -269,10 +269,12 @@ func stand_focused(cell:Vector2i,offsets:Array,label:String)->bool:
 	check(false,"Some free spot next to %s %s focuses %s (%s)"%[npc(),str(cell),rid,label])
 	return false
 
-## Plaza overview spot: between the two residents, nudged to a free tile.
+## Plaza overview spot: frame 洛洛 above the bottom HUD at the shorter size.
 func plaza_spot()->Vector2:
 	var mid:=(Vector2(place_of("luoluo"))+Vector2(place_of("lingpopo")))/2.0+Vector2(0.5,0.5)
-	for off:Vector2 in [Vector2.ZERO,Vector2(1,0),Vector2(-1,0),Vector2(0,1),Vector2(0,-1),Vector2(1,1)]:
+	var offsets:=[Vector2.ZERO,Vector2(1,0),Vector2(-1,0),Vector2(0,-1)]
+	var lower:=[Vector2(0,1),Vector2(1,1),Vector2(-1,1)]
+	for off:Vector2 in lower+offsets if root.size.y<700 else offsets+lower:
 		if standable(Vector2i((mid+off).floor())):return mid+off
 	return mid
 
@@ -549,7 +551,8 @@ func resident_flow(plaza:Image)->void:
 	await close()
 	var cell:=place()
 	check(cell==candidates()[0],"%s is on the first candidate %s %s"%[npc(),str(candidates()[0]),tag])
-	await stand_focused(cell,BESIDE,"world "+rid+" "+tag)
+	var offsets:=[Vector2(0.5,1.7),Vector2(-0.3,1.5)]+BESIDE if rid=="luoluo" else BESIDE
+	await stand_focused(cell,offsets,"world "+rid+" "+tag)
 	var person:Dictionary=w.state.players[id]
 	var spot:=Vector2(float(person.x),float(person.y))
 	# Same spot with picnic=false (PRESET) for a pixel comparison of the sprite box.
@@ -647,9 +650,12 @@ func festival_flow(plaza:Image)->void:
 	scene_report("plaza festival "+tag)
 	differ(plaza,image,"plaza vs festival plaza "+tag)
 	rid="lingpopo"
-	await stand_focused(place(),BESIDE,"world festival lingpopo "+tag)
+	var bell:=place()
+	var deer:=World.Deer.site(app.session.snapshot)
+	check(deer!=World.Deer.NO_SITE and deer!=bell,"Festival resident and deer have separate sites (%s)"%tag)
+	await stand_focused(bell,[Vector2(0.5,-0.4),Vector2(0.1,-0.4),Vector2(0.5,-0.9)]+BESIDE,"world festival lingpopo "+tag)
 	await shot("lingpopo_world_festival")
-	world_label_ok("world festival lingpopo "+tag,place())
+	world_label_ok("world festival lingpopo "+tag,bell)
 	w.state.festival_story_open=false
 	await refresh()
 
@@ -841,6 +847,7 @@ func run()->void:
 	app=preload("res://main.tscn").instantiate();app.village_art_preview=true;root.add_child(app)
 	app.set_process(false);app.session.set_physics_process(false)
 	if app.session.host(0,"廣場旅人",path)!=OK:check(false,"Host starts");finish();return
+	app.WanganUI.dismiss(app)
 	w=app.session.world;id=app.session.profile.token
 	w.state.time=float(w.state.time)+Village.DAY*2.0  # PRESET: two whole days later
 	print("NOTE candidates at run time: POST_CELLS=%s BELL_CELLS=%s"%[str(Bond.POST_CELLS),str(Bond.BELL_CELLS)])

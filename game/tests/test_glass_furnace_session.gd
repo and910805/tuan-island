@@ -420,9 +420,11 @@ func scenario()->bool:
 	for c in [alpha,beta]:
 		expect(kinds(lane(c,"ready"))==["glass"] and active_kind(c)=="crystal_sand","%s sees ready glass and active crystal sand"%c.label)
 	await refuse(beta,"claim_processing",FURNACE,"",OWNER_ONLY_MSG,"beta claims alpha's ready glass",false,[alpha])
+	expect(not alpha.me().get("greenhouse_glass_crafted",false) and not beta.me().get("greenhouse_glass_crafted",false),"The ready glass does not count before a successful claim")
 	bag_a=canon(alpha.bag())
 	var claim:=await act(alpha,"claim_processing",FURNACE)
 	expect(claim.ok and canon(alpha.bag())==plus(bag_a,{"glass":1}),"alpha claims exactly 1 glass (%s)"%claim.message)
+	expect(await wait_until(func():return bool(alpha.me().get("greenhouse_glass_crafted",false)),3.0) and not beta.me().get("greenhouse_glass_crafted",false),"Claiming glass counts toward Xinghe's event for the furnace owner only")
 	var after_claim:=canon(alpha.bag())
 	var marks:=[alpha.notices.size(),beta.notices.size()]
 	alpha.session.request_action.rpc_id(1,alpha.session.counter,"claim_processing",FURNACE,"",alpha.region(),int(alpha.me().get("travel_epoch",0)))

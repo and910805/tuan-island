@@ -459,9 +459,20 @@ func scenario()->bool:
 	# 5. Alpha casts in WATERS and catches: a meet record, backpack unchanged.
 	await succeed(alpha,"fish_start",CAST,"","","case 5 alpha casts into WATERS",[beta])
 	expect(await wait_bite(alpha),"case 5 the fish bites (accelerated clock)")
+	var cast:Dictionary=alpha.me().get("fishing",{}).duplicate()
+	var feedback:=preload("res://scripts/fishing_feedback.gd").new()
+	feedback.update(beta.session.snapshot,beta.session.own_id,10.0)
+	var audio:=preload("res://scripts/fishing_audio.gd").new()
+	audio.update(alpha.session.snapshot,alpha.session.own_id)
 	var marks_before:=[text(canon(alpha.bag())),text(canon(beta.other(ida).get("inventory",{})))]
 	var reel:=await succeed(alpha,"fish_catch",CAST,"","釣到了%s！記進釣魚會的魚種卡後放回河裡，背包沒有變動。大家記錄了 1 / 12 筆、1 / 4 種。"%MEET.kind_name(k0),"case 5 alpha's catch is a meet record",[beta])
 	await settle([alpha,beta])
+	var visual:=feedback.reel_for(beta.session.snapshot,ida,cast)
+	expect(not visual.is_empty() and visual.fish==k0 and visual.released,"case 5 visitor receives the committed catch-and-release visual with its species")
+	feedback.update(beta.session.snapshot,beta.session.own_id,10.1)
+	var visiting:=feedback.state_for(ida,float(beta.session.snapshot.time),10.1)
+	expect(visiting.get("phase")=="catch" and visiting.get("released",false),"case 5 visitor plays release motion instead of a cancelled cast")
+	expect(audio.update(alpha.session.snapshot,alpha.session.own_id)==["fish_release"] and audio.update(alpha.session.snapshot,alpha.session.own_id).is_empty(),"case 5 angler hears one release cue")
 	expect_own(alpha,want_own(1,true,1,true,1,2,2,0,0,0,{}),"case 5 alpha")
 	expect_own(beta,want_own(1,true,1,true,0,2,2,0,0,0,{}),"case 5 beta")
 	for c:Client in [alpha,beta]:

@@ -1,0 +1,7 @@
+# 不完美的茶亭
+
+使用內建 ImageGen 生成。透明邊裁切後以最鄰近方式縮放至 96×96 格，屋頂與竹柱下半段拆為兩張同起點的 PNG，供遊戲在角色穿過時分層繪製。
+
+生成提示詞
+
+> One isolated original pixel art game sprite as a 96-by-96 underlying pixel grid rendered clearly at 12x for a Taiwanese farming life sim. Subject is a walk-through Taiwanese Maokong mountain tea pavilion. Front-facing 3/4 top down farming game camera, show front facade and roof with NO rotated isometric diamond footprint. Spacious airy simple bamboo pavilion, no furniture inside, no base plinth, no walls, floor and space between support posts must be empty transparent. Four slender bamboo posts, airy asymmetrical roof made in warm honey bamboo and russet reeds, muted indigo fabric half-shade hanging on only upper back side, dark forest-brown ink outlines and small tidy bright clusters. The imperfect handmade story is in a subtle slightly crooked roof panel on the right and a single missing bamboo slat letting light through at roofline, not damage or decay. Roof clearly confined to TOP 55% of object extending only 1-2 pixels beyond posts. Lower 45% has just long slender support posts going to the ground, separated by wide open space. Show all roof corners and floor ends, no texture outside object, no text, no shadows, no lanterns sticking below roof, transparent background and padding. Readable at native 96x96, deliberate hard pixellated edges, no soft shading, photorealism or mixed grid. Harmonious with a polished cozy indie pixel art farming game, rich handmade detail, no existing game assets.

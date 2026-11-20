@@ -66,16 +66,15 @@ const EVENT_OPENING := {
 		{"npc":"aru", "text":"每一份都是大家各自帶來的。沒有誰多拿，也沒有誰少給，這樣的飯最香。"},
 		{"npc":"milu", "text":"灶還是照常可以煮，煮好的料理任何人都能領。下次換我教大家新的配菜。"},
 		{"npc":"milu", "text":"大家說想吃點甜的。蓋一座麵粉磨坊，自己種的小麥就能磨成麵粉。"},
-		{"npc":"aru", "text":"磨坊零件在工作台就能做。麵粉配南瓜和雞蛋放進灶裡烤成派，切開正好分給長桌邊的大家。"},
+		{"npc":"aru", "text":"磨坊用木材、石頭和工作台做的木工零件就能蓋，記得留一格入口。麵粉配南瓜和雞蛋放進灶裡烤成派，切開正好分給長桌邊的大家。"},
 		{"npc":"aru", "text":"吃飽了再看看渡口：舊棧板和倉庫的屋頂也該修了。我們下一回一起動手。"},
 	],
 }
 
-## Q05 next steps once the kitchen has opened: workbench kit -> build -> mill
-## wheat -> bake pie on a stove. `table` names the caller-supplied recipe table;
+## Q05 next steps once the kitchen has opened: build the 3x3 mill straight from materials (C13, no kit
+## step any more) -> mill wheat -> bake pie on a stove. `table` names the caller-supplied recipe table;
 ## no quantities live here (see mill_guide).
 const MILL_STEPS := [
-	{"id":"mill_kit", "table":"craft", "where":"工作台"},
 	{"id":"mill", "table":"build", "where":"建造目錄「生活」"},
 	{"id":"flour", "table":"process", "where":"麵粉磨坊"},
 	{"id":"pumpkin_pie", "table":"recipes", "where":"小石灶"},
@@ -162,6 +161,9 @@ static func site_cells(state: Dictionary) -> Array[Vector2i]:
 	if data.is_empty() or data.stove == "":return out
 	out.append(parse_cell(data.stove))
 	for seat in data.seats:out.append(parse_cell(seat))
+	# C12: a donated 2x2 stove protects its other three cells too (appended: [stove, seat, seat] first).
+	var footprint := stove_footprint(state, out[0])
+	for index in range(1, footprint.size()):out.append(footprint[index])
 	return out
 
 static func is_site_cell(state: Dictionary, c: Vector2i) -> bool:
@@ -198,6 +200,38 @@ static func _object(state: Dictionary, c: Vector2i, kind: String) -> Dictionary:
 	var obj = state.get("objects", {}).get(key(c))
 	return obj if obj is Dictionary and obj.get("type") == kind else {}
 
+# ---- C12: the donated stove may be the early 1x1 小石灶 or the 2x2 公共廚房灶台 ------------------
+# Literals, not an Industry preload: this module stays free of the construction scripts.
+const STOVE_TYPES := ["stove", "kitchen_stove"]
+const BIG_STOVE := "kitchen_stove"
+const BIG_STOVE_PART := "kitchen_stove_part"
+const BIG_OFFSETS: Array[Vector2i] = [Vector2i(0,0), Vector2i(1,0), Vector2i(0,1), Vector2i(1,1)]
+
+## The stove (either kind) whose ANCHOR is `c`; {} for nothing, another kind or a far-end cell.
+static func _stove_at(state: Dictionary, c: Vector2i) -> Dictionary:
+	var obj = state.get("objects", {}).get(key(c))
+	if not obj is Dictionary or not STOVE_TYPES.has(obj.get("type")):return {}
+	if obj.type == BIG_STOVE and int(obj.get(BIG_STOVE_PART, 0)) != 0:return {}
+	return obj
+
+## Every cell the stove anchored at `c` occupies: [c] for the early stove, four cells for C12.
+static func stove_footprint(state: Dictionary, c: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = [c]
+	if _stove_at(state, c).get("type") == BIG_STOVE:
+		for index in range(1, BIG_OFFSETS.size()):out.append(c + BIG_OFFSETS[index])
+	return out
+
+## A 2x2 stove must still be whole: all four cells, same type and owner, parts 0..3 in order.
+static func _footprint_intact(state: Dictionary, c: Vector2i) -> bool:
+	var anchor := _stove_at(state, c)
+	if anchor.is_empty():return false
+	if anchor.type != BIG_STOVE:return true
+	for index in BIG_OFFSETS.size():
+		var part = state.get("objects", {}).get(key(c + BIG_OFFSETS[index]))
+		if not part is Dictionary or part.get("type") != BIG_STOVE or part.get("owner") != anchor.get("owner"):return false
+		if int(part.get(BIG_STOVE_PART, 0)) != index:return false
+	return true
+
 static func _sorted_keys(cells: Array[Vector2i]) -> Array[String]:
 	cells.sort()
 	var out: Array[String] = []
@@ -216,7 +250,8 @@ static func candidate_stoves(state: Dictionary, token: String) -> Array[String]:
 		var c := parse_cell(k)
 		if c == NO_CELL:continue
 		var obj = state.objects[k]
-		if not obj is Dictionary or obj.get("type") != "stove" or obj.get("owner") != token or not stove_idle(obj):continue
+		if not obj is Dictionary or not STOVE_TYPES.has(obj.get("type")) or obj.get("owner") != token or not stove_idle(obj):continue
+		if obj.type == BIG_STOVE and (int(obj.get(BIG_STOVE_PART, 0)) != 0 or not _footprint_intact(state, c)):continue
 		if Vector2(c).distance_to(Vector2(table)) <= STOVE_RANGE:cells.append(c)
 	return _sorted_keys(cells)
 
@@ -317,8 +352,8 @@ static func valid(state: Dictionary, version) -> bool:
 	if not _table_ready(state):return false
 	var table := COMMUNITY.table_cell(state)
 	var stove := parse_cell(data.stove)
-	var stove_obj := _object(state, stove, "stove")
-	if stove_obj.is_empty() or not state.players.has(stove_obj.get("owner")):return false
+	var stove_obj := _stove_at(state, stove)
+	if stove_obj.is_empty() or not state.players.has(stove_obj.get("owner")) or not _footprint_intact(state, stove):return false
 	if Vector2(stove).distance_to(Vector2(table)) > STOVE_RANGE:return false
 	for seat in data.seats:
 		var c := parse_cell(seat)
@@ -386,8 +421,9 @@ static func _register(world, state: Dictionary, data: Dictionary, token: String,
 	var b := parse_cell(parts[1])
 	if a == NO_CELL or b == NO_CELL or a == b or extra != seat_extra(a, b):return _fail("請選擇兩張不同的長椅。")
 	var table := COMMUNITY.table_cell(state)
-	var stove := _object(state, p, "stove")
-	if stove.is_empty():return _fail("請選擇一座已經蓋好的小石灶。")
+	var stove := _stove_at(state, p)
+	if stove.is_empty():return _fail("請選擇一座已經蓋好的小石灶或公共廚房灶台。")
+	if not _footprint_intact(state, p):return _fail(MSG_CORRUPT)
 	if stove.get("owner") != token:return _fail("只能捐出自己蓋的小石灶。")
 	if not stove_idle(stove):return _fail("石灶還有料理排程或待領取的料理，請先領取或取消再登記。")
 	if Vector2(p).distance_to(Vector2(table)) > STOVE_RANGE:return _fail("小石灶要在共用餐桌 8 格以內。")
@@ -396,8 +432,16 @@ static func _register(world, state: Dictionary, data: Dictionary, token: String,
 		if bench.is_empty():return _fail("請選擇兩張已經蓋好的雙人長椅。")
 		if bench.get("owner") != token:return _fail("只能捐出自己蓋的長椅。")
 		if Vector2(seat).distance_to(Vector2(p)) > SEAT_RANGE:return _fail("兩張長椅都要在小石灶 3 格以內。")
-	var targets: Array[Vector2i] = [p, a, b]
-	if not reachable(world, table, targets):return _fail("從共用餐桌走不到小石灶或長椅，請先清出通道（關著的門也會擋路）。")
+	# The two benches must be reachable; of a stove only ONE side has to be (any of its cells), so a 2x2
+	# stove pushed against a wall is still a valid donation as long as one face stays walkable.
+	var seat_targets: Array[Vector2i] = [a, b]
+	var stove_reachable := false
+	for cell in stove_footprint(state, p):
+		var single: Array[Vector2i] = [cell]
+		if reachable(world, table, single):
+			stove_reachable = true
+			break
+	if not stove_reachable or not reachable(world, table, seat_targets):return _fail("從共用餐桌走不到小石灶或長椅，請先清出通道（關著的門也會擋路）。")
 	data.stove = key(p)
 	data.seats = [key(a), key(b)]
 	var result := {"ok":true, "message":"公共廚房登記完成！小石灶和兩張長椅已永久捐給渡口，大家都能使用。", "kitchen_stage":"collect"}
@@ -410,7 +454,7 @@ static func _contribute(state: Dictionary, data: Dictionary, token: String, p: V
 	if key(p) != data.stove:return _fail("請到公共廚房的小石灶放料理。")
 	if not extra.is_empty():return _fail("請重新打開公共廚房面板。")
 	if data.opened:return _fail("公共廚房已經開張了，謝謝大家！")
-	if _object(state, p, "stove").is_empty():return _fail(MSG_CORRUPT)
+	if _stove_at(state, p).is_empty():return _fail(MSG_CORRUPT)
 	var inv = state.players[token].get("inventory")
 	if not inv is Dictionary:return _fail(MSG_CORRUPT)
 	var contributed := {}

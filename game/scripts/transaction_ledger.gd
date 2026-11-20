@@ -26,7 +26,7 @@ extends RefCounted
 ##
 ## Journaling rule (diff of `before` vs committed state, so no action can be
 ## forgotten by a hand-maintained list): an entry is written when ANY coins
-## changed, ANY object `items` changed, ANOTHER player's inventory changed, the
+## changed, ANY object contents changed, ANOTHER player's inventory changed, the
 ## action is a trade action, or the actor LOST items (crafting, building,
 ## shipping, delivery, donation...). Pure self item gains (harvest, gather,
 ## fishing) are not economy transactions and are skipped, and so is pure
@@ -36,6 +36,10 @@ extends RefCounted
 ## value held outside coins/inventory/object items are NOT journaled yet.
 
 const STATE_KEY := "ledger"
+const Industry=preload("res://scripts/industry.gd")
+const Shipping=preload("res://scripts/shipping.gd")
+const CropCatalog=preload("res://scripts/crop_catalog.gd")
+const FIRST_SHOP_KEY:="xiaoli_first_trade"
 ## Retention: newest CAP committed entries and newest REJECT_CAP rejections.
 ## Kept small on purpose: step()/act() deep-copy the whole state every call.
 const CAP := 256
@@ -55,15 +59,16 @@ const KINDS := ["trade","container","transfer","sale","purchase","craft","consum
 const COMMITTED_KEYS := ["seq","c","t","ok","act","kind","by","rid","d","box"]
 const REJECTED_KEYS := ["seq","t","ok","act","by","rid","reason"]
 const ROOT_KEYS := ["seq","dropped","entries","rejected"]
-const PRIVATE_BOXES := ["private_chest","supply_box"]
+const PRIVATE_BOXES := ["private_chest","supply_box",Industry.ACORN_CABINET]
 const TRADE_ACTIONS := ["trade_open","trade_edit","trade_confirm","trade_cancel"]
-const CHEST_MOVES := ["deposit","withdraw","deposit_half","withdraw_half","deposit_all","withdraw_all"]
+const CHEST_EXACT_MOVES := ["deposit_exact","withdraw_exact"]
+const CHEST_MOVES := ["deposit","withdraw","deposit_half","withdraw_half","deposit_all","withdraw_all"] + CHEST_EXACT_MOVES
 ## Self-only material spending of these actions is not an economy transaction.
-const ROUTINE_ACTIONS := ["build","build_area","seed","seed_area","plant_tree","feed"]
+const ROUTINE_ACTIONS := ["build","build_area","seed","seed_area","nursery_sow","plant_tree","feed"]
 ## Actions whose REJECTIONS are journaled (committed entries never depend on
 ## this list; they come from the diff).
 const ECONOMY_ACTIONS := ["trade_open","trade_edit","trade_confirm","trade_cancel",
-	"deposit","withdraw","deposit_half","withdraw_half","deposit_all","withdraw_all","buy","sell","donate","assemble"]
+	"buy","sell","donate","assemble",Industry.POT_RACK_PUT,Industry.POT_RACK_TAKE,Industry.COUNTER_PUT,Industry.COUNTER_TAKE,Industry.TEA_CABINET_PUT,Industry.TEA_CABINET_TAKE,Industry.SNACK_PUT,Industry.SNACK_TAKE] + CHEST_MOVES
 
 static func fresh() -> Dictionary:
 	return {"seq":0,"dropped":0,"entries":[],"rejected":[]}
@@ -109,6 +114,28 @@ static func _layers(s: Dictionary) -> Dictionary:
 			if layer is Dictionary and layer.get("objects") is Dictionary:out[region] = layer.objects
 	return out
 
+static func _held_items(obj:Variant)->Variant:
+	if not obj is Dictionary:return null
+	# T07: the tea table's set lives in a flag, not in `items`; count it so a put/take shows as a transfer.
+	if obj.get("type")==Industry.BAMBOO_TEA_TABLE and Industry.has_tea_set(obj):
+		var held:Dictionary=obj.get("items",{}).duplicate()
+		held[Industry.TEA_SET]=1
+		return held
+	# T11: both shelf tiers count as one container so a put/take shows as a transfer.
+	if obj.get("type")==Industry.TEA_SNACK_SHELF:
+		var shelved:Dictionary={}
+		for tier in Industry.SNACK_TIER_NAMES.size():
+			var stored:Dictionary=Industry.snack_tier(obj,tier)
+			for item in stored:shelved[item]=int(shelved.get(item,0))+int(stored[item])
+		return shelved
+	if obj.get("type")!=Industry.POT_RACK or not obj.has("rack_pots"):return obj.get("items")
+	var items:Dictionary={}
+	for flower:String in obj.rack_pots:
+		if flower.is_empty():continue
+		items[Industry.POT_RACK_EMPTY]=int(items.get(Industry.POT_RACK_EMPTY,0))+1
+		if flower!=Industry.POT_RACK_EMPTY:items[flower]=int(items.get(flower,0))+1
+	return items
+
 ## Economic difference of two HOME-oriented states. Pure; never mutates.
 static func diff(before: Dictionary, after: Dictionary) -> Dictionary:
 	var players: Dictionary = {}
@@ -142,8 +169,8 @@ static func diff(before: Dictionary, after: Dictionary) -> Dictionary:
 		for cell in keys:
 			var a_obj = a_layer.get(cell, {})
 			var b_obj = b_layer.get(cell, {})
-			var a_items = a_obj.get("items") if a_obj is Dictionary else null
-			var b_items = b_obj.get("items") if b_obj is Dictionary else null
+			var a_items = _held_items(a_obj)
+			var b_items = _held_items(b_obj)
 			if not a_items is Dictionary and not b_items is Dictionary:continue
 			var items := _item_delta(a_items, b_items)
 			if items.is_empty():continue
@@ -252,11 +279,52 @@ static func shop_history(s:Dictionary,token:String) -> Array:
 	for i in range(entries.size()-1,-1,-1):
 		var entry:Dictionary=entries[i]
 		if entry.by!=actor or entry.act not in ["buy","sell","ship"]:continue
-		var own:Dictionary=entry.d.get(actor,{})
-		if own.is_empty():continue
-		result.append({"action":entry.act,"time":entry.t,"coins":own.get("coins",0),"items":own.get("items",{}).duplicate()})
+		var row:=_shop_row(entry,float(entry.t))
+		if row.is_empty():continue
+		result.append(row)
 		if result.size()==10:break
 	return result
+
+static func _shop_row(entry:Dictionary,at:float) -> Dictionary:
+	if entry.is_empty():return {}
+	var own:Dictionary=entry.d.get(entry.by,{})
+	if own.is_empty():return {}
+	return {"action":entry.act,"time":at,"coins":own.get("coins",0),"items":own.get("items",{}).duplicate()}
+
+## The two story milestones keep their exact committed receipts when the shared ledger rotates.
+static func remember_first_shop_trade(player:Dictionary,step:String,entry:Dictionary,at:float) -> void:
+	var row:=_shop_row(entry,at)
+	if row.is_empty():return
+	var first:Dictionary=player.get(FIRST_SHOP_KEY,{})
+	if not first.has(step):
+		first[step]=row
+		player[FIRST_SHOP_KEY]=first
+
+static func valid_first_shop_trade(player:Dictionary,progress:int,sold:int,bought:int,crops:Dictionary) -> bool:
+	if not player.has(FIRST_SHOP_KEY):return true
+	var first:Variant=player[FIRST_SHOP_KEY]
+	if not first is Dictionary or first.is_empty() or first.size()>2:return false
+	for step in first:
+		var row:Variant=first[step]
+		if not row is Dictionary or row.size()!=4 or not _time(row.get("time")) or not _items_valid(row.get("items")):return false
+		var items:Dictionary=row.items
+		match step:
+			"sale":
+				if progress<sold or row.get("action") not in ["sell","ship"] or not _int(row.get("coins"),1,Shipping.MAX_COINS):return false
+				if items.size()>(1 if row.action=="sell" else Shipping.MAX_LINES):return false
+				var has_crop:=false
+				for item:String in items:
+					if not _int(items[item],-Shipping.MAX_COINS,-1):return false
+					if crops.has(CropCatalog.base_kind(item)):has_crop=true
+				if not has_crop:return false
+			"seed":
+				if progress!=bought or row.get("action")!="buy" or items.size()!=1 or not _int(row.get("coins"),-Shipping.MAX_COINS,-1):return false
+				var item:String=items.keys()[0]
+				if not item.ends_with("_seed") or not crops.has(item.trim_suffix("_seed")) or items[item]!=1:return false
+			_:return false
+		row.coins=int(row.coins)
+		row.time=float(row.time)
+	return true
 
 static func view(s: Dictionary, token: String, limit: int = 64) -> Array:
 	var out: Array = []

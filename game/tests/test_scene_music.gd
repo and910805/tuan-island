@@ -5,6 +5,7 @@ const Audio=preload("res://scripts/soft_audio.gd")
 const Regions=preload("res://scripts/regions.gd")
 const Almanac=preload("res://scripts/life_ui_almanac.gd")
 const World=preload("res://scripts/world.gd")
+const Stone=preload("res://scripts/stone_workshop.gd")
 var checks:=0
 var failures:=0
 
@@ -45,6 +46,12 @@ func run() -> void:
 		completed.merge(entry[0])
 		expect(Music.milestone_for(unfinished,completed)==entry[1] and Music.milestone_for(completed,completed).is_empty(),"Each milestone triggers once: "+str(entry[1]))
 		expect(Music.milestone_for({},completed).is_empty(),"First snapshot does not replay "+str(entry[1]))
+	var q03:={"region_id":"home","board":true,"bridge_project":{"foundations":0,"done":false}}
+	var q05:={"region_id":"home","board":true,"bridge_project":{"foundations":2,"done":true,"wood":60,"rope":4}}
+	expect(Music.milestone_for(unfinished,q03).is_empty(),"Q03 alone is not a bridge cue")
+	expect(Music.milestone_for(q03,q05)=="story_bridge" and Music.milestone_for(q05,q05).is_empty(),"Q05 completion cues once")
+	expect(Music.milestone_for({},q05).is_empty() and Music.milestone_for({"region_id":"home"},q05)=="story_bridge","First snapshot or reconnect never replays the cue")
+	expect(Music.milestone_for(q05,q03).is_empty(),"Going back to a closed bridge plays nothing")
 	expect(Music.track_for("home",359.0)=="home_night" and Music.track_for("home",360.0)=="home","Home changes at 06:00")
 	expect(Music.track_for("home",1139.0)=="home" and Music.track_for("home",1140.0)=="home_night","Home changes at 19:00")
 	expect(Music.track_for("mine_12",1140.0)=="mine_12","Below ground does not follow daylight")
@@ -309,8 +316,28 @@ func run() -> void:
 	person.inventory.wood=30
 	person.inventory.stone=10
 	app.session._send_snapshot(1)
+	var before_q03:=mixer.scene_id
 	app.session.perform("donate",Vector2i(40,29))
-	expect(world.state.board and mixer.scene_id=="story_bridge" and not mixer.current.stream.loop,"Completing the bridge over the normal game action plays a non-looping cue")
+	expect(world.state.board and not Stone.bridge_open(world.state) and mixer.scene_id==before_q03 and mixer.scene_id!="story_bridge","A real Q03 donation leaves the bridge closed and plays no bridge cue")
+	app.session._send_snapshot(1)
+	expect(mixer.scene_id==before_q03,"The Q03 snapshot still plays no bridge cue")
+	# Q05 with fixture inventories: build the bench, craft both foundations, then donate wood and rope.
+	person.inventory.merge({"stone":40,"wood":70,"rope":4},true)
+	person.x=41.0
+	person.y=36.7
+	var bench:Dictionary=world.act(token,"music-bench","build",Vector2i(40,35),Stone.KIND)
+	expect(bench.ok,"The stone workbench is built for the Q05 music check: "+str(bench.get("message","")))
+	var crafted:=0
+	for step in 2:
+		crafted+=int(world.act(token,"music-found-%d"%step,Stone.ACTION,Vector2i(40,35),Stone.FOUNDATION).ok)
+	expect(crafted==2 and not Stone.bridge_open(world.state),"Both foundations alone do not open the bridge")
+	app.session._send_snapshot(1)
+	expect(mixer.scene_id==before_q03,"Crafting the foundations plays no bridge cue")
+	person.x=40.5
+	person.y=30.5
+	expect(world.act(token,"music-q05","bridge_donate",Vector2i(40,29),"").ok and Stone.bridge_open(world.state),"The last Q05 action opens the bridge")
+	app.session._send_snapshot(1)
+	expect(mixer.scene_id=="story_bridge" and not mixer.current.stream.loop,"Completing Q05 over real board and workbench actions plays a non-looping cue")
 	voice=mixer.current
 	tween=mixer.fade
 	app.session._send_snapshot(1)
@@ -410,6 +437,9 @@ func run() -> void:
 	person.inventory.feed=1
 	world.state.picnic=true
 	app.session._send_snapshot(1)
+	person.coins=maxi(int(person.coins),int(World.LIVESTOCK.ADOPTION_COST.cow))
+	app.session.perform("livestock_adopt",cow,"cow")
+	expect(world.state.livestock.has("cow"),"D07: the cow is adopted before the audio checks")
 	app.sound.stop_cues()
 	app.session.perform("livestock_feed",cow,"cow")
 	await create_timer(0.18).timeout

@@ -140,5 +140,3 @@ func run() -> void:
 		close_client()
 	print("AUTOMATION_NETWORK_TEST role=%s failures=%d" % [role, failures])
 	quit(0 if failures == 0 else 1)
-
-

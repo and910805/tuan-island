@@ -108,11 +108,15 @@ func _observe_shared(previous:Dictionary,next:Dictionary,now:float)->void:
 		var plate:String=Shared.DISHES[dish]
 		var old_count:=int(before.get(dish,{}).get("portions",0))
 		var latest:Dictionary=after.get(dish,{})
+		if latest.is_empty():
+			_shared_starts.erase(plate)
+			_claim_starts.erase(plate)
+			continue
 		var new_count:=int(latest.get("portions",0))
 		if old_count==0 and new_count>0:
 			_shared_starts[plate]=now
 			_claim_starts.erase(plate)
-		elif new_count<old_count and not latest.is_empty():
+		elif new_count<old_count:
 			_claim_starts[plate]=now
 			_shared_starts.erase(plate)
 

@@ -16,6 +16,7 @@ extends RefCounted
 ## Other players never contribute to either rule.
 
 const HouseRooms = preload("res://scripts/house_rooms.gd")
+const EdgeGrid = preload("res://scripts/edge_grid.gd")
 const TILE := 32.0
 const MAX_CELLS := 512
 # world_view.roof_sprite: Rect2(at+Vector2(0,-8),Vector2(32,32)) where at=screen(cell).
@@ -44,21 +45,24 @@ static func faded(snapshot: Dictionary, player_id: String, visual_position := Ve
 	if not logical.is_finite():return result
 	var objects = snapshot.get("objects", {})
 	if not (objects is Dictionary):objects = {}
+	var edges = snapshot.get("edges", {})
+	if not (edges is Dictionary):edges = {}
 	var drawn := visual_position if visual_position.is_finite() else logical
 	# Use the same interpolated foot for both rules, avoiding an early room switch
 	# when the newest server snapshot is ahead of the rendered character.
-	_shelter(result, roofs, objects, Vector2i(drawn.floor()))
+	_shelter(result, roofs, objects, edges, Vector2i(drawn.floor()))
 	_occlusion(result, roofs, drawn)
 	return result
 
-static func _shelter(result: Dictionary, roofs: Dictionary, objects: Dictionary, foot: Vector2i) -> void:
+static func _shelter(result: Dictionary, roofs: Dictionary, objects: Dictionary, edges: Dictionary, foot: Vector2i) -> void:
 	if not roofs.has(_key(foot)):return
 	var seeds: Array[Vector2i] = []
 	if _is_boundary(objects, foot):
 		# Standing in a doorway: fade the doorway itself plus the roofed spaces it joins.
 		result[_key(foot)] = true
-		for d in DIRS:
-			var n: Vector2i = foot + d
+		for side in DIRS.size():
+			if _edge_between(edges, foot, side):continue
+			var n: Vector2i = foot + DIRS[side]
 			if roofs.has(_key(n)) and not _is_boundary(objects, n):seeds.append(n)
 	else:
 		seeds.append(foot)
@@ -72,8 +76,9 @@ static func _shelter(result: Dictionary, roofs: Dictionary, objects: Dictionary,
 	while head < queue.size():
 		var c: Vector2i = queue[head]
 		head += 1
-		for d in DIRS:
-			var n: Vector2i = c + d
+		for side in DIRS.size():
+			if _edge_between(edges, c, side):continue
+			var n: Vector2i = c + DIRS[side]
 			if inside.has(n) or not roofs.has(_key(n)) or _is_boundary(objects, n):continue
 			if inside.size() >= MAX_CELLS:break
 			inside[n] = true
@@ -81,10 +86,14 @@ static func _shelter(result: Dictionary, roofs: Dictionary, objects: Dictionary,
 	for c in queue:
 		result[_key(c)] = true
 		# Roofed walls/windows/doors framing the space fade with it so its edges read clearly.
-		for d in DIRS:
-			var n: Vector2i = c + d
+		for side in DIRS.size():
+			if _edge_between(edges, c, side):continue
+			var n: Vector2i = c + DIRS[side]
 			if result.size() >= MAX_CELLS * 2:return
 			if not inside.has(n) and _is_boundary(objects, n) and roofs.has(_key(n)):result[_key(n)] = true
+
+static func _edge_between(edges: Dictionary, c: Vector2i, side: int) -> bool:
+	return not edges.is_empty() and edges.has(EdgeGrid.key(c, side))
 
 static func _occlusion(result: Dictionary, roofs: Dictionary, drawn: Vector2) -> void:
 	# Camera is integer-rounded in world_view, so the drawn foot in world pixels is round(p*TILE).

@@ -205,6 +205,7 @@ static func operation_advice(objects:Dictionary,cell:Vector2i,belt:Dictionary,ow
 	var offset:Vector2i=World.LOGISTICS.DIRECTIONS[int(belt.get("dir",0))]
 	var front:Dictionary=objects.get(World.key(cell+offset),{})
 	var reason:=World.LOGISTICS.delivery_block(belt,front,front)
+	if amount>0 and reason==World.BOX_CAPACITY.BELT_FULL:return "前方私人箱 16 格都有東西；先取空一格，或改送箱內已有的物品，帶上的物品會保留。"
 	if amount>0 and not reason.is_empty():
 		match reason:
 			"前方進料槽已滿":return "到前方加工台啟用自動加工，或取回進料騰出空間；帶上的物品會保留。"

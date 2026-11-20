@@ -34,6 +34,18 @@ func run() -> void:
 		expect(icon.resource_path.ends_with("/"+spec[1]+".png"),"Deep-mine material uses dedicated art: "+spec[0])
 		expect(icon.get_size()==Vector2(32,32) and icon.get_image().get_pixel(0,0).a==0.0,"Icon is 32px with a transparent background: "+spec[0])
 		expect(icon.get_image().get_data()!=original.get_image().get_data(),"Mine sprite is distinct from its old source: "+spec[0])
+	var field_pixels:Dictionary={}
+	for spec in [["cotton","bluebell"],["sweet_corn","wheat"],["strawberry","tomato"],["star_mushroom","potato"]]:
+		for suffix in ["","_seed"]:
+			var id:String=spec[0]+suffix
+			var previous:=ItemArt.icon(spec[1]+suffix).get_image()
+			var icon:Texture2D=panel.slots[id].artwork.texture
+			var pixels:=icon.get_image()
+			expect(pixels.get_size()==Vector2i(32,32) and not pixels.is_invisible() and pixels.get_pixel(0,0).a==0.0,
+				"Crop or seed uses a visible 32px image with transparent margins: "+id)
+			var content:=pixels.get_data()
+			expect(content!=previous.get_data() and not field_pixels.has(content),"Crop and seed art is distinct: "+id)
+			field_pixels[content]=id
 	var tea_items := [
 		["tea_leaf", "新鮮茶葉", "烘焙台", 2],
 		["clay", "陶土", "工坊窯", 3],
@@ -61,6 +73,13 @@ func run() -> void:
 	var worn: Texture2D = panel.slots.tea_worn_jar.artwork.texture
 	var spent: Texture2D = panel.slots.tea_spent_jar.artwork.texture
 	expect(worn != null and spent != null and worn.get_image().get_data() != spent.get_image().get_data(), "worn and spent jars have distinct images")
+	var scale:String=World.XIAOLI_SHOP.SCALE_ITEM
+	world.state.players.player.inventory[scale]=1
+	panel.refresh(world.state,"player")
+	panel.select_item(scale)
+	expect(panel.detail_name.text==World.XIAOLI_SHOP.SCALE_NAME and panel.detail_use.text.contains("渡口小店掛上招牌")
+		and panel.detail_count.text=="持有 1" and panel.slots[scale].artwork.texture!=null,
+		"The brass scale shows its story source, count and icon in the backpack")
 	panel.select_item("wood")
 	panel.select_category(1)
 	expect(panel.slots.clay.visible and panel.slots.tea_jar.visible and panel.slots.tea_returned_jar.visible and panel.slots.tea_worn_jar.visible and panel.slots.tea_spent_jar.visible and not panel.slots.tea_leaf.visible and not panel.slots.tea_light.visible and not panel.slots.tea_deep.visible, "tea ceramics appear only under materials")

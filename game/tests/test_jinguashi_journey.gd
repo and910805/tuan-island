@@ -4,19 +4,22 @@ func after_chapter() -> void:
 	super.after_chapter()
 	if failed:return
 	act("travel",World.REGIONS.exit_cell("lanyang"),"home")
-	var bench:=Vector2i(40,35)
+	var bench:=GARDEN_JOURNEY_BENCH
 	gather("wood","tree","axe",10,3)
 	gather("stone","rock","pick",4,2)
 	gather("fiber","grass","axe",2,1)
 	act("craft",bench,"reinforced_pick")
+	if failed:return
 	checkpoint("departure")
 	var before:int=bag().get("copper_ore",0)
 	var coins:int=person().coins
 	first_mountain_trip()
+	if failed:return
 	expect(world.player_region(TOKEN)=="jinguashi" and person().coins==coins,"First mountain route preserves money and inventory")
 	checkpoint("arrival")
 	for node:Vector2i in World.JINGUASHI.NODES:
 		act("pick",node)
+	if failed:return
 	expect(int(bag().copper_ore)==before+World.JINGUASHI.NODES.size()*World.JINGUASHI.YIELD,"Walking to all three work faces yields real copper")
 	checkpoint("mined")
 	var saved:=World.new()

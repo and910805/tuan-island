@@ -34,7 +34,8 @@ func give_letter(w:World,token:String)->void:
 func _initialize()->void:
 	# 圖與常數：只能附加在尾端，舊順序不變。
 	check(Transit.ROUTE==["home","toucheng","ruifang","jiufen","jinguashi","maokong","yingge","tianwei","beimen","jiaoxi","bamboo_grove","star_garden"],"ROUTE appends tianwei (then chapter-4 beimen) before the fishing branches")
-	check(Regions.ALL==["home","lanyang","jinguashi","toucheng","ruifang","jiufen","mine_1","mine_2","mine_3","mine_4","mine_5","maokong","yingge","tianwei","beimen","jiaoxi","bamboo_grove","star_garden","mine_6","mine_7","mine_8","mine_9","mine_10","mine_11","mine_12","mine_13","mine_14","mine_15"],"Regions.ALL appends tianwei (then chapter-4 beimen) before the fishing branches, then T067 deep mine floors mine_6..mine_15 at the end")
+	var original_regions:=["home","lanyang","jinguashi","toucheng","ruifang","jiufen","mine_1","mine_2","mine_3","mine_4","mine_5","maokong","yingge","tianwei","beimen","jiaoxi","bamboo_grove","star_garden"]+Regions.DEEP_MINES
+	check(Regions.ALL.slice(0,original_regions.size())==original_regions,"Tianwei, other stops and mine floors retain their original order")
 	check(Transit.CONNECTIONS.yingge==["maokong","tianwei"] and Transit.CONNECTIONS.tianwei==["yingge","beimen","star_garden"],"yingge<->tianwei connection (tianwei also links chapter-4 beimen)")
 	check(Transit.STATIONS.tianwei=={"name":"田尾合作花圃","cell":Vector2i(12,25),"arrival":Vector2(13.5,25.5),"size":Vector2i(80,60)},"Tianwei station exact")
 	check(Transit.POINTS.yingge.transfer.links==["maokong","tianwei"],"Yingge transfer links tianwei")
@@ -144,7 +145,7 @@ func _initialize()->void:
 		check(regions_of(legacy)==["home","ruifang","jinguashi"] and find(legacy,"jinguashi").mode=="既有通行" and find(legacy,"ruifang").mode=="公車","Legacy pass unchanged")
 	check(Transit.options("yingge",tea_book,false,"transfer",true,true).is_empty(),"Locked travel still offers nothing")
 	check(Transit.intermediate("jinguashi","yingge")==["jiufen","ruifang","maokong"] and Transit.intermediate("yingge","toucheng")==["maokong","ruifang"],"Old intermediates unchanged")
-	check(Transit.arrival("maokong","ruifang")==Vector2(14.5,19.5) and Transit.arrival("jiufen","ruifang")==Vector2(30.5,25.5),"Old arrival overrides unchanged")
+	check(Transit.arrival("maokong","ruifang")==Vector2(15.5,19.5) and Transit.arrival("jiufen","ruifang")==Vector2(30.5,25.5),"Old arrival overrides stay beside (not on) the Ruifang stop signs")
 	check(Regions.label("yingge")=="鶯歌合作陶坊" and Regions.protected(Vector2i(23,20),"yingge") and not Regions.water(Vector2i(13,25),"maokong"),"Tea stop region helpers unchanged")
 
 	# 禁用字掃描。

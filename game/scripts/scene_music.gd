@@ -2,6 +2,7 @@ extends Node
 
 const Market=preload("res://scripts/market_stall.gd")
 const Transit=preload("res://scripts/transit.gd")
+const Stone=preload("res://scripts/stone_workshop.gd")
 const COURTYARD_TRACK:="home_courtyard"
 const SOUTH_SHORE_TRACK:="home_south_shore"
 const STAR_SHORE_TRACK:="home_star_shore"
@@ -14,11 +15,15 @@ const SALT_WORK_AREA:=Rect2(11.0,12.0,30.0,21.0)
 const SALT_APPRENTICE_AREA:=Rect2(41.0,19.0,7.0,5.0)
 const TeaHouse=preload("res://scripts/tea_revisit.gd")
 const TEA_HOUSE_MUSIC_RADIUS:=2.5
+const TeaInterior=preload("res://scripts/tea_house_interior.gd")
 const Springs=preload("res://scripts/warm_springs.gd")
+const PotteryWorkshop=preload("res://scripts/pottery_workshop_interior.gd")
 const WanganCoast=preload("res://scripts/wangan_coast.gd")
 const WanganMemory=preload("res://scripts/wangan_memory.gd")
 const INN_TRACK:="warm_springs_interior"
-const SETTING_TRACKS:=["house_interior","greenhouse_interior","island_voyage",INN_TRACK]
+const POTTERY_WORKSHOP_TRACK:="yingge_pottery_workshop"
+const SETTING_TRACKS:=["house_interior","greenhouse_interior","island_voyage",INN_TRACK,POTTERY_WORKSHOP_TRACK]
+const PUBLIC_INTERIOR_TRACKS:=[INN_TRACK,POTTERY_WORKSHOP_TRACK]
 const MILESTONE_TRACKS:=["story_bridge","story_picnic","story_kitchen","story_hoist","story_boat"]
 const ZONE_DWELL_SECONDS:=2.8
 const FADE_SECONDS:=1.1
@@ -38,6 +43,7 @@ var pending_track:=""
 var pending_seconds:=0.0
 var story_return_track:=""
 var milestone_return_track:=""
+var in_tea_house:=false
 
 static func track_for(region:String,world_time:float) -> String:
 	if region=="home":
@@ -70,15 +76,26 @@ static func home_zone(snapshot:Dictionary,position:Vector2) -> String:
 	if WEST_WOODS.has_point(position):return "home_forest"
 	return ""
 
+static func indoor_track(snapshot:Dictionary,region:String,person:Dictionary) -> String:
+	if person.is_empty() or person.get("at_sea",false):return ""
+	if region==Springs.REGION and Springs.in_inn(person):return INN_TRACK
+	if region==PotteryWorkshop.REGION and PotteryWorkshop.inside(person):return POTTERY_WORKSHOP_TRACK
+	if region==TeaInterior.REGION and TeaInterior.inside(person):return TEA_HOUSE_TRACK
+	var tile:="%d,%d"%[floori(float(person.x)),floori(float(person.y))]
+	var roof:Dictionary=snapshot.get("roofs",{}).get(tile,{})
+	match roof.get("type",""):
+		"roof",preload("res://scripts/terracotta_roof.gd").KIND:return "house_interior"
+		"greenhouse_roof":return "greenhouse_interior"
+		preload("res://scripts/greenhouse_glass.gd").XINGHE_ROOF:
+			if preload("res://scripts/greenhouse_glass.gd").covered(snapshot,tile):return "greenhouse_interior"
+	return ""
+
 static func local_track(snapshot:Dictionary,region:String,person:Dictionary) -> String:
 	if person.is_empty():return ""
-	if region==Springs.REGION and Springs.in_inn(person):return INN_TRACK
 	if person.get("at_sea",false):return "island_voyage"
+	var indoor:=indoor_track(snapshot,region,person)
+	if not indoor.is_empty():return indoor
 	var position:=Vector2(float(person.x),float(person.y))
-	var roof:Dictionary=snapshot.get("roofs",{}).get("%d,%d"%[floori(position.x),floori(position.y)],{})
-	match roof.get("type",""):
-		"roof":return "house_interior"
-		"greenhouse_roof":return "greenhouse_interior"
 	if region==TeaHouse.FILL_REGION and TeaHouse.house_open(snapshot):
 		var table:=Vector2(TeaHouse.HOUSE_SITE)+Vector2(0.5,0.5)
 		if position.distance_squared_to(table)<=TEA_HOUSE_MUSIC_RADIUS*TEA_HOUSE_MUSIC_RADIUS:return TEA_HOUSE_TRACK
@@ -105,11 +122,20 @@ func set_world(snapshot:Dictionary,own_id:String) -> void:
 	if region!=world_region:
 		milestone_return_track=""
 		world_region=region
+		in_tea_house=not person.is_empty() and region==TeaInterior.REGION and TeaInterior.inside(person)
 		cancel_pending()
 		set_scene(target)
 		return
 	if person.is_empty():return
-	if target==INN_TRACK or scene_id==INN_TRACK:
+	# Crossing the tea-house door switches music at once instead of waiting out the zone dwell.
+	var tea_inside:=region==TeaInterior.REGION and TeaInterior.inside(person)
+	if tea_inside!=in_tea_house:
+		in_tea_house=tea_inside
+		milestone_return_track=""
+		cancel_pending()
+		set_scene(target)
+		return
+	if target in PUBLIC_INTERIOR_TRACKS or scene_id in PUBLIC_INTERIOR_TRACKS:
 		milestone_return_track=""
 		cancel_pending()
 		set_scene(target)
@@ -167,7 +193,7 @@ static func milestone_for(previous:Dictionary,snapshot:Dictionary) -> String:
 	if not previous.get("mine_depths",{}).get("hoist",false) and snapshot.get("mine_depths",{}).get("hoist",false):return "story_hoist"
 	if not previous.get("public_kitchen",{}).get("opened",false) and snapshot.get("public_kitchen",{}).get("opened",false):return "story_kitchen"
 	if not previous.get("picnic",false) and snapshot.get("picnic",false):return "story_picnic"
-	if not previous.get("board",false) and snapshot.get("board",false):return "story_bridge"
+	if not Stone.bridge_open(previous) and Stone.bridge_open(snapshot):return "story_bridge"
 	return ""
 
 func play_milestone(track:String) -> void:

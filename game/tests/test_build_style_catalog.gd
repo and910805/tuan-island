@@ -6,6 +6,7 @@ extends SceneTree
 
 const Catalog = preload("res://scripts/build_style_catalog.gd")
 const World = preload("res://scripts/world.gd")
+const StoneStation = preload("res://tests/stone_station_fixture.gd")
 const BlueprintDesign = preload("res://scripts/blueprint_design.gd")
 const HouseUI = preload("res://scripts/house_ui.gd")
 const FurnitureArt = preload("res://scripts/furniture_sprite_art.gd")
@@ -13,10 +14,10 @@ const TeaArt = preload("res://scripts/tea_ceramics_art.gd")
 const SaltArt = preload("res://scripts/salt_art.gd")
 ## Same walkable tile and stand-in materials as tests/test_build_catalog.gd.
 const TILE := Vector2i(38, 34)
-const MATERIALS := ["wood", "stone", "fiber"]
+const MATERIALS := ["wood", "stone", "fiber", "glass"]
 ## Collision table copied from tests/test_build_catalog.gd PLACEMENT (independent of world.gd lists).
 const EXPECTED := {
-	"floor": ["ground", false], "path": ["ground", false], "roof": ["roofs", false],
+	"floor": ["ground", false], "stone_floor": ["ground", false], "path": ["ground", false], "roof": ["roofs", false],
 	"wall": ["objects", true], "window": ["objects", true], "door": ["objects", true],
 	"chest": ["objects", true], "bench": ["objects", true], "bed": ["objects", true],
 	"table": ["objects", true], "stove": ["objects", true], "long_bench": ["objects", true],
@@ -161,6 +162,8 @@ func place(entry_id: String) -> Dictionary:
 	var request := Catalog.placement_request(entry_id)
 	if row.kind == "roof":
 		expect(act(world, "build", "floor").ok, entry_id + " lays the floor a roof needs")
+	if row.kind in World.STONE_WORKSHOP.STATION_BUILDS:
+		StoneStation.install(world,"builder")
 	var result: Dictionary = act(world, request.action, request.extra)
 	expect(result.ok, "%s placement (%s)" % [entry_id, result.get("message", "")])
 	var key := World.key(TILE)

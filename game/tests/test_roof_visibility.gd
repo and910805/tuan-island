@@ -177,7 +177,8 @@ func source_contract() -> void:
 	var view:=FileAccess.get_file_as_string("res://scripts/world_view.gd")
 	expect(view.contains("const TILE:=32.0"),"world_view TILE is still 32 (fixture geometry)")
 	var sprite_at:=view.find("func roof_sprite(")
-	var sprite_body:=view.substr(sprite_at,450) if sprite_at>=0 else ""
+	# 620: the thatch rect now follows the terracotta, Xinghe and glass branches (C16 added the first).
+	var sprite_body:=view.substr(sprite_at,620) if sprite_at>=0 else ""
 	expect(sprite_body.contains("draw_rect(Rect2(at+Vector2(0,-8),Vector2(32,32))"),"roof_sprite still covers at+(0,-8) size 32x32 (fixture geometry)")
 	expect(view.contains("var at:=screen(visual_position).round()"),"players still drawn with feet at screen(position).round()")
 	expect(CharArt.FOOT==Vector2i(24,44) and CharArt.FRAME_SIZE==Vector2i(48,48),"character frame anchored at FOOT (24,44) in 48x48")

@@ -95,7 +95,7 @@ func run()->void:
 # 1. Kinds mirror the rules; build recipes and names exist.
 func test_catalogue()->void:
 	expect(Art.KINDS==Goals.KEEPSAKE_ORDER,"KINDS equals ResidentGoals.KEEPSAKE_ORDER")
-	expect(Art.KINDS.size()==17,"Seventeen keepsake kinds (%d)"%Art.KINDS.size())
+	expect(Art.KINDS.size()==18 and Art.KINDS.has("keepsake_bobo_cart"),"Eighteen keepsake kinds including keepsake_bobo_cart (%d)"%Art.KINDS.size())
 	expect(Art.KIT_SUFFIX=="_kit","Kit suffix is _kit")
 	for kind:String in Art.KINDS:
 		var kit:=kind+Art.KIT_SUFFIX
@@ -134,8 +134,8 @@ func test_pieces()->Dictionary:
 		expect(bool(s.bottom),"%s has feet/shadow on the bottom 3 rows"%kind)
 		expect(int(s.width)>=MIN_WIDTH and int(s.height)>=MIN_HEIGHT,"%s opaque bounds >= %dx%d (%dx%d)"%[kind,MIN_WIDTH,MIN_HEIGHT,int(s.width),int(s.height)])
 		expect(float(s.top_share)<=MAX_SHARE,"%s no colour covers more than 60%% of opaque pixels (%.3f)"%[kind,float(s.top_share)])
-	expect(images.size()==17,"All seventeen pieces painted (%d)"%images.size())
-	expect(Art.cache.size()==17,"Cache holds exactly the seventeen pieces (%d)"%Art.cache.size())
+	expect(images.size()==18,"All eighteen pieces painted (%d)"%images.size())
+	expect(Art.cache.size()==18,"Cache holds exactly the eighteen pieces (%d)"%Art.cache.size())
 	return images
 
 # 3. Unknown kinds and items.
@@ -145,7 +145,7 @@ func test_unknown()->void:
 	for bad:String in ["","keepsake_aru","keepsake_bogus_kit","keepsake_aru_kit_kit","keepsake_aru_KIT","veg_basket_rack_kit","wood"]:
 		expect(not Art.has_item(bad) and Art.icon(bad)==null,"unknown item '%s' -> false / null"%bad)
 	expect(not Art.draw(null,Vector2.ZERO,"keepsake_bogus"),"draw() of an unknown kind returns false")
-	expect(Art.cache.size()==17,"Unknown lookups never populate the cache")
+	expect(Art.cache.size()==18,"Unknown lookups never populate the cache")
 
 # 4. All twelve differ from each other and from the seven souvenir pieces.
 func test_distinct(images:Dictionary)->void:

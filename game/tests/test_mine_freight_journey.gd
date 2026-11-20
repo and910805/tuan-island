@@ -8,7 +8,7 @@ func after_chapter()->void:
 	super.after_chapter()
 	if failed:return
 	var mine=World.MINES
-	var bench:=Vector2i(40,35)
+	var bench:=GARDEN_JOURNEY_BENCH
 	var mill:=Vector2i(40,36)
 	var kiln:=Vector2i(41,37)
 	gather("wood","tree","axe",48,3)

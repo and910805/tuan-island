@@ -1,5 +1,6 @@
 extends RefCounted
 
+const MianmianToyArt=preload("res://scripts/mianmian_toy_art.gd")
 const Tasks = preload("res://scripts/life_ui_tasks.gd")
 const World = preload("res://scripts/world.gd")
 const Collections = preload("res://scripts/collections.gd")
@@ -9,9 +10,10 @@ const Shell = preload("res://scripts/life_ui_shell.gd")
 const LivestockArt=preload("res://scripts/livestock_scene_art.gd")
 const BOARD := Vector2i(40, 29)
 
-static func collection_menu(app,initial_tab:=0) -> void:
+static func collection_menu(app,initial_tab:=0,return_to:=Callable(),return_caption:="返回觀察記錄桌") -> void:
 	var body: VBoxContainer = app._open_modal("小島生活圖鑑  %s"%app.binding_label("collection"))
 	app.modal.set_meta("life_modal_layout", "collection_almanac")
+	if return_to.is_valid():Tasks.bookcase_back(app,body,return_caption,return_to)
 	var person := Tasks.player(app)
 	var collection: Dictionary = person.get("collection", {})
 	var tabs := HBoxContainer.new()
@@ -61,15 +63,8 @@ static func collection_menu(app,initial_tab:=0) -> void:
 	if app.session.snapshot.get("resident_goals",{}).get("diandian",{}).get("1",{}).get("state")=="done":
 		var sticker_card:=Tasks.card(pages[1])
 		Tasks.line(app,sticker_card,"點點的菜園貼紙",18)
-		var strip:=HBoxContainer.new()
-		sticker_card.add_child(strip)
-		for kind:String in app.session.snapshot.get("own_crop_sketches",{}):
-			var sticker:=Tasks.card(strip)
-			var sticker_panel:=sticker.get_parent() as Control
-			sticker_panel.custom_minimum_size.x=116
-			Tasks.add_icon(sticker,sketch_icon(kind),40)
-			var caption:String=World.RESIDENT_GOALS.SKETCH_ANIMALS.get(kind,World.CROPS.get(kind,{}).get("name",kind))
-			Tasks.line(app,sticker,caption,14)
+		var observed:Dictionary=app.session.snapshot.get("own_crop_sketches",{})
+		add_sketch_stickers(app,sticker_card,observed.keys())
 	var keys := ["crops", "fish", "meals", "shore"]
 	var catalogs := [World.CROPS, World.FISH, World.RECIPES, Collections.SHORE_FINDS]
 	Tasks.line(app,pages[4],"望安南岸・已收錄 %d／%d"%[collection.get("shore",{}).size(),Collections.SHORE_FINDS.size()],16)
@@ -174,6 +169,20 @@ static func sketch_icon(kind:String) -> Texture2D:
 		return icon
 	if LivestockArt.has_animal(kind):return LivestockArt.texture(kind,"idle")
 	return Art.icon(kind)
+
+static func add_sketch_stickers(app,parent:Container,subjects:Array) -> void:
+	var strip:=HFlowContainer.new()
+	strip.add_theme_constant_override("h_separation",8)
+	strip.add_theme_constant_override("v_separation",8)
+	parent.add_child(strip)
+	for kind:String in subjects:
+		var sticker:=Tasks.card(strip)
+		var sticker_panel:=sticker.get_parent() as Control
+		sticker_panel.custom_minimum_size.x=116
+		Tasks.add_icon(sticker,sketch_icon(kind) if not kind.is_empty() else Shell.icon("journal"),40)
+		var caption:String=World.RESIDENT_GOALS.SKETCH_ANIMALS.get(kind,World.CROPS.get(kind,{}).get("name","待觀察"))
+		var label:=Tasks.line(app,sticker,caption,14)
+		label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
 static func add_animal_sketch(app,parent:Container,id:String,cell:Vector2i) -> void:
 	var s:Dictionary=app.session.snapshot
@@ -297,7 +306,34 @@ const FESTIVAL_SCENES := [
 	["xiaoli","小栗","我把今晚寫進收貨簿了。這一頁只記得大家又回到渡口，下一頁就留給你們。"],
 ]
 
-static func festival_story(app,from_journal:=false,scene_index:=0) -> void:
+const DEER_EPILOGUE_ART:="res://assets/life-art/windbell-deer-epilogue.png"
+const DEER_EPILOGUE_HEIGHT:=190
+const OpeningArt=preload("res://scripts/festival_opening_art.gd")
+
+## Bounded, full-aspect (16:9) epilogue picture in a subtle frame; falls back to the deer icon if missing.
+static func epilogue_art(parent:Container) -> void:
+	var texture:Texture2D=load(DEER_EPILOGUE_ART) if ResourceLoader.exists(DEER_EPILOGUE_ART) else null
+	if texture==null:
+		Tasks.add_icon(parent,World.Deer.texture(),80)
+		return
+	var center:=CenterContainer.new()
+	center.name="DeerEpilogueArt"
+	parent.add_child(center)
+	var frame:=PanelContainer.new()
+	frame.add_theme_stylebox_override("panel",Tasks.PixelTheme.frame_style())
+	center.add_child(frame)
+	var ratio:=AspectRatioContainer.new()
+	ratio.ratio=float(texture.get_width())/float(texture.get_height())
+	ratio.custom_minimum_size=Vector2(DEER_EPILOGUE_HEIGHT*ratio.ratio,DEER_EPILOGUE_HEIGHT)
+	frame.add_child(ratio)
+	var picture:=TextureRect.new()
+	picture.texture=texture
+	picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	picture.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	ratio.add_child(picture)
+
+static func festival_story(app,from_journal:=false,scene_index:=0,return_to:=Callable(),return_label:="返回島嶼近況") -> void:
 	var snapshot:Dictionary=app.session.snapshot
 	var story:Dictionary=snapshot.get("festival_story",{})
 	var body:VBoxContainer=app._open_modal("給大家的風鈴節",story.get("opened",false))
@@ -306,21 +342,30 @@ static func festival_story(app,from_journal:=false,scene_index:=0) -> void:
 	if story.get("opened",false):
 		if scene_index<FESTIVAL_SCENES.size():
 			var scene:Array=FESTIVAL_SCENES[scene_index]
-			Tasks.portrait_header(app,paper,scene[0],"",80)
-			Tasks.line(app,paper,"「%s」"%scene[2],18)
+			var picture:=AspectRatioContainer.new()
+			picture.ratio=OpeningArt.EXTENT.aspect()
+			picture.custom_minimum_size.y=202
+			paper.add_child(picture)
+			var stage:=OpeningArt.new()
+			stage.name="FestivalOpeningArt"
+			stage.scene_index=scene_index
+			stage.reduced_motion=app.sound.reduced_motion
+			stage.sound=app.sound
+			picture.add_child(stage)
+			Tasks.portrait_header(app,paper,scene[0],scene[2],46)
 		else:
-			Tasks.add_icon(paper,World.Deer.texture(),80)
+			epilogue_art(paper)
 			Tasks.line(app,paper,"樹下的最後一位訪客",20)
 			Tasks.line(app,paper,"花瓣落在風鈴鹿的背上。牠朝還亮著燈的渡口低了低頭，角間的小鈴應了一聲。",18)
 		var pages:=HBoxContainer.new()
 		body.add_child(pages)
-		if scene_index>0:pages.add_child(app.button("上一幕",festival_story.bind(app,from_journal,scene_index-1)))
+		if scene_index>0:pages.add_child(app.button("上一幕",festival_story.bind(app,from_journal,scene_index-1,return_to,return_label)))
 		var page:Label=app.label("%d / %d"%[scene_index+1,FESTIVAL_SCENES.size()+1],16)
 		page.name="FestivalScenePage"
 		page.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		page.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		pages.add_child(page)
-		if scene_index<FESTIVAL_SCENES.size():pages.add_child(app.button("下一幕",festival_story.bind(app,from_journal,scene_index+1)))
+		if scene_index<FESTIVAL_SCENES.size():pages.add_child(app.button("下一幕",festival_story.bind(app,from_journal,scene_index+1,return_to,return_label)))
 	else:
 		var mask:=int(story.get("projects",0))
 		var boat_ready:bool=story.get("boat_ready",false)
@@ -338,7 +383,9 @@ static func festival_story(app,from_journal:=false,scene_index:=0) -> void:
 		if not can_start:Tasks.line(app,paper,"開幕由島主或管理員宣布，所有島民都可以參與籌備。",15)
 		start.name="FestivalOpen"
 		body.add_child(start)
-	if from_journal:
+	if return_to.is_valid():
+		body.add_child(app.button(return_label,return_to))
+	elif from_journal:
 		body.add_child(app.button("返回居民回憶",Tasks.resident_memories.bind(app)))
 	else:
 		body.add_child(app.button("返回風鈴接力",festival_menu.bind(app)))
@@ -354,6 +401,121 @@ static func add_festival_food(app,body:VBoxContainer,snapshot:Dictionary)->void:
 	add_festival_dish(app,table_menu,snapshot,person,table,near,"watermelon","FestivalWatermelon","領一片")
 	add_festival_dish(app,table_menu,snapshot,person,table,near,"hotpot","FestivalHotpot","領一碗")
 	add_festival_dish(app,table_menu,snapshot,person,table,near,"chowder","FestivalChowder","領一碗")
+	add_hotpot_photo(app,table_menu,snapshot,festival_menu.bind(app))
+
+## D16 optional shared-table photo. The shared table (共餐桌) is where the 糰糰火鍋 round is served; the
+## button appears only while a round is on it (or an earlier photo exists). It uses the original photo
+## toolkit (Tasks.capture_island_photo: HUD hidden, local PNG under user://), changes no world state and
+## sends nothing anywhere. Solo works as is; once the festival is open its visitors stand by the table
+## and are simply in frame.
+const HOTPOT_PHOTO_TIP:="自願的小紀念：照片只存在這台裝置，不會傳給任何人。"
+
+static func hotpot_photo_path(app) -> String:
+	return "user://tuantuan-hotpot-%s.png"%str(app.session.own_id).sha256_text().left(24)
+
+static func hotpot_round_on_table(snapshot:Dictionary) -> bool:
+	return int(snapshot.get("community",{}).get("hotpot",{}).get("portions",0))>0
+
+## Co-seated = the existing seat pose (MASTER_BENCH_SEAT: public-kitchen benches, four-seat tables, chairs...)
+## of the player AND at least one other player of the same region, each on a real seat object within
+## HOTPOT_SEAT_RANGE tiles of the shared table. No seat is added and the table stays a plain, walkable
+## prop, so movement, the Q04 kitchen and hotpot serving are untouched. The pose is read-only here.
+const HOTPOT_SEAT_RANGE:=6.0
+const HOTPOT_NEAR_RANGE:=3.2
+## Original solo fallback: before opening night nobody stands at the table, so one resident (米露, the
+## public-kitchen cook, existing sprite) takes a place beside it for the picture only.
+const HOTPOT_SOLO_GUEST:="milu"
+const MODE_NONE:=""
+const MODE_TOGETHER:="together"
+const MODE_SOLO:="solo"
+
+static func hotpot_seat_near_table(snapshot:Dictionary,person:Dictionary,table:Vector2i) -> bool:
+	var seat:Variant=person.get(World.RESIDENT_GOALS.MASTER_BENCH_SEAT,{})
+	if not seat is Dictionary:return false
+	var seat_key:Variant=(seat as Dictionary).get("cell","")
+	if not seat_key is String or not snapshot.get("objects",{}).has(seat_key):return false
+	var parts:PackedStringArray=(seat_key as String).split(",")
+	if parts.size()!=2 or not parts[0].is_valid_int() or not parts[1].is_valid_int():return false
+	return Vector2(int(parts[0]),int(parts[1])).distance_to(Vector2(table))<=HOTPOT_SEAT_RANGE
+
+## Other players seated near the shared table while `own_id` is too; -1 when `own_id` is not seated there.
+static func hotpot_tablemates(snapshot:Dictionary,own_id:String) -> int:
+	var table:=World.COMMUNITY.table_cell(snapshot)
+	var players:Dictionary=snapshot.get("players",{})
+	var own:Dictionary=players.get(own_id,{})
+	if table==World.COMMUNITY.NO_CELL or own.is_empty() or not hotpot_seat_near_table(snapshot,own,table):return -1
+	var others:=0
+	for id:String in players:
+		var other:Variant=players[id]
+		if id==own_id or not other is Dictionary:continue
+		if str(other.get("region","home"))!=str(own.get("region","home")):continue
+		if hotpot_seat_near_table(snapshot,other,table):others+=1
+	return others
+
+## "" (no photo), "together" (seated with others) or "solo" (anywhere else at the table).
+static func hotpot_photo_mode(snapshot:Dictionary,own_id:String,person:Dictionary) -> String:
+	var table:=World.COMMUNITY.table_cell(snapshot)
+	if table==World.COMMUNITY.NO_CELL or not hotpot_round_on_table(snapshot):return MODE_NONE
+	var mates:=hotpot_tablemates(snapshot,own_id)
+	if mates>0:return MODE_TOGETHER
+	if mates==0:return MODE_SOLO
+	var at:=Vector2(person.get("x",0),person.get("y",0))
+	return MODE_SOLO if at.distance_to(Vector2(table)+Vector2(0.5,0.5))<=HOTPOT_NEAR_RANGE else MODE_NONE
+
+static func hotpot_guest_for(snapshot:Dictionary,mode:String) -> String:
+	var opened:Variant=snapshot.get("festival_story_open",false)
+	if mode!=MODE_SOLO or (typeof(opened)==TYPE_BOOL and opened):return ""
+	return HOTPOT_SOLO_GUEST
+
+static func add_hotpot_photo(app,body:VBoxContainer,snapshot:Dictionary,back:Callable) -> void:
+	var path:=hotpot_photo_path(app)
+	var saved:=FileAccess.file_exists(path)
+	var on_table:=hotpot_round_on_table(snapshot)
+	var row:=body.get_node_or_null("FestivalHotpotPhotoRow") as HBoxContainer
+	if not on_table and not saved:
+		if row != null:row.hide()
+		return
+	var mode:=hotpot_photo_mode(snapshot,str(app.session.own_id),Tasks.player(app))
+	if row == null:
+		row=HBoxContainer.new()
+		row.name="FestivalHotpotPhotoRow"
+		body.add_child(row)
+		var capture_button:Button=app.button("拍一張火鍋合照",hotpot_take_photo.bind(app))
+		capture_button.name="FestivalHotpotPhoto"
+		row.add_child(capture_button)
+		var album:Button=app.button("翻看火鍋合照",hotpot_view_photo.bind(app,back))
+		album.name="FestivalHotpotAlbum"
+		row.add_child(album)
+	row.show()
+	var take := row.get_node("FestivalHotpotPhoto") as Button
+	match mode:
+		MODE_TOGETHER:take.tooltip_text="和同桌的人一起入鏡。"+HOTPOT_PHOTO_TIP
+		MODE_SOLO:take.tooltip_text="一個人也能拍：桌邊會有居民入鏡。"+HOTPOT_PHOTO_TIP
+		_:take.tooltip_text="先走到渡口共餐桌旁，或在附近的座位坐下"
+	take.disabled=mode==MODE_NONE
+	row.get_node("FestivalHotpotAlbum").visible=saved
+
+static func hotpot_take_photo(app) -> void:
+	var snapshot:Dictionary=app.session.snapshot
+	var mode:=hotpot_photo_mode(snapshot,str(app.session.own_id),Tasks.player(app))
+	if mode==MODE_NONE:return
+	app._close_modal()
+	var table := World.COMMUNITY.table_cell(snapshot)
+	var old_camera: Vector2 = app.view.camera
+	var running: bool = app.view.is_processing()
+	var view_size: Vector2 = app.get_viewport().get_visible_rect().size
+	app.view.set_process(false)
+	app.view.camera=(Vector2(table)+Vector2(0.5,0.5))*32.0-view_size/(app.view.view_zoom()*2.0)
+	app.view.photo_guest=hotpot_guest_for(snapshot,mode)
+	var saved:=await Tasks.capture_island_photo(app,hotpot_photo_path(app),0.72 if mode==MODE_SOLO else 1.0)
+	app.view.photo_guest=""
+	app.view.camera=old_camera
+	app.view.set_process(running)
+	app.view.queue_redraw()
+	app._notice("火鍋合照已收在這台裝置裡。" if saved else "合照無法儲存，請再試一次。",saved)
+
+static func hotpot_view_photo(app,back:Callable) -> void:
+	show_wildlife_photo(app,hotpot_photo_path(app),"火鍋合照",back)
 
 static func add_festival_dish(app,body:VBoxContainer,snapshot:Dictionary,person:Dictionary,table:Vector2i,near:bool,dish:String,node_name:String,claim_text:String)->void:
 	var platter:Dictionary=snapshot.community.get(dish,{})
@@ -383,11 +545,23 @@ static func livestock_menu(app,id:String)->void:
 	var body:VBoxContainer=app._open_modal(spec.name+"的飼料站")
 	app.modal.set_meta("life_modal_layout","livestock_card")
 	if id=="cow":app.modal.set_meta("cow_care",true)
-	add_animal_sketch(app,body,id,spec.cell)
 	if id=="sheep" and int(Tasks.bond_view(app,"mianmian").get("stage",0))>=2:
 		var corner:Button=app.button("雲朵羊的遮雨角落",Tasks.sheep_corner.bind(app))
 		corner.name="SheepCorner"
 		body.add_child(corner)
+	if World.LIVESTOCK.adoption_required(id) and not World.LIVESTOCK.adopted(snapshot.get("livestock",{}),id):
+		# D07: adoption comes first; no feed, milk or equipment controls until the cow is ours.
+		var adopt_card:=Tasks.card(body)
+		adopt_card.add_child(Shell.picture(LivestockArt.texture(id,LivestockArt.state_for(state)),86))
+		Tasks.line(app,adopt_card,"%s還在找一個家。領養後，牠會留在這座飼料站，全島玩家都能照料。"%spec.name,16)
+		var fee:int=World.LIVESTOCK.ADOPTION_COST[id]
+		var adopt:Button=app.button("領養%s · %d 鈴幣"%[spec.name,fee],func():app.session.perform("livestock_adopt",spec.cell,id);app._close_modal())
+		adopt.name="LivestockAdopt"
+		adopt.disabled=int(Tasks.player(app).get("coins",0))<fee
+		if adopt.disabled:adopt.tooltip_text="需要 %d 鈴幣"%fee
+		adopt_card.add_child(adopt)
+		return
+	add_animal_sketch(app,body,id,spec.cell)
 	var card:=Tasks.card(body)
 	var row:=HBoxContainer.new()
 	row.add_theme_constant_override("separation",16)
@@ -498,6 +672,7 @@ static func companion_menu(app,kind:="rabbit") -> void:
 	var card:=Tasks.card(body)
 	Tasks.add_icon(card,World.Dog.texture(pet.get("last_play")=="toy") if dog else (World.Cat.texture() if cat else World.Rabbit.texture(0.0,true)),48)
 	Tasks.line(app,card,"活潑・忠心 · 喜歡叼著布玩具散步" if dog else ("好奇・慢熟 · 喜歡追毛線球" if cat else "膽小・黏人 · 喜歡輕柔的撫摸"),17)
+	var sewn:=MianmianToyArt.choice(app.session.snapshot)
 	var site:Vector2i=World.Cat.site(app.session.snapshot) if cat else World.LIVESTOCK.ANIMALS.sheep.cell
 	if dog:site=World.Dog.SITE
 	if pet.is_empty():
@@ -511,9 +686,9 @@ static func companion_menu(app,kind:="rabbit") -> void:
 		app.session.perform(prefix+("rest" if following else "follow"),site)
 		app._close_modal()))
 	card.add_child(app.button("打招呼" if cat else "摸摸"+name,func():app.session.perform(prefix+"pet",site);app._close_modal()))
-	if cat:card.add_child(app.button("一起玩毛線球",func():app.session.perform("cat_yarn",site);app._close_modal()))
+	if cat:card.add_child(app.button(("拿棉棉縫的%s陪牠玩"%MianmianToyArt.label(sewn)) if not sewn.is_empty() else "一起玩毛線球",func():app.session.perform("cat_yarn",site);app._close_modal()))
 	if dog:
-		card.add_child(app.button("給小柴犬布玩具",func():app.session.perform("dog_toy",site);app._close_modal()))
+		card.add_child(app.button(("拿棉棉縫的%s給小柴犬"%MianmianToyArt.label(sewn)) if not sewn.is_empty() else "給小柴犬布玩具",func():app.session.perform("dog_toy",site);app._close_modal()))
 		if following:card.add_child(app.button("和小柴犬合照",dog_take_photo.bind(app)))
 		if FileAccess.file_exists(dog_photo_path(app)):card.add_child(app.button("翻看柴犬合照",dog_view_photo.bind(app)))
 
@@ -613,7 +788,9 @@ static func hedgehog_menu(app) -> void:
 		"visiting":
 			Tasks.line(app,card,"牠來了。蹲在旁邊看，牠就會慢慢放鬆。",16)
 			card.add_child(app.button("靜靜觀察",func():app.session.perform("hedgehog_observe",site);app._close_modal()))
-		"visited":Tasks.line(app,card,"今天已經觀察過牠。牠會在 11:00 回林邊。",16)
+		"visited":
+			var napping:=World.Hedgehog.nap_cell(snapshot,viewer)!=World.Hedgehog.NO_BASKET
+			Tasks.line(app,card,"牠在附近的午睡籃打盹，11:00 會回林邊。" if napping else "今天已經觀察過牠。牠會在 11:00 回林邊。",16)
 	if viewer.has("hedgehog_observed_day"):
 		Tasks.line(app,card,"上次觀察 · 第 %d 日"%[int(viewer.hedgehog_observed_day)+1],15)
 
@@ -690,6 +867,7 @@ static func animal_menu(app) -> void:
 	Tasks.line(app, card, message, 20)
 	var personality:Dictionary=World.LIVESTOCK.PERSONALITIES.chicken
 	Tasks.line(app,card,"%s · %s"%[personality.traits,personality.favorite],15)
+	Tasks.line(app,card,"餵食後，糯米雞會跟著飼料桶走幾步。",15)
 	Tasks.material_progress(app, card, "feed", int(Tasks.player(app).get("inventory", {}).get("feed", 0)), 1)
 	Tasks.line(app, card, "親密度 %d · 小麥 1、纖維 2 可在小石灶做四份飼料。" % animal.get("bond", 0), 15)
 	if int(animal.get("bond",0))>=World.LIVESTOCK.BONUS_BOND:
@@ -733,14 +911,15 @@ static func add_chicken_cuddle(app,parent:Container)->void:
 ## T055 order board. Reads the self-only `order_board` snapshot built by
 ## World.order_board (Session never sends other players' books). Falls back to
 ## a local estimate (no greenhouse/stations) only if a snapshot lacks it.
-static func order_board_view(app,dock:=false) -> Dictionary:
+static func order_board_view(app,channel:="village") -> Dictionary:
 	var snapshot: Dictionary = app.session.snapshot
-	var view: Variant = snapshot.get("dock_order_board" if dock else "order_board")
+	var view: Variant = snapshot.get("order_board" if channel=="village" else channel+"_order_board")
 	if view is Dictionary and (view as Dictionary).get("rows") is Array:return view
 	var now := float(snapshot.get("time", 0.0))
 	var ctx := World.ORDER_CATALOG.make_context(World.ORDER_CATALOG.day_of(now), snapshot.get("board", false) == true,
 		false, [], World.CROP_SEASONS)
-	ctx.channel="dock" if dock else "village"
+	ctx.time=now
+	ctx.channel=channel
 	ctx.star_shore=snapshot.get("wangan_star_walk",false)
 	return World.ORDER_CATALOG.snapshot(Tasks.player(app).get("orders", {}), now, ctx)
 
@@ -754,13 +933,18 @@ static func order_status_text(row: Dictionary) -> String:
 		"open":return "可接單 · %d 個世界日內交貨" % World.ORDER_CATALOG.DEADLINE_DAYS
 	var missing: Array = row.get("missing", [])
 	if missing.is_empty():return "今日未派發"
-	return "今日未派發 · 目前取不到" + "、".join(PackedStringArray(missing.map(func(item): return str(World.NAMES.get(item, item)))))
+	return "期限內難以備齊「%s」" % "、".join(PackedStringArray(missing.map(func(item): return str(World.NAMES.get(item, item)))))
 
-static func orders_menu(app,dock:=false) -> void:
-	var body: VBoxContainer = app._open_modal("望安碼頭訂單" if dock else "公告板的生活訂單")
+static func orders_menu(app,channel:="village",from_journal:=false) -> void:
+	var destination:Dictionary=World.ORDER_BOARDS[channel]
+	var body: VBoxContainer = app._open_modal(destination.title)
 	app.modal.set_meta("life_modal_layout", "orders_board")
-	var view := order_board_view(app,dock)
-	var delivery_cell:=World.WANGAN_COAST.DOCK_ORDERS if dock else BOARD
+	var view := order_board_view(app,channel)
+	var delivery_cell:Vector2i=destination.cell
+	var send:=func(action:String,id:String):
+		app.session.perform(action,delivery_cell,id)
+		if from_journal:app.OrderJournal.open(app)
+		else:app._close_modal()
 	var inventory: Dictionary = Tasks.player(app).get("inventory", {})
 	Tasks.line(app, body, "第 %d 日 · 接單後 %d 個世界日內交貨；過期只會取消，材料留在背包、不扣鈴幣。無人在線時期限暫停。" %
 		[int(view.get("day", 0)) + 1, int(view.get("deadline_days", World.ORDER_CATALOG.DEADLINE_DAYS))], 15)
@@ -768,23 +952,30 @@ static func orders_menu(app,dock:=false) -> void:
 	if not expired.is_empty():
 		Tasks.line(app, body, "已過期取消：" + "、".join(PackedStringArray(expired.map(func(id): return str(World.ORDER_CATALOG.find(str(id)).get("name", id))))), 15)
 	var board := GridContainer.new()
-	board.columns = 2 if dock or app.font_scale_factor() >= 1.2 else 3
+	board.columns = 1 if channel=="lanyang" else 2
 	board.add_theme_constant_override("h_separation", 12)
 	body.add_child(board)
-	for order: Dictionary in view.get("rows", []):
+	var orders:Array=view.get("rows",[])
+	var active_orders:=orders.filter(func(order):return order.get("status")=="active")
+	var other_orders:=orders.filter(func(order):return order.get("status")!="active")
+	for order: Dictionary in active_orders+other_orders:
 		var id: String = str(order.id)
 		var status: String = str(order.get("status", "unavailable"))
 		var paper := Tasks.card(board)
-		if dock:paper.name="DockOrder_"+id
+		paper.add_theme_constant_override("separation",5)
+		if channel=="dock":paper.name="DockOrder_"+id
 		paper.get_parent().size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var pin := ColorRect.new()
-		pin.color = Color("9c5c42")
-		pin.custom_minimum_size = Vector2(8, 8)
-		pin.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		pin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		paper.add_child(pin)
-		Tasks.add_icon(paper, Art.icon(order.items.keys()[0]), 48)
-		Tasks.line(app, paper, order.name, 18)
+		var header:=HBoxContainer.new()
+		header.add_theme_constant_override("separation",12)
+		paper.add_child(header)
+		Tasks.add_icon(header,Art.icon(order.items.keys()[0]),40)
+		var copy:=VBoxContainer.new()
+		copy.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		copy.alignment=BoxContainer.ALIGNMENT_CENTER
+		header.add_child(copy)
+		Tasks.line(app,copy,order.name,18)
+		if channel=="lanyang":
+			Tasks.line(app,copy,"星禾想留一袋新米給渡口的廚房。在小栗的種子攤買稻種，夏秋到蘭陽水圳旁的水田種植，收成後交給星禾。",15)
 		var enough := true
 		for item in order.items:
 			var have := int(inventory.get(item, 0))
@@ -794,7 +985,8 @@ static func orders_menu(app,dock:=false) -> void:
 			paper.add_child(row)
 			Tasks.add_icon(row, Art.icon(item), 22)
 			Tasks.line(app, row, "%s %d／%d" % [World.NAMES[item], have, need], 15)
-		Tasks.line(app, paper, order_status_text(order), 14)
+		var availability:="等到適合播種的時節，或備妥兩份稻米後再接單。" if channel=="lanyang" and status=="unavailable" else order_status_text(order)
+		Tasks.line(app,paper,availability,14)
 		var spacer := Control.new()
 		spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		paper.add_child(spacer)
@@ -802,14 +994,49 @@ static func orders_menu(app,dock:=false) -> void:
 		paper.add_child(footer)
 		Tasks.line(app, footer, "%d 鈴幣" % order.coins, 15)
 		if status in ["open", "active"]:
-			var action := "order_accept" if status == "open" else "order_cancel"
-			var toggle: Button = app.button("接單" if status == "open" else "取消",
-				func(): app.session.perform(action, delivery_cell, id); app._close_modal())
+			var callback:=accept_order.bind(app,channel,id,delivery_cell,from_journal) if status=="open" else send.bind("order_cancel",id)
+			var toggle: Button = app.button("接單" if status == "open" else "取消",callback)
 			toggle.name = "OrderAccept" if status == "open" else "OrderCancel"
 			footer.add_child(toggle)
-		var submit: Button = app.button("✓ 已完成" if status == "done" else "交件",
-			func(): app.session.perform("order", delivery_cell, id); app._close_modal())
-		submit.name = "OrderDeliver"
-		submit.disabled = status != "active" or not enough
-		if status == "open":submit.tooltip_text = "先接單再交件"
-		footer.add_child(submit)
+		if status=="active":
+			var submit: Button = app.button("交件" if enough else "材料不足",send.bind("order",id))
+			submit.name = "OrderDeliver"
+			submit.disabled = not enough
+			footer.add_child(submit)
+	if from_journal:body.add_child(app.button("返回訂單簿",app.OrderJournal.open.bind(app)))
+	elif channel=="lanyang":body.add_child(app.button("返回星禾的水圳手記",app._gardener_menu))
+
+static func accept_order(app,channel:String,id:String,cell:Vector2i,from_journal:bool)->void:
+	var panel:Control=app.modal
+	if panel.has_meta("accepting_order"):return
+	var sequence:int=app.session.counter+1
+	panel.set_meta("accepting_order",{"id":id,"channel":channel,"sequence":sequence,"from_journal":from_journal})
+	for button:Button in panel.find_children("OrderAccept","Button",true,false):button.disabled=true
+	app.session.perform("order_accept",cell,id)
+	if not is_instance_valid(panel) or panel!=app.modal or not panel.has_meta("accepting_order"):return
+	var timer:=Timer.new()
+	timer.one_shot=true
+	panel.add_child(timer)
+	timer.timeout.connect(func():
+		if int(panel.get_meta("accepting_order",{}).get("sequence",0))==sequence:clear_order_accept(panel)
+		timer.queue_free())
+	timer.start(4.0)
+
+static func refresh_order_accept(app)->void:
+	if not is_instance_valid(app.modal):return
+	var pending:Dictionary=app.modal.get_meta("accepting_order",{})
+	if pending.is_empty():return
+	var board:=order_board_view(app,pending.channel)
+	for order:Dictionary in board.get("rows",[]):
+		if order.id==pending.id and order.get("status")=="active":
+			orders_menu(app,pending.channel,pending.from_journal)
+			return
+
+static func reject_order_accept(app,sequence:int)->void:
+	if not is_instance_valid(app.modal):return
+	if int(app.modal.get_meta("accepting_order",{}).get("sequence",0))==sequence:
+		clear_order_accept(app.modal)
+
+static func clear_order_accept(panel:Control)->void:
+	panel.remove_meta("accepting_order")
+	for button:Button in panel.find_children("OrderAccept","Button",true,false):button.disabled=false

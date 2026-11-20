@@ -9,9 +9,14 @@ extends RefCounted
 const World=preload("res://scripts/world.gd")
 const Market=preload("res://scripts/market_stall.gd")
 const Display=preload("res://scripts/market_display.gd")
+const SummerUI=preload("res://scripts/summer_market_ui.gd")
+const SeaFairUI=preload("res://scripts/sea_breeze_fair_ui.gd")
 const Items=preload("res://scripts/inventory_item_art.gd")
 const Shell=preload("res://scripts/life_ui_shell.gd")
 const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
+const Decor=preload("res://scripts/market_decor.gd")
+const DecorArt=preload("res://scripts/market_decor_art.gd")
+const DECOR_COLORS:={"natural":Color("d9c9a0"),"indigo":Color("3f5f9a"),"leaf":Color("6f9a4a"),"chestnut":Color("9c583c")}
 const TITLE:="市集攤位"
 const RULE:="每個世界日營業一輪，午夜結算；沒賣完的留在攤上，可以拿回。"
 const INK:=Color("3d422d")
@@ -19,20 +24,28 @@ const MUTED:=Color("7a6f58")
 const WARN:=Color("9c4b32")
 const THEME_TAG:=Color("b0622f")
 const ROW_HEIGHT:=40
+const MIN_STOCK_HEIGHT:=ROW_HEIGHT*3+12
 
-static func open(app)->void:
-	var body:VBoxContainer=app._open_modal(TITLE)
+static func open(app,register:Vector2i=Market.NO_CELL)->void:
+	var title:=TITLE
+	var kind:=""
+	if register!=Market.NO_CELL:
+		kind=str(app.session.snapshot.get("objects",{}).get(World.key(register),{}).get("type",World.INDUSTRY.COAST_REGISTER))
+		title=World.BUILD.get(kind,{}).get("name",TITLE)
+	var body:VBoxContainer=app._open_modal(title,false,true)
 	app.modal.name="MarketStallPanel"
 	app.modal.set_meta("life_modal_layout","market_stall")
 	app.modal.set_meta("market_body",body)
+	app.modal.set_meta("market_register",register)
+	app.modal.set_meta("market_counter_kind",kind)
 	app.modal.theme=Pixel.make(app.hud.theme)
 	app.modal.add_theme_stylebox_override("panel",Pixel.frame_style())
 	if is_instance_valid(app.modal_shade):app.modal_shade.color.a=0.26
-	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="Esc 回到島上 · 上架、拿回與領取都會立即保存"
-	body.add_theme_constant_override("separation",8)
+	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="右搖桿捲頁 · 手把 X 開張或領款 · Esc 回到島上"
+	body.add_theme_constant_override("separation",6)
 	refresh(app)
 	app._layout_preview.call_deferred()
-	focus_first.call_deferred(app)
+	focus_on_open.call_deferred(app,app.modal)
 
 ## main._layout_preview: wide general window, capped like the other life panels.
 ## The panel is as tall as its content (never taller than 620 or the viewport); spare
@@ -48,7 +61,7 @@ static func layout(app,bounds:Vector2)->void:
 	var height:=cap.y
 	if outer!=null and content!=null:
 		var chrome:float=modal.get_combined_minimum_size().y-outer.get_combined_minimum_size().y
-		var base:float=ROW_HEIGHT*4+12
+		var base:float=MIN_STOCK_HEIGHT
 		if list_scroll!=null:
 			var others:float=content.get_combined_minimum_size().y-list_scroll.custom_minimum_size.y
 			var wanted:float=list.get_combined_minimum_size().y+4 if list!=null else base
@@ -65,12 +78,22 @@ static func market(app)->Dictionary:
 	return found if found is Dictionary else {}
 
 static func cell(app)->Vector2i:
-	return Market.active_cell(app.session.snapshot)
+	var snapshot:Dictionary=app.session.snapshot
+	var register:Vector2i=app.modal.get_meta("market_register",Market.NO_CELL) if is_open(app) else Market.NO_CELL
+	if register==Market.NO_CELL:return Market.active_cell(snapshot)
+	if snapshot.get("region_id",World.REGIONS.HOME)!=World.REGIONS.HOME:return Market.NO_CELL
+	var prop:Dictionary=snapshot.get("objects",{}).get(World.key(register),{})
+	var kind:String=app.modal.get_meta("market_counter_kind",World.INDUSTRY.COAST_REGISTER)
+	if prop.get("type")!=kind:return Market.NO_CELL
+	if kind==World.INDUSTRY.COAST_CART and prop.get("owner")!=app.session.own_id:return Market.NO_CELL
+	return register
 
 static func send(app,action:String,extra:String="")->void:
+	if not is_open(app):return
 	var at:=cell(app)
 	if at==Market.NO_CELL:
-		app._notice("市集攤位目前不在渡口廣場上。",false)
+		var using_register:bool=app.modal.get_meta("market_register",Market.NO_CELL)!=Market.NO_CELL
+		app._notice("請重新靠近市集家具。" if using_register else "市集攤位目前不在渡口廣場上。",false)
 		return
 	app.session.perform(action,at,extra)
 
@@ -84,6 +107,27 @@ static func focus_first(app)->void:
 			return
 	var close:=first_button(app.modal)
 	if close!=null:close.grab_focus()
+
+static func focus_on_open(app,panel:Control)->void:
+	if not is_instance_valid(panel) or app.modal!=panel:return
+	focus_first(app)
+	var outer:=panel.find_child("ModalScroll",true,false) as ScrollContainer
+	if outer!=null:
+		outer.scroll_vertical=0
+		outer.follow_focus=true
+
+static func focus_settlement(app)->bool:
+	if not is_open(app):return false
+	for id:String in ["MarketCollect","MarketOpen"]:
+		var target:=app.modal.find_child(id,true,false) as BaseButton
+		if target==null or target.disabled or not target.is_visible_in_tree():continue
+		target.grab_focus()
+		var outer:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+		if outer!=null:
+			var footer:=app.modal.find_child("MarketFooter",true,false) as Control
+			outer.ensure_control_visible(footer if footer!=null and footer.size.y<=outer.size.y else target)
+		return true
+	return false
 
 static func first_button(scope:Node)->BaseButton:
 	for node in scope.find_children("*","BaseButton",true,false):
@@ -114,7 +158,7 @@ static func action(app,parent:Node,id:String,title:String,callback:Callable,enab
 	b.disabled=not enabled
 	b.custom_minimum_size=Vector2(0,34)
 	b.add_theme_font_size_override("font_size",14)
-	b.focus_mode=Control.FOCUS_ALL
+	b.focus_mode=Control.FOCUS_ALL if enabled else Control.FOCUS_NONE
 	if not enabled and not reason.is_empty():b.tooltip_text=reason
 	parent.add_child(b)
 	return b
@@ -142,6 +186,21 @@ static func theme_tag(app,parent:Node,themed:bool)->void:
 	tag.custom_minimum_size.x=30
 	tag.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
+static func product_labels(app,row:HBoxContainer,item:String,id:String,caption:String)->void:
+	if app.font_scale_factor()<=1.0:
+		var name_label:=text(app,row,item_name(item),15)
+		name_label.custom_minimum_size.x=96
+		var detail:=text(app,row,caption,14)
+		detail.name=id
+		detail.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		return
+	var details:=VBoxContainer.new()
+	details.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation",0)
+	row.add_child(details)
+	wrapped(app,details,item_name(item),15)
+	wrapped(app,details,caption,14).name=id
+
 # ------------------------------------------------------------------ refresh --
 
 static func refresh(app)->void:
@@ -151,20 +210,27 @@ static func refresh(app)->void:
 	if person.is_empty():return
 	var own:=market(app)
 	var bag:Dictionary=person.get("inventory",{})
-	var signature:=JSON.stringify([own,bag,Market.active_cell(s)])
+	var entry:=cell(app)
+	var signature:=JSON.stringify([own,bag,entry,SummerUI.own(app),s.get(World.SEA_BREEZE_FAIR.VIEW_KEY,{})])
 	if str(app.modal.get_meta("market_signature",""))==signature:return
 	app.modal.set_meta("market_signature",signature)
 	var body:VBoxContainer=app.modal.get_meta("market_body")
 	var focused:Control=body.get_viewport().gui_get_focus_owner() if body.is_inside_tree() else null
 	var focus_name:String=str(focused.name) if is_instance_valid(focused) and body.is_ancestor_of(focused) else ""
 	for child in body.get_children():body.remove_child(child);child.queue_free()
-	if not bool(own.get("unlocked",false)) or Market.active_cell(s)==Market.NO_CELL:
-		wrapped(app,body,Market.LOCKED if not Market.unlocked(s) else Market.NO_STALL,17).name="MarketLocked"
+	if not bool(own.get("unlocked",false)) or entry==Market.NO_CELL:
+		var missing:=Market.NO_STALL if app.modal.get_meta("market_register",Market.NO_CELL)==Market.NO_CELL else "市集家具已移動或拆除。請關閉面板，再走近新的位置。"
+		wrapped(app,body,Market.LOCKED if not Market.unlocked(s) else missing,17).name="MarketLocked"
+		app._layout_preview.call_deferred()
 		return
 	build(app,body,own,bag)
+	if app.modal.get_meta("market_counter_kind","")==World.INDUSTRY.COAST_CART:
+		wrapped(app,body,"攤車和廣場共用個人市集庫存。由攤車開張時，午夜結算後就能搬動。",13)
 	if not focus_name.is_empty():
 		var next:=body.find_child(focus_name,true,false) as BaseButton
-		if next!=null and not next.disabled:next.grab_focus.call_deferred()
+		if next!=null and next.is_visible_in_tree() and not next.disabled:next.grab_focus()
+		elif focus_name.begins_with("MarketDecor") and body.find_child("MarketDecorToggle",true,false)!=null:
+			(body.find_child("MarketDecorToggle",true,false) as BaseButton).grab_focus()
 		else:focus_first.call_deferred(app)
 	app._layout_preview.call_deferred()
 
@@ -173,20 +239,41 @@ static func build(app,body:VBoxContainer,own:Dictionary,bag:Dictionary)->void:
 	var prices:Dictionary=own.get("prices",{})
 	var stock_count:=int(own.get("stock_count",0))
 	var is_open_today:=bool(own.get("open",false))
+	var plaza:bool=app.modal.get_meta("market_register",Market.NO_CELL)==Market.NO_CELL
 	# 1. Header: theme today/tomorrow, stalls and visitors, the rule sentence.
 	var header:=HBoxContainer.new();header.add_theme_constant_override("separation",18);body.add_child(header)
 	header.add_child(Shell.picture(Items.icon("coins"),32))
-	var theme_label:=text(app,header,"今日主題：%s（主題商品＋30%%）"%category_name(str(own.get("theme",""))),17)
+	var theme_label:=wrapped(app,header,"今日主題：%s（主題商品＋30%%）"%category_name(str(own.get("theme",""))),17)
 	theme_label.name="MarketTheme"
-	text(app,header,"明日主題：%s"%category_name(str(own.get("next_theme",""))),15,MUTED).name="MarketNextTheme"
-	var spacer:=Control.new();spacer.size_flags_horizontal=Control.SIZE_EXPAND_FILL;header.add_child(spacer)
-	text(app,header,"今日已開張 %d 攤 · 預估來客 %d 位"%[int(own.get("stalls_today",0)),int(own.get("visitors_estimate",0))],15).name="MarketVisitors"
-	text(app,body,RULE,14,MUTED).name="MarketRule"
+	theme_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	var tomorrow:=wrapped(app,header,"明日主題：%s"%category_name(str(own.get("next_theme",""))),15,MUTED)
+	tomorrow.name="MarketNextTheme"
+	tomorrow.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	if plaza and app.session.snapshot.get(World.SEA_BREEZE_FAIR.VIEW_KEY,{}).get("active",false):
+		var sea_fair_slot:=VBoxContainer.new()
+		header.add_child(sea_fair_slot)
+		SeaFairUI.add_market_link(app,sea_fair_slot)
+	var visitors:=wrapped(app,header,"今日已開張 %d 攤 · 預估來客 %d 位"%[int(own.get("stalls_today",0)),int(own.get("visitors_estimate",0))],15)
+	visitors.name="MarketVisitors"
+	visitors.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	var arranging:bool=plaza and app.modal.get_meta("market_decor_open",false)
+	var rule_row:=HBoxContainer.new()
+	rule_row.add_theme_constant_override("separation",8)
+	body.add_child(rule_row)
+	var rules:=wrapped(app,rule_row,RULE,14,MUTED)
+	rules.name="MarketRule"
+	rules.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	if plaza:decor_bar(app,rule_row,own,arranging)
+	# C12 D14 夏季市集：只在廣場攤位（不是攤車／收銀台）顯示試吃卡。
+	if plaza:SummerUI.build(app,body,send)
 	# 2 + 3. Stall shelf (left) and what can be stocked (right).
 	var columns:=HBoxContainer.new();columns.add_theme_constant_override("separation",12)
 	columns.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_child(columns)
 	shelf(app,paper(columns,"MarketShelfCard"),stock,prices,stock_count,is_open_today)
-	stockable(app,paper(columns,"MarketStockCard"),stock,prices,stock_count,bag,is_open_today)
+	if arranging:
+		decor_picker(app,paper(columns,"MarketDecorCard"),own)
+	else:
+		stockable(app,paper(columns,"MarketStockCard"),stock,prices,stock_count,bag,is_open_today)
 	guest_remark(app,body,own)
 	# 4. Footer: open, till, last report.
 	footer(app,body,own,stock_count,is_open_today)
@@ -212,16 +299,66 @@ static func shelf(app,box:VBoxContainer,stock:Dictionary,prices:Dictionary,stock
 		var info:Dictionary=prices.get(item,{})
 		row.name="MarketShelfRow_"+item
 		row.add_child(Shell.picture(Items.icon(item),32))
-		var name_label:=text(app,row,item_name(item),15);name_label.custom_minimum_size.x=96
-		var detail:=text(app,row,"×%d · 每份 %d"%[count,int(info.get("price",0))],14)
-		detail.name="MarketShelfDetail_"+item;detail.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		product_labels(app,row,item,"MarketShelfDetail_"+item,"×%d · 每份 %d"%[count,int(info.get("price",0))])
 		theme_tag(app,row,bool(info.get("themed",false)))
 		var one:="%s:1"%item
 		var all:="%s:%d"%[item,count]
 		action(app,row,"MarketTake_%s_1"%item,"拿回 1",func():send(app,"market_take",one),take_reason.is_empty(),take_reason)
 		action(app,row,"MarketTake_%s_all"%item,"全部拿回",func():send(app,"market_take",all),take_reason.is_empty(),take_reason)
-	var note:=text(app,box,"營業中：午夜結算前仍可補貨或拿回。" if is_open_today else "主題商品先賣；售價＝出貨價×1.1，主題×1.3。",13,MUTED)
+	var note:=wrapped(app,box,"營業中：午夜結算前仍可補貨或拿回。" if is_open_today else "主題商品先賣；售價＝出貨價×1.1，主題×1.3。",13,MUTED)
 	note.name="MarketShelfNote"
+
+## 攤位裝飾：收合的選擇器（MarketDecorToggle）。選擇經 send("market_decor","cloth|indigo")，
+## 畫面由下一份 snapshot.own_market.decor 重繪；展開狀態存在 modal meta，重繪後保留。
+static func decor_current(own:Dictionary)->Dictionary:
+	var saved:Variant=own.get("decor",{})
+	return saved if Decor.valid(saved) else Decor.default_style()
+
+static func decor_toggle(app)->void:
+	if not is_open(app):return
+	app.modal.set_meta("market_decor_open",not bool(app.modal.get_meta("market_decor_open",false)))
+	app.modal.set_meta("market_signature","")
+	refresh(app)
+	var toggler:=app.modal.find_child("MarketDecorToggle",true,false) as BaseButton
+	if toggler!=null:toggler.grab_focus()
+
+static func decor_bar(app,parent:HBoxContainer,own:Dictionary,expanded:bool)->void:
+	var now:=decor_current(own)
+	var swatch:=ColorRect.new();swatch.name="MarketDecorPreview"
+	swatch.color=DECOR_COLORS.get(str(now["cloth"]),Color("c9b98e"))
+	swatch.custom_minimum_size=Vector2(24,20)
+	swatch.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	parent.add_child(swatch)
+	text(app,parent,"%s · %s"%[Decor.choices("cloth",true)[now["cloth"]],Decor.choices("sign",true)[now["sign"]]],14).name="MarketDecorSummary"
+	var toggle:=action(app,parent,"MarketDecorToggle","回到上架" if expanded else "攤位布置",func():decor_toggle(app),true)
+	toggle.custom_minimum_size=Vector2(110,30)
+	toggle.tooltip_text="更換攤布與招牌。營業中的攤位會在廣場輪流展示給島民看。"
+
+static func decor_picker(app,card:VBoxContainer,own:Dictionary)->void:
+	var now:=decor_current(own)
+	text(app,card,"攤位布置",18)
+	var area:=HBoxContainer.new()
+	area.add_theme_constant_override("separation",12)
+	card.add_child(area)
+	var choices:=VBoxContainer.new()
+	choices.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	choices.add_theme_constant_override("separation",8)
+	area.add_child(choices)
+	area.add_child(DecorArt.preview(now))
+	var has_reward:bool=own.get("xiaoli_decor_reward",false)
+	for group in [["cloth","攤布",Decor.choices("cloth",has_reward)],["sign","招牌",Decor.choices("sign",has_reward)]]:
+		text(app,choices,str(group[1]),14,MUTED)
+		var row:=HFlowContainer.new();row.name="MarketDecorRow_"+group[0];row.add_theme_constant_override("h_separation",6);choices.add_child(row)
+		for id in group[2]:
+			var key:String=str(group[0]);var choice:String=str(id)
+			var label:String=("✓ " if str(now[key])==choice else "")+str(group[2][id])
+			var b:=action(app,row,"MarketDecor_%s_%s"%[key,choice],label,decor_choose.bind(app,key,choice),true)
+			b.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			if key=="cloth":b.add_theme_color_override("font_color",DECOR_COLORS.get(choice,INK).darkened(0.35))
+
+static func decor_choose(app,key:String,choice:String)->void:
+	if str(decor_current(market(app)).get(key,""))==choice:return
+	send(app,"market_decor","%s|%s"%[key,choice])
 
 ## T071 攤位布置：今天廣場有客人時，依攤上擺了什麼顯示一句客人的話（純呈現）。
 static func guest_remark(app,body:VBoxContainer,own:Dictionary)->void:
@@ -239,13 +376,13 @@ static func stockable(app,box:VBoxContainer,stock:Dictionary,prices:Dictionary,s
 	var reason:=""
 	if room<=0:reason="攤上已放滿 %d 件，先拿回一些再上架。"%Market.MAX_STOCK
 	elif stock.size()>=Market.MAX_KINDS:reason="攤上已有 %d 種商品，只能補已上架的品項。"%Market.MAX_KINDS
-	var hint:=text(app,box,reason if not reason.is_empty() else "背包裡能在市集賣的東西（顯示今天的單價）。",13,WARN if not reason.is_empty() else MUTED)
+	var hint:=wrapped(app,box,reason if not reason.is_empty() else "背包裡能在市集賣的東西（顯示今天的單價）。",13,WARN if not reason.is_empty() else MUTED)
 	hint.name="MarketStockReason"
 	var scroll:=ScrollContainer.new();scroll.name="MarketStockScroll"
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus=true
 	scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size.y=ROW_HEIGHT*4+12
+	scroll.custom_minimum_size.y=MIN_STOCK_HEIGHT
 	box.add_child(scroll)
 	var list:=VBoxContainer.new();list.name="MarketStockList";list.add_theme_constant_override("separation",4)
 	list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(list)
@@ -264,9 +401,7 @@ static func stockable(app,box:VBoxContainer,stock:Dictionary,prices:Dictionary,s
 		var row:=HBoxContainer.new();row.name="MarketStockRow_"+item;row.add_theme_constant_override("separation",6)
 		row.custom_minimum_size.y=ROW_HEIGHT;list.add_child(row)
 		row.add_child(Shell.picture(Items.icon(item),32))
-		var name_label:=text(app,row,item_name(item),15);name_label.custom_minimum_size.x=96
-		var detail:=text(app,row,"持有 %d · 每份 %d"%[held,int(info.get("price",0))],14)
-		detail.name="MarketStockDetail_"+item;detail.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		product_labels(app,row,item,"MarketStockDetail_"+item,"持有 %d · 每份 %d"%[held,int(info.get("price",0))])
 		theme_tag(app,row,bool(info.get("themed",false)))
 		var row_reason:=reason
 		if row_reason.begins_with("攤上已有") and stock.has(item):row_reason=""
@@ -302,8 +437,8 @@ static func footer(app,body:VBoxContainer,own:Dictionary,stock_count:int,is_open
 		text(app,report_box,"上一輪結算",15)
 		text(app,report_box,"還沒有結算紀錄",14,MUTED).name="MarketReport"
 		return
-	text(app,report_box,"上一輪結算・第 %d 日（%s）"%[int(report.get("day",0))+1,category_name(str(report.get("theme","")))],15).name="MarketReportTitle"
-	text(app,report_box,"來客 %d 位 · %d 攤同場 · 收入 %d 鈴幣"%[int(report.get("visitors",0)),int(report.get("stalls",0)),int(report.get("coins",0))],14).name="MarketReport"
+	wrapped(app,report_box,"上一輪結算・第 %d 日（%s）"%[int(report.get("day",0))+1,category_name(str(report.get("theme","")))],15).name="MarketReportTitle"
+	wrapped(app,report_box,"來客 %d 位 · %d 攤同場 · 收入 %d 鈴幣"%[int(report.get("visitors",0)),int(report.get("stalls",0)),int(report.get("coins",0))],14).name="MarketReport"
 	var sold:Dictionary=report.get("sold",{})
 	var parts:=PackedStringArray()
 	var keys:Array=sold.keys();keys.sort()

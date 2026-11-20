@@ -35,21 +35,110 @@ func press(id:String) -> void:
 	await process_frame
 	await process_frame
 
+var tag:=""
+
+## A spent step must stay disabled; pressing it again must change nothing.
+func press_disabled(id:String) -> void:
+	var node:=button(id)
+	expect(node!=null and node.disabled,"Spent step is disabled: "+id)
+	if node!=null:node.pressed.emit()
+	await process_frame
+
 func capture(file_name:String) -> void:
 	if DisplayServer.get_name()=="headless":return
 	for arg in OS.get_cmdline_user_args():
 		if not arg.begins_with("--capture-dir="):continue
+		await create_timer(0.25).timeout
 		await RenderingServer.frame_post_draw
-		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
+		var named:=file_name.get_basename()+"-"+tag+"."+file_name.get_extension()
+		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(named))==OK,"Capture "+named)
+
+func inspection() -> Control:
+	return app.modal.find_child("AruBenchInspection",true,false) as Control if is_instance_valid(app.modal) else null
+
+func finding() -> String:
+	var label:=app.modal.find_child("AruBenchFinding",true,false) as Label if is_instance_valid(app.modal) else null
+	return label.text if label!=null else ""
+
+func count() -> int:
+	var art:=inspection()
+	return int(art.call("inspected_count")) if art!=null and art.has_method("inspected_count") else -1
+
+func click_point(index:int) -> void:
+	var target:=button("BondGoalStep_%d"%index)
+	expect(target!=null,"The inspection has a real button for point %d"%index)
+	if target==null:return
+	var at:=target.get_global_rect().get_center()
+	var motion:=InputEventMouseMotion.new()
+	motion.position=at
+	motion.global_position=at
+	root.push_input(motion,true)
+	for pressed in [true,false]:
+		var click:=InputEventMouseButton.new()
+		click.button_index=MOUSE_BUTTON_LEFT
+		click.position=at
+		click.global_position=at
+		click.pressed=pressed
+		click.button_mask=MOUSE_BUTTON_MASK_LEFT if pressed else 0
+		root.push_input(click,true)
+		await process_frame
+	await process_frame
+
+func step_state(index:int) -> String:
+	var step:=button("BondGoalStep_%d"%index)
+	return "missing" if step==null else ("%s|%s"%[step.disabled,step.text])
+
+func accept_focused() -> void:
+	for pressed in [true,false]:
+		var event:=InputEventAction.new()
+		event.action=&"ui_accept"
+		event.pressed=pressed
+		root.push_input(event,true)
+		await process_frame
+	await process_frame
+
+## Points sit inside the drawn backdrop, the backdrop is on screen, and no two points overlap.
+func check_geometry() -> void:
+	var art:=inspection()
+	var picture:=art.get_node_or_null("AruBenchSketchArt") as TextureRect if art!=null else null
+	expect(picture!=null and picture.is_visible_in_tree(),"The bench drawing is visible (%s)"%tag)
+	if picture==null:return
+	var backdrop:=picture.get_global_rect()
+	var screen:=Rect2(Vector2.ZERO,app.get_viewport_rect().size).grow(1.0)
+	expect(backdrop.size.x>1.0 and backdrop.size.y>1.0,"Backdrop has a real box (%s)"%tag)
+	expect(art.get_global_rect().grow(1.0).encloses(backdrop),"Backdrop stays inside the inspection control (%s)"%tag)
+	var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	expect(scroll==null or not scroll.get_v_scroll_bar().visible,"Inspecting the bench needs no scrollbar (%s)"%tag)
+	expect(screen.encloses(backdrop),"Backdrop is on screen (%s)"%tag)
+	var rects:Array[Rect2]=[]
+	for index in 3:
+		var target:=button("BondGoalStep_%d"%index)
+		expect(target!=null,"Point %d exists (%s)"%[index,tag])
+		if target==null:return
+		var rect:=target.get_global_rect()
+		rects.append(rect)
+		expect(rect.size.x>=24.0 and rect.size.y>=24.0,"Point %d is a usable target (%s)"%[index,tag])
+		expect(backdrop.grow(1.0).encloses(rect),"Point %d is inside the actual backdrop (%s)"%[index,tag])
+	for a in 3:
+		for b in range(a+1,3):expect(not rects[a].intersects(rects[b]),"Points %d and %d do not overlap (%s)"%[a,b,tag])
 
 func run() -> void:
-	root.size=Vector2i(1024,640)
+	for size:Vector2i in [Vector2i(1024,640),Vector2i(1280,800)]:
+		tag="%dx%d"%[size.x,size.y]
+		root.size=size
+		await journey()
+	print("ARU_BENCH_PATTERN_UI_TESTS checks=%d failures=%d"%[checks,failures])
+	quit(int(failures>0))
+
+func journey() -> void:
 	app=load("res://main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
-	var path:="user://aru-bench-pattern-%d.json"%OS.get_process_id()
+	app.sound.reduced_motion=tag=="1280x800"
+	var path:="user://aru-bench-pattern-%s-%d.json"%[tag,OS.get_process_id()]
 	if app.session.host(0,"學木工的島民",path)!=OK:
-		quit(1)
+		expect(false,"Host the island (%s)"%tag)
+		app=null
 		return
 	app.session.set_physics_process(false)
 	world=app.session.world
@@ -79,7 +168,12 @@ func run() -> void:
 			app.session.rates[1].clear()
 			app._perform_build_action("axe",tile)
 			await process_frame
-	expect(person.inventory.hardwood==4 and person.inventory.sapling==2,"Two mature trees yield four hardwood and return the two saplings")
+		var drop:Dictionary=world.region_snapshot(World.REGIONS.HOME).gather_drops.get(World.key(tile),{})
+		expect(int(drop.get("items",{}).get("hardwood",0))==World.HARDWOOD_YIELD,"Each mature tree drops hardwood in the world")
+		world.move_player(token,Vector2.UP,0.1)
+		expect(world.step(World.GATHER_DROP_DELAY+0.1,true),"Walk into pickup range to collect the drop")
+		app.session._send_snapshot(1)
+	expect(int(person.inventory.get("hardwood",0))==4 and person.inventory.sapling==2,"Two mature trees yield four hardwood and return the two saplings")
 	await capture("00-hardwood-harvest.png")
 	var checkpoint:=World.new()
 	expect(checkpoint.load_world(path) and int(checkpoint.state.players[token].inventory.get("hardwood",0))==4,"The harvested hardwood is present after reopening the saved world")
@@ -88,9 +182,43 @@ func run() -> void:
 	stand(aru)
 	Tasks.bond_goal(app,"aru",2)
 	await process_frame
+	var steps:Array=Goals.goal("aru",2).steps
+	expect(steps.size()==3,"The bench event has three joints to inspect")
+	check_geometry()
+	var prompt:=finding()
+	expect(not prompt.is_empty() and count()==0,"Nothing is inspected at first and the finding label prompts")
+	expect(button("BondGoalDo").disabled and button("BondGoalDo").tooltip_text==Tasks.GOAL_NEED_STEPS,"Finish is gated before any inspection")
+	await capture("01a-bench-start.png")
+	# Any order; a point click is the same link as the step button.
+	await click_point(2)
+	var clues:={2:finding()}
+	expect(inspection().call("is_animating")==not app.sound.reduced_motion,"Reduced motion shows the check without a ripple")
+	expect(count()==1 and step_state(2).begins_with("true|1."),"Clicking the right-leg point picks the same step first")
+	expect(clues[2]!=prompt and not clues[2].is_empty(),"The first inspection updates the clue")
+	expect(step_state(0).begins_with("false|") and step_state(1).begins_with("false|"),"Other joints stay open")
+	await capture("01b-bench-selected.png")
+	expect(button("BondGoalStep_0").has_focus(),"Focus advances to the first unchecked joint")
+	await accept_focused()
+	clues[0]=finding()
+	expect(count()==2 and step_state(0).begins_with("true|2.") and clues[0]!=clues[2] and not clues[0].is_empty(),"Pressing a step marks its point and gives a different clue")
+	await click_point(2)
+	await press_disabled("BondGoalStep_2")
+	expect(count()==2 and step_state(2).begins_with("true|1."),"The same joint cannot be inspected twice by mouse or button")
+	expect(button("BondGoalDo").disabled and button("BondGoalDo").tooltip_text==Tasks.GOAL_NEED_STEPS,"Two joints still do not open finish")
+	await press("BondGoalStepsReset")
+	expect(count()==0 and finding()==prompt and step_state(0).begins_with("false|") and step_state(1).begins_with("false|") and step_state(2).begins_with("false|"),"Reset clears marks and returns the prompt")
+	expect(button("BondGoalDo").disabled,"Reset re-gates finish")
+	check_geometry()
+	await click_point(1)
+	clues[1]=finding()
 	await press("BondGoalStep_2")
+	clues[2]=finding()
 	await press("BondGoalStep_0")
-	await press("BondGoalStep_1")
+	clues[0]=finding()
+	expect(clues[0]!=clues[1] and clues[1]!=clues[2] and clues[0]!=clues[2] and not clues[0].is_empty() and not clues[1].is_empty(),"Each joint has its own meaningful clue")
+	expect(count()==3 and step_state(1).begins_with("true|1.") and step_state(2).begins_with("true|2.") and step_state(0).begins_with("true|3."),"Mouse and press mix in any order, numbered as inspected")
+	check_geometry()
+	await capture("01c-bench-complete.png")
 	await capture("01-hardwood-request.png")
 	await press("BondGoalDo")
 	expect(int(person.stories.aru)==0 and int(person.inventory.hardwood)==0 and int(person.inventory.plank)==4,"The relationship event consumes hardwood and leaves old planks and errand progress alone")
@@ -160,5 +288,5 @@ func run() -> void:
 		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)
 	app.sound.close()
 	await create_timer(0.15).timeout
-	print("ARU_BENCH_PATTERN_UI_TESTS checks=%d failures=%d"%[checks,failures])
-	quit(int(failures>0))
+	app.queue_free()
+	await process_frame

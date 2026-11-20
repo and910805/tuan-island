@@ -36,7 +36,7 @@ const TARGET_STYLES := 6
 const TARGET_ITEMS := 96
 ## House structure kinds every style must keep so rooms, doors and automatic
 ## roofs keep working (World.AUTO_ROOF_BUILDS + roof + path to the door).
-const STRUCTURE_KINDS := ["floor", "path", "wall", "window", "door", "roof"]
+const STRUCTURE_KINDS := ["floor", "stone_floor", "path", "wall", "window", "door", "roof"]
 
 const WORLD_SCRIPT := "res://scripts/world.gd"
 const BLUEPRINT_DESIGN_SCRIPT := "res://scripts/blueprint_design.gd"
@@ -47,6 +47,7 @@ const PROVIDERS := {
 	"village_tile": {"script": "res://scripts/village_preview_art.gd", "path": "res://assets/village-preview/terrain.png"},
 	"village_prop": {"script": "res://scripts/village_preview_art.gd", "path": "res://assets/village-preview/props.png"},
 	"furniture": {"script": "res://scripts/furniture_sprite_art.gd", "path": "res://assets/ui-life/furniture.png"},
+	"stone_floor": {"path": "res://assets/ui-life/stone-floor.png"},
 	"tea_icon": {"script": "res://scripts/tea_ceramics_art.gd", "path": "res://assets/tea-ceramics/items.png"},
 	"tea_building": {"script": "res://scripts/tea_ceramics_art.gd", "path": "res://assets/tea-ceramics/buildings.png"},
 	"salt_terrain": {"script": "res://scripts/salt_art.gd", "sheet": "terrain"},
@@ -81,6 +82,8 @@ const ENTRIES := [
 	# ---------------------------------------------------------------- 茶屋
 	{"id": "tea_house.floor", "style": "tea_house", "kind": "floor", "layer": "ground", "solid": false,
 		"materials": [["village_tile", 10], ["tea_building", 0]], "note": "茶屋前庭木棧地坪"},
+	{"id": "tea_house.stone_floor", "style": "tea_house", "kind": "stone_floor", "layer": "ground", "solid": false,
+		"materials": [["stone_floor", 0], ["tea_building", 0]], "note": "茶屋的暖灰石地坪"},
 	{"id": "tea_house.path", "style": "tea_house", "kind": "path", "layer": "ground", "solid": false,
 		"materials": [["village_tile", 4]], "note": "茶園步道土石色"},
 	{"id": "tea_house.wall", "style": "tea_house", "kind": "wall", "layer": "objects", "solid": true,
@@ -108,6 +111,8 @@ const ENTRIES := [
 	# ---------------------------------------------------------------- 海邊
 	{"id": "coast.floor", "style": "coast", "kind": "floor", "layer": "ground", "solid": false,
 		"materials": [["salt_terrain", "plank"], ["salt_terrain", "heritage_floor"]], "note": "海岸木棧與鹽埕地坪"},
+	{"id": "coast.stone_floor", "style": "coast", "kind": "stone_floor", "layer": "ground", "solid": false,
+		"materials": [["stone_floor", 0], ["salt_terrain", "heritage_floor"]], "note": "鹽埕的灰石地坪"},
 	{"id": "coast.path", "style": "coast", "kind": "path", "layer": "ground", "solid": false,
 		"materials": [["salt_terrain", "sand"], ["salt_terrain", "coast"]], "note": "沙地步道"},
 	{"id": "coast.wall", "style": "coast", "kind": "wall", "layer": "objects", "solid": true,
@@ -226,6 +231,8 @@ static func resolve_material(ref) -> Dictionary:
 	var info: Dictionary = PROVIDERS[provider]
 	var out := {"ok": false, "provider": provider, "id": id, "path": str(info.get("path", "")), "rect": Rect2i()}
 	match provider:
+		"stone_floor":
+			if typeof(id) == TYPE_INT and id == 0:out.rect = Rect2i(0, 0, 32, 32)
 		"village_tile":
 			if typeof(id) == TYPE_INT and id >= 0 and id < 16:
 				out.rect = Rect2i((id % 4) * 32, (id / 4) * 32, 32, 32)

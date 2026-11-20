@@ -127,7 +127,16 @@ func run() -> void:
 	app._close_modal()
 	expect(world.act(token,"remove-small","remove",site).ok and person.inventory.copper_ingot==4 and person.inventory.stone==4,"Dismantling the metal model returns its own recipe")
 	person.inventory.copper_ingot=0
-	expect(world.act(token,"place-kit","build",site,"sprinkler").ok and not world.state.objects[key].has("sprinkler_daily") and person.inventory.sprinkler_kit==0,"A kit still places the original model")
+	expect(world.act(token,"place-kit","build",site,"sprinkler").ok and world.state.objects[key].sprinkler_daily
+		and world.state.objects[key].get(World.INDUSTRY.STARTER_SPRINKLER_FIELD)==true and person.inventory.sprinkler_kit==0,
+		"The workbench kit places a daily model with kit provenance")
+	stand(site+Vector2i.DOWN)
+	app._interact()
+	await create_timer(0.3).timeout
+	expect(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("每天澆一次") and label.text.contains("不會穿過牆壁")),
+		"The kit sprinkler panel explains the daily pass and wall blocking")
+	await capture("starter-sprinkler.png")
+	app._close_modal()
 	expect(world.act(token,"remove-kit","remove",site).ok and person.inventory.sprinkler_kit==1,"Dismantling the kit model returns the kit")
 	var bench:=Vector2i(37,34)
 	world.state.objects[World.key(bench)]={"type":"bench","owner":token,"items":{}}

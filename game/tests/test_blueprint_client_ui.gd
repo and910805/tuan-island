@@ -626,7 +626,11 @@ func flow_place_and_build() -> void:
 		for d in descendants(strip()):
 			if d is TextureRect and d.is_visible_in_tree() and d.texture!=null:icons+=1
 		expect(icons>=cost.size(),"%s: material icons drawn (%d)"%[l,icons])
-		expect(txt.contains("不能") or txt.contains("無法") or txt.contains("立即"),"%s: irreversible-build warning shown"%l)
+		var reversibility:="可在建造選單使用「復原」" if bool(direct.get("undoable",false)) else "不能用「復原」撤回"
+		var warning:=strip().find_child("BlueprintStripWarning",true,false) as Label
+		expect(txt.contains("立即施工並扣除材料") and txt.contains(reversibility),"%s: build timing and undoability match the quote"%l)
+		expect(warning!=null and warning.is_visible_in_tree() and unclipped(warning) and in_view(warning),
+			"%s: construction warning is visible without scrolling"%l)
 	await shoot("quote-ok",ok_check)
 	# R rotates while placing (not the move_object tool), clearing the quote.
 	var tool0:=str(app.selected)

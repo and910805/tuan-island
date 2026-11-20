@@ -309,5 +309,3 @@ func processing(app, paper: VBoxContainer, cell: Vector2i, id: String, kind: Str
 			start.text = "先停用自動加工"
 		else:
 			start.text = "開始加工" if enough else "材料不足"
-
-

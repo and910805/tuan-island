@@ -74,9 +74,27 @@ func run() -> void:
 	test_save_failure_rollback()
 	test_no_new_fields()
 	test_expanded_crop_catalog()
+	test_plot_tick_parity()
 	cleanup()
 	print("WEATHER_WORLD_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(0 if failures==0 else 1)
+
+func test_plot_tick_parity() -> void:
+	var world:=World.new()
+	var tile:="41,34"
+	var duration:=float(World.CROPS.potato.time)
+	var seasons:Array=World.CROP_SEASONS.potato
+	for start:float in [700.0,DAY*2+30.0,DAY*15+30.0,DAY*3-0.01,DAY*28-0.01]:
+		for roofed:bool in [false,true]:
+			for watered:bool in [false,true]:
+				var crop:={"kind":"potato","growth":19.2,"wet":watered}
+				world.state.crops[tile]=crop
+				if roofed:world.state.roofs[tile]={"type":"greenhouse_roof"}
+				else:world.state.roofs.erase(tile)
+				var expected:=WEATHER_SCRIPT.advance_plot(watered,not roofed,19.2,duration,start,0.06,seasons,roofed)
+				var changed:=world.step_crop_weather(start,0.06)
+				expect(crop.wet==expected.wet and crop.growth==expected.growth and changed==(watered!=expected.wet),
+					"Shared daily weather matches individual plot at %s (roof %s, wet %s)"%[start,roofed,watered])
 
 func test_expanded_crop_catalog() -> void:
 	var cases:=[

@@ -79,6 +79,16 @@ func due_pan(w) -> Dictionary:
 func crop_growth(w) -> float:
 	return float(w.state.crops[World.key(CROP)].growth)
 
+func seed_static_geometry(layer:Dictionary,cell:Vector2i)->void:
+	# Valid construction records exist in both the home and a stored region.
+	var tile:=World.key(cell)
+	layer.ground[tile]={"type":"floor","owner":A,"items":{}}
+	layer.roofs[tile]={"type":"roof","owner":A,"items":{}}
+	layer.edges[tile+",N"]={"type":"edge_door","owner":A,"open":true}
+
+func same_static_geometry(first:Dictionary,second:Dictionary)->bool:
+	return first.ground==second.ground and first.roofs==second.roofs and first.edges==second.edges
+
 func run() -> void:
 	var base:=OS.get_environment("TEMP")
 	if base.is_empty():
@@ -128,6 +138,8 @@ func run() -> void:
 	expect(wall_ok,"build a wall (live undo entry)")
 	var entry:Dictionary=w.state.construction.last.get(A,{})
 	expect(entry.get("status","")=="live","undo entry is live")
+	seed_static_geometry(w.state,Vector2i(35,34))
+	seed_static_geometry(w.state.regions[Regions.LANYANG],Vector2i(26,20))
 	expect(w.save(),"initial durable save")
 	expect(World.new().load_world(w.save_path),"seeded fixture save is schema-valid on reload")
 	if failures>0:
@@ -157,6 +169,7 @@ func run() -> void:
 	expect(file_bytes(path)!=f0,"active tick saved durably")
 	var saved=JSON.parse_string(FileAccess.get_file_as_string(path))
 	expect(saved is Dictionary and float(saved.time)==t1+30.0 and int(saved.committed)==c1+1,"saved file holds the new tick")
+	expect(same_static_geometry(w.state,s0) and same_static_geometry(w.state.regions[Regions.LANYANG],s0.regions[Regions.LANYANG]),"active tick preserves populated building layers in both regions")
 	expect(w.get("step_error") in [null,""],"no step_error after success")
 
 	# --- 3. rejected salt tick, entry region HOME
@@ -221,6 +234,7 @@ func run() -> void:
 	var loaded=World.new()
 	expect(loaded.load_world(path),"repaired save reloads (schema valid)")
 	expect(float(loaded.state.time)==float(w.state.time) and int(loaded.state.committed)==int(w.state.committed),"reloaded time/committed match")
+	expect(same_static_geometry(loaded.state,s0) and same_static_geometry(loaded.state.regions[Regions.LANYANG],s0.regions[Regions.LANYANG]),"reloaded floor, roof and open door match both original regions")
 
 	# --- 6. save-failure rollback still works
 	expect(act(w,"water",CROP).ok,"water again")

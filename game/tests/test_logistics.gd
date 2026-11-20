@@ -136,7 +136,6 @@ func check_edges(path:String) -> void:
 		var prior_path:=args[0].trim_prefix("--legacy=")
 		var original:=FileAccess.get_file_as_string(prior_path)
 		var prior_world:=World.new()
-		check(FileAccess.file_exists(prior_path) and prior_world.load_world(prior_path) and prior_world.state.version==26
+		check(FileAccess.file_exists(prior_path) and prior_world.load_world(prior_path) and prior_world.state.version==preload("res://scripts/save_schema.gd").VERSION
 			and prior_world.state.next_logistics_check==0.0 and FileAccess.get_file_as_string(prior_path)==original,
 			"actual 0.9 preview save migrates additively without changing file")
-

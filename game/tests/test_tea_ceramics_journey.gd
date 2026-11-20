@@ -59,6 +59,7 @@ func run_tea_route() -> void:
 	expect(reopened.load_world(world.save_path) and not reopened.recovered_from_backup,"Load the primary save while return is in flight")
 	if failed:return
 	world=reopened
+	world.add_player(TOKEN,str(person().name))
 	expect(world.player_region(TOKEN)=="home" and own().reuse_count==1 and own().auto and own().returning.get("count",0)==1,"Auto return survives reload")
 	var before:=world.state.duplicate(true)
 	actions+=1

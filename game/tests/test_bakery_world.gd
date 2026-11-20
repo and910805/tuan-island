@@ -3,8 +3,10 @@ extends SceneTree
 ## World.step / World.save / World.load_world path.
 ## Contract: work/claude-agents/bakery_core.txt
 ##   CROPS.pumpkin 琥珀南瓜 time 270 price 150 seed_price 70 yield 1
-##   CRAFT.mill_kit 麵粉磨坊 plank 8 stone 16 copper_joint 4 -> 1
-##   BUILD.mill consumes mill_kit 1; craft AND build gated on public_kitchen.opened
+##   (C13: mill_kit is no longer craftable; BUILD.mill is the 3x3 wood 25 / stone 15 / woodwork_parts 4.
+##   A plain "mill" build while a legacy mill_kit is held still places the old 1x1 and consumes that kit.
+##   This file keeps exercising that legacy 1x1 path; the 3x3 is covered by test_mill_c13*.gd.)
+##   BUILD.mill (both shapes) is gated on public_kitchen.opened
 ##   INDUSTRY.PROCESS.flour station mill, wheat 2 -> 1 in 60 s
 ##   RECIPES.pumpkin_pie pumpkin 1 flour 1 egg 1 -> 4 in 120 s, sells 80 each
 ##   bread/feed unchanged, flour is not a meal, mill buffers wheat in input_wheat,
@@ -49,7 +51,7 @@ const HOME:=REGIONS.HOME
 const TOL:=0.000001
 const RELEASE_PATH:="res://release.json"
 # ---- contract values (bakery_core.txt) ----
-const SAVE_VERSION:=26
+const SAVE_VERSION:=27
 const PROTOCOL:=45
 const RELEASE_VERSION:="0.50-dev"
 const CUTOFFS:={"BLUEPRINT_HISTORY_VERSION":19,"COOKING_QUEUE_VERSION":20,"PROCESSING_QUEUE_VERSION":21,"MATERIAL_SOURCE_VERSION":22,"PUBLIC_KITCHEN_VERSION":23}
@@ -58,7 +60,7 @@ const PUMPKIN_TIME:=270.0
 const PUMPKIN_PRICE:=150
 const PUMPKIN_SEED_PRICE:=70
 const MILL_NAME:="麵粉磨坊"
-const MILL_KIT_COST:={"plank":8,"stone":16,"copper_joint":4}
+const MILL_BUILD_COST:={"wood":25,"stone":15,"woodwork_parts":4}
 const FLOUR_COST:={"wheat":2}
 const FLOUR_TIME:=60.0
 const FLOUR_YIELD:=1
@@ -432,27 +434,28 @@ func blueprint_quote(w,origin:Vector2i) -> Dictionary:
 	expect(var_to_str(w.state)==before,"blueprint quote is read-only")
 	return result if result is Dictionary else {}
 
-## FIXTURE stock + REAL craft at the template bench + REAL build.
+## FIXTURE legacy kit + REAL build. C13: the kit can no longer be crafted, so this stocks the kit a player
+## who crafted one before C13 still carries; a plain "mill" build with a kit held is the legacy 1x1.
 func craft_and_build_mill(w,at:Vector2i,label:String) -> void:
-	# FIXTURE: mill kit materials in the backpack.
-	stock(w,A,{"plank":held(w,"plank")+8,"stone":held(w,"stone")+16,"copper_joint":held(w,"copper_joint")+4})
-	must(w,A,"craft",bench_cell,"mill_kit",label+": craft mill_kit at the bench")
-	must(w,A,"build",at,"mill",label+": build mill")
+	# FIXTURE: one legacy mill_kit in the backpack.
+	stock(w,A,{"mill_kit":held(w,"mill_kit")+1})
+	must(w,A,"build",at,"mill",label+": build legacy 1x1 mill from the kit")
 	expect(dev(w,at).get("type")=="mill" and dev(w,at).get("owner")==A,label+": mill owned by builder")
+	expect(not dev(w,at).has("mill_part") and not dev(w,at).has("mill_facing"),label+": kit mill is a legacy 1x1 (no mill_part)")
 
 # ------------------------------------------------------------------- tests --
 
 func test_catalog() -> void:
 	var probe=World.new()
 	expect(int(probe.state.version)==int(Schema.VERSION),"fresh world follows SaveSchema.VERSION")
-	expect(int(Schema.VERSION)==SAVE_VERSION,"public save schema version is 26, got %d"%int(Schema.VERSION))
+	expect(int(Schema.VERSION)==SAVE_VERSION,"public save schema version is 27, got %d"%int(Schema.VERSION))
 	var cut_ok:=Schema.BLUEPRINT_HISTORY_VERSION==19 and Schema.COOKING_QUEUE_VERSION==20 and Schema.PROCESSING_QUEUE_VERSION==21 and Schema.MATERIAL_SOURCE_VERSION==22 and Schema.PUBLIC_KITCHEN_VERSION==23
 	expect(cut_ok,"historical feature cutoffs 19/20/21/22/23 preserved "+str(CUTOFFS))
-	expect(int(Session.PROTOCOL)==PROTOCOL,"network protocol is 45, got %d"%int(Session.PROTOCOL))
+	expect(int(Session.PROTOCOL)>=PROTOCOL,"Network protocol supports the bakery flow (got %d)"%int(Session.PROTOCOL))
 	var parser:=JSON.new()
 	var rel_ok:=parser.parse(FileAccess.get_file_as_string(RELEASE_PATH))==OK and parser.data is Dictionary
 	var rel:Dictionary=parser.data if rel_ok else {}
-	expect(str(rel.get("version",""))==RELEASE_VERSION and int(rel.get("protocol",-1))==PROTOCOL,"release.json 0.50-dev / protocol 45: "+str(rel.get("version"))+" / "+str(rel.get("protocol")))
+	expect(str(rel.get("version",""))==RELEASE_VERSION and int(rel.get("protocol",-1))>=PROTOCOL,"Release manifest supports the bakery flow: "+str(rel.get("version"))+" / "+str(rel.get("protocol")))
 	expect(int(rel.get("protocol",-1))==int(Session.PROTOCOL),"release protocol equals Session.PROTOCOL")
 	# pumpkin crop
 	var pumpkin=World.CROPS.get("pumpkin",{})
@@ -462,10 +465,10 @@ func test_catalog() -> void:
 	expect(int(pk.get("cycles",1))==1,"pumpkin is a single-harvest crop")
 	expect(World.CROPS.get("wheat")==WHEAT,"wheat crop unchanged")
 	# mill kit + mill
-	var kit=World.CRAFT.get("mill_kit",{})
-	var kd:Dictionary=kit if kit is Dictionary else {}
-	expect(str(kd.get("name",""))==MILL_NAME and ints(kd.get("ingredients",{}))==MILL_KIT_COST and int(kd.get("yield",-1))==1,"mill_kit 麵粉磨坊 plank8 stone16 copper_joint4 -> 1: "+str(kd))
-	expect(materials(World.BUILD.get("mill",{}))=={"mill_kit":1},"BUILD.mill consumes exactly one mill_kit: "+str(World.BUILD.get("mill")))
+	expect(not World.CRAFT.has("mill_kit"),"C13: mill_kit is no longer craftable at the bench")
+	expect(str(World.NAMES.get("mill_kit",""))==MILL_NAME,"C13: the legacy mill_kit item keeps its name for existing backpacks")
+	expect(materials(World.BUILD.get("mill",{}))==MILL_BUILD_COST,"BUILD.mill is wood 25 / stone 15 / woodwork_parts 4: "+str(World.BUILD.get("mill")))
+	expect(materials(World.LEGACY_MILL_COST)=={"mill_kit":1},"a legacy 1x1 mill still builds from / refunds exactly one mill_kit")
 	expect(str(World.BUILD.get("mill",{}).get("name",""))!="","BUILD.mill has a display name")
 	# flour processing
 	var flour=World.INDUSTRY.PROCESS.get("flour",{})
@@ -513,23 +516,23 @@ func test_gate_and_open() -> void:
 	var o:=find_area(w,Vector2i(5,2),"gate site")
 	if o.x<0:return
 	bench_cell=o
-	chest_cell=o+Vector2i(1,0)
-	mill_cell=o+Vector2i(3,0)
+	# C08: the bench now covers o and o+(1,0); the chest sits against its far end, the mill beyond it.
+	chest_cell=o+Vector2i(2,0)
+	mill_cell=o+Vector2i(4,0)
 	must(w,A,"build",bench_cell,"bench","gate: real bench build")
 	must(w,A,"build",chest_cell,"chest","gate: real shared chest beside the bench")
 	expect(not kitchen_open(w),"gate: kitchen starts unopened")
-	refuse(w,A,"craft",bench_cell,"mill_kit","gate: mill_kit craft locked before the kitchen opens")
+	refuse(w,A,"craft",bench_cell,"mill_kit","gate: mill_kit is not a bench recipe any more (C13)")
 	var inv0:=inv(w)
 	must(w,A,"craft",bench_cell,"sawmill_kit","gate: unrelated bench craft still works")
 	expect(diff(inv0,inv(w))=={"wood":-8,"stone":-4,"sawmill_kit":1},"gate: sawmill_kit cost unchanged")
 	for i in 4:must(w,A,"deposit",chest_cell,"stone","gate: deposit stone %d"%i)
-	# FIXTURE: backpack stone trimmed so the chest must cover part of the mill kit.
-	stock(w,A,{"stone":12})
+	# FIXTURE: backpack stone trimmed so the chest must cover part of an ungated bench recipe (kiln_kit: stone 8).
+	stock(w,A,{"stone":4})
 	var prep:=must(w,A,"prepare_material_box",bench_cell,World.key(chest_cell),"gate: prepare the shared chest")
 	var box:=str(prep.get("source_id",""))
-	var sq:=quote(w,"craft",bench_cell,"mill_kit",chest_cell,box)
+	var sq:=quote(w,"craft",bench_cell,"kiln_kit",chest_cell,box)
 	expect(sq.plan.get("ok")==true and ints(sq.plan.get("from_chest",{}))=={"stone":4},"gate: quoted split takes 4 stone from the chest: "+str(sq.plan))
-	refuse(w,A,"craft",bench_cell,sq.extra,"gate: sourced mill_kit craft locked before opening")
 	# FIXTURE: one mill_kit in the backpack only to probe the build gate.
 	stock(w,A,{"mill_kit":1})
 	refuse(w,A,"build",mill_cell,"mill","gate: mill build locked before opening")
@@ -539,18 +542,20 @@ func test_gate_and_open() -> void:
 	open_kitchen(w)
 	expect(kitchen_open(w),"open: kitchen opened through real actions: "+str(kitchen(w)))
 	inv0=inv(w)
-	must(w,A,"craft",bench_cell,"mill_kit","open: craft mill_kit at the bench")
-	expect(diff(inv0,inv(w))=={"plank":-8,"stone":-16,"copper_joint":-4,"mill_kit":1},"open: exact mill kit cost and yield: "+str(diff(inv0,inv(w))))
-	stock(w,A,{"stone":12}) # FIXTURE: chest must cover 4 stone again.
-	sq=quote(w,"craft",bench_cell,"mill_kit",chest_cell,box)
+	refuse(w,A,"craft",bench_cell,"mill_kit","open: mill_kit stays uncraftable after the kitchen opens (C13)")
+	expect(diff(inv0,inv(w)).is_empty(),"open: the refused mill_kit craft spent nothing")
+	stock(w,A,{"stone":4}) # FIXTURE: chest must cover 4 stone again.
+	sq=quote(w,"craft",bench_cell,"kiln_kit",chest_cell,box)
+	var sr:=must(w,A,"craft",bench_cell,sq.extra,"open: sourced kiln_kit craft")
+	expect(ints(sr.get("from_chest",{}))=={"stone":4} and int(dev(w,chest_cell).get("items",{}).get("stone",0))==0 and held(w,"stone")==0,"open: sourced craft debits backpack 4 + chest 4 stone exactly")
+	# FIXTURE: two legacy mill_kits, as a player who crafted them before C13 still carries.
+	stock(w,A,{"mill_kit":2})
 	var kits:=held(w,"mill_kit")
-	var sr:=must(w,A,"craft",bench_cell,sq.extra,"open: sourced mill_kit craft")
-	expect(ints(sr.get("from_chest",{}))=={"stone":4} and held(w,"mill_kit")==kits+1 and int(dev(w,chest_cell).get("items",{}).get("stone",0))==0 and held(w,"stone")==0,"open: sourced craft debits backpack 12 + chest 4 stone exactly")
-	kits=held(w,"mill_kit")
 	var builds0:=int(w.state.players[A].get("builds",0))
 	must(w,A,"build",mill_cell,"mill","open: build the mill")
 	var m:=dev(w,mill_cell)
 	expect(m.get("type")=="mill" and m.get("owner")==A and held(w,"mill_kit")==kits-1,"open: mill placed, one kit consumed")
+	expect(not m.has("mill_part") and not dev(w,mill_cell+Vector2i.RIGHT).has("mill_part"),"open: a plain mill build with a kit held stays a legacy 1x1")
 	expect(int(w.state.players[A].get("builds",0))==builds0+1,"open: build counted once")
 	expect(m.has("input_wheat") and (m.get("input_wheat") is int or m.get("input_wheat") is float),"open: mill carries an input_wheat buffer")
 	expect(int(m.get("input_wheat",-1))==0 and m.get("auto_enabled")==false and buffer_empty(m) and not m.has("job") and empty_queue(m),"open: fresh mill idle, empty buffers, auto off: "+str(m))
@@ -745,7 +750,7 @@ func test_star_rice_ball() -> void:
 	player.region="mine_1" # FIXTURE: exercise food with low energy without mining.
 	player.mine_energy=73
 	must(w,A,"eat_rice_ball",Vector2i.ZERO,"","rice ball: restore mine energy")
-	expect(int(w.state.players[A].mine_energy)==93 and held(w,"star_rice_ball")==2,"rice ball: restore 20 and consume one")
+	expect(int(w.state.players[A].mine_energy)==98 and held(w,"star_rice_ball")==2,"rice ball: restore the planned 25 and consume one")
 	must(w,A,"eat_rice_ball",Vector2i.ZERO,"","rice ball: restore only available capacity")
 	expect(int(w.state.players[A].mine_energy)==100 and held(w,"star_rice_ball")==1,"rice ball: cap energy at 100")
 	refuse(w,A,"eat_rice_ball",Vector2i.ZERO,"","rice ball: full energy keeps inventory")
@@ -1094,7 +1099,7 @@ func test_save_reload_and_schema() -> void:
 	var parser:=JSON.new()
 	var ok:=parser.parse(text)==OK and parser.data is Dictionary
 	var doc:Dictionary=parser.data if ok else {}
-	expect(int(doc.get("version",0))==SAVE_VERSION and int(doc.get("version",0))==int(Schema.VERSION),"save: written at version 26")
+	expect(int(doc.get("version",0))==SAVE_VERSION and int(doc.get("version",0))==int(Schema.VERSION),"save: written at current version")
 	var mk:=World.key(m)
 	var ck:=World.key(plot)
 	var bk:=World.key(belt)

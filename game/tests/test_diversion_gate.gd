@@ -20,17 +20,20 @@ const Session=preload("res://scripts/session.gd")
 const OWNER:="gate-owner-token-81f0"
 const OTHER:="gate-other-token-2b6c"
 const BENCH:=Vector2i(50,27)
-const FAR_S:=Vector2i(46,24)
-const PIPE_A:=Vector2i(47,24)
-const GATE:=Vector2i(48,24)
-const NEAR_S:=Vector2i(49,24)
-const PIPE_B:=Vector2i(50,24)
-const TANK:=Vector2i(51,24)
-const PIPE_C:=Vector2i(52,24)
-const PUMP:=Vector2i(53,24)
-const NEAR_CROPS:=[Vector2i(49,23),Vector2i(49,25)]
-const FAR_CROPS:=[Vector2i(46,23),Vector2i(46,25)]
-const EXTRA_GATES:=[Vector2i(46,28),Vector2i(47,28),Vector2i(48,28),Vector2i(49,28),Vector2i(50,28),Vector2i(51,28),Vector2i(46,29)]
+## The water row sits at y=28, clear of the reserved mill site (47..49,23..25) and approach (48,26).
+const FAR_S:=Vector2i(46,28)
+const PIPE_A:=Vector2i(47,28)
+const GATE:=Vector2i(48,28)
+const NEAR_S:=Vector2i(49,28)
+const PIPE_B:=Vector2i(50,28)
+const TANK:=Vector2i(51,28)
+const PIPE_C:=Vector2i(52,28)
+const PUMP:=Vector2i(53,28)
+const NEAR_CROPS:=[Vector2i(49,27),Vector2i(49,29)]
+const FAR_CROPS:=[Vector2i(46,27),Vector2i(46,29)]
+const EXTRA_GATES:=[Vector2i(46,22),Vector2i(47,22),Vector2i(48,22),Vector2i(49,22),Vector2i(50,22),Vector2i(51,22),Vector2i(46,23)]
+const NINTH_GATE:=Vector2i(51,23)
+const MOVE_TO:=Vector2i(48,29)
 const LEGACY_NETWORK:=["water_pipe","water_tank","water_pump","sprinkler","medium_sprinkler","waterworks"]
 
 var checks:=0
@@ -309,7 +312,7 @@ func main_flow(w:World) -> bool:
 	# Limit: 8 gates per owner per region.
 	for c:Vector2i in EXTRA_GATES:ok(w,OWNER,"build",c,"diversion_gate","extra gate %s"%k(c))
 	inv["diversion_gate_kit"]=int(inv.get("diversion_gate_kit",0))+1
-	refuse(w,OWNER,"build",Vector2i(47,29),"diversion_gate","已達此設備的每人放置上限","ninth gate in the region")
+	refuse(w,OWNER,"build",NINTH_GATE,"diversion_gate","已達此設備的每人放置上限","ninth gate in the region")
 	inv["diversion_gate_kit"]=int(inv.diversion_gate_kit)-1
 	for c:Vector2i in EXTRA_GATES:ok(w,OWNER,"remove",c,"","remove extra gate %s"%k(c))
 	expect(int(inv.get("diversion_gate_kit",0))==8,"removing returns each kit (8 in the bag)")
@@ -427,7 +430,7 @@ func tampered(base:Dictionary,label:String) -> Dictionary:
 		"gate holds items":g.items={"wood":1}
 		"nine gates for one owner":
 			for i in 7:s.objects[k(EXTRA_GATES[i])]={"type":"diversion_gate","owner":OWNER,"items":{},"mode":"open"}
-			s.objects["47,29"]={"type":"diversion_gate","owner":OWNER,"items":{},"mode":"open"}
+			s.objects[k(NINTH_GATE)]={"type":"diversion_gate","owner":OWNER,"items":{},"mode":"open"}
 		"gate without the completed revisit":s.erase(Revisit.STATE_KEY)
 		"gate in Lanyang without the revisit":
 			s.objects.erase(k(GATE))
@@ -466,13 +469,13 @@ func check_undo_move_remove(w:World) -> void:
 	ok(w,OWNER,"undo_build",spot,str(summary.id),"undo the gate build")
 	inv=w.state.players[OWNER].inventory # undo installs a fresh inventory dictionary
 	expect(not w.state.objects.has(k(spot)) and int(inv.get("diversion_gate_kit",0))==kits,"undo removed the gate and returned the kit")
-	refuse(w,OTHER,"move_object",GATE,"48,26","","another player cannot move the gate")
-	ok(w,OWNER,"move_object",GATE,"48,26","owner moves the gate")
-	expect(not w.state.objects.has(k(GATE)) and str(obj(w,Vector2i(48,26)).get("mode",""))=="closed","moved gate keeps its mode")
+	refuse(w,OTHER,"move_object",GATE,k(MOVE_TO),"","another player cannot move the gate")
+	ok(w,OWNER,"move_object",GATE,k(MOVE_TO),"owner moves the gate")
+	expect(not w.state.objects.has(k(GATE)) and str(obj(w,MOVE_TO).get("mode",""))=="closed","moved gate keeps its mode")
 	var split:=false
 	for g in Industry.components(w.state):
 		if k(NEAR_S) in g["keys"] and k(FAR_S) in g["keys"]:split=true
 	expect(not split,"moving the gate out splits the network (far sprinkler no longer connected)")
-	ok(w,OWNER,"remove",Vector2i(48,26),"","owner removes the gate")
-	expect(not w.state.objects.has("48,26") and int(inv.get("diversion_gate_kit",0))==kits+1,"removal returns the kit")
+	ok(w,OWNER,"remove",MOVE_TO,"","owner removes the gate")
+	expect(not w.state.objects.has(k(MOVE_TO)) and int(inv.get("diversion_gate_kit",0))==kits+1,"removal returns the kit")
 	expect(validates(w.state),"final world validates")

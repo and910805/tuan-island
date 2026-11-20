@@ -18,7 +18,7 @@ func run()->void:
 		fixture.add_player(token,"照料者")
 		fixture.state.players[token].x=48.5
 		fixture.state.players[token].y=37.5
-	if not check(fixture.save(),"Save isolated care fixture"):return
+	if not check(fixture.act(GROWER,"fixture-adopt","livestock_adopt",SITE,"cow").ok and fixture.save(),"Adopt the cow and save isolated care fixture"):return
 	var listener:=TCPServer.new()
 	if not check(listener.listen(0,"127.0.0.1")==OK,"Allocate loopback port"):return
 	var port:=listener.get_local_port()

@@ -366,6 +366,13 @@ func size_flow()->void:
 	await refresh()
 	var buddy_id:=buddy.sha256_text().left(16)
 	check(HarvestUI.carried(app.session.snapshot,buddy_id)==Relay.kind_at(round_id,1),"Partner carries %s in the public snapshot (%s)"%[Relay.kind_at(round_id,1),tag])
+	# The snapshot moves the test partner from the crate. The actual renderer
+	# may still be catching up to that position, especially at high refresh.
+	var settle_deadline:=Time.get_ticks_msec()+2000
+	while Vector2(app.view.display_positions.get(buddy_id,Vector2.INF)).distance_to(buddy_at)>0.02 and Time.get_ticks_msec()<settle_deadline:
+		await process_frame
+	var rendered_buddy:=Vector2(app.view.display_positions.get(buddy_id,Vector2.INF))
+	check(rendered_buddy.distance_to(buddy_at)<=0.02,"Partner settles beside the player (%s)"%tag)
 	var round_image:Image=await shot("world_round")
 	carry_drawn(round_image,spot,"player")
 	carry_drawn(round_image,buddy_at,"partner")

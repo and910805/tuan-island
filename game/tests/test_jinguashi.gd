@@ -74,7 +74,7 @@ func _initialize() -> void:
 	var old_clock: float = world.state.time
 	expect(world.step(Mine.COOLDOWN,true) and world.state.time == old_clock + Mine.COOLDOWN and world.act("alpha","mine-again","pick",node).ok,"All regions share one clock and node respawns")
 	var reopened := World.new()
-	expect(reopened.load_world(path) and reopened.state.version == 26 and reopened.player_region("alpha") == Regions.JINGUASHI,"Reopen restores region and cooldown")
+	expect(reopened.load_world(path) and reopened.state.version == preload("res://scripts/save_schema.gd").VERSION and reopened.player_region("alpha") == Regions.JINGUASHI,"Reopen restores region and cooldown")
 	var schema = preload("res://scripts/save_schema.gd")
 	for malformed in [{"28,20":reopened.state.time+Mine.COOLDOWN+1},{"30,20":reopened.state.time},{"28,20":true}]:
 		var invalid := reopened.state.duplicate(true)
@@ -96,6 +96,7 @@ func _initialize() -> void:
 	for region in World.REGIONS.ANGLING_RESERVES:reopened.state.regions.erase(region)
 	for region in World.TRANSIT.TEA_STOPS:reopened.state.regions.erase(region)
 	for region in World.TRANSIT.LOCAL:reopened.state.regions.erase(region)
+	reopened.state.regions.erase(World.PARTY_CART.REGION)
 	reopened.state.regions.erase(Regions.JINGUASHI)
 	reopened.state.erase("jinguashi")
 	for region in World.MINES.IDS:reopened.state.regions.erase(region)
@@ -104,7 +105,7 @@ func _initialize() -> void:
 	reopened.state.players.beta.x = 12.5
 	reopened.state.players.beta.y = 20.5
 	reopened.state.copper.ready = reopened.state.time + 3
-	expect(reopened.save() and world.load_world(path) and world.state.version == 26 and world.state.copper.ready == world.state.time + 3 and world.state.regions.has(Regions.JINGUASHI),"V4 migration preserves home copper timer and adds the new region")
+	expect(reopened.save() and world.load_world(path) and not world.recovered_from_backup and world.state.version == preload("res://scripts/save_schema.gd").VERSION and world.state.copper.ready == world.state.time + 3 and world.state.regions.has(Regions.JINGUASHI),"V4 main save migration preserves home copper timer and adds the new region")
 	for layer in [world.state,world.state.regions.lanyang,world.state.regions.jinguashi]:
 		layer.crops["13,20"] = {"kind":"radish","owner":"alpha","growth":0.0,"wet":false,"remaining":1}
 		layer.objects["13,21"] = {"type":"sprinkler","owner":"alpha","items":{},"water":1,"enabled":true,"next_water":0.0,"last_water":-1.0}

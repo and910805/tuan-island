@@ -36,7 +36,7 @@ const VIEW_SPOT:=Vector2(38.5,28.6)
 ## layout in row 27 right in front of the booth was dropped after reviewing the
 ## screenshots (before/): the pine at (33,28), the local player and the 阿榆 / 公告板
 ## labels covered parts of it.
-const LAYOUT:={"veg_basket_rack":Vector2i(46,23),"relay_crate_stack":Vector2i(47,23),"carp_banner":Vector2i(48,23),"float_garland":Vector2i(49,23),
+const LAYOUT:={"veg_basket_rack":Vector2i(46,23),"relay_crate_stack":Vector2i(47,27),"carp_banner":Vector2i(48,27),"float_garland":Vector2i(49,27),
 	"lantern_post":Vector2i(50,23),"flower_arch":Vector2i(51,23),"trio_keepsake":Vector2i(52,23)}
 const DECOR_SPOT:=Vector2(49.5,26.6)
 var app

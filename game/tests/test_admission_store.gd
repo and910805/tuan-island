@@ -90,4 +90,3 @@ func _initialize() -> void:
 	DirAccess.remove_absolute(root_dir)
 	print("ADMISSION_STORE_TESTS checks=%d failures=%d" % [checks, failures])
 	quit(int(failures > 0))
-

@@ -20,8 +20,11 @@ func expect(ok:bool,message:String) -> void:
 		push_error(message)
 
 func stand(cell:Vector2i) -> void:
-	person.x=cell.x+0.5
-	person.y=cell.y+0.5
+	stand_at(Vector2(cell)+Vector2(0.5,0.5))
+
+func stand_at(position:Vector2) -> void:
+	person.x=position.x
+	person.y=position.y
 	app.session.rates[1].clear()
 	app.session._send_snapshot(1)
 
@@ -88,28 +91,30 @@ func run() -> void:
 		"Assembly debits exactly six iron, four parts and twelve wood per collector")
 	app._close_modal()
 	var site:=Vector2i(47,36)
+	var machine_approach:=Vector2(46.75,36.5)
 	var key:=World.key(site)
 	stand(site+Vector2i.DOWN)
 	expect(world.act(token,"place-collector","build",site,Industry.ANIMAL_COLLECTOR).ok and world.blocked(site),"Place a one-cell collector")
-	stand(site+Vector2i.DOWN)
+	stand_at(machine_approach)
 	app._interact()
 	await process_frame
 	await press("CollectorBind_cow")
 	expect(world.state.objects[key].get("collector_animal")=="cow" and person.inventory.egg_basket==0,
 		"Binding installs exactly one basket")
 	app._close_modal()
-	var spare:=Vector2i(48,37)
+	var spare:=Vector2i(48,36)
 	stand(spare+Vector2i.DOWN)
 	expect(world.act(token,"spare","build",spare,Industry.ANIMAL_COLLECTOR).ok,"Place a second collector")
 	expect(not world.act(token,"duplicate-cow","collector_bind",spare,"cow").ok,"One animal cannot be attached to two machines")
 	var cow:Vector2i=World.LIVESTOCK.ANIMALS.cow.cell
 	stand(cow+Vector2i.RIGHT)
+	expect(world.act(token,"adopt-cow","livestock_adopt",cow,"cow").ok,"D07: adopt the cow before caring for it")
 	for turn in range(World.LIVESTOCK.BONUS_BOND):
 		expect(world.act(token,"pet-cow-%d"%turn,"livestock_pet",cow,"cow").ok,"Build affection through the usual action")
 		world.step(World.LIVESTOCK.PET_INTERVAL,true)
 	app.session.perform("livestock_feed",cow,"cow")
 	await create_timer(0.26).timeout
-	expect(app.sound.player.stream==app.sound.sounds.cow,"Feeding through the session plays the cow cue")
+	expect(app.sound.player.stream==app.sound.sounds.feed_trough,"Feeding the cow through the session plays the trough cue")
 	for turn in range(6):
 		expect(world.act(token,"feed-cow-%d"%turn,"livestock_feed",cow,"cow").ok,"Feed the cow through the usual feeder")
 	for turn in range(7):
@@ -121,7 +126,7 @@ func run() -> void:
 	var reloaded:=World.new()
 	expect(reloaded.load_world(path) and reloaded.state.objects[key].collector_count==6 and reloaded.state.objects[key].collector_count_quality==1,
 		"Save and reload preserves the full basket")
-	stand(site+Vector2i.DOWN)
+	stand_at(machine_approach)
 	world.add_player("ranch-guest","訪客")
 	var guest:Dictionary=world.state.players["ranch-guest"]
 	guest.x=person.x
@@ -146,7 +151,7 @@ func run() -> void:
 	stand(sheep+Vector2i.DOWN)
 	app.session.perform("livestock_feed",sheep,"sheep")
 	await create_timer(0.26).timeout
-	expect(app.sound.player.stream==app.sound.sounds.sheep,"Feeding through the session plays the sheep cue")
+	expect(app.sound.player.stream==app.sound.sounds.feed_trough,"Feeding the sheep through the session plays the trough cue")
 	expect(world.step(2.0*World.LIVESTOCK.DAY+0.1,true) and world.state.objects[key].collector_count==1
 		and world.state.livestock.sheep.ready==0,"The collector takes wool when the sheep is ready")
 	stand(site+Vector2i.DOWN)
@@ -159,13 +164,13 @@ func run() -> void:
 		world.step(World.LIVESTOCK.PET_INTERVAL,true)
 	app.session.perform("feed",World.CHICKEN_CELL)
 	await create_timer(0.26).timeout
-	expect(app.sound.player.stream==app.sound.sounds.chicken,"Feeding through the session plays the chicken cue")
+	expect(app.sound.player.stream==app.sound.sounds.feed_trough,"Feeding the chicken through the session plays the trough cue")
 	expect(world.step(World.CHICKEN_EGG_SECONDS+0.1,true) and world.state.objects[key].collector_count==1
 		and world.state.animal.basket_eggs==1,"New collector takes the new egg while the legacy basket keeps its existing egg")
 	for turn in range(1,World.LIVESTOCK.BONUS_INTERVAL):
 		expect(world.act(token,"feed-chicken-%d"%turn,"feed",World.CHICKEN_CELL).ok,"Feed the bonded hen")
 		world.step(World.CHICKEN_EGG_SECONDS,true)
-	stand(site+Vector2i.DOWN)
+	stand_at(machine_approach)
 	await create_timer(0.3).timeout
 	await capture("collector-field.png")
 	app._interact()
@@ -176,6 +181,49 @@ func run() -> void:
 	expect(world.act(token,"unbind","collector_unbind",site).ok and person.inventory.egg_basket==1,"Unbinding returns the original basket")
 	expect(world.act(token,"refund-kit","remove",site).ok and person.inventory.animal_collector_kit==1,"Dismantle returns exactly one collector kit")
 	expect(reloaded.load_world(path) and not reloaded.state.objects.has(key),"Dismantle persists after reload")
+	# Fixture walls put the cow and sheep in the same pen.
+	for tile:Vector2i in [Vector2i(47,35),Vector2i(47,36),Vector2i(51,35),Vector2i(51,36),
+			Vector2i(49,34),Vector2i(48,37),Vector2i(49,37),Vector2i(50,37)]:
+		world.state.objects[World.key(tile)]={"type":"wall","owner":token,"items":{}}
+	for tile:Vector2i in [cow+Vector2i.UP,sheep+Vector2i.UP]:
+		world.state.objects[World.key(tile)]={"type":"door","owner":token,"items":{},"open":false}
+	var pen_key:=World.key(spare)
+	var pen_approach:=Vector2(49.25,36.5)
+	if world.resource(Vector2i(49,36)) in ["tree","rock"]:
+		world.state.removed["49,36"]=true
+	expect(Collector.pen_species(world.state.objects,spare)==["cow","sheep"] and world.can_stand(pen_approach),
+		"The two livestock share a pen with a walkable approach to the machine")
+	stand_at(pen_approach)
+	app._interact()
+	await process_frame
+	await process_frame
+	var pen_button:=button("CollectorBind_pen")
+	expect(pen_button!=null and pen_button.visible,"A machine inside an enclosure offers the whole-pen binding")
+	await press("CollectorBind_pen")
+	expect(world.state.objects[pen_key].get("collector_animal")==Collector.PEN and person.inventory.egg_basket==0,
+		"Binding the enclosure installs exactly one basket")
+	world.state.livestock.cow.ready=3
+	world.state.livestock.cow.ready_quality=1
+	world.state.livestock.sheep.ready=3
+	world.state.livestock.sheep.ready_quality=1
+	var expected_items:Dictionary={"milk":2,"quality_milk":1,"wool":2,"quality_wool":1}
+	expect(world.step(1.0,true) and world.state.objects[pen_key].collector_items==expected_items,
+		"The full basket stores milk and wool with both grades")
+	stand_at(pen_approach)
+	await process_frame
+	await process_frame
+	await capture("collector-pen-full.png")
+	await press("CollectorTake")
+	expect(person.inventory.milk==9 and person.inventory.quality_milk==2 and person.inventory.wool==3
+		and person.inventory.quality_wool==1 and world.state.objects[pen_key].collector_count==0,
+		"Taking from the pen basket awards the four item IDs in one action")
+	stand_at(pen_approach)
+	await process_frame
+	await process_frame
+	await press("CollectorUnbind")
+	expect(person.inventory.egg_basket==1 and not world.state.objects[pen_key].has("collector_animal")
+		and not world.state.objects[pen_key].has("collector_items"),"Unbinding the pen returns the basket and clears its fields")
+	app._close_modal()
 	app.session.shutdown()
 	for file:String in [path,path+".bak",path+".tmp"]:
 		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)

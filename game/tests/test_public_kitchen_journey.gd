@@ -283,6 +283,7 @@ func gather(item: String, minimum: int, kinds: Array) -> void:
 			run(tool, target)
 			hits += 1
 		expect(world.resource(target) == "", "Natural %s at %s fully gathered in %d hits" % [kind, target, hits])
+		if not failed:collect_gathered(target)
 		gather_hits += hits
 		gather_sources += 1
 

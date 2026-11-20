@@ -11,6 +11,7 @@ extends SceneTree
 ## Optional screenshots + JSON report (opt-in, absolute directory outside the project):
 ##   ... -- --village-art-preview --hud-readability-output=C:/tmp/hud-readability
 ## --text-scale=0..3 selects one of the in-game sizes; --scope=everyday checks HUD, inventory and settings.
+## --scope=hud-full checks the full basic toolbar after the first crop guide.
 
 const World = preload("res://scripts/world.gd")
 const Opening = preload("res://scripts/wangan_opening_ui.gd")
@@ -478,6 +479,10 @@ func run() -> void:
 		app.sound.preferred_text_scale = clampi(int(scale_arg), 0, 3)
 		app._apply_font_scale_tree()
 	fixture()
+	if scope == "hud-full":
+		world.state.chapter_one.shipped = true
+		var bag: Dictionary = world.state.players[PLAYER].inventory
+		for portable in ["tiller", "seeder", "harvester"]:bag.erase(portable)
 	app.session.snapshot = world.state
 	app.session.world = world
 	app.session.set_physics_process(false)
@@ -499,11 +504,19 @@ func run() -> void:
 		if image != null:
 			expect(absf(image_scale.x - image_scale.y) < 0.01, current_size + " uniform screenshot scale " + str(image_scale))
 		app._refresh_hud()
+		if scope == "hud-full":
+			var shortcuts: Control = app.hud.get_node("LifeShortcuts")
+			var total_tools := int(app.tool_buttons.filter(func(button): return button.visible).size())
+			expect(total_tools == 8, "%s shows all eight basic tools" % current_size)
+			for button: Button in shortcuts.get_children():
+				expect(button.visible and button.size.x >= 44.0, "%s has a visible 44px shortcut target" % current_size)
+				expect(button.get_global_rect().encloses(button.get_node("ShortcutTitle").get_global_rect()),
+					"%s shortcut label stays inside the button" % current_size)
 		await check_hud("hud", viewport)
 		app._notice("已把「%s」放進背包，記得到渡口看看下一步。" % World.NAMES.values()[0], true)
 		await check_hud("hud_toast", viewport)
 		app.toast.visible = false
-		if scope == "hud":
+		if scope in ["hud", "hud-full"]:
 			continue
 		if scope not in ["build", "help"]:
 			await check_inventory(viewport)

@@ -48,6 +48,8 @@ static func choose(record:Dictionary,bag:Dictionary,now:float) -> Dictionary:
 		if not record.get("potter_story",false):return hint("tea_potter_story","向陶師請教修補","帶待修罐去陶坊，向陶師請教修補。")
 		if int(bag.get("stone",0))>=2 and now>=float(record.get("clay_ready",0)):
 			return hint("tea_clay","換土修補陶罐","到備土台用兩份石材換一份黏土，修補只需一份。")
+		if int(bag.get("stone",0))>=2 and has_tea and int(bag.get("fiber",0))==0:
+			return waiting("tea_clay","備土台補貨中",{"ready":record.clay_ready},now,"補貨後換一份黏土修罐，也可先找纖維包茶。")
 	var has_fiber:=int(bag.get("fiber",0))>0
 	if has_tea and packed.is_empty() and (jar_count>0 or has_fiber):
 		if int(bag.get("tea_worn_jar",0))>0:
@@ -61,6 +63,7 @@ static func choose(record:Dictionary,bag:Dictionary,now:float) -> Dictionary:
 	if preparing and roast.is_empty() and int(bag.get("tea_leaf",0))>=2:
 		return hint("tea_roast","開始烘焙","到烘焙台選淺焙或深焙，兩種都用兩份茶葉。")
 	var first_jar:bool=not record.get("reused",false) and preparing
+	var needs_wrapping:=has_tea and packed.is_empty() and not has_fiber
 	var needs_jar:=jar_count==0 and (not has_fiber or first_jar)
 	if needs_jar and returning.is_empty() and kiln.is_empty():
 		if not record.get("potter",false):
@@ -69,6 +72,8 @@ static func choose(record:Dictionary,bag:Dictionary,now:float) -> Dictionary:
 			return hint("tea_fire","燒製陶罐","到製罐窯用兩份黏土燒一只陶罐。")
 		if int(bag.get("stone",0))>=2 and now>=float(record.get("clay_ready",0)):
 			return hint("tea_clay","到備土台交換黏土","兩份石材可以換一份黏土，攢足兩份再燒罐。")
+		if needs_wrapping and int(bag.get("stone",0))>=2:
+			return waiting("tea_clay","備土台補貨中",{"ready":record.clay_ready},now,"補貨後可換黏土，也可先找纖維包茶。")
 	if preparing and roast.is_empty():
 		var plant:=available_plant(record.get("harvest_ready",{}),now)
 		if plant>=0:
@@ -83,10 +88,8 @@ static func choose(record:Dictionary,bag:Dictionary,now:float) -> Dictionary:
 		return waiting("tea_take","茶葉烘焙中",roast,now,"烘好後到烘焙台取茶。")
 	if not kiln.is_empty():
 		return waiting("tea_fire_take","陶罐燒製中",kiln,now,"燒好後到製罐窯取罐。")
-	if has_tea and jar_count==0 and not has_fiber:
-		if int(bag.get("stone",0))<2:
-			return hint("tea_pack","準備包材","備一份纖維，或帶石材到陶坊換土製罐。")
-		return waiting("tea_clay","備土台補貨中",{"ready":record.get("clay_ready",now)},now,"也可用纖維包裝這批茶。")
+	if needs_wrapping and jar_count==0:
+		return hint("tea_pack","準備包材","備一份纖維，或帶石材到陶坊換土製罐。")
 	return hint("tea_pick","等茶叢長出新葉","目前茶叢都在生長，稍後可以再來採葉。",Tea.TEA_NODES[0])
 
 static func available_plant(cooldowns:Dictionary,now:float) -> int:

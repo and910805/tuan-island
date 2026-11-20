@@ -1,0 +1,5 @@
+# 紅陶屋瓦道具圖示
+
+使用 Codex 內建 ImageGen 生成原創圖示。Godot 使用最近鄰將透明原圖轉成 32×32 PNG，實際內容 24×22。用於陶窯配方和背包。原圖與轉檔工具見專案的 t094-terracotta-icon 驗證資料夾。
+
+> One original isolated inventory icon for a Taiwanese cozy indie life-sim game, no text. Subject: three stacked slightly curved traditional red terracotta barrel roof tiles, seen in gentle 3/4 top view, with their scalloped open clay mouths facing the lower-left. A readable simple chunky silhouette, artisan fired-clay warmth. Sharp low-resolution game pixel art designed on a 32 by 32 logical pixel grid, rendered as crisp integer square pixels, no antialiasing, no half pixels. Use an earthy palette of deep reddish brown contour, burnt-orange and subdued terracotta body, a few sunlit apricot edges, tiny kiln fired imperfections. Restrict to roughly six to nine colors, shadows stay part of the object, no floating drop shadow. Center object with four logical pixels of clear padding on every side. Square canvas, genuinely transparent outside the object, no text or grid or background.

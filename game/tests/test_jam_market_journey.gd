@@ -32,6 +32,8 @@ func after_chapter()->void:
 		furnace=hoe_cell(occupied)
 	expect(furnace.x>=0,"open area for a small smelter")
 	if failed:return
+	# C11: labelled fixture, the island's stone workbench (earned path: test_stone_workbench).
+	preload("res://tests/stone_station_fixture.gd").install(world,TOKEN)
 	bk_run("build",furnace,"small_smelter")
 	bk_craft("kiln_kit",1)
 	var kiln:=hoe_cell(bk_reserved())

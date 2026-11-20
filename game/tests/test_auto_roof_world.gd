@@ -30,7 +30,7 @@ func run() -> void:
 	expect(DirAccess.make_dir_recursive_absolute(dir)==OK,"isolated test directory created")
 	var recipe:Dictionary=World.BUILD.roof
 	expect(int(recipe.wood)==ROOF_WOOD and int(recipe.fiber)==ROOF_FIBER,"roof recipe unchanged (wood 1 / fiber 3)")
-	expect(int(World.new().state.version)==26,"fresh world version is 20")
+	expect(int(World.new().state.version)==preload("res://scripts/save_schema.gd").VERSION,"fresh world version is 20")
 	test_closure_no_bed()
 	test_insufficient_materials()
 	test_multi_owner_refund()
@@ -201,7 +201,7 @@ func test_closure_no_bed() -> void:
 	var ok:bool=loaded.load_world(w.save_path)
 	expect(ok,"saved world with auto roofs reloads")
 	if ok:
-		expect(int(loaded.state.version)==26,"saved version 20")
+		expect(int(loaded.state.version)==preload("res://scripts/save_schema.gd").VERSION,"saved version 20")
 		for c in interior(o,size):
 			var roof=loaded.state.roofs.get(World.key(c),{})
 			expect(roof.get("auto")==true and roof.get("owner")==A,"reloaded auto roof %s"%c)

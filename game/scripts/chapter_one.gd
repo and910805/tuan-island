@@ -1,6 +1,7 @@
 extends RefCounted
 
 const STARTER_CELL := Vector2i(38,29)
+const BOARD_COST := {"wood":30,"stone":10}
 const STARTER_COST := {"wood":12,"stone":8,"fiber":4}
 const STARTER_ITEMS := {"sprinkler_kit":1,"pipe_kit":2,"tank_kit":1}
 
@@ -8,7 +9,7 @@ const MAX_TRACKED := 1000000000
 const STEPS := {
 	"grow": {"npc": "xiaoli", "cell": Vector2i(43, 29), "line": "先種一批吧。自己採下來的菜，我才知道下次向誰訂。", "action": "種下作物並親手採收"},
 	"ship": {"npc": "xiaoli", "cell": Vector2i(43, 29), "line": "留一些給米露，剩下的我收。下一批種子就用今天的收入買。", "action": "在出貨箱售出已有採收紀錄的同類作物"},
-	"works": {"npc": "aru", "cell": Vector2i(40, 29), "line": "貨有了，先把橋和公告板修起來，大家才知道去哪裡交貨。", "action": "到公告板完成公共工程"},
+	"works": {"npc": "aru", "cell": Vector2i(40, 29), "line": "貨有了。把公告板修好，大家就能在這裡張貼生活訂單。", "action": "捐材料修好渡口公告板"},
 	"water": {"npc": "aru", "cell": Vector2i(38, 29), "line": "下一批田不能總等人有空。讓灑水器真的澆到一格乾田，我們再開飯。", "action": "讓灑水器用管網供水澆濕一格乾田"},
 	"meal": {"npc": "milu", "cell": Vector2i(40, 29), "line": "有兩份蘿蔔湯和一份麵包，我就能替大家留個位子。", "action": "把料理送到公告板完成渡口野餐"},
 	"complete": {"npc": "xiaoli", "cell": Vector2i(43, 29), "line": "給北部工坊的朋友：渡口有新夥伴了。這一籃菜讓大家又坐在一起。下回，我想借你們的陶罐，帶湯去找你。", "action": "讀小栗的介紹信"},
@@ -16,7 +17,7 @@ const STEPS := {
 const DETAILS := {
 	"grow":"用鋤頭開墾，播種並澆水，成熟後用採收籃。先種三株蘿蔔、一株小麥（一株收兩份）。留兩份蘿蔔、兩份小麥做野餐，也留一包種子測試灑水器。",
 	"ship":"到渡口出貨箱寄出一份自己採收過的作物。小栗攤位的直接出售不算出貨。留兩份蘿蔔、兩份小麥做野餐；賣完了可用剩餘種子補種，或到小栗攤位買種子。",
-	"works":"用斧頭採木、十字鎬採石，再到公告板捐入木材30和石材10。捐款可分次，朋友也能一起準備。",
+	"works":"用斧頭砍樹、十字鎬敲岩石，走近撿起掉落的材料。公告板需要木材 30、石材 10，可以分次捐入，也能和朋友一起準備。",
 	"water":"帶木材12、石材8、纖維4找阿榆換設備，或沿用既有管網。先在田邊空草地放儲水桶、水管和灑水器，沿上下左右連接；耕地不能直接放設備。再在灑水器上下左右任一格自己的乾田播種。補滿儲水桶，啟用灑水器後等它澆水。直接補給灑水器的水不算；若已補滿，拆除重放後再接管。",
 	"meal":"建一座小石灶（木材12、石材15）。用蘿蔔2煮出湯2，小麥2烤出麵包1；料理完成後領取，再交到公告板。舊世界已辦過的野餐會保留。",
 	"complete":"找小栗收下茶陶介紹信。從渡口搭交通船，經頭城轉乘到瑞芳，在鐵路門選經臺北轉乘至貓空，再到鶯歌合作陶坊製罐。先試寄一罐茶，讓空罐回來，往後就能帶湯去拜訪朋友。M 可查看旅圖與免費回程。",
@@ -32,10 +33,22 @@ const PLACES := {"grow":"小栗種子攤東北邊的田", "ship":"渡口出貨�
 ## 渡口轉乘點 (47,30) 與到站點 (46,30)、出生點 (39,33)、糯米雞 (45,34) 上。
 const STARTER_PLOT: Array[Vector2i] = [Vector2i(45,26),Vector2i(46,26),Vector2i(47,26),Vector2i(45,27),Vector2i(46,27),Vector2i(47,27)]
 const FIRST_CROP_STEPS: Array[String] = ["find","till","buy_seed","sow","water","wait","harvest","ship"]
-## 距離田地最近一格中心超過這個距離時，第一步是「去找小栗與田地」。
+const STARTER_CROPS: Dictionary = {"radish":"蘿蔔","lettuce":"萵苣","wheat":"小麥","potato":"馬鈴薯","carrot":"胡蘿蔔","cabbage":"高麗菜"}
+## 距離田地最近一格中心超過這個距離時，第一步是「去小栗留的田」。
 const FIND_REACH := 3.5
 const NO_PLOT_CELL := Vector2i(-1,-1)
 const PERSONAL_START:="wangan_personal_start"
+## 「find」步驟的文案（只是指引；判定仍是離田的距離 FIND_REACH）。
+## 田在下船點 (52.5,30.5) 的西北邊，所以「往左」只在還站在起始碼頭時成立；
+## 其他位置用不帶方向的說法。
+const FIND_FROM_DOCK := "沿碼頭往上，跟著箭頭左轉"
+const FIND_FROM_ELSEWHERE := "回小栗留的田：找圍繩和木樁"
+const DOCK_REACH := 3.0
+
+## 還站在起始碼頭（下船點 DOCK_REACH 格內）；只讀位置，伺服器 state 與用戶端快照皆可。
+static func at_starting_dock(person: Dictionary) -> bool:
+	var landing: Vector2 = preload("res://scripts/wangan_coast.gd").FERRY_LANDING
+	return Vector2(float(person.get("x", 0.0)), float(person.get("y", 0.0))).distance_to(landing) <= DOCK_REACH
 
 static func fresh() -> Dictionary:
 	return {"shipped": false, "watered": false, "harvests": {}, "starter_claims": {}}
@@ -92,12 +105,28 @@ static func next_step(state: Dictionary) -> Dictionary:
 		if shipping!=Vector2i(-1,-1):result.cell=shipping
 	return result
 
-static func can_serve_picnic(state:Dictionary,owner:String) -> bool:
-	if state.get("picnic",false):return false
+static func board_contribution(state:Dictionary,bag:Dictionary) -> Dictionary:
+	var donations:Dictionary=state.get("donations",{})
+	var amount:Dictionary={}
+	for item:String in BOARD_COST:
+		var remaining:=maxi(0,int(BOARD_COST[item])-int(donations.get(item,0)))
+		amount[item]=mini(remaining,int(bag.get(item,0)))
+	return amount
+
+const PICNIC_PORTIONS:={"soup":2,"bread":1}
+
+static func picnic_contribution(state:Dictionary,owner:String) -> Dictionary:
+	if state.get("picnic",false):return {}
 	var bag:Dictionary=state.get("players",{}).get(owner,{}).get("inventory",{})
 	var delivered:Dictionary=state.get("picnic_materials",{})
-	return (int(delivered.get("soup",0))<2 and int(bag.get("soup",0))>0) or (
-		int(delivered.get("bread",0))<1 and int(bag.get("bread",0))>0)
+	var contribution:Dictionary={}
+	for item in PICNIC_PORTIONS:
+		var amount:=mini(int(PICNIC_PORTIONS[item])-int(delivered.get(item,0)),int(bag.get(item,0)))
+		if amount>0:contribution[item]=amount
+	return contribution
+
+static func can_serve_picnic(state:Dictionary,owner:String) -> bool:
+	return not picnic_contribution(state,owner).is_empty()
 
 static func needs_starter_kit(state:Dictionary,owner:String) -> bool:
 	if state.get("region_id","home")!="home" or not state.get("players",{}).has(owner) or phase(state)!="water":
@@ -154,11 +183,17 @@ static func first_crop_step(state: Dictionary, owner: String) -> Dictionary:
 			var text := "把蘿蔔帶到出貨箱" if carried == "radish" else "把收成帶到出貨箱"
 			if bin == NO_PLOT_CELL:
 				text = "出貨箱被擋住了，先清出位置"
-			return {"id": "ship", "text": text, "cell": bin}
+			return {"id": "ship", "text": text, "cell": bin, "item": carried}
 	var crops = state.get("crops", {})
 	if not crops is Dictionary:
 		crops = {}
 	var catalog: Dictionary = preload("res://scripts/crop_catalog.gd").CROPS
+	var world=load("res://scripts/world.gd")
+	var glass:=preload("res://scripts/greenhouse_glass.gd")
+	var roofs:Dictionary=state.get("roofs",{})
+	var covered:Dictionary={}
+	var now:=float(state.get("time",0.0))
+	var dormant:=false
 	var ready: Array[Vector2i] = []
 	var dry: Array[Vector2i] = []
 	var growing: Array[Vector2i] = []
@@ -176,6 +211,8 @@ static func first_crop_step(state: Dictionary, owner: String) -> Dictionary:
 			soil.append(at)
 		elif catalog.has(kind) and float(plot.get("growth", 0.0)) >= float(catalog[kind].time):
 			ready.append(at)
+		elif world.plot_dormant(plot,roofs.get(tile,{}),"home",at,now,roofs.has(tile) and glass.covered(state,tile,covered)):
+			dormant=true
 		elif plot.get("wet", false) == true:
 			growing.append(at)
 		else:
@@ -187,14 +224,27 @@ static func first_crop_step(state: Dictionary, owner: String) -> Dictionary:
 	if not growing.is_empty():
 		return {"id": "wait", "text": "作物正在長大，等它成熟", "cell": _closest_to_plot(growing)}
 	if not soil.is_empty():
+		var target:=_closest_to_plot(soil)
+		var target_key:="%d,%d"%[target.x,target.y]
+		var warmed:=roofs.has(target_key) and glass.covered(state,target_key,covered)
 		var seeds := 0
+		var usable:=""
+		for kind:String in STARTER_CROPS:
+			if int(bag.get(kind+"_seed",0))>0 and (warmed or world.crop_grows_in_season(kind,"home",target,now)):
+				usable=kind
+				break
 		for kind in catalog:
-			seeds += maxi(0, int(bag.get(str(kind) + "_seed", 0)))
-		if seeds==0:
+			var count:=maxi(0,int(bag.get(str(kind)+"_seed",0)))
+			seeds+=count
+			if usable.is_empty() and count>0 and world.crop_terrain_problem(kind,target,"home").is_empty() and (warmed or world.crop_grows_in_season(kind,"home",target,now)):
+				usable=kind
+		if usable.is_empty():
 			var stall:Vector2i=preload("res://scripts/village.gd").resident_cell(state,"xiaoli")
-			return {"id":"buy_seed","text":"種子用完了，找小栗補貨","cell":stall}
-		var sow_text := "在翻好的土播下蘿蔔種子" if int(bag.get("radish_seed", 0)) > 0 else "在翻好的土播種"
-		return {"id": "sow", "text": sow_text, "cell": _closest_to_plot(soil)}
+			var recommended:=starter_seed_for_season(now)
+			var line:="種子用完了，找小栗補貨" if seeds==0 else "這季可以種%s，找小栗買種子"%STARTER_CROPS[recommended]
+			return {"id":"buy_seed","text":line,"cell":stall,"seed":recommended}
+		var sow_text:="在翻好的土播下%s種子"%STARTER_CROPS.get(usable,catalog[usable].name)
+		return {"id":"sow","text":sow_text,"cell":target,"seed":usable}
 	var free := starter_plot_free(state)
 	if free.is_empty():
 		return {"id": "till", "text": "小栗留的田被占用了\n到附近任一塊空草地翻土", "cell": NO_PLOT_CELL}
@@ -204,8 +254,15 @@ static func first_crop_step(state: Dictionary, owner: String) -> Dictionary:
 		if position.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) < position.distance_to(Vector2(nearest) + Vector2(0.5, 0.5)):
 			nearest = cell
 	if position.distance_to(Vector2(nearest) + Vector2(0.5, 0.5)) > FIND_REACH:
-		return {"id": "find", "text": "去找小栗：種子攤東北邊的田", "cell": nearest}
-	return {"id": "till", "text": "用鋤頭在小栗留的田翻一格土", "cell": nearest}
+		return {"id": "find", "text": FIND_FROM_DOCK if at_starting_dock(person) else FIND_FROM_ELSEWHERE, "cell": nearest}
+	var till_text:="原來的作物在休眠，旁邊再開一格" if dormant else "用鋤頭在小栗留的田翻一格土"
+	return {"id":"till","text":till_text,"cell":nearest}
+
+static func starter_seed_for_season(now:float) -> String:
+	var world=load("res://scripts/world.gd")
+	for kind:String in STARTER_CROPS:
+		if world.crop_grows_in_season(kind,"home",STARTER_PLOT[0],now):return kind
+	return "radish"
 
 ## Plot cells that are still plain grass in this snapshot (no crop, object, floor,
 ## roof or planted tree). Read-only; works on server state and client snapshots.

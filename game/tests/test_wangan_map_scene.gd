@@ -160,6 +160,20 @@ func size_flow()->void:
 	image=await shot("travel_lanyang")
 	if map!=null:crop(image,map.get_global_rect(),"map_lanyang")
 	app._close_modal()
+	for region:String in ["lanyang","jinguashi"]:
+		await place(region,World.REGIONS.spawn(region))
+		app._map_menu()
+		await settle()
+		modal_fits("local walkway "+region+" "+tag)
+		var local_view:Control=app.map_view
+		image=await shot("walkway_"+region)
+		# Sample an unobstructed stretch of each route, away from the map labels.
+		var route_sample:=Vector2(22.5,22.5) if region=="lanyang" else Vector2(20.5,20.5)
+		var at:Vector2=Vector2((local_view.size.x-560.0)/2.0,0)+route_sample*local_view.SCALE
+		var pixel:=Vector2i(local_view.get_global_transform_with_canvas()*at)
+		check(image.get_pixelv(pixel).is_equal_approx(local_view.TRANSIT_WALKWAY_COLOR),
+			"Walkway is visible on the local map (%s %s)"%[region,tag])
+		app._close_modal()
 	# Local map caption before the first picnic (home), then the general area title.
 	w.state.picnic=false  # PRESET
 	await place("home",Vector2(47.5,31.5))

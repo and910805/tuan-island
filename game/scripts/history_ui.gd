@@ -4,12 +4,27 @@ const Story=preload("res://scripts/history_story.gd")
 const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
 const Shell=preload("res://scripts/life_ui_shell.gd")
 const MemoryScene=preload("res://scripts/history_memory_scene.gd")
+const SourceScene=preload("res://scripts/history_source_scene.gd")
 const Wangan=World.WANGAN_MEMORY
 const SERVICE:=Vector2i(33,29)
 const MINE_TIMELINE_URL:="https://www.gep.ntpc.gov.tw/xmdoc/cont?xsmsid=0Q018377887368898201"
 const MINE_EXHIBIT_URL:="https://tcmb.culture.tw/zh-tw/detail?id=561386&indexCode=Culture_Event"
-const MINE_PANNING_TEXT:="1890 年代，基隆河發現砂金後掀起淘金熱。1894 年，採金者發現大金瓜露頭，金瓜石由此得名。"
-const MINE_HAULING_TEXT:="1897 年，金瓜石開始有規模地探礦與採礦。1933 年，礦業公司在水湳洞建選礦設施，並修築通往八斗子的運礦輕便鐵路。"
+const MINE_HERITAGE_URL:="https://twh.boch.gov.tw/taiwan/intro.aspx?id=6&lang=zh_tw"
+const MINE_BEATS:={
+	"MineHistoryPanning":[
+		["1890","鐵路工人在基隆河發現砂金，掀起淘金熱。"],
+		["1894","黃金博物館年表記載，採金者在金瓜石發現大金瓜露頭。"]],
+	"MineHistoryHauling":[
+		["1897","礦業公司開始有計畫地探礦與採礦。"],
+		["1904","礦區發現銅礦，開採品項從金銀擴及銅。"],
+		["1933","水湳洞興建選礦場，運礦鐵路通往八斗子。"]]
+}
+const DATE_COLOR:=Color("7a4a00")
+## 金瓜石章節插畫（遊戲場景插畫）：[圖檔, 章節切換鈕文字]。
+const MINE_ART:={
+	"MineHistoryPanning":["res://assets/ui-life/jinguashi-memory-panning.png","淘洗河砂"],
+	"MineHistoryHauling":["res://assets/ui-life/jinguashi-memory-hauling.png","沿軌道推礦車"]
+}
 
 static func own(app)->Dictionary:
 	return app.session.snapshot.get("history_memory",{}).get("own_memory",{"seen":[],"round":0,"gates":[0,0],"completed":false})
@@ -25,7 +40,7 @@ static func text(app,parent:Node,line:String,extent:int=16)->Label:
 	parent.add_child(label)
 	return label
 
-static func open(app,mode:String="journal",cell:Vector2i=Vector2i(-1,-1),return_to:Callable=Callable())->void:
+static func open(app,mode:String="journal",cell:Vector2i=Vector2i(-1,-1),return_to:Callable=Callable(),from_journal:=false)->void:
 	var title:=Story.TITLE
 	if mode=="wangan":title="望安花宅"
 	if mode=="wangan_weir":title="望安石滬"
@@ -39,9 +54,10 @@ static func open(app,mode:String="journal",cell:Vector2i=Vector2i(-1,-1),return_
 	app.modal.set_meta("history_body",body)
 	app.modal.set_meta("history_mode",mode)
 	app.modal.set_meta("history_cell",cell)
+	if return_to.is_valid():app.modal.set_meta("history_back",return_to)
 	if mode=="jinguashi":
 		app.modal.set_meta("suppress_world_prompts",true)
-		add_mining_page(app,body,return_to)
+		add_mining_page(app,body,return_to,from_journal)
 	refresh(app)
 	app._layout_preview.call_deferred()
 
@@ -54,8 +70,29 @@ static func refresh(app)->void:
 	if mode=="jinguashi":
 		var panning:=app.modal.find_child("MineHistoryPanning",true,false) as Label
 		var hauling:=app.modal.find_child("MineHistoryHauling",true,false) as Label
-		panning.text=MINE_PANNING_TEXT if fieldwork.get("panned",false) else "到西岸淘砂處，親手完成一盤淘洗，就能收錄這段歷史。"
-		hauling.text=MINE_HAULING_TEXT if fieldwork.get("delivered",false) else "從坑口裝上一車礦，沿軌道推到接駁站並卸下，就能收錄這段歷史。"
+		var panned:bool=fieldwork.get("panned",false)
+		var delivered:bool=fieldwork.get("delivered",false)
+		var beats_panning:=app.modal.find_child("MineHistoryPanningBeats",true,false) as Control
+		var beats_hauling:=app.modal.find_child("MineHistoryHaulingBeats",true,false) as Control
+		beats_panning.visible=panned
+		beats_hauling.visible=delivered
+		panning.visible=not panned
+		hauling.visible=not delivered
+		# One chapter illustration at a time; a chapter that is not (or no longer) recorded never shows its picture.
+		var recorded:={"MineHistoryPanning":panned,"MineHistoryHauling":delivered}
+		var chapter:String=app.modal.get_meta("mine_chapter","")
+		if not recorded.get(chapter,false):
+			chapter=""
+			app.modal.set_meta("mine_chapter","")
+		for node:Control in app.modal.get_meta("mine_index",[]):node.visible=chapter.is_empty()
+		(app.modal.find_child("MineChapterView",true,false) as Control).visible=not chapter.is_empty()
+		(app.modal.find_child("MineChapterArt",true,false) as TextureRect).texture=null if chapter.is_empty() else load(MINE_ART[chapter][0]) as Texture2D
+		for key:String in MINE_ART:
+			(app.modal.find_child(key+"Look",true,false) as Control).visible=recorded[key]
+			(app.modal.find_child(key+"Chapter",true,false) as Control).visible=key==chapter
+			var pick:=app.modal.find_child(key+"Pick",true,false) as Button
+			pick.disabled=not recorded[key]
+			pick.set_pressed_no_signal(key==chapter)
 		if is_instance_valid(app.modal_feedback):
 			var count:=int(fieldwork.get("panned",false))+int(fieldwork.get("delivered",false))
 			app.modal_feedback.text="金瓜石地方記憶・已收錄 %d／2　Esc 關閉"%count
@@ -106,6 +143,13 @@ static func refresh(app)->void:
 		return
 	var body:VBoxContainer=app.modal.get_meta("history_body")
 	for child in body.get_children():body.remove_child(child);child.queue_free()
+	var shelf_back:Callable=app.modal.get_meta("history_back",Callable()) if mode!="jinguashi" else Callable()
+	var journal_back:=open.bind(app,"journal",Vector2i(-1,-1),shelf_back)
+	if mode=="journal" and shelf_back.is_valid():
+		var back:Button=app.button("返回書櫃",shelf_back)
+		back.name="BookcaseBack"
+		back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+		body.add_child(back)
 	if mode=="wangan_log":
 		text(app,body,"潮水回來以前",22)
 		text(app,body,"阿潮：「舊航記少了一頁。我只記得上面畫著一堵牆、一條彎彎的石堤。陪我找回來吧。」",16)
@@ -116,8 +160,8 @@ static func refresh(app)->void:
 		var weir:=AtlasTexture.new()
 		weir.atlas=preload("res://assets/ui-life/wangan-weir-tides.png")
 		weir.region=Rect2(0,96,280,96)
-		add_log_page(app,pages,wall,"花宅的兩種石頭",wangan_seen,"wangan")
-		add_log_page(app,pages,weir,"石滬的漲潮與退潮",weir_progress==2,"wangan_weir")
+		add_log_page(app,pages,wall,"花宅的兩種石頭",wangan_seen,"wangan",shelf_back)
+		add_log_page(app,pages,weir,"石滬的漲潮與退潮",weir_progress==2,"wangan_weir",shelf_back)
 		if log_done:
 			text(app,body,"阿潮：「一堵牆替人擋風，一道石堤順著潮水。原來長輩要我記的，是看懂風和水以後，才知道能在哪裡靠岸。」",16)
 			text(app,body,"✓ 望安航記已收錄｜阿潮與航記為遊戲原創。",15).name="WanganHarborLogComplete"
@@ -129,9 +173,9 @@ static func refresh(app)->void:
 			finish.disabled=not near_achao
 			body.add_child(finish)
 			if not near_achao:text(app,body,"帶著兩項觀察回風鈴渡口找阿潮。",15)
-		body.add_child(app.button("回到地方記憶",func():open(app)))
+		body.add_child(app.button("回到地方記憶",journal_back))
 	elif mode=="wangan_weir":
-		add_weir_page(app,body,weir_site,weir_progress,coast_time)
+		add_weir_page(app,body,weir_site,weir_progress,coast_time,journal_back)
 	elif mode=="wangan":
 		text(app,body,"花宅的兩種石頭",22)
 		text(app,body,"望安中社村舊稱花宅。沿岸捕魚、農牧和帆船運輸，曾是聚落居民的主要生計。",16)
@@ -160,20 +204,9 @@ static func refresh(app)->void:
 		link.uri=Wangan.SOURCE_BOOK
 		link.add_theme_color_override("font_color",Color("315840"))
 		body.add_child(link)
-		body.add_child(app.button("回到地方記憶",func():open(app)))
+		body.add_child(app.button("回到地方記憶",journal_back))
 	elif mode=="sources":
-		text(app,body,Story.PERIOD,20)
-		text(app,body,Story.FACTS,18)
-		text(app,body,Story.CONTEXT,15)
-		text(app,body,Story.DISCLAIMER+" 三輪配水數字是遊戲規則，不是歷史配水紀錄。",15)
-		text(app,body,"史料來源："+Story.SOURCE_NAME+"\n查核：2026-11-13",15)
-		var link:=LinkButton.new()
-		link.text="開啟文化資產資料"
-		link.uri=Story.SOURCE_URL
-		for state in ["font_color","font_hover_color","font_pressed_color","font_focus_color"]:link.add_theme_color_override(state,Color("315840"))
-		link.custom_minimum_size.y=42
-		body.add_child(link)
-		body.add_child(app.button("回到記憶頁",func():open(app)))
+		add_sources_page(app,body,journal_back)
 	elif mode=="observe" and Story.CLUES.has(World.key(cell)):
 		var clue:Dictionary=Story.CLUES[World.key(cell)]
 		text(app,body,clue.title,22)
@@ -212,55 +245,149 @@ static func refresh(app)->void:
 				enter.name="MemoryEnter";enter.disabled=not close_enough;body.add_child(enter)
 			else:body.add_child(app.button("看地圖找三處水路",app._map_menu))
 		var routes:=HBoxContainer.new();body.add_child(routes)
-		routes.add_child(app.button("史實與改編說明",func():open(app,"sources")))
-		if record.completed:routes.add_child(app.button("再看分水場景",func():open_replay(app)))
-		body.add_child(app.button("望安花宅・"+("已收錄" if wangan_seen else "觀察牌"),func():open(app,"wangan")))
-		body.add_child(app.button("望安石滬・"+("已收錄" if weir_progress==2 else "潮汐觀察"),func():open(app,"wangan_weir")))
-		var log_button:Button=app.button("望安航記・"+("已收錄" if log_done else "潮水回來以前"),func():open(app,"wangan_log"))
+		routes.add_child(app.button("史實與改編說明",open.bind(app,"sources",Vector2i(-1,-1),shelf_back)))
+		if record.completed:routes.add_child(app.button("再看分水場景",open_replay.bind(app,shelf_back)))
+		var coast_stories:=HBoxContainer.new()
+		coast_stories.add_theme_constant_override("separation",6)
+		body.add_child(coast_stories)
+		coast_stories.add_child(app.button("望安花宅・"+("已收錄" if wangan_seen else "觀察牌"),open.bind(app,"wangan",Vector2i(-1,-1),shelf_back)))
+		coast_stories.add_child(app.button("望安石滬・"+("已收錄" if weir_progress==2 else "潮汐觀察"),open.bind(app,"wangan_weir",Vector2i(-1,-1),shelf_back)))
+		var log_button:Button=app.button("望安航記・"+("已收錄" if log_done else "潮水回來以前"),open.bind(app,"wangan_log",Vector2i(-1,-1),shelf_back))
 		log_button.name="WanganHarborLogJournal"
-		body.add_child(log_button)
+		coast_stories.add_child(log_button)
 		if mining_visited:
-			var mining:Button=app.button("金瓜石・從河砂到礦車",func():open(app,"jinguashi"))
+			var mining:Button=app.button("金瓜石・從河砂到礦車",open.bind(app,"jinguashi",Vector2i(-1,-1),journal_back,true))
 			mining.name="JinguashiHistoryJournal"
 			body.add_child(mining)
 	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="Esc 回到島上・記憶可隨時再看" if close_enough or mode=="sources" else "可閱讀手帳；操作請回到蘭陽對應水口或木橋。"
 	if mode in ["wangan","wangan_weir","wangan_log"] and is_instance_valid(app.modal_feedback):app.modal_feedback.text="Esc 回到島上・記憶可隨時再看"
 
-static func add_mining_page(app,body:VBoxContainer,return_to:Callable)->void:
+static func add_mining_page(app,body:VBoxContainer,return_to:Callable,from_journal:bool)->void:
 	body.add_theme_constant_override("separation",8)
 	var pages:=[
-		["清末・基隆河砂金","MineHistoryPanning",
+		["清末・基隆河砂金","MineHistoryPanning","到西岸淘砂處，親手完成一盤淘洗，就能收錄這段歷史。",
 			preload("res://scripts/gold_panning_art.gd").pan_texture(5)],
-		["日治時期・礦山與運輸","MineHistoryHauling",
+		["日治時期・礦山與運輸","MineHistoryHauling","從坑口裝上一車礦，沿軌道推到接駁站並卸下，就能收錄這段歷史。",
 			preload("res://scripts/ore_route_art.gd").cart_texture(true)]
 	]
+	var index:Array[Control]=[]
 	for page:Array in pages:
 		var card:=PanelContainer.new()
 		card.add_theme_stylebox_override("panel",Pixel.paper_style())
 		body.add_child(card)
+		index.append(card)
 		var row:=HBoxContainer.new()
 		row.add_theme_constant_override("separation",12)
 		card.add_child(row)
-		row.add_child(Shell.picture(page[2],64))
+		var side:=VBoxContainer.new()
+		side.add_theme_constant_override("separation",2)
+		row.add_child(side)
+		var icon:=Shell.picture(page[3],64)
+		icon.size_flags_vertical=Control.SIZE_EXPAND_FILL
+		side.add_child(icon)
+		var look:Button=app.button("看插畫",show_mine_chapter.bind(app,page[1]))
+		look.name=page[1]+"Look"
+		look.custom_minimum_size.y=30
+		look.visible=false
+		side.add_child(look)
 		var lines:=VBoxContainer.new()
 		lines.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		row.add_child(lines)
 		text(app,lines,page[0],18)
-		text(app,lines,"",15).name=page[1]
-	text(app,body,"遊戲改編｜西岸淘砂處、台車停靠點和工資是為這座山城設計的玩法。",14)
-	for pair:Array in [["黃金博物館・歷史沿革",MINE_TIMELINE_URL],["國家文化記憶庫・開山 120 週年紀念展",MINE_EXHIBIT_URL]]:
+		add_mine_beats(app,lines,page[1],true).visible=false
+		text(app,lines,page[2],15).name=page[1]
+	index.append(text(app,body,"遊戲改編｜西岸淘砂處、台車停靠點和工資是為山城玩法設計的。",14))
+	app.modal.set_meta("mine_index",index)
+	# Chapter view: the illustration and that chapter's timeline are shown, and switched, together.
+	var chapter_view:=VBoxContainer.new()
+	chapter_view.name="MineChapterView"
+	chapter_view.add_theme_constant_override("separation",4)
+	chapter_view.visible=false
+	body.add_child(chapter_view)
+	var picks:=HBoxContainer.new()
+	picks.add_theme_constant_override("separation",6)
+	chapter_view.add_child(picks)
+	var group:=ButtonGroup.new()
+	for key:String in MINE_ART:
+		var pick:Button=app.button(MINE_ART[key][1],show_mine_chapter.bind(app,key))
+		pick.name=key+"Pick"
+		pick.toggle_mode=true
+		pick.button_group=group
+		pick.custom_minimum_size.y=34
+		picks.add_child(pick)
+	var caption:=text(app,picks,"遊戲場景插畫・波波的工作速寫",14)
+	caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	var close:Button=app.button("回到年表",show_mine_chapter.bind(app,""))
+	close.name="MineChapterClose"
+	close.custom_minimum_size.y=34
+	picks.add_child(close)
+	var art:=Shell.picture(null,144)
+	art.name="MineChapterArt"
+	chapter_view.add_child(art)
+	for page:Array in pages:
+		var chapter:=VBoxContainer.new()
+		chapter.name=page[1]+"Chapter"
+		chapter.add_theme_constant_override("separation",2)
+		chapter.visible=false
+		chapter_view.add_child(chapter)
+		text(app,chapter,page[0],18)
+		add_mine_beats(app,chapter,page[1],false)
+	var links:=HFlowContainer.new()
+	links.name="MineSourceLinks"
+	links.add_theme_constant_override("h_separation",14)
+	body.add_child(links)
+	for pair:Array in [["年表出處・黃金博物館",MINE_TIMELINE_URL],
+		["延伸閱讀・開山紀念展",MINE_EXHIBIT_URL],["文化資產局・水金九礦業遺址",MINE_HERITAGE_URL]]:
 		var link:=LinkButton.new()
 		link.text=pair[0]
 		link.uri=pair[1]
 		link.add_theme_color_override("font_color",Color("315840"))
-		body.add_child(link)
-	var back:Button=app.button("回到現場" if return_to.is_valid() else "回到地方記憶",
+		links.add_child(link)
+	var back:Button=app.button("回到現場" if return_to.is_valid() and not from_journal else "回到地方記憶",
 		return_to if return_to.is_valid() else func():open(app))
 	back.name="JinguashiHistoryBack"
 	back.size_flags_horizontal=Control.SIZE_SHRINK_END
 	body.add_child(back)
 
-static func add_log_page(app,parent:Container,art:Texture2D,title:String,found:bool,mode:String)->void:
+## One chapter's dated timeline rows. The index card copy keeps the stable node names.
+static func add_mine_beats(app,parent:Node,key:String,indexed:bool)->VBoxContainer:
+	var beats:=VBoxContainer.new()
+	if indexed:beats.name=key+"Beats"
+	beats.add_theme_constant_override("separation",2)
+	parent.add_child(beats)
+	for beat:Array in MINE_BEATS[key]:
+		var beat_row:=HBoxContainer.new()
+		beat_row.add_theme_constant_override("separation",10)
+		beats.add_child(beat_row)
+		var prominent:bool=beat[0]=="1890"
+		var date:Label=app.label(beat[0]+" 年",30 if prominent else 22)
+		if indexed:date.name="%sDate%s"%[key,beat[0]]
+		date.custom_minimum_size.x=104
+		date.size_flags_horizontal=Control.SIZE_FILL
+		date.autowrap_mode=TextServer.AUTOWRAP_OFF
+		date.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		date.add_theme_color_override("font_color",DATE_COLOR)
+		beat_row.add_child(date)
+		var event:=text(app,beat_row,beat[1],17)
+		event.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		event.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	return beats
+
+## Opens one recorded chapter's illustration ("" returns to the timeline index) and moves focus with it.
+static func show_mine_chapter(app,key:String)->void:
+	if not is_instance_valid(app.modal) or app.modal.get_meta("history_mode","")!="jinguashi":return
+	var previous:String=app.modal.get_meta("mine_chapter","")
+	app.modal.set_meta("mine_chapter",key)
+	refresh(app)
+	var shown:String=app.modal.get_meta("mine_chapter","")
+	var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	if scroll!=null:scroll.scroll_vertical=0
+	var target:=app.modal.find_child(shown+"Pick" if not shown.is_empty() else previous+"Look",true,false) as Control
+	if target!=null and target.is_visible_in_tree():target.grab_focus()
+	app._layout_preview.call_deferred()
+
+static func add_log_page(app,parent:Container,art:Texture2D,title:String,found:bool,mode:String,shelf_back:Callable)->void:
 	var card:=PanelContainer.new()
 	card.add_theme_stylebox_override("panel",Pixel.paper_style())
 	card.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -274,13 +401,13 @@ static func add_log_page(app,parent:Container,art:Texture2D,title:String,found:b
 	preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	contents.add_child(preview)
-	contents.add_child(app.button(("✓ " if found else "○ ")+title,func():open(app,mode)))
+	contents.add_child(app.button(("✓ " if found else "○ ")+title,open.bind(app,mode,Vector2i(-1,-1),shelf_back)))
 
 static func set_weir_picture(picture:AtlasTexture,caption:Label,high:bool)->void:
 	picture.region=Rect2(0,0 if high else 96,280,96)
 	caption.text="漲潮（水淹）｜水位抬高，魚群可以游進滬內。" if high else "退潮（水渴）｜石牆露出，有些魚仍留在滬房。"
 
-static func add_weir_page(app,body:VBoxContainer,site:Vector2i,progress:int,coast_time:float)->void:
+static func add_weir_page(app,body:VBoxContainer,site:Vector2i,progress:int,coast_time:float,journal_back:Callable)->void:
 	var coast_is_high:=World.WANGAN_COAST.high_tide(coast_time)
 	text(app,body,"水淹與水渴",22)
 	text(app,body,"望安東南岸的萬興滬以玄武岩砌成。這張遊戲示意圖用兩個水位來看石滬如何留住魚群。",15)
@@ -331,10 +458,10 @@ static func add_weir_page(app,body:VBoxContainer,site:Vector2i,progress:int,coas
 		link.uri=pair[1]
 		link.add_theme_color_override("font_color",Color("315840"))
 		sources.add_child(link)
-	body.add_child(app.button("回到地方記憶",func():open(app)))
+	body.add_child(app.button("回到地方記憶",journal_back))
 
-static func open_replay(app)->void:
-	open(app,"sources")
+static func open_replay(app,shelf_back:Callable=Callable())->void:
+	open(app,"sources",Vector2i(-1,-1),shelf_back)
 	var body:VBoxContainer=app.modal.get_meta("history_body")
 	for child in body.get_children():body.remove_child(child);child.queue_free()
 	if is_instance_valid(app.modal_feedback):app.modal_feedback.text="自由重看・不改世界進度，不發放額外獎勵・Esc 離開"
@@ -348,4 +475,108 @@ static func open_replay(app)->void:
 		var a:int=replay.gates[0]*2;var b:int=mini(12-a,replay.gates[1]*2)
 		if [a,b,12-a-b]==World.HISTORY_MEMORY.DEMANDS[replay.round]:replay.round=(replay.round+1)%3;replay.gates=[0,0]
 		scene.configure(replay.gates,World.HISTORY_MEMORY.DEMANDS[replay.round],replay.round,app.sound.reduced_motion))
-	body.add_child(app.button("回到地方記憶",func():open(app)))
+	body.add_child(app.button("回到地方記憶",open.bind(app,"journal",Vector2i(-1,-1),shelf_back)))
+
+const BEATS:=[
+	["1813・兩圳合一","1813年，長慶源圳與邱吳成圳合併，改用「萬長春」圳號。"],
+	["共用水源","文化資產資料記載，兩圳共用水源，合併涉及旱時競水及維修成本。"],
+	["日常的水路","二結圳也曾是附近居民洗滌、育苗等日常生活的場所。"]
+]
+
+## Builds the whole sources page into `body`. `back` is invoked by the return button.
+static func add_sources_page(app,body:VBoxContainer,back:Callable)->void:
+	var page:=body
+	page.add_theme_constant_override("separation",7)
+	var heading:=HBoxContainer.new()
+	page.add_child(heading)
+	_label(app,heading,Story.PERIOD,18)
+	var credit:=_label(app,heading,"遊戲插圖 · 非歷史復原圖",13)
+	credit.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+
+	var scene:=SourceScene.new()
+	scene.name="HistorySourceScene"
+	scene.motion=not app.sound.reduced_motion
+	page.add_child(scene)
+
+	var card:=PanelContainer.new()
+	card.add_theme_stylebox_override("panel",Pixel.paper_style())
+	page.add_child(card)
+	var row:=HBoxContainer.new()
+	row.add_theme_constant_override("separation",10)
+	card.add_child(row)
+	row.add_child(Shell.picture(preload("res://scripts/lanyang_life_art.gd").portrait(),64))
+	var lines:=VBoxContainer.new()
+	lines.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	row.add_child(lines)
+	_label(app,lines,"星禾・遊戲旁白（原創角色）",14).name="HistorySourceNarrator"
+	var beat_title:=_label(app,lines,"",18)
+	beat_title.name="HistorySourceBeatTitle"
+	var beat_line:=_label(app,lines,"",16)
+	beat_line.name="HistorySourceBeatLine"
+
+	var state:={"index":0}
+	var beat_buttons:Array[Button]=[]
+	var step:Button=app.button("下一段",func():pass)
+	step.name="HistorySourceNext"
+	var show_beat:=func(index:int,restart:bool)->void:
+		state.index=index
+		beat_title.text="%d／%d　%s"%[index+1,BEATS.size(),BEATS[index][0]]
+		beat_line.text=BEATS[index][1]
+		for i in beat_buttons.size():
+			beat_buttons[i].text=("● " if i==index else "○ ")+BEATS[i][0]
+		step.text="重播" if index==BEATS.size()-1 else "下一段 ▶"
+		if restart:scene.replay()
+	var beats:=HBoxContainer.new()
+	beats.name="HistorySourceBeats"
+	beats.add_theme_constant_override("separation",6)
+	page.add_child(beats)
+	for i in BEATS.size():
+		var pick:Button=app.button(BEATS[i][0],func():show_beat.call(i,false))
+		pick.name="HistorySourceBeat%d"%i
+		pick.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		pick.clip_text=true
+		beats.add_child(pick)
+		beat_buttons.append(pick)
+	step.pressed.connect(func():
+		var last:bool=state.index==BEATS.size()-1
+		show_beat.call(0 if last else state.index+1,last))
+	step.size_flags_horizontal=Control.SIZE_SHRINK_END
+	beats.add_child(step)
+	show_beat.call(0,false)
+
+	# Full source text, collapsed by default; text and link are unchanged.
+	var actions:=HBoxContainer.new()
+	actions.add_theme_constant_override("separation",6)
+	page.add_child(actions)
+	var toggle:Button=app.button("▸ 史料全文",func():pass)
+	toggle.name="HistorySourceFullToggle"
+	toggle.toggle_mode=true
+	toggle.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	actions.add_child(toggle)
+	actions.add_child(app.button("回到記憶頁",back))
+	var full:=VBoxContainer.new()
+	full.name="HistorySourceFull"
+	full.visible=false
+	full.add_theme_constant_override("separation",8)
+	page.add_child(full)
+	_label(app,full,Story.FACTS,18)
+	_label(app,full,Story.CONTEXT,15)
+	_label(app,full,Story.DISCLAIMER+" 三輪配水數字是遊戲規則，不是歷史配水紀錄。",15)
+	_label(app,full,"史料來源："+Story.SOURCE_NAME+"\n查核：2026-11-13",15)
+	var link:=LinkButton.new()
+	link.text="開啟文化資產資料"
+	link.uri=Story.SOURCE_URL
+	for state_color in ["font_color","font_hover_color","font_pressed_color","font_focus_color"]:link.add_theme_color_override(state_color,Color("315840"))
+	link.custom_minimum_size.y=42
+	full.add_child(link)
+	toggle.toggled.connect(func(open:bool):
+		full.visible=open
+		toggle.text=("▾ " if open else "▸ ")+"史料全文"
+		app._layout_preview.call_deferred())
+
+static func _label(app,parent:Node,line:String,extent:int)->Label:
+	var label:Label=app.label(line,extent)
+	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	parent.add_child(label)
+	return label

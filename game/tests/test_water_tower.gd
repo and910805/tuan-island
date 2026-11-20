@@ -25,16 +25,16 @@ const Weather=preload("res://scripts/weather.gd")
 const OWNER:="tower-owner-token-5d1a"
 const OTHER:="tower-other-token-c37e"
 const BENCH:=Vector2i(50,27)
-const FAR_S:=Vector2i(46,24)
-const TOWER:=Vector2i(47,24)
-const GATE:=Vector2i(48,24)
-const NEAR_S:=Vector2i(49,24)
-const PIPE_B:=Vector2i(50,24)
-const TANK:=Vector2i(51,24)
-const PIPE_C:=Vector2i(52,24)
-const PUMP:=Vector2i(53,24)
-const NEAR_CROPS:=[Vector2i(49,23),Vector2i(49,25)]
-const FAR_CROPS:=[Vector2i(46,23),Vector2i(46,25)]
+const FAR_S:=Vector2i(46,21)
+const TOWER:=Vector2i(47,21)
+const GATE:=Vector2i(48,21)
+const NEAR_S:=Vector2i(49,21)
+const PIPE_B:=Vector2i(50,21)
+const TANK:=Vector2i(51,21)
+const PIPE_C:=Vector2i(52,21)
+const PUMP:=Vector2i(53,21)
+const NEAR_CROPS:=[Vector2i(49,20),Vector2i(49,22)]
+const FAR_CROPS:=[Vector2i(46,20),Vector2i(46,22)]
 const EXTRA_TOWERS:=[Vector2i(46,28),Vector2i(47,28),Vector2i(48,28)]
 const FIFTH_TOWER:=Vector2i(49,28)
 const DAYS:=30
@@ -339,7 +339,8 @@ func main_flow(w:World) -> bool:
 	w.add_player(OWNER,"Owner")
 	w.add_player(OTHER,"Other")
 	var inv:Dictionary=w.state.players[OWNER].inventory
-	for tile:Vector2i in [PIPE_C,PUMP]:
+	# Row y=21 stays clear of the reserved public-mill parcel (47..49,23..25 and 48,26).
+	for tile:Vector2i in [FAR_S,TOWER,GATE,NEAR_S,PIPE_B,TANK,PIPE_C,PUMP]+NEAR_CROPS+FAR_CROPS:
 		if World.base_resource(tile)!="":w.state.removed[k(tile)]=true
 	inv["wood"]=40
 	inv["stone"]=40
@@ -385,7 +386,7 @@ func main_flow(w:World) -> bool:
 	# tower_toggle rejections and the owner's toggle.
 	refuse(w,OTHER,Industry.TOWER_ACTION,TOWER,"",Industry.TOWER_NOT_OWNER,"another player's tower")
 	refuse(w,OWNER,Industry.TOWER_ACTION,PIPE_B,"",Industry.TOWER_NOT_OWNER,"tower_toggle on a pipe")
-	refuse(w,OWNER,Industry.TOWER_ACTION,Vector2i(45,22),"",Industry.TOWER_NOT_OWNER,"tower_toggle on an empty cell")
+	refuse(w,OWNER,Industry.TOWER_ACTION,Vector2i(45,19),"",Industry.TOWER_NOT_OWNER,"tower_toggle on an empty cell")
 	var owner_person:Dictionary=w.state.players[OWNER]
 	owner_person.x=TOWER.x+0.5
 	owner_person.y=TOWER.y+6.5
@@ -472,10 +473,12 @@ func check_closed_gate_days(w:World,path:String) -> void:
 					if wet:s.bad.append("day %d wet with no reserve"%d)
 					else:s.dry=int(s.dry)+1
 			if far_reserve(x)==0 and int(s.empty_day)<0:s.empty_day=d
-		if day==10:
+		if day==11:
 			var tower_growth:=float(crop(w,FAR_CROPS[0]).get("growth",0.0))
 			var plain_growth:=float(crop(plain,FAR_CROPS[0]).get("growth",0.0))
-			expect(tower_growth>0.0 and plain_growth==0.0,"reseeded far radish grows only where the tower still feeds the sprinkler (tower %s, contrast %s)"%[str(tower_growth),str(plain_growth)])
+			var mature:=float(World.CROPS.radish.time)
+			expect(tower_growth>=mature and plain_growth<mature,
+				"After the next daily pass, only the plot with a tower has a mature radish (tower %s, contrast %s)"%[str(tower_growth),str(plain_growth)])
 	w.save_path=keep
 	var t:Dictionary=stats.tower
 	var p:Dictionary=stats.plain
@@ -600,16 +603,16 @@ func check_undo_move_remove(w:World) -> void:
 	w.step(1.0,true)
 	var stored:=int(obj(w,TOWER).water)
 	expect(stored>0,"tower refilled again once the gate is open (%d)"%stored)
-	refuse(w,OTHER,"move_object",TOWER,"48,26","","another player cannot move the tower")
+	refuse(w,OTHER,"move_object",TOWER,"50,24","","another player cannot move the tower")
 	var person:Dictionary=w.state.players[OWNER]
-	person.x=46.5
-	person.y=26.5
-	var moved:=act(w,OWNER,"move_object",TOWER,"48,26")
+	person.x=49.5
+	person.y=23.5
+	var moved:=act(w,OWNER,"move_object",TOWER,"50,24")
 	expect(bool(moved.get("ok",false)),"owner moves the tower (%s)"%str(moved.get("message","")))
-	var at:Dictionary=obj(w,Vector2i(48,26))
+	var at:Dictionary=obj(w,Vector2i(50,24))
 	expect(not w.state.objects.has(k(TOWER)) and at.get("type")=="water_tower" and int(at.get("water",-1))==stored and at.get("enabled")==true,"moved tower keeps its water and setting")
-	expect(w.blocked(Vector2i(48,26)) and not w.blocked(TOWER),"collision moves with the tower")
-	ok(w,OWNER,"remove",Vector2i(48,26),"","owner removes the tower")
+	expect(w.blocked(Vector2i(50,24)) and not w.blocked(TOWER),"collision moves with the tower")
+	ok(w,OWNER,"remove",Vector2i(50,24),"","owner removes the tower")
 	inv=w.state.players[OWNER].inventory
-	expect(not w.state.objects.has("48,26") and int(inv.get("water_tower_kit",0))==kits+1,"removal returns the kit (stored water is discarded, like water_tank)")
+	expect(not w.state.objects.has("50,24") and int(inv.get("water_tower_kit",0))==kits+1,"removal returns the kit (stored water is discarded, like water_tank)")
 	expect(validates(w.state),"final world validates")

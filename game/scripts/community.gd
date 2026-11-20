@@ -27,12 +27,16 @@ static func occupied(state: Dictionary, cell: Vector2i) -> bool:
 			return true
 	return false
 
-static func choose_table(state: Dictionary) -> String:
+static func choose_table(state: Dictionary, active: Variant = null) -> String:
 	for cell: Vector2i in CANDIDATES:
 		if occupied(state, cell):
 			continue
 		var standing := false
-		for player in state.get("players", {}).values():
+		var players:Dictionary=state.get("players",{})
+		for token in players:
+			if active!=null and not active.has(token):continue
+			var player:Dictionary=players[token]
+			if player.get("region","home")!="home":continue
 			var delta := (Vector2(player.x, player.y) - (Vector2(cell) + Vector2(0.5,0.5))).abs()
 			if delta.x < 0.72 and delta.y < 0.67:
 				standing = true

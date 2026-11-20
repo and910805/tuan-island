@@ -13,6 +13,19 @@ static func draw_placement(canvas:CanvasItem,at:Vector2,kind:String,tint:Color) 
 	if kind in KINDS or kind=="flower_pot":
 		draw_sprite(canvas,at,kind,Color(tint,0.58))
 
+## C08 fallback for the two-cell 木工台 while its dedicated worktop texture is missing: the existing
+## 32x48 bench sprite stretched across the whole footprint. False when the atlas is unavailable.
+static func draw_bench_enlarged(canvas:CanvasItem,at:Vector2,vertical:bool,tint:=Color.WHITE) -> bool:
+	if atlas==null:
+		if not ResourceLoader.exists(PATH):return false
+		atlas=load(PATH) as Texture2D
+		if atlas==null:return false
+	var index:=KINDS.find("bench")
+	var region:=Rect2((index%4)*32,(index/4)*48,32,48)
+	var size:=Vector2(32,80) if vertical else Vector2(64,48)
+	canvas.draw_texture_rect_region(atlas,Rect2(at+Vector2(0,-16),size),region,tint)
+	return true
+
 static func draw_sprite(canvas:CanvasItem,at:Vector2,kind:String,tint:=Color.WHITE) -> bool:
 	if kind=="ore_display":return Bobo.draw(canvas,at+Vector2(-8,-16),kind)
 	if kind=="flower_pot":

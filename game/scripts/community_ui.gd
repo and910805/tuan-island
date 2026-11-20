@@ -17,10 +17,13 @@ const Shell=preload("res://scripts/life_ui_shell.gd")
 const Items=preload("res://scripts/inventory_item_art.gd")
 const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
 const World=preload("res://scripts/world.gd")
+const MiluSupper=preload("res://scripts/milu_supper_ui.gd")
 const KitchenUI=preload("res://scripts/public_kitchen_ui.gd")
 const Warmer=preload("res://scripts/table_warmer.gd")
 const TeaService=preload("res://scripts/tea_service.gd")
 const TeaArt=preload("res://scripts/tea_revisit_art.gd")
+const Almanac=preload("res://scripts/life_ui_almanac.gd")
+const AutumnFeastUI=preload("res://scripts/autumn_feast_ui.gd")
 
 const LAYOUT:="community_table"
 const TITLE:="渡口的共餐桌"
@@ -59,11 +62,11 @@ static func open(app) -> void:
 	var body:VBoxContainer=app._open_modal(TITLE)
 	app.modal.set_meta("life_modal_layout",LAYOUT)
 	app.modal.set_meta("community_body",body)
-	body.add_theme_constant_override("separation",5)
+	body.add_theme_constant_override("separation",3)
 	var scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
 	if scroll!=null:
 		var shell:=scroll.get_parent() as VBoxContainer
-		shell.add_theme_constant_override("separation",5)
+		shell.add_theme_constant_override("separation",3)
 		body.minimum_size_changed.connect(app._layout_preview.call_deferred)
 	build(app,body)
 	refresh(app)
@@ -82,7 +85,7 @@ static func is_open(app) -> bool:
 static func layout(app,bounds:Vector2) -> void:
 	var modal:Control=app.modal
 	var width:=minf(860,bounds.x-48)
-	var cap:=bounds.y-16
+	var cap:=bounds.y-12
 	modal.size.x=width
 	var height:=minf(cap,560)
 	var outer:=modal.find_child("ModalScroll",true,false) as Control
@@ -91,7 +94,7 @@ static func layout(app,bounds:Vector2) -> void:
 		var chrome:float=modal.get_combined_minimum_size().y-outer.get_combined_minimum_size().y
 		height=minf(cap,chrome+content.get_combined_minimum_size().y+2)
 	modal.size=Vector2(width,height)
-	modal.position=Vector2(floorf((bounds.x-modal.size.x)/2),maxf(8.0,floorf(bounds.y-modal.size.y-28)))
+	modal.position=Vector2(floorf((bounds.x-modal.size.x)/2),maxf(6.0,floorf(bounds.y-modal.size.y-28)))
 
 # ---------------------------------------------------------------- structure --
 
@@ -124,7 +127,12 @@ static func _button(app,parent:Node,id:String,title:String,callback:Callable) ->
 static func _paper(parent:Node,id:String) -> PanelContainer:
 	var card:=PanelContainer.new()
 	card.name=id
-	card.add_theme_stylebox_override("panel",Pixel.paper_style())
+	# Same paper card, 4 px (was 8) above and below the content: with all three dishes on the
+	# table plus the un-installed 保溫底座 and the 茶陶上桌 card, 1024×640 needs no scrolling.
+	var style:=Pixel.paper_style()
+	style.set_content_margin(SIDE_TOP,4)
+	style.set_content_margin(SIDE_BOTTOM,4)
+	card.add_theme_stylebox_override("panel",style)
 	card.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	parent.add_child(card)
 	return card
@@ -151,10 +159,11 @@ static func build(app,body:VBoxContainer) -> void:
 	if snapshot.get("chapter_one",{}).get("watered",false):
 		line="田裡有水，桌上有飯。下次也一起留個位子吧。"
 	_wrapped(app,words,"米露　「"+line+"」",15).name="CommunityQuote"
+	MiluSupper.table_entry(app,place,open.bind(app))
 	# Shared dishes.
 	var servings:=VBoxContainer.new()
 	servings.name="CommunityServings"
-	servings.add_theme_constant_override("separation",4)
+	servings.add_theme_constant_override("separation",2)
 	body.add_child(servings)
 	# 火鍋自己一列（右邊還有「保溫上桌六份」）；西瓜盤與玉米濃湯並排在第二列（DishPair），
 	# 這樣 1024×640 仍不必捲動。
@@ -182,7 +191,7 @@ static func build(app,body:VBoxContainer) -> void:
 	# 保溫底座 (T067).
 	var card:=_paper(body,"WarmerCard")
 	var inner:=VBoxContainer.new()
-	inner.add_theme_constant_override("separation",3)
+	inner.add_theme_constant_override("separation",1)
 	card.add_child(inner)
 	var head:=HBoxContainer.new()
 	head.add_theme_constant_override("separation",8)
@@ -218,7 +227,7 @@ static func build(app,body:VBoxContainer) -> void:
 	# 茶陶上桌 (第 40 章): title row with the actions, one info line, one reason line.
 	var tea:=_paper(body,"TeaCard")
 	var tea_inner:=VBoxContainer.new()
-	tea_inner.add_theme_constant_override("separation",3)
+	tea_inner.add_theme_constant_override("separation",1)
 	tea.add_child(tea_inner)
 	var tea_head:=HBoxContainer.new()
 	tea_head.name="TeaHead"
@@ -264,6 +273,9 @@ static func build(app,body:VBoxContainer) -> void:
 	kitchen.tooltip_text="將自己的小石灶與兩張長椅永久捐作公用、一起備餐，或重看共餐記憶"
 	kitchen.focus_mode=Control.FOCUS_ALL
 	actions.add_child(kitchen)
+	var feast_slot:=VBoxContainer.new()
+	actions.add_child(feast_slot)
+	AutumnFeastUI.add_table_link(app,feast_slot)
 
 # ------------------------------------------------------------------ actions --
 
@@ -342,9 +354,13 @@ static func _node(app,id:String) -> Control:
 static func refresh(app) -> void:
 	if not is_open(app):return
 	var s:Dictionary=app.session.snapshot
+	MiluSupper.sync_table_entry(app)
 	var inventory:=_inventory(app)
 	var installed:=Warmer.installed(s)
 	var cell:=World.COMMUNITY.table_cell(s)
+	var servings := _node(app,"CommunityServings") as VBoxContainer
+	if servings != null and cell != World.COMMUNITY.NO_CELL:
+		Almanac.add_hotpot_photo(app,servings,s,open.bind(app))
 	var signature:=JSON.stringify([installed,cell,_meal(s,"hotpot"),_meal(s,"watermelon"),_meal(s,"chowder"),inventory,s.get("picnic",false),s.get(TeaService.STATE_KEY,{}),TeaService.TEA_REVISIT.completed(s),TeaService.today(s)])
 	if str(app.modal.get_meta("community_signature",""))==signature:return
 	app.modal.set_meta("community_signature",signature)

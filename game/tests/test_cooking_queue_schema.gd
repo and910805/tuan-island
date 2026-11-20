@@ -10,9 +10,9 @@ const Queue=preload("res://scripts/cooking_queue.gd")
 const History=preload("res://scripts/construction_history.gd")
 const A:="cooking-schema-owner"
 const B:="cooking-schema-friend"
-const FLOOR:=Vector2i(48,24)
-const STOVE_CELL:=Vector2i(49,25)
-const HOME_STOVE:="49,25"
+const FLOOR:=Vector2i(50,26)
+const STOVE_CELL:=Vector2i(50,25)
+const HOME_STOVE:="50,25"
 const REGION:="lanyang"
 const REGION_STOVE:="60,45"
 const NOW:=925.0
@@ -213,17 +213,17 @@ func run()->void:
 	OLD.bread.time=7.0
 
 	# --- constants / literal cutoffs ---------------------------------------------
-	check(Schema.VERSION==26,"save schema version is 21")
+	check(Schema.VERSION==27,"save schema version is 21")
 	check(Schema.COOKING_QUEUE_VERSION==20,"cooking queue cutoff literal is 20")
 	check(Schema.BLUEPRINT_HISTORY_VERSION==19,"blueprint cutoff literal stays 19")
 	check(Queue.CAPACITY==10 and Queue.OWNER_MAX==64,"helper capacity 10 and owner bound 64")
 
 	# --- baseline from a real fresh World -----------------------------------------
 	var base:=fixture()
-	check(int(base.version)==26,"fresh World writes version 20")
+	check(int(base.version)==preload("res://scripts/save_schema.gd").VERSION,"fresh World writes version 20")
 	check(not stove(base,"home").has("cooking") and not stove(base,"region").has("cooking"),"fixture stoves carry no queue")
 	var plain:Dictionary=base.duplicate(true)
-	check(valid(plain) and int(plain.version)==26,"v20 stoves without cooking accepted")
+	check(valid(plain) and int(plain.version)==preload("res://scripts/save_schema.gd").VERSION,"v20 stoves without cooking accepted")
 	check(not stove(plain,"home").has("cooking") and not stove(plain,"region").has("cooking"),"missing cooking is never invented on load")
 	var live=load_real(base)
 	check(live!=null,"real World loads the baseline file")
@@ -237,7 +237,7 @@ func run()->void:
 	var both:=with_cooking(base,"home",home_q)
 	stove(both,"region").cooking=region_q.duplicate(true)
 	var both_input:Dictionary=both.duplicate(true)
-	check(valid(both) and int(both.version)==26,"home and regional queues accepted at v20")
+	check(valid(both) and int(both.version)==preload("res://scripts/save_schema.gd").VERSION,"home and regional queues accepted at v20")
 	check(same(stove(both,"home").cooking,home_q) and same(stove(both,"region").cooking,region_q),"validated queues unchanged")
 	var hist:Dictionary=stove(both,"home").cooking.waiting[1]
 	check(hist.kind=="bread" and same(hist.ingredients,{"wheat":3}) and int(hist["yield"])==2 and float(hist.duration)==7.0,"historical ingredients/yield/duration retained independent of current recipe")
@@ -346,7 +346,7 @@ func run()->void:
 			var inventory_before:Dictionary=s.players.duplicate(true)
 			var keys_before:Array=s.players[A].inventory.keys()
 			keys_before.sort()
-			check(valid(s) and int(s.version)==26,"v%d %s legacy job accepted -> 20"%[version,where])
+			check(valid(s) and int(s.version)==preload("res://scripts/save_schema.gd").VERSION,"v%d %s legacy job accepted -> 20"%[version,where])
 			check(same(stove(s,where).job,legacy_job(NOW-1.0)),"v%d %s historical job (wheat 3, yield 2) preserved"%[version,where])
 			check(not stove(s,where).has("cooking"),"v%d %s legacy job not converted at load"%[version,where])
 			var keys_after:Array=s.players[A].inventory.keys()
@@ -367,7 +367,7 @@ func run()->void:
 		v19.regions.erase("beimen")
 	stove(v19,"home").job=legacy_job(NOW-1.0)
 	var w19=load_real(v19)
-	check(w19!=null and int(w19.state.version)==26,"real World loads v19 legacy job as 20")
+	check(w19!=null and int(w19.state.version)==preload("res://scripts/save_schema.gd").VERSION,"real World loads v19 legacy job as 20")
 	if w19!=null:
 		check(w19.state.objects[HOME_STOVE].has("job") and not w19.state.objects[HOME_STOVE].has("cooking"),"general load does not convert legacy job")
 		var claimed:Dictionary=w19.act(A,"claim-legacy","claim_cook",STOVE_CELL)
@@ -395,7 +395,7 @@ func run()->void:
 		check(int(lazy.state.players[A].inventory.radish)==5,"only the new job's ingredients charged")
 		check(lazy.save(),"converted world saves")
 		var reloaded:=World.new()
-		check(reloaded.load_world(path) and int(reloaded.state.version)==26,"converted v20 queue file reloads")
+		check(reloaded.load_world(path) and int(reloaded.state.version)==preload("res://scripts/save_schema.gd").VERSION,"converted v20 queue file reloads")
 		check(same(reloaded.state.objects.get(HOME_STOVE,{}).get("cooking"),st.get("cooking")),"converted queue round-trips through World save")
 
 	# --- prior migrations still behave with literal cutoffs ------------------------
@@ -408,7 +408,7 @@ func run()->void:
 		v18.regions.erase("beimen")
 	var v18_history:Dictionary=v18.construction.duplicate(true)
 	var v18_ground:Dictionary=v18.ground.duplicate(true)
-	check(valid(v18) and int(v18.version)==26,"v18 migrates to 20")
+	check(valid(v18) and int(v18.version)==preload("res://scripts/save_schema.gd").VERSION,"v18 migrates to 20")
 	check(same(v18.construction,v18_history) and v18.construction.last[A].status=="live","v18 live undo history preserved")
 	check(same(v18.ground,v18_ground),"v18 construction layers preserved")
 	var v17:Dictionary=base.duplicate(true)
@@ -462,7 +462,7 @@ func run()->void:
 		m16.erase("salt_pan")
 		m16.regions.erase("beimen")
 	m16.roofs[World.key(FLOOR)].auto=false
-	check(valid(m16) and int(m16.version)==26,"v16 manual roof migrates to 20")
+	check(valid(m16) and int(m16.version)==preload("res://scripts/save_schema.gd").VERSION,"v16 manual roof migrates to 20")
 
 	check(History.canonical(live.state)!="" and not live.state.objects.get(HOME_STOVE,{}).has("cooking"),"live World never adopted a rejected queue")
 	for suffix in ["",".bak",".tmp"]:

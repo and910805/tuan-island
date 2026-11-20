@@ -28,6 +28,15 @@ const STAR_SAND_POINT:="wangan_gather_star_sand"
 const STAR_SAND_RESPAWN:=90.0
 const STAR_POOL:=Rect2i(31,58,2,1)
 const STAR_POOL_SPOT:="wangan_star_tidepool"
+## D06 香煎溪魚：修好的星砂步道起點，北門鹽田（合作鹽田）託渡口船家捎來的海鹽包。
+## 每位玩家每個世界日最多領一次、終身最多 PARCEL_LIFETIME 份；北門鹽田仍是海鹽的生產來源。
+## 玩家欄位（皆選填、未領過就不存在）：wangan_salt_day＝最後一次領取的「世界日序＋1」，wangan_salt_total＝累計份數。
+const SALT_PARCEL:=Vector2i(35,54)
+const SALT_PARCEL_POINT:="wangan_salt_parcel"
+const SALT_PARCEL_AMOUNT:=2
+const SALT_PARCEL_LIFETIME:=3
+const SALT_PARCEL_DAY_KEY:="wangan_salt_day"
+const SALT_PARCEL_TOTAL_KEY:="wangan_salt_total"
 const DOCK_ORDERS:=Vector2i(51,32)
 const DOCK_ORDERS_POINT:="wangan_dock_orders"
 const STAR_POOL_ART=preload("res://assets/ui-life/wangan-star-pool.png")

@@ -160,4 +160,3 @@ func run()->void:
 	DirAccess.remove_absolute(folder)
 	print("SHIPPING_UI_TEST checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0))
-

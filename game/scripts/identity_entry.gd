@@ -5,6 +5,7 @@ const Art=preload("res://scripts/life_ui_theme.gd")
 const Shell=preload("res://scripts/life_ui_shell.gd")
 const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
 const Session=preload("res://scripts/session.gd")
+const UpdateCard=preload("res://scripts/update_card.gd")
 
 var app
 var account:LineEdit
@@ -497,6 +498,7 @@ func show_update_prompt(required_protocol:int=-1) -> void:
 	update_dialog=make_update_prompt(self,app,required_protocol)
 
 static func make_update_prompt(host:Node,game,required_protocol:int=-1) -> Control:
+	var previous_focus:Control=game.get_viewport().gui_get_focus_owner()
 	var overlay:=Control.new()
 	overlay.name="UpdateRequiredOverlay"
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -506,18 +508,15 @@ static func make_update_prompt(host:Node,game,required_protocol:int=-1) -> Contr
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.color=Color(0.07,0.12,0.10,0.68)
 	overlay.add_child(shade)
+	var center:=CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(center)
 	var panel:=PanelContainer.new()
 	panel.name="UpdateRequiredPanel"
-	panel.anchor_left=0.5
-	panel.anchor_top=0.5
-	panel.anchor_right=0.5
-	panel.anchor_bottom=0.5
-	panel.offset_left=-230
-	panel.offset_top=-113
-	panel.offset_right=230
-	panel.offset_bottom=113
+	panel.custom_minimum_size.x=460
 	panel.add_theme_stylebox_override("panel",Art.badge_style())
-	overlay.add_child(panel)
+	center.add_child(panel)
 	var inset:=MarginContainer.new()
 	for edge in ["left","right","top","bottom"]:
 		inset.add_theme_constant_override("margin_"+edge,14)
@@ -525,37 +524,55 @@ static func make_update_prompt(host:Node,game,required_protocol:int=-1) -> Contr
 	var content:=VBoxContainer.new()
 	content.add_theme_constant_override("separation",12)
 	inset.add_child(content)
-	var heading:Label=game.label("島嶼需要更新",24)
+	var heading:Label=game.label("遊戲版本與島嶼不相容",24)
 	heading.add_theme_color_override("font_color",Color("294335"))
 	content.add_child(heading)
 	var current:=Session.PROTOCOL
-	var explanation:="目前遊戲版本與這座島不相容，更新後才能一起遊玩。"
-	if required_protocol>0:
-		explanation+="\n你的協定 %d · 島嶼協定 %d" % [current,required_protocol]
+	var explanation:="請向島主確認這座島使用的版本，兩邊相容後就能一起遊玩。"
+	if required_protocol>current:
+		explanation="這座島使用較新的版本。請向島主確認要安裝哪一版。"
+	elif required_protocol>0 and required_protocol<current:
+		explanation="這座島使用較舊的版本。請向島主確認可用的版本，或等島主更新伺服器。"
 	var detail:Label=game.label(explanation,16)
+	detail.name="UpdateRequiredDetail"
 	detail.add_theme_color_override("font_color",Color("3d422d"))
 	detail.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(detail)
+	if required_protocol>0:
+		var protocol:Label=game.label("你的連線版本 %d　·　島嶼連線版本 %d"%[current,required_protocol],14)
+		protocol.name="UpdateRequiredProtocol"
+		protocol.add_theme_color_override("font_color",Color("4f5f4d"))
+		protocol.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		content.add_child(protocol)
 	var download_url:=update_page_url()
+	var download:Button
 	if not download_url.is_empty():
-		var download:Button=game.button("前往下載新版",func():
+		download=game.button("查看公開下載頁",func():
 			if OS.shell_open(download_url)!=OK:
 				detail.text="無法開啟更新頁。請用瀏覽器開啟 "+download_url)
-		for state in ["normal","hover","pressed"]:
-			download.add_theme_stylebox_override(state,Pixel.texture_style("button_pressed",3,8))
-		for color in ["font_color","font_hover_color","font_focus_color","font_pressed_color"]:
-			download.add_theme_color_override(color,Color("fff3cf"))
+		UpdateCard.style_primary(download)
 		content.add_child(download)
-	else:
-		var missing:Label=game.label("更新下載頁尚未設定，請向島主取得與伺服器相容的版本。",14)
-		missing.add_theme_color_override("font_color",Color("3d422d"))
-		missing.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-		content.add_child(missing)
 	var close:Button=game.button("稍後再說",overlay.queue_free)
 	close.flat=true
 	for color in ["font_color","font_hover_color","font_focus_color","font_pressed_color"]:
 		close.add_theme_color_override(color,Color("294335"))
 	content.add_child(close)
+	var buttons:Array[Button]=[close]
+	if download:buttons.append(download)
+	for i in buttons.size():
+		var control:=buttons[i]
+		var neighbor:=control.get_path_to(buttons[(i+1)%buttons.size()])
+		control.focus_next=neighbor
+		control.focus_previous=neighbor
+		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
+			control.set_focus_neighbor(side,neighbor)
+		control.gui_input.connect(func(event:InputEvent):
+			if event.is_action_pressed("ui_cancel") and not event.is_echo():
+				control.accept_event()
+				overlay.queue_free())
+	overlay.tree_exited.connect(func():
+		if is_instance_valid(previous_focus) and previous_focus.is_visible_in_tree():
+			previous_focus.grab_focus.call_deferred())
 	close.grab_focus.call_deferred()
 	return overlay
 

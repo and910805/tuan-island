@@ -81,15 +81,15 @@ const PROPOSED_ITEMS := {}
 ## via=craft → World.CRAFT[product].ingredients has item; via=recipe → World.RECIPES;
 ## via=build → World.BUILD[product] cost has item; via=process →
 ## World.INDUSTRY.PROCESS[product].ingredients has item; via=freight → mine_freight.ITEMS;
-## via=table_warmer → table_warmer.INSTALL_COST has item and product is its INSTALL_ACTION.
+## via=ship → shipping box pricing; via=table_warmer → table_warmer.INSTALL_COST has item and product is its INSTALL_ACTION.
 const RESOURCE_USES := [
 	{"item":"iron_ore","via":"process","product":"iron_ingot"},
 	{"item":"warm_stone","via":"table_warmer","product":"warmer_install"},
-	{"item":"ochre_earth","via":"build","product":"glass_furnace"},
+	{"item":"ochre_earth","via":"ship","product":""},
 	{"item":"vein_quartz","via":"process","product":"crystal_sand"},
 	{"item":"crystal_sand","via":"process","product":"glass"},
 	{"item":"stone","via":"craft","product":"kiln_kit"},
-	{"item":"stone","via":"craft","product":"mill_kit"},
+	{"item":"stone","via":"build","product":"mill"},
 	{"item":"stone","via":"freight","product":""},
 	{"item":"copper_ore","via":"craft","product":"copper_joint"},
 	{"item":"copper_ore","via":"freight","product":""},

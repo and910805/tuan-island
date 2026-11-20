@@ -543,7 +543,7 @@ func lantern_flow(label:String)->void:
 	check(await world_label(k(BUILD_CELL))==JG.LANTERN_NAME,"Lantern prompt (%s)"%label)
 	await interact_key()
 	check(layout_name()==UI.CARD_LAYOUT,"E at the lantern opens its card (%s): %s"%[label,layout_name()])
-	check(label_text("LanternName")==JG.LANTERN_NAME and label_text("LanternBlurb")==JG.LANTERN_BLURB and label_text("LanternSource")==JG.LANTERN_SOURCE and label_text("LanternProject")==JG.LANTERN_PROJECT,"Card texts (%s): %s"%[label,texts().replace("\n"," | ")])
+	check(Array(texts().split("\n")).count(JG.LANTERN_NAME)==1 and label_text("LanternBlurb")==JG.LANTERN_BLURB and label_text("LanternSource")==JG.LANTERN_SOURCE and label_text("LanternProject")==JG.LANTERN_PROJECT,"Card texts (%s): %s"%[label,texts().replace("\n"," | ")])
 	check(label_text("LanternOwner")=="擺放者・礦燈旅人","Card names who placed it (%s): %s"%[label,label_text("LanternOwner")])
 	var pic:=control("LanternIcon") as TextureRect
 	check(pic!=null and pic.texture==Art.lantern_texture(),"Card shows the lantern art (%s)"%label)

@@ -69,6 +69,9 @@ func _initialize() -> void:
 		p.x=spec.cell.x+0.5
 		p.y=spec.cell.y+1.5
 		p.inventory["feed"]=1
+		if World.LIVESTOCK.adoption_required(id):
+			p.coins=maxi(int(p.coins),int(World.LIVESTOCK.ADOPTION_COST[id]))
+			expect(world.act(token,"adopt-"+id,"livestock_adopt",spec.cell,id).ok,"D07: adopt "+id+" before feeding")
 		expect(world.act(token,"feed-"+id,"livestock_feed",spec.cell,id).ok and p.inventory.feed==0,"Feed one animal")
 		expect(not world.act(token,"early-"+id,"livestock_collect",spec.cell,id).ok,"Cannot collect before production")
 		expect(world.step(World.LIVESTOCK.DAY*int(spec.days),false) and world.state.livestock[id].ready==0,"An empty world does not produce")

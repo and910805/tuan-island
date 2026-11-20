@@ -98,7 +98,15 @@ func run() -> void:
 	r=quote(s,"alice","build",GAP,"door")
 	expect(r.ok and r.total_cost=={"wood":10,"fiber":14},"door closure total")
 	r=quote(s,"alice","build",GAP,"window")
-	expect(r.ok and r.total_cost=={"wood":10,"fiber":12,"stone":1},"window closure total")
+	expect(r.ok and r.total_cost=={"wood":8,"fiber":12,"glass":1},"window closure total (木窗: 4 wood + 1 glass, plus 4 roofs)")
+	# Dismantle preview: an untagged window refunds its legacy cost, a tagged one the new cost.
+	var windows:=snap()
+	windows.objects[k(SIDE)]=piece("window","alice")
+	r=quote(windows,"alice","remove",SIDE)
+	expect(r.ok and r.base_refund=={"wood":6,"stone":1},"legacy window preview refunds 6 wood + 1 stone")
+	windows.objects[k(SIDE)].wood_window=true
+	r=quote(windows,"alice","remove",SIDE)
+	expect(r.ok and r.base_refund=={"wood":4,"glass":1},"new window preview refunds 4 wood + 1 glass")
 	# Different actor closing someone else's room pays all roofs itself.
 	r=quote(s,"bob","build",GAP,"wall")
 	expect(r.ok and r.total_cost=={"wood":7,"fiber":12} and r.plan.add.values().all(func(v):return v.owner=="bob"),"closer pays and owns roofs")

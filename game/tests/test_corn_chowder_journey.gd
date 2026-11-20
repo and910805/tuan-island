@@ -147,9 +147,7 @@ func after_picnic_refusals() -> void:
 	crefuse("serve_chowder",table,"x",MSG_TABLE_WHERE,"serve with a non-empty extra")
 	crefuse("serve_chowder",BOARD_CELL,"",MSG_TABLE_WHERE,"serve aimed at the board, not the table")
 	crefuse("queue_cook",STOVE,CHOWDER,"缺少甜玉米 2","cook chowder with no corn and no milk")
-	crefuse("livestock_collect",cow_cell(),"cow",MSG_NO_PRODUCT,"collect from the cow before feeding")
-	if int(bag().get("feed",0))==0:
-		crefuse("livestock_feed",cow_cell(),"cow",MSG_NO_FEED,"feed the cow with no feed in the bag")
+	crefuse("livestock_collect",cow_cell(),"cow",L.NOT_ADOPTED_MESSAGE,"collect from the cow before adopting it")
 
 # ---------------------------------------------------------------- feed + cow
 
@@ -167,6 +165,9 @@ func feed_the_cow() -> void:
 	wait(float(recipe.time))
 	play("claim_cook",STOVE,"",{"feed":int(recipe["yield"])},0,"完成了！混合飼料 +%d"%int(recipe["yield"]))
 	expect(not person().collection.meals.has("feed"),"feed is not a meal discovery")
+	crefuse("livestock_feed",cow_cell(),"cow",L.NOT_ADOPTED_MESSAGE,"feed the cow before adopting it")
+	if not expect(int(person().coins)>=int(L.ADOPTION_COST.cow),"earned coins %d cover the cow adoption fee"%int(person().coins)):return
+	play("livestock_adopt",cow_cell(),"cow",{},-int(L.ADOPTION_COST.cow))
 	play("livestock_feed",cow_cell(),"cow",{"feed":-1},0,MSG_FED)
 	var animal:=cow()
 	expect(int(animal.get("feed",-1))==1 and int(animal.get("ready",-1))==0,"cow trough holds 1 feed, nothing ready (%s)"%JSON.stringify(animal))

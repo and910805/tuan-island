@@ -43,7 +43,7 @@ func run() -> void:
 		finish()
 		return
 	DirAccess.make_dir_recursive_absolute(dir)
-	expect(Schema.VERSION==26 and Schema.FLOWER_VERSION==25 and Schema.BAKERY_VERSION==24 and Schema.PUBLIC_KITCHEN_VERSION==23,"schema VERSION 26, FLOWER_VERSION 25, older cut-offs unchanged")
+	expect(Schema.VERSION==27 and Schema.FLOWER_VERSION==25 and Schema.BAKERY_VERSION==24 and Schema.PUBLIC_KITCHEN_VERSION==23,"schema VERSION 26, FLOWER_VERSION 25, older cut-offs unchanged")
 	var legacy:=legacy_doc()
 	test_migration(legacy)
 	test_forward_rejection(legacy)

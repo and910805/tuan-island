@@ -22,6 +22,8 @@ func _initialize() -> void:
 	var summer := Catalog.make_context(summer_day, true, false, [], World.CROP_SEASONS)
 	var winter := Catalog.make_context(winter_day, true, false, [], World.CROP_SEASONS)
 	expect(Catalog.validate_catalog().is_empty(), "Catalog IDs and material routes validate")
+	for definition:Dictionary in Catalog.orders():
+		expect(World.ORDER_BOARDS.has(definition.get("channel","village")),"Every order has a shared delivery destination")
 	expect(Catalog.candidate_ids(spring_day, spring) == ["radish", "fish", "bread"], "Spring offers crops, fish and bread")
 	expect(Catalog.candidate_ids(winter_day, winter) == ["fish"], "Winter excludes unavailable crops and dependent bread")
 	var now := float(spring_day) * Village.DAY + 100.0
@@ -46,5 +48,14 @@ func _initialize() -> void:
 	var expired := Catalog.check_delivery(saved_book, "radish", deadline, bag, summer)
 	expect(not expired.ok and expired.message == Catalog.MSG_EXPIRED, "Deadline is exclusive")
 	expect(Catalog.cancel(saved_book, "radish", later).book.active.is_empty() and saved_book.active.has("radish"), "Cancellation removes only the returned active entry")
+	var book_across_regions:={"active":{
+		"lanyang_rice":{"accepted":5.0,"due":1300.0},
+		"radish":{"accepted":0.0,"due":1500.0},
+		"dock_shrimp":{"accepted":1.0,"due":1000.0},
+	}}
+	var tracking:=Catalog.journal_rows(book_across_regions,1200.0)
+	expect(tracking.map(func(row):return row.id)==["lanyang_rice","radish","dock_shrimp"],"Cross-region journal lists active orders by nearest deadline, then expired")
+	expect(tracking[0].remaining==100.0 and tracking[2].status=="expired" and tracking[2].remaining==0.0,"Journal countdown and expiry use world time")
+	expect(book_across_regions.active.size()==3,"Reading the journal cannot change saved orders")
 	print("ORDER CATALOG checks=%d failures=%d" % [checks, failures])
 	quit(1 if failures else 0)

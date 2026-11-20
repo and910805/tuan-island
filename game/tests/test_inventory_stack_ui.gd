@@ -116,6 +116,7 @@ func key(code: Key) -> void:
 		e.keycode = code
 		e.physical_keycode = code
 		e.pressed = pressed
+		if code >= KEY_0 and code <= KEY_9:e.unicode = int(code)
 		root.push_input(e)
 	await frames()
 
@@ -353,6 +354,44 @@ func check_private_deposit() -> void:
 	chest_button("ChestWithdrawAll").pressed.emit()
 	expect(int(world.state.players.guest.inventory.wood)==7 and stored("wood")==0,"Authorized guest retrieves wood using actual UI")
 
+func check_exact() -> void:
+	set_counts(13, 4)
+	for size in [SIZES[0], SIZES[1]]:
+		root.content_scale_size = size
+		root.size = size
+		await open_chest()
+		var toggle := chest_button("ChestExactToggle")
+		expect(toggle != null and toggle.is_visible_in_tree(), "current server exposes specified quantity")
+		await click(toggle.get_global_rect().get_center())
+		var field := (app.modal as Node).find_child("ChestExactAmount",true,false) as LineEdit
+		var put := chest_button("ChestDepositExact")
+		var take := chest_button("ChestWithdrawExact")
+		expect(field.has_focus(), "opening editor focuses the input")
+		for control in [field, put, take]:
+			expect(control.is_visible_in_tree() and not_clipped(control), "custom quantity controls visible at %s"%str(size))
+			if control is Button:expect(control.size.x>=control.get_combined_minimum_size().x, "transfer label fits")
+		await key(KEY_5)
+		expect(field.text=="5" and not put.disabled and take.disabled, "five can be deposited but exceeds four in the box")
+		var screenshot_dir: String = app.arg_value("chest-qa-dir", "")
+		if not screenshot_dir.is_empty():
+			await RenderingServer.frame_post_draw
+			expect(root.get_texture().get_image().save_png(screenshot_dir.path_join("exact-%d.png" % size.x)) == OK, "capture custom quantity")
+		ready_to_act()
+		await click(put.get_global_rect().get_center())
+		expect(held("wood")==8 and stored("wood")==9 and not modal_open(), "exact five moved via the live box panel")
+		await open_chest()
+		await click(chest_button("ChestExactToggle").get_global_rect().get_center())
+		await key(KEY_3)
+		ready_to_act()
+		await click(chest_button("ChestWithdrawExact").get_global_rect().get_center())
+		expect(held("wood")==11 and stored("wood")==6 and not modal_open(), "exact three returned to the backpack")
+		set_counts(13, 4)
+	await open_chest()
+	app.session.snapshot.erase("chest_exact_transfer")
+	app.life_panels.refresh(app)
+	expect(not chest_button("ChestExactToggle").is_visible_in_tree() and not chest_button("ChestWithdrawHalf").disabled, "older room still has all preset moves")
+	await close_chest()
+
 func run() -> void:
 	create_timer(180.0).timeout.connect(func():
 		if not finished:
@@ -386,6 +425,7 @@ func run() -> void:
 	await check_press_half()
 	await check_keyboard()
 	await check_mouse()
+	await check_exact()
 	await check_private_deposit()
 	app.life_panels.updates.clear()
 	app.queue_free()

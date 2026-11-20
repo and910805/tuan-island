@@ -594,14 +594,13 @@ static func lantern_card(app,cell:Vector2i) -> void:
 	var row:=HBoxContainer.new()
 	row.add_theme_constant_override("separation",14)
 	card.add_child(row)
-	var art:=picture(Art.lantern_texture(),96)
+	var art:=picture(Art.lantern_texture(),88)
 	art.name="LanternIcon"
 	row.add_child(art)
 	var words:=VBoxContainer.new()
 	words.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	words.add_theme_constant_override("separation",3)
 	row.add_child(words)
-	_wrapped(app,words,"LanternName",20).text=JG.LANTERN_NAME
 	_wrapped(app,words,"LanternBlurb",15).text=JG.LANTERN_BLURB
 	_wrapped(app,words,"LanternSource",15,MUTED).text=JG.LANTERN_SOURCE
 	_wrapped(app,words,"LanternProject",15,MUTED).text=JG.LANTERN_PROJECT

@@ -78,6 +78,7 @@ func _initialize() -> void:
 	reopened.state.regions.erase("tianwei")
 	reopened.state.erase("salt_pan")
 	reopened.state.regions.erase("beimen")
+	reopened.state.regions.erase(World.REGIONS.Cart.REGION)
 	for region in World.REGIONS.ANGLING_RESERVES:reopened.state.regions.erase(region)
 	for region in World.TRANSIT.TEA_STOPS:reopened.state.regions.erase(region)
 	for region in World.TRANSIT.LOCAL:reopened.state.regions.erase(region)
@@ -86,7 +87,7 @@ func _initialize() -> void:
 	for region in World.MINES.IDS:reopened.state.regions.erase(region)
 	reopened.state.erase("mine_depths")
 	reopened.state.erase("lanyang_life")
-	expect(reopened.save() and reopened.load_world(path) and reopened.state.version == 26 and reopened.state.lanyang_life == Life.fresh(), "Old save without progress migrates cleanly")
+	expect(reopened.save() and reopened.load_world(path) and not reopened.recovered_from_backup and reopened.state.version == Schema.VERSION and reopened.state.lanyang_life == Life.fresh(), "Old primary save without progress migrates cleanly")
 	for file in [path,path+".bak"]:
 		DirAccess.remove_absolute(file)
 	print("LANYANG_LIFE_TESTS checks=%d failures=%d" % [checks,failures])

@@ -93,7 +93,7 @@ func _initialize() -> void:
 	expect(act("tea_sell","home",Tea.RECEIVER).ok and own().reuse_count==1 and own().returning.count==1 and own().empties==0,"Second sale counts reuse and starts auto return")
 	expect(Tea.price_for("deep","jar")>Tea.price_for("light","jar") and Tea.price_for("deep","jar")>Tea.price_for("deep","fiber"),"Roast and reusable packaging affect the price")
 	var reopened:=World.new()
-	expect(reopened.load_world(path) and not reopened.recovered_from_backup and reopened.state.version==26,"Reload v16 with automatic return in flight")
+	expect(reopened.load_world(path) and not reopened.recovered_from_backup and reopened.state.version==preload("res://scripts/save_schema.gd").VERSION,"Reload v16 with automatic return in flight")
 	world=reopened
 	expect(own().reuse_count==1 and not act("tea_sell","home",Tea.RECEIVER).ok,"Reload preserves reuse and prevents duplicate settlement")
 	expect(world.step(Tea.RETURN_SECONDS,true) and act("tea_reclaim",Tea.MAOKONG,Tea.PACKER).ok and not act("tea_reclaim",Tea.MAOKONG,Tea.PACKER).ok,"Automatic return can be claimed only once")
@@ -138,7 +138,7 @@ func _initialize() -> void:
 	legacy.erase("tea_ceramics")
 	for region in [Tea.MAOKONG,Tea.YINGGE]:legacy.regions.erase(region)
 	legacy.players[ALPHA].region="home"
-	expect(valid(legacy) and legacy.version==26 and legacy.tea_ceramics==Tea.fresh() and legacy.regions.has(Tea.MAOKONG),"v14 saves migrate with both regions and empty progress")
+	expect(valid(legacy) and legacy.version==preload("res://scripts/save_schema.gd").VERSION and legacy.tea_ceramics==Tea.fresh() and legacy.regions.has(Tea.MAOKONG),"v14 saves migrate with both regions and empty progress")
 	var session:=Session.new()
 	session.world=world
 	session.peers[1]=BETA

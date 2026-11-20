@@ -68,7 +68,8 @@ func shot(name:String)->void:
 	for tile in world.state.crops:
 		world.state.crops[tile].wet=false
 		world.state.crops[tile].growth=0.0
-	var covered:=World.key(Vector2i(43,35))
+	var exposed:=World.key(DEMO_CROP_START)
+	var covered:=World.key(DEMO_CROP_START+Vector2i.RIGHT)
 	world.state.ground[covered]={"type":"floor","owner":HOST,"items":{}}
 	world.state.roofs[covered]={"type":"roof","owner":HOST,"items":{}}
 	await weather_snapshot()
@@ -77,8 +78,8 @@ func shot(name:String)->void:
 	expect(world.step(2.0,true),"cross midnight through actual World.step")
 	await weather_snapshot()
 	expect(Weather.at(world.state.time).raining,"world entered rainy day")
-	expect(world.state.crops["40,35"].wet,"actual rain wets exposed plot")
-	expect(not world.state.crops[covered].wet,"actual roof excludes rain")
+	expect(world.state.crops.get(exposed,{}).get("wet",false),"actual rain wets exposed plot")
+	expect(not world.state.crops.get(covered,{}).get("wet",true),"actual roof excludes rain")
 	expect(app.status_label.text.contains("小雨"),"native rain HUD matches authoritative world time")
 	var before:=JSON.stringify(world.state)
 	for i in 4:await weather_frame("weather-rain-%02d"%i,false,float(i)*0.25)

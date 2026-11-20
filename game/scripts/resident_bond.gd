@@ -299,7 +299,7 @@ static func view(person:Dictionary,now:float) -> Dictionary:
 	var result:={}
 	for resident:String in RESIDENTS:
 		var own:=record(person,resident)
-		var total:=points(person,resident)
+		var total:=mini(LIMIT,int(own.points)+STORY_POINTS*story_count(person,resident))
 		var reached:=stage_for(total)
 		result[resident]={"points":total,"stage":reached,"stage_name":stage_name(reached),
 			"next":int(THRESHOLDS[reached]) if reached<THRESHOLDS.size() else LIMIT,

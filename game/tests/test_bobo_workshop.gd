@@ -52,13 +52,15 @@ func _initialize()->void:
 	w.state.regions.erase("beimen")
 	for region in World.REGIONS.ANGLING_RESERVES:w.state.regions.erase(region)
 	for region in World.TRANSIT.LOCAL:w.state.regions.erase(region)
+	# Historical fixture predates the party-cart gallery region too (same as the other v7 tests).
+	w.state.regions.erase(World.PARTY_CART.REGION)
 	w.state.erase("bobo_workshop")
 	for actor in w.state.players:w.state.players[actor].stories.erase("bobo")
 	w.state.regions.jinguashi.objects.erase("21,21")
 	for index in range(Bobo.SITE_PAIRS.size()-1):
 		for point:Vector2i in Bobo.SITE_PAIRS[index]:
 			w.state.regions.jinguashi.objects[World.key(point)]={"type":"wall","owner":"alpha","items":{}}
-	expect(w.save() and w.load_world(path) and w.state.version==26 and w.state.players.alpha.stories.bobo==0 and w.state.mine_freight.jobs.alpha.status=="delivered","Version seven migration preserves freight")
+	expect(w.save() and w.load_world(path) and w.state.version==preload("res://scripts/save_schema.gd").VERSION and w.state.players.alpha.stories.bobo==0 and w.state.mine_freight.jobs.alpha.status=="delivered","Version seven migration preserves freight")
 	var fallback:=Bobo.sites(w.state)
 	expect(fallback.table==Vector2i(5,20) and w.state.regions.jinguashi.objects.size()==6,"All old walls preserved with a new workshop annex")
 	w.switch_region("jinguashi")

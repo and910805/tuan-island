@@ -78,7 +78,8 @@ func _initialize()->void:
 
 	# h) Static wiring: labels, indoor weather, region list, helper tables.
 	expect(Mines.IDS.size()==15 and Mines.IDS[14]=="mine_15" and Mines.SHALLOW_DEPTH==5 and Mines.MAX_DEPTH==15,"Mines ships fifteen floors")
-	expect(Regions.ALL.slice(Regions.ALL.size()-10)==Catalog.region_ids(),"Regions.ALL ends with mine_6..mine_15")
+	var first_deep_region:=Regions.ALL.find("mine_6")
+	expect(first_deep_region>=0 and Regions.ALL.slice(first_deep_region,first_deep_region+10)==Catalog.region_ids(),"Regions.ALL lists mine_6 through mine_15 in order")
 	expect(Regions.label("mine_12")=="合作礦場第 12 層","Deep floor label uses the shared mine wording")
 	expect(Weather.is_indoor("mine_15") and str(Weather.at(2.0*Weather.DAY_SECONDS,"mine_15").id)=="indoor","Deepest floor is indoor and never rains")
 	for depth in range(6,16):
@@ -244,7 +245,7 @@ func _initialize()->void:
 	var reload:=World.new()
 	expect(FileAccess.file_exists(path) and reload.load_world(path) and not reload.recovered_from_backup,"Deep save loads")
 	var back:Dictionary=reload.state.players.get(Actor,{})
-	expect(int(reload.state.version)==26 and int(reload.state.mine_depths.unlocked)==15 and int(reload.state.mine_depths.pumped)==24 and reload.state.mine_depths.get("hoist")==true,"Unlocked 15 and the repaired hoist persist without a version bump")
+	expect(int(reload.state.version)==preload("res://scripts/save_schema.gd").VERSION and int(reload.state.mine_depths.unlocked)==15 and int(reload.state.mine_depths.pumped)==24 and reload.state.mine_depths.get("hoist")==true,"Unlocked 15 and the repaired hoist persist without a version bump")
 	var local_mine_bits:=3<<World.ISLAND_NOTES.PROJECTS.size()
 	expect((reload.island_news_project_mask() & local_mine_bits)==local_mine_bits and (reload.island_project_mask() & local_mine_bits)==0,"Completed B15 and hoist appear in the news outside the festival checklist")
 	expect(reload.act(Actor,rid("read-mine-news"),"news_read",Vector2i.ZERO,str(local_mine_bits)).ok and reload.save(),"Mining news can be marked read in a valid save")
@@ -319,7 +320,7 @@ func _initialize()->void:
 		added=added and layer is Dictionary and (layer.get("objects",{}) as Dictionary).is_empty() and (layer.get("crops",{}) as Dictionary).is_empty()
 	expect(added and old.state.regions.size()==Regions.ALL.size()-1,"Loading adds empty mine_6..mine_15 regions")
 	var loaded_depths:Dictionary=old.state.mine_depths
-	expect(int(old.state.version)==26 and loaded_depths.size()==legacy_depths.size()+1 and loaded_depths.get("hoist")==false and int(loaded_depths.unlocked)==5 and int(loaded_depths.pumped)==24 and (loaded_depths.ready as Dictionary).size()==(legacy_depths.ready as Dictionary).size(),"Legacy mine_depths unchanged")
+	expect(int(old.state.version)==preload("res://scripts/save_schema.gd").VERSION and loaded_depths.size()==legacy_depths.size()+1 and loaded_depths.get("hoist")==false and int(loaded_depths.unlocked)==5 and int(loaded_depths.pumped)==24 and (loaded_depths.ready as Dictionary).size()==(legacy_depths.ready as Dictionary).size(),"Legacy mine_depths unchanged")
 	expect(old.player_region(Actor)=="mine_5","Legacy player stays on B5")
 
 	if failures==0:

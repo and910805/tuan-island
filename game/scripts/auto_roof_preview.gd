@@ -36,14 +36,16 @@ extends RefCounted
 
 const Plan = preload("res://scripts/auto_roof_plan.gd")
 const WORLD_PATH := "res://scripts/world.gd"
-const BUILD_KINDS := ["floor", "path", "spring_pebble_path", "wall", "window", "door", "roof"]
-const AREA_KINDS := ["floor", "path", "spring_pebble_path", "roof"]
-const GROUND_KINDS := ["floor", "path", "spring_pebble_path"]
+const Enclosure = preload("res://scripts/room_enclosure.gd")
+const EdgeConstruction = preload("res://scripts/edge_construction.gd")
+const BUILD_KINDS := ["floor", "stone_floor", "path", "spring_pebble_path", "wall", "window", "door", "roof"]
+const AREA_KINDS := ["floor", "stone_floor", "path", "spring_pebble_path", "roof"]
+const GROUND_KINDS := ["floor", "stone_floor", "path", "spring_pebble_path"]
 const BOUNDARY := ["wall", "window", "door"]
 const MAX_AREA := 25
 const MAX_AREA_END := 1000
 const MAX_COORD := Plan.MAX_COORD
-const LAYERS := ["ground", "objects", "roofs"]
+const LAYERS := ["ground", "objects", "roofs", "edges"]
 
 const MSG_ACTOR := "無法確認施工者，請重新整理後再試"
 const MSG_ACTION := "這個動作沒有施工預覽"
@@ -72,7 +74,27 @@ static func quote(snapshot: Dictionary, actor: String, action: String, at: Vecto
 			return _quote_build(snapshot, layers, build, actor, area.kind, area.tiles)
 		"remove":
 			return _quote_remove(snapshot, layers, build, actor, at)
+		"build_edge", "remove_edge":
+			return _quote_edge(layers, build, actor, action, at, extra)
 	return _fail(MSG_ACTION)
+
+static func _quote_edge(layers:Dictionary,build:Dictionary,actor:String,action:String,at:Vector2i,extra:String) -> Dictionary:
+	var target:=EdgeConstruction.decode(action,at,extra,Vector2i(80,60))
+	if target.is_empty():return _fail(MSG_RANGE)
+	var edges:Dictionary=layers.edges
+	var after:=layers.duplicate(false)
+	after.edges=edges.duplicate(false)
+	if action=="build_edge":
+		if edges.has(target.id):return _fail("這一段已有牆、窗或門")
+		var row:Dictionary={"type":target.kind,"owner":actor}
+		if target.kind=="edge_door":row.open=false
+		after.edges[target.id]=row
+		return _finish(layers,after,target.cells,actor,build,EdgeConstruction.COSTS[target.kind],{})
+	var existing:Dictionary=edges.get(target.id,{})
+	if existing.is_empty() or existing.get("owner")!=actor:return _fail("只能拆除自己放置的牆段")
+	if not EdgeConstruction.COSTS.has(existing.get("type")):return _fail(MSG_DATA)
+	after.edges.erase(target.id)
+	return _finish(layers,after,target.cells,actor,build,{},EdgeConstruction.COSTS[existing.type])
 
 # --- build ------------------------------------------------------------------
 
@@ -90,9 +112,9 @@ static func _quote_build(snapshot: Dictionary, layers: Dictionary, build: Dictio
 			if layer.has(k) and not _entry_ok(layer[k]):return _fail(MSG_DATA)
 		if kind == "roof":
 			var g = ground.get(k)
-			if roofs.has(k):return _fail("整片屋頂都需要自己的木地板，且不能重疊屋頂" if area else "這裡已經有屋頂")
-			if not (g is Dictionary) or g.type != "floor":return _fail("整片屋頂都需要自己的木地板，且不能重疊屋頂" if area else "先鋪木地板，再蓋上屋頂")
-			if g.owner != actor:return _fail("整片屋頂都需要自己的木地板，且不能重疊屋頂" if area else "只能在自己的地板上蓋屋頂")
+			if roofs.has(k):return _fail("整片屋頂都需要自己的地板，且不能重疊屋頂" if area else "這裡已經有屋頂")
+			if not Enclosure.is_floor_piece(g):return _fail("整片屋頂都需要自己的地板，且不能重疊屋頂" if area else "先鋪地板，再蓋上屋頂")
+			if g.owner != actor:return _fail("整片屋頂都需要自己的地板，且不能重疊屋頂" if area else "只能在自己的地板上蓋屋頂")
 			continue
 		var occupied: bool = crops.has(k) or forest.has(k) or objects.has(k)
 		if area and ground.has(k):occupied = true
@@ -101,14 +123,14 @@ static func _quote_build(snapshot: Dictionary, layers: Dictionary, build: Dictio
 	if not build.has(kind) or not (build[kind] is Dictionary):return _fail(MSG_DATA)
 	var base_cost := _scaled(build[kind], tiles.size())
 	# Structural delta: only floor (ground) and wall/window/door (objects) change rooms.
-	if kind == "floor" or kind in BOUNDARY:
-		var field := "ground" if kind == "floor" else "objects"
+	if Enclosure.is_floor_kind(kind) or kind in BOUNDARY:
+		var field := "ground" if Enclosure.is_floor_kind(kind) else "objects"
 		var copy: Dictionary = (layers[field] as Dictionary).duplicate(false)
 		for t in tiles:
 			var obj := {"type": kind, "owner": actor, "items": {}}
 			if kind == "door":obj.open = false
 			copy[_key(t)] = obj
-		var after := {"ground": ground, "objects": objects, "roofs": roofs}
+		var after := layers.duplicate(false)
 		after[field] = copy
 		return _finish(layers, after, tiles, actor, build, base_cost, {})
 	return _finish_static(base_cost, {}, actor, "可以施工，屋頂不需要調整")
@@ -157,13 +179,16 @@ static func _quote_remove(snapshot: Dictionary, layers: Dictionary, build: Dicti
 	for amount in items.values():
 		if (typeof(amount) == TYPE_INT or typeof(amount) == TYPE_FLOAT) and amount > 0:return _fail("箱子還有物品，先取出再拆除")
 	if not build.has(obj.type):return _fail("這裡沒有可拆除的建物")
-	var base_refund := _scaled(build[obj.type], 1)
-	var structural: bool = (field == "ground" and obj.type == "floor") or (field == "objects" and obj.type in BOUNDARY)
+	var refund_recipe = build[obj.type]
+	# Untagged windows predate 木窗 and refund their original 6 wood + 1 stone (world.gd LEGACY_WINDOW_COST).
+	if obj.type == "window" and obj.get("wood_window") != true:refund_recipe = {"wood": 6, "stone": 1}
+	var base_refund := _scaled(refund_recipe, 1)
+	var structural: bool = (field == "ground" and Enclosure.is_floor_kind(obj.type)) or (field == "objects" and obj.type in BOUNDARY)
 	if not structural:return _finish_static({}, base_refund, actor, "可以拆除，屋頂不需要調整")
 	var copy: Dictionary = (layers[field] as Dictionary).duplicate(false)
 	copy.erase(k)
 	# Any auto roof above stays in `after`; reconcile decides keep vs refund.
-	var after := {"ground": ground, "objects": objects, "roofs": roofs}
+	var after := layers.duplicate(false)
 	after[field] = copy
 	return _finish(layers, after, [at], actor, build, {}, base_refund)
 

@@ -1,14 +1,15 @@
 extends "res://tests/test_regions_journey.gd"
 
+const GARDEN_JOURNEY_BENCH := Vector2i(36,35)
+
 func after_chapter() -> void:
 	super.after_chapter()
 	if failed:return
-	var bench := Vector2i(40,35)
 	var mill := Vector2i(40,36)
 	gather("wood","tree","axe",42,3)
 	gather("stone","rock","pick",17,2)
-	act("build",bench,"bench")
-	act("craft",bench,"sawmill_kit")
+	act("build",GARDEN_JOURNEY_BENCH,"bench")
+	act("craft",GARDEN_JOURNEY_BENCH,"sawmill_kit")
 	act("build",mill,"sawmill")
 	for count in range(3):
 		mill_batch(mill)

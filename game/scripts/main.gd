@@ -11,6 +11,10 @@ const IslandMap=preload("res://scripts/island_map.gd")
 const LifeTheme=preload("res://scripts/life_ui_theme.gd")
 const LifePanels=preload("res://scripts/life_ui_panels.gd")
 const LifeTasks=preload("res://scripts/life_ui_tasks.gd")
+const AruRest=preload("res://scripts/aru_rest.gd")
+const RoundedTableUI=preload("res://scripts/rounded_table_ui.gd")
+const StoneWorkbenchUI=preload("res://scripts/stone_workbench_ui.gd")
+const PostcardRackUI=preload("res://scripts/postcard_rack_ui.gd")
 const ChapterUI=preload("res://scripts/chapter_ui.gd")
 const TeaUI=preload("res://scripts/tea_ceramics_ui.gd")
 const FlowerUI=preload("res://scripts/flower_nursery_ui.gd")
@@ -30,6 +34,8 @@ const GoldPanUI=preload("res://scripts/gold_panning_ui.gd")
 const OreRouteUI=preload("res://scripts/ore_route_ui.gd")
 const MineUI=preload("res://scripts/mine_ui.gd")
 const MineSurveyUI=preload("res://scripts/mine_survey_ui.gd")
+const GuardianUI=preload("res://scripts/sleepy_stone_guardian_ui.gd")
+const ShyUI=preload("res://scripts/shy_mushroom_ui.gd")
 const FreightUI=preload("res://scripts/freight_ui.gd")
 const AutoFreightUI=preload("res://scripts/auto_freight_ui.gd")
 const BoboSortUI=preload("res://scripts/bobo_sort_ui.gd")
@@ -42,10 +48,26 @@ const CommunityUI=preload("res://scripts/community_ui.gd")
 const InventoryPanel=preload("res://scripts/inventory_panel.gd")
 const ShippingPanel=preload("res://scripts/shipping_panel.gd")
 const MarketUI=preload("res://scripts/market_stall_ui.gd")
+const SpringGardenUI=preload("res://scripts/spring_garden_ui.gd")
+const SeaFairUI=preload("res://scripts/sea_breeze_fair_ui.gd")
+const AutumnFeastUI=preload("res://scripts/autumn_feast_ui.gd")
+const StrollUI=preload("res://scripts/lantern_stroll_ui.gd")
+const StrollArt=preload("res://scripts/lantern_stroll_art.gd")
+const WarmNightUI=preload("res://scripts/warm_lantern_night_ui.gd")
+const WarmLanternArt=preload("res://scripts/warm_lantern_night_art.gd")
+const BeachTreasureUI=preload("res://scripts/beach_treasure_ui.gd")
+const BeachTreasureArt=preload("res://scripts/beach_treasure_art.gd")
+const PartyCartUI=preload("res://scripts/party_cart_ui.gd")
+const PartyCartArt=preload("res://scripts/party_cart_art.gd")
+const LostChicksUI=preload("res://scripts/lost_chicks_ui.gd")
+const CookingRelayUI=preload("res://scripts/cooking_relay_ui.gd")
+const LostChicksArt=preload("res://scripts/lost_chicks_art.gd")
+const CookingRelayArt=preload("res://scripts/cooking_relay_art.gd")
 const HarvestUI=preload("res://scripts/harvest_relay_ui.gd")
 const FishMeetUI=preload("res://scripts/fishing_meet_ui.gd")
 const ShowcaseUI=preload("res://scripts/showcase_ui.gd")
 const SouvenirUI=preload("res://scripts/souvenir_exchange_ui.gd")
+const PublicTillerUI=preload("res://scripts/public_tiller_ui.gd")
 const MemoryExhibitUI=preload("res://scripts/memory_exhibit_ui.gd")
 const LifeShell=preload("res://scripts/life_ui_shell.gd")
 const WanganOpening=preload("res://scripts/wangan_opening.gd")
@@ -59,6 +81,7 @@ const WindowsUpdateStage=preload("res://scripts/windows_update_stage.gd")
 const WindowsUpdateLaunch=preload("res://scripts/windows_update_launch.gd")
 const WindowsUpdateDownload=preload("res://scripts/windows_update_download.gd")
 const LifeAlmanac=preload("res://scripts/life_ui_almanac.gd")
+const OrderJournal=preload("res://scripts/order_journal_ui.gd")
 const AutomationUI=preload("res://scripts/automation_ui.gd")
 const IndustryUI=preload("res://scripts/industry_ui.gd")
 const ForestryUI=preload("res://scripts/forestry_ui.gd")
@@ -77,8 +100,12 @@ const BLUEPRINT_LOCAL_MODES:=["capture","placing"]
 const BLUEPRINT_SENT_MODES:=["submitting","unknown"]
 const TEXT_SCALE_FACTORS:=[0.9,1.0,1.12,1.25]
 const TOOL_ACTIONS:=["hoe","seed","water","harvest","axe","pick","build","remove","fish","plant_tree","till_area","seed_area","harvest_area","move_object"]
+const REMOVE_TOOL_HINT:="拆除 · 家具退材料、樹苗可移回背包、空農田可恢復草地"
 ## Build actions that may add/remove automatic roofs; every other action is forwarded untouched.
-const ROOF_QUOTE_ACTIONS:=["build","remove","build_area"]
+const ROOF_QUOTE_ACTIONS:=["build","remove","build_area","build_edge","remove_edge"]
+const EDGE_BUILD_TYPES:=["wall","door","window"]
+const STRUCTURE_VIEW_PENDING:="遠處的建築資料還在更新，請再試一次"
+const EDGE_SIDE_NAMES:=["北","東","南","西"]
 ## Loaded lazily so the client still runs (forwarding every action) if the preview script is absent.
 const AUTO_ROOF_PREVIEW_PATH:="res://scripts/auto_roof_preview.gd"
 var bindings=InputBindings.new()
@@ -113,10 +140,14 @@ var selected:="hoe"
 var crop:="radish"
 var building:="floor"
 var building_style:=""
+var building_on_edge:=false
+var edge_controller_side:=0
+var mill_build_facing := 0
 var controller_sticks:Dictionary={}
 var controller_device:=-1
 var controller_protected:=false
 var controller_aim:=false
+var controller_farm_wide:=false
 var controller_navigation:=false
 var mute_emotes:=false
 var mute_chat:=false
@@ -134,6 +165,7 @@ var voyage_photo:Button
 var voyage_active:=false
 var tool_buttons:Array[Button]=[]
 var input_clock:=0.0
+var last_sent_movement:=Vector2.ZERO
 var action_clock:=0.0
 const GATHER_MOUSE:=-2
 const GATHER_NONE:=-1
@@ -164,6 +196,8 @@ var logistics_ui=LogisticsUI.new()
 var modal_shade:ColorRect
 var modal_feedback:Label
 var settings_path:="user://settings.cfg"
+var default_frame_limit:=0
+var default_vsync_mode:=DisplayServer.VSYNC_ENABLED
 var preview_toolbar:PanelContainer
 var preview_top:HBoxContainer
 var coin_label:Label
@@ -200,6 +234,12 @@ func _ready() -> void:
 	session.connected_world.connect(_entered)
 	session.disconnected_world.connect(_disconnected)
 	var args:=OS.get_cmdline_user_args()
+	var launch_args:=OS.get_cmdline_args()
+	if OS.has_feature("windows") and DisplayServer.get_name()!="headless" and "--server" not in args \
+			and "--script" not in launch_args and "-s" not in launch_args \
+			and "--windowed" not in args and "-w" not in args \
+			and "--windowed" not in launch_args and "-w" not in launch_args:
+		get_window().mode=Window.MODE_FULLSCREEN
 	if "--server" in args:
 		if not _configure_identity_server():
 			push_error("封測世界身分設定不完整或無法載入。")
@@ -223,12 +263,17 @@ func _ready() -> void:
 	add_child(sound)
 	settings_path=arg_value("settings",settings_path)
 	sound.load_preferences(settings_path)
+	if DisplayServer.get_name()!="headless":
+		default_frame_limit=Engine.max_fps
+		default_vsync_mode=DisplayServer.window_get_vsync_mode()
+		if sound.display_compatibility:_apply_display_preferences()
 	sound.set_title()
 	bindings.load_preferences(arg_value("bindings","user://input-bindings.cfg"))
 	view=View.new()
 	if village_art_preview:view.village_art_preview=true
 	add_child(view)
 	view.reduced_motion=sound.reduced_motion
+	view.stroll_dim=sound.stroll_dim
 	view.zoom=float(sound.preferred_zoom)
 	view.fixed_area_camera=sound.fixed_area_camera
 	view.label_text_scale=font_scale_factor()
@@ -325,9 +370,15 @@ func _resume_installed_update()->void:
 
 func _show_version_update(info:Dictionary) -> void:
 	if not is_instance_valid(ui):return
+	var previous_focus:=get_viewport().gui_get_focus_owner()
+	if is_instance_valid(version_update_dialog):
+		var saved_focus:WeakRef=version_update_dialog.get_meta("return_focus")
+		previous_focus=saved_focus.get_ref()
 	if is_instance_valid(version_update_dialog):version_update_dialog.queue_free()
 	var overlay:=Control.new()
 	overlay.name="VersionUpdateOverlay"
+	var return_focus:WeakRef=weakref(previous_focus) if is_instance_valid(previous_focus) else WeakRef.new()
+	overlay.set_meta("return_focus",return_focus)
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter=Control.MOUSE_FILTER_STOP
 	overlay.theme=menu.theme if is_instance_valid(menu) else theme()
@@ -363,7 +414,14 @@ func _show_version_update(info:Dictionary) -> void:
 		if error!=OK:_notice("無法開啟下載頁，請稍後從官方公告取得新版。",false)
 	)
 	content.add_child(download)
-	var dismiss:=button("稍後再說",func():overlay.queue_free();version_update_dialog=null)
+	var dismiss:=button("稍後再說",func():
+		overlay.hide()
+		overlay.queue_free()
+		version_update_dialog=null
+		var previous:Control=return_focus.get_ref()
+		if is_instance_valid(previous) and previous.is_visible_in_tree():previous.grab_focus()
+		else:_focus_controller_menu(menu)
+	)
 	if not archive.is_empty():
 		var status:=label("",15)
 		status.name="UpdateArchiveStatus"
@@ -445,6 +503,8 @@ func _show_version_update(info:Dictionary) -> void:
 				status.text="正在連接下載站…"
 				var result:=await transfer.fetch(archive)
 				if not is_instance_valid(overlay):return
+				var progress:=overlay.find_child("UpdateDownloadProgress",true,false) as ProgressBar
+				if progress:progress.hide()
 				fetch.disabled=result.ok
 				dismiss.disabled=false
 				validate.disabled=false
@@ -459,7 +519,12 @@ func _show_version_update(info:Dictionary) -> void:
 			status.text="驗證通過，檔案符合發行清單。" if valid else "驗證失敗，請從下載頁重新取得。"
 		)
 	content.add_child(dismiss)
+	preload("res://scripts/update_card.gd").arrange(self,overlay,info)
 	version_update_dialog=overlay
+	gather_hold.clear()
+	area_drag=false
+	capture_drag=false
+	if playing:session.input_direction(Vector2.ZERO)
 
 func _configure_identity_server() -> bool:
 	var public_address:=server_setting("public-address","GAME_PUBLIC_ADDRESS","")
@@ -720,12 +785,8 @@ func binding_label(action:String) -> String:
 	return bindings.label(action)
 
 func binding_text(text:String) -> String:
-	text=text.replace("{movement}",movement_hint())
 	for action in InputBindings.DEFAULTS:text=text.replace("{"+action+"}",binding_label(action))
 	return text
-
-func movement_hint() -> String:
-	return "/".join([binding_label("move_up"),binding_label("move_left"),binding_label("move_down"),binding_label("move_right")])
 
 func _bindings_menu() -> void:
 	var controls:=InputBindingsPanel.new()
@@ -754,6 +815,7 @@ func _refresh_bound_controls(parent:Node) -> void:
 		_refresh_bound_controls(child)
 
 func _world_keyboard_allowed() -> bool:
+	if is_instance_valid(version_update_dialog):return false
 	if voyage_active:return false
 	if not playing or modal!=null or (menu and menu.visible):return false
 	var focus:=get_viewport().gui_get_focus_owner()
@@ -957,7 +1019,7 @@ func _make_menu() -> void:
 	key_input.secret=true
 	col.add_child(key_input)
 	col.add_child(button("加入朋友的小島",_join))
-	col.add_child(label("{movement} 移動  ·  左鍵使用工具  ·  {interact} 互動\n工具鍵可自訂  ·  {build_menu} 建造  ·  {inventory} 背包  ·  Esc 選單",15))
+	col.add_child(label("左鍵使用工具  ·  {interact} 互動\n工具鍵可自訂  ·  {build_menu} 建造  ·  {inventory} 背包  ·  Esc 選單",15))
 	col.add_child(label("作物以 75–150 秒成熟供測試；關閉世界會暫停生長。\n原型不含正式帳號服務，僅供自己的電腦或可信任區網測試。",13))
 	toast=label("歡迎來到島上。先替自己取個名字吧。",16)
 	toast.position=Vector2(270,755)
@@ -1132,6 +1194,9 @@ func _layout_preview() -> void:
 			modal.size=Vector2(minf(920,bounds.x-48),minf(500,bounds.y-64))
 			modal.position=(bounds-modal.size)/2
 		match str(modal.get_meta("life_modal_layout","")):
+			"locked_shared_chest":
+				modal.size=Vector2(minf(520,bounds.x-48),minf(222,bounds.y-64))
+				modal.position=(bounds-modal.size)/2
 			"livestock_card":
 				modal.size=Vector2(minf(510,bounds.x-48),minf(500 if modal.has_meta("cow_care") else (470 if modal.has_meta("sheep_brushing") else 415),bounds.y-48))
 				modal.position=Vector2(bounds.x-modal.size.x-24,bounds.y-modal.size.y-24)
@@ -1175,14 +1240,100 @@ func _layout_preview() -> void:
 				GoldPanUI.layout(self,bounds)
 			"ore_route":
 				OreRouteUI.layout(self,bounds)
+			"sleepy_guardian":
+				GuardianUI.layout(self,bounds)
 			"mine_drill":
 				modal.size=Vector2(minf(440,bounds.x-48),minf(590,bounds.y-48))
 				modal.position=Vector2(bounds.x-modal.size.x-24,(bounds.y-modal.size.y)/2)
 			"waterworks":
 				modal.size=Vector2(minf(900,bounds.x-48),minf(570,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
+			"mushroom_table":
+				modal.size=Vector2(minf(536,bounds.x-48),minf(448,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"bamboo_tea_table":
+				modal.size=Vector2(minf(520,bounds.x-48),minf(520,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"mushroom_mail":
+				modal.size=Vector2(minf(770,bounds.x-48),minf(414,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"leaf_desk":
+				modal.size=Vector2(minf(620,bounds.x-48),minf(344,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"bark_frame":
+				var height:=355.0+42.0*maxi(0,int(modal.get_meta("photo_choices",0))-2)
+				modal.size=Vector2(minf(650,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"acorn_cabinet":
+				modal.size=Vector2(minf(690,bounds.x-48),minf(530,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"tea_snack_shelf":
+				modal.size=Vector2(minf(700,bounds.x-48),minf(550,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"shell_table","hollow_bed","leaf_mat":
+				modal.size=Vector2(minf(470,bounds.x-48),minf(288,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"cotton_sofa":
+				modal.size=Vector2(minf(450,bounds.x-48),minf(230,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"tool_board":
+				modal.size=Vector2(minf(530,bounds.x-48),minf(350,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"bookcase", "bookcase_compact":
+				var bookcase_height:=310.0 if modal.get_meta("life_modal_layout")=="bookcase_compact" else 396.0
+				modal.size=Vector2(minf(500,bounds.x-48),minf(bookcase_height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"rounded_table":
+				modal.size=Vector2(minf(620,bounds.x-48),minf(414,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
 			"keepsake_paper":
 				modal.size=Vector2(minf(690,bounds.x-48),minf(420,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"sheep_comfort_project":
+				var extra:float=modal.get_meta("sheep_project_extra_height",0.0)
+				var height:=344.0+extra+maxf(0.0,font_scale_factor()-1.0)*208.0
+				modal.size=Vector2(minf(680,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"diandian_painting":
+				var height:=464.0+maxf(0.0,font_scale_factor()-1.0)*100.0
+				modal.size=Vector2(minf(690,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"chacha_tea_gathering":
+				var base_height:=510.0 if modal.get_meta("compact_tea_recollection",false) else 464.0
+				var height:=base_height+maxf(0.0,font_scale_factor()-1.0)*160.0
+				modal.size=Vector2(minf(690,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"chacha_handwritten_menu":
+				var height:=502.0+maxf(0.0,font_scale_factor()-1.0)*160.0
+				modal.size=Vector2(minf(740,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"achao_knot_memory":
+				var height:=432.0+maxf(0.0,font_scale_factor()-1.0)*120.0
+				modal.size=Vector2(minf(690,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"achao_route_chart":
+				var regional:bool=modal.get_meta("achao_regional_map",false)
+				var height:=624.0 if regional else 500.0+maxf(0.0,font_scale_factor()-1.0)*120.0
+				modal.size=Vector2(minf(760,bounds.x-48),minf(height,bounds.y-(16 if regional else 36)))
+				modal.position=(bounds-modal.size)/2
+			"achao_voyage":
+				var height:=444.0+maxf(0.0,font_scale_factor()-1.0)*140.0
+				modal.size=Vector2(minf(720,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"achao_voyage_reward":
+				var height:=500.0+maxf(0.0,font_scale_factor()-1.0)*160.0
+				modal.size=Vector2(minf(720,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"achao_album":
+				var height:=562.0+maxf(0.0,font_scale_factor()-1.0)*120.0
+				modal.size=Vector2(minf(720,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"public_tiller":
+				var height:=365.0+maxf(0.0,font_scale_factor()-1.0)*100.0
+				modal.size=Vector2(minf(580,bounds.x-48),minf(minf(height,400.0),bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"riverside_screen":
+				modal.size=Vector2(minf(470,bounds.x-48),minf(306,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
 			"welcome_sign_read", "welcome_sign_edit":
 				var height:=460.0 if modal.get_meta("life_modal_layout")=="welcome_sign_edit" else 310.0
@@ -1191,15 +1342,78 @@ func _layout_preview() -> void:
 			"inn_tea_table", "inn_wardrobe":
 				modal.size=Vector2(minf(520,bounds.x-48),minf(360,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
+			"forest_wardrobe":
+				var wardrobe_height:=472.0 if modal.get_meta("forest_wardrobe_apron",false) else 392.0
+				modal.size=Vector2(minf(480,bounds.x-48),minf(wardrobe_height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"cedar_bed":
+				modal.size=Vector2(minf(480,bounds.x-48),minf(346,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"nursery_box":
+				modal.size=Vector2(minf(560,bounds.x-48),minf(494,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"fish_counter":
+				modal.size=Vector2(minf(620,bounds.x-48),minf(384,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"tea_display_cabinet":
+				modal.size=Vector2(minf(620,bounds.x-48),minf(464,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"postcard_rack":
+				modal.size=Vector2(minf(630,bounds.x-48),minf(392,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
 			"station_dialogue":
 				modal.size=Vector2(minf(900,bounds.x-48),minf(320,bounds.y-48))
 				modal.position=Vector2((bounds.x-modal.size.x)/2,bounds.y-modal.size.y-24)
 			"station_memory":
 				modal.size=Vector2(minf(820,bounds.x-48),minf(510,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
+			"bobo_rock_guide":
+				var story_open:=modal.name=="BoboRockStory"
+				var height:float=(430.0 if story_open else 548.0)+maxf(0.0,font_scale_factor()-1.0)*120.0
+				modal.size=Vector2(minf(728 if story_open else 764,bounds.x-48),minf(height,bounds.y-48))
+				modal.position=(bounds-modal.size)/2
+			"mianmian_journal":
+				var journal_height:=520.0+maxf(0.0,font_scale_factor()-1.0)*300.0
+				modal.size=Vector2(minf(620,bounds.x-48),minf(journal_height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"mianmian_notes":
+				var height:=470.0+maxf(0.0,font_scale_factor()-1.0)*260.0
+				modal.size=Vector2(minf(620,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"bobo_rest_pattern":
+				var height:=554.0+maxf(0.0,font_scale_factor()-1.0)*120.0
+				modal.size=Vector2(minf(688,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"milu_first_soup":
+				var height:=592.0+maxf(0.0,font_scale_factor()-1.0)*150.0
+				modal.size=Vector2(minf(688,bounds.x-48),minf(height,bounds.y-32))
+				modal.position=(bounds-modal.size)/2
+			"milu_recipe_book":
+				var base:=552.0 if modal.get_meta("milu_recipe_restored",false) else 528.0
+				var height:=base+maxf(0.0,font_scale_factor()-1.0)*160.0
+				modal.size=Vector2(minf(688,bounds.x-48),minf(height,bounds.y-32))
+				modal.position=(bounds-modal.size)/2
+			"milu_tasting":
+				var height:=450.0+maxf(0.0,font_scale_factor()-1.0)*155.0
+				modal.size=Vector2(minf(688,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"milu_tasting_folio":
+				var height:=500.0+maxf(0.0,font_scale_factor()-1.0)*220.0
+				modal.size=Vector2(minf(688,bounds.x-48),minf(height,bounds.y-32))
+				modal.position=(bounds-modal.size)/2
+			"milu_supper_plan","milu_supper_book":
+				var book:bool=modal.get_meta("life_modal_layout")=="milu_supper_book"
+				var height:float=(564.0 if book else 420.0)+maxf(0.0,font_scale_factor()-1.0)*210.0
+				modal.size=Vector2(minf(794.0 if book else 652.0,bounds.x-48),minf(height,bounds.y-32))
+				modal.position=(bounds-modal.size)/2
+			"xinghe_growth_notebook":
+				var height:=486.0+maxf(0.0,font_scale_factor()-1.0)*270.0
+				modal.size=Vector2(minf(774.0,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
 			"history_memory":
 				var mining_history:bool=modal.get_meta("history_mode","")=="jinguashi"
-				modal.size=Vector2(minf(670 if mining_history else 860,bounds.x-48),minf(510 if mining_history else 580,bounds.y-48))
+				var illustrated:bool=modal.get_meta("history_mode","")=="sources"
+				modal.size=Vector2(minf(764 if mining_history else 860,bounds.x-48),minf(552 if mining_history else (620 if illustrated else 580),bounds.y-(20 if illustrated else 48)))
 				modal.position=(bounds-modal.size)/2
 			"lanyang_garden":
 				var clearing:bool=modal.get_meta("garden_mode","")=="clear"
@@ -1239,7 +1453,8 @@ func _layout_preview() -> void:
 				modal.size=Vector2(minf(700,bounds.x-48),minf(540,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
 			"house_check":
-				modal.size=Vector2(minf(640,bounds.x-48),minf(560,bounds.y-48))
+				var house_size:Vector2=modal.get_meta("house_check_size",Vector2(640,560))
+				modal.size=Vector2(minf(house_size.x,bounds.x-48),minf(house_size.y,bounds.y-48))
 				modal.position=(bounds-modal.size)/2
 			"roof_confirm":
 				modal.size=Vector2(minf(600,bounds.x-48),minf(float(modal.get_meta("roof_height",360)),bounds.y-48))
@@ -1253,7 +1468,8 @@ func _layout_preview() -> void:
 				modal.position=(bounds-modal.size)/2
 				if modal.get_meta("tea_dialogue",false):modal.position.y=bounds.y-modal.size.y-28
 			"island_map":
-				modal.size=Vector2(minf(700,bounds.x-48),minf(592,bounds.y-48))
+				var walking:bool=modal.get_meta("home_walk_routes",false)
+				modal.size=Vector2(minf(700,bounds.x-48),minf(622 if walking else 592,bounds.y-(20 if walking else 48)))
 				modal.position=(bounds-modal.size)/2
 			"controller_shortcuts":
 				modal.size=Vector2(minf(600.0,bounds.x-48.0),minf(334.0,bounds.y-48.0))
@@ -1266,8 +1482,57 @@ func _layout_preview() -> void:
 				modal.size=Vector2(minf(900,bounds.x-48),minf(dialogue_height,bounds.y-80))
 				modal.position=Vector2((bounds.x-modal.size.x)/2,bounds.y-modal.size.y-24)
 			"community_board":
-				modal.size=Vector2(minf(760,bounds.x-48),minf(560,bounds.y-64))
+				var illustrated:bool=modal.get_meta("fit_goal_illustration",false)
+				var height:=560.0+maxf(0.0,font_scale_factor()-1.0)*160.0 if illustrated else 560.0
+				if modal.get_meta("fit_knot_exercise",false):
+					height=486.0+maxf(0.0,font_scale_factor()-1.0)*120.0
+				var width:=760.0
+				if modal.get_meta("fit_diandian_pose",false):
+					height=460.0+maxf(0.0,font_scale_factor()-1.0)*120.0
+					width=640.0
+				modal.size=Vector2(minf(width,bounds.x-48),minf(height,bounds.y-(32 if illustrated else 64)))
 				modal.position=(bounds-modal.size)/2
+			"xinghe_bed_plan", "xinghe_greenhouse_story":
+				var height:=560.0+maxf(0.0,font_scale_factor()-1.0)*240.0
+				modal.size=Vector2(minf(760,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"xinghe_shared_garden":
+				var height:=500.0+maxf(0.0,font_scale_factor()-1.0)*260.0
+				modal.size=Vector2(minf(720,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"lingpopo_clue", "lingpopo_history":
+				var height:=310.0 if modal.get_meta("life_modal_layout")=="lingpopo_clue" else 420.0
+				height+=maxf(0.0,font_scale_factor()-1.0)*270.0
+				modal.size=Vector2(minf(650,bounds.x-48),minf(height,bounds.y-36))
+				modal.position=(bounds-modal.size)/2
+			"luoluo_letter":
+				var height:=395.0+maxf(0.0,font_scale_factor()-1.0)*115.0
+				if modal.get_meta("luoluo_letter_enlarged",false):height+=105.0
+				if modal.get_meta("luoluo_letter_back",false):height+=50.0
+				modal.size=Vector2(minf(760,bounds.x-48),minf(height,bounds.y-40))
+				modal.position=((bounds-modal.size)/2).floor()
+			"luoluo_postcard_notebook":
+				var notes:int=session.snapshot.get("own_luoluo_postcard_clues",[]).size()
+				var height:=255.0+notes*95.0*font_scale_factor()
+				modal.size=Vector2(minf(710,bounds.x-48),minf(height,bounds.y-40))
+				modal.position=((bounds-modal.size)/2).floor()
+			"luoluo_memory_letter":
+				var height:=510.0+maxf(0.0,font_scale_factor()-1.0)*175.0
+				modal.size=Vector2(minf(672,bounds.x-48),minf(height,bounds.y-40))
+				modal.position=((bounds-modal.size)/2).floor()
+			"luoluo_future_book":
+				var height:=460.0+maxf(0.0,font_scale_factor()-1.0)*220.0
+				modal.size=Vector2(minf(672,bounds.x-48),minf(height,bounds.y-40))
+				modal.position=((bounds-modal.size)/2).floor()
+			"diandian_sketchbook":
+				var height:=390.0+maxf(0.0,font_scale_factor()-1.0)*150.0
+				modal.size=Vector2(minf(590,bounds.x-48),minf(height,bounds.y-40))
+				modal.position=((bounds-modal.size)/2).floor()
+			"order_journal":
+				var order_count:int=modal.get_meta("order_journal",{}).get("ids",[]).size()
+				var journal_height:=210.0+185.0*order_count*font_scale_factor()
+				modal.size=Vector2(minf(610,bounds.x-48),minf(journal_height,minf(570,bounds.y-64)))
+				modal.position=((bounds-modal.size)/2).floor()
 			"return_news", "night_rest":
 				modal.size=Vector2(minf(530,bounds.x-48),minf(350,bounds.y-64))
 				modal.position=((bounds-modal.size)/2).floor()
@@ -1320,6 +1585,24 @@ func _layout_preview() -> void:
 			"festival_locked":
 				modal.size=Vector2(minf(540,bounds.x-48),minf(330,bounds.y-64))
 				modal.position=(bounds-modal.size)/2
+			SpringGardenUI.LAYOUT:
+				SpringGardenUI.layout(self,bounds)
+			SeaFairUI.LAYOUT:
+				SeaFairUI.layout(self,bounds)
+			AutumnFeastUI.LAYOUT:
+				AutumnFeastUI.layout(self,bounds)
+			WarmNightUI.LAYOUT:
+				WarmNightUI.layout(self,bounds)
+			BeachTreasureUI.LAYOUT:
+				BeachTreasureUI.layout(self,bounds)
+			StrollUI.LAYOUT:
+				StrollUI.layout(self,bounds)
+			PartyCartUI.LAYOUT:
+				PartyCartUI.layout(self,bounds)
+			LostChicksUI.LAYOUT:
+				LostChicksUI.layout(self,bounds)
+			CookingRelayUI.LAYOUT:
+				CookingRelayUI.layout(self,bounds)
 			"festival_card":
 				var has_food:=modal.find_child("FestivalChowder",true,false)!=null
 				modal.size=Vector2(minf(700 if has_food else 620,bounds.x-48),minf(590 if has_food else 480,bounds.y-32))
@@ -1329,6 +1612,8 @@ func _layout_preview() -> void:
 				modal.position=(bounds-modal.size)/2
 
 func _world_pointer_allowed(point:Vector2) -> bool:
+	if _in_cart_gallery():return false
+	if is_instance_valid(version_update_dialog):return false
 	if modal!=null:return false
 	if is_instance_valid(blueprint_strip) and blueprint_strip.is_visible_in_tree() and blueprint_strip.get_global_rect().has_point(point):return false
 	if not village_art_preview:return point.x>300 and point.y>90 and point.y<620
@@ -1419,6 +1704,7 @@ func _disconnected() -> void:
 	if is_instance_valid(identity_entry) and identity_entry.joining:
 		identity_entry.join_result(false,"無法連上這座島，請確認地址或稍後重試。")
 	if view:
+		view.solo_motion={}
 		view.farm_feedback.reset()
 		view.processing_finish_feedback.reset()
 		view.cow_follow.reset()
@@ -1455,6 +1741,38 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 	var previous_trade:Dictionary=view.data.get("own_trade",{}) if view else {}
 	var origin:=str(view.data.get("region_id","")) if view and not view.data.is_empty() else ""
 	var destination:=str(snapshot.get("region_id","home"))
+	if view and sound:ShyUI.observe_spores(self,snapshot)
+	if view and sound:GuardianUI.observe_trial(self,snapshot)
+	var meadow_trial:=World.MEADOW_ADVENTURE
+	if sound and playing and destination==World.MEADOW.REGION and snapshot.has(meadow_trial.VIEW):
+		var current:Dictionary=snapshot[meadow_trial.VIEW]
+		var previous:Dictionary=view.data.get(meadow_trial.VIEW,{}) if view else {}
+		var person:Dictionary=snapshot.get("players",{}).get(id,{})
+		if current.get("phase",-1)==meadow_trial.Phase.WARNING and current.get("pulse_at")!=previous.get("pulse_at") and not person.is_empty():
+			if Vector2(person.x,person.y).distance_to(World.MEADOW.FACE)<=meadow_trial.TEAM_RADIUS:
+				sound.play_meadow_warning()
+				if sound.activity_captions:_caption("毛球即將踏地，退到圈外。",2)
+		elif current.is_empty() and previous.get("eligible",false) and not person.is_empty() and int(person.get(World.MEADOW.FIELD,0))<World.MEADOW.ALL_TABLES:
+			_notice("這一輪結束了，可以重新叫醒毛球。",false)
+		elif not current.is_empty() and not previous.is_empty() and current.get("pulse_at")==previous.get("pulse_at") and current.lamps.count(true)>previous.lamps.count(true):
+			sound.defer_action("meadow_lantern")
+	if sound and playing and origin==World.PARTY_CART.REGION and destination==origin and view.player_id==id:
+		var previous_cart:Dictionary=view.data.get(World.PARTY_CART.KEY,{})
+		var cart:Dictionary=snapshot.get(World.PARTY_CART.KEY,{})
+		if int(cart.get("to",-1))>=0 and cart.get("departed")!=previous_cart.get("departed") and cart.get("round")==previous_cart.get("round"):
+			sound.play_cart_roll(float(cart.arrives)-float(cart.departed))
+			if sound.activity_captions:_caption("礦車往下一站滑行",1)
+		elif cart.get("round")==previous_cart.get("round") and int(cart.get("delivered",0))>int(previous_cart.get("delivered",0)):
+			sound.play_cue("reward")
+			if sound.activity_captions:_caption("礦箱送達，+2 分",1)
+	if sound and playing and origin==World.REGIONS.HOME and destination==origin and view.player_id==id:
+		var previous:Dictionary=view.data.get(World.LOST_CHICKS.KEY,{})
+		var current:Dictionary=snapshot.get(World.LOST_CHICKS.KEY,{})
+		var who:Dictionary=snapshot.get("players",{}).get(id,{})
+		if not who.is_empty() and World.LOST_CHICKS.AREA.has_point(Vector2i(Vector2(who.x,who.y).floor())):
+			if previous.get("round")==current.get("round") and int(current.get("returned",0))>int(previous.get("returned",0)):
+				sound.play_cue("chicken")
+				if sound.activity_captions:_caption("小雞回家了！",1)
 	if sound and playing:
 		var settled:bool=sound.music.world_region==destination
 		sound.set_world(snapshot,id)
@@ -1462,8 +1780,16 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 	if view and playing and sound.activity_captions:
 		var finished:=SoftAudio.completed_batch(view.data,snapshot,id)
 		if not finished.is_empty():_caption("%s完工，可以領取成品。"%finished,1)
+	if playing and view and not view.data.is_empty() and view.player_id==id and str(view.data.get("region_id","home"))==str(snapshot.get("region_id","home")):
+		# T066 N01-3: short confirmation only after the server's scene actually changes.
+		var rest_message:=AruRest.transition_notice(view.data,snapshot,id)
+		if not rest_message.is_empty():
+			if sound and AruRest.seated(snapshot,id):sound.defer_action("build_set")
+			_notice(rest_message,true)
+			_refresh_hud.call_deferred()
 	if view and not view.data.is_empty() and str(view.data.get("region_id","home"))!=str(snapshot.get("region_id","home")):
 		gather_hold.clear()
+		controller_farm_wide=false
 		activity_caption_time=0.0
 		island_messages.clear()
 		_close_modal()
@@ -1483,7 +1809,8 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 		var fresh_tools:Array=view.update_snapshot(snapshot,id)
 		if sound and playing:
 			if is_finite(view.ore_cart_push_started) and previous_push!=view.ore_cart_push_started:
-				sound.play_cart_roll(view.ore_cart_travel_seconds(World.ORE_ROUTE.stage(snapshot)))
+				var rolling_stage:=World.BOBO_EMPTY_CART.stage(snapshot) if view.ore_cart_push_story else World.ORE_ROUTE.stage(snapshot)
+				sound.play_cart_roll(view.ore_cart_travel_seconds(rolling_stage))
 			var listener:Dictionary=snapshot.get("players",{}).get(id,{})
 			if not listener.is_empty():
 				sound.play_nearby_tools(fresh_tools,view.tool_feedback.actions,id,Vector2(listener.x,listener.y))
@@ -1501,6 +1828,20 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 		_notice("收到島民交換邀請。可在遊戲選單開啟「島民交換」，或按手把 View。",true)
 	_blueprint_sync()
 	LifeTasks.refresh_island_notes(self)
+	LifeTasks.refresh_leaf_desk(self)
+	LifeTasks.refresh_mushroom_mailbox(self)
+	LifeAlmanac.refresh_order_accept(self)
+	OrderJournal.refresh(self)
+	SpringGardenUI.refresh(self)
+	SpringGardenUI.refresh_board_link(self)
+	SeaFairUI.refresh(self)
+	AutumnFeastUI.refresh(self)
+	WarmNightUI.refresh(self)
+	BeachTreasureUI.refresh(self)
+	CookingRelayUI.refresh(self)
+	LostChicksUI.refresh(self)
+	PartyCartUI.refresh(self)
+	StrollUI.refresh(self)
 	LifeTasks.refresh_board_projects(self,snapshot)
 	if is_instance_valid(modal) and modal.has_meta("island_passport"):
 		var plot_status:=modal.find_child("PublicBuildPlotStatus",true,false) as Label
@@ -1520,8 +1861,10 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 			sound.play_cue(cue)
 			if cue=="fish_bite":
 				var cast:Dictionary=snapshot.get("players",{}).get(id,{}).get("fishing",{})
+				if sound.activity_captions and toast.text=="魚還沒咬鉤，再稍等一下":toast_time=0.0
 				_caption("魚咬鉤了！%s%s。"%[_fishing_reel_hint(),"對準魚影" if cast.has("band") else "收竿"],2)
 			if cue=="fish_catch":_caption("釣到了！魚已收入背包。",2)
+			if cue=="fish_release":_caption("記下魚種了！魚已放回河裡。",2)
 	if is_instance_valid(map_view):map_view.update_world(snapshot,id)
 	if modal is ShippingPanel:modal.refresh(snapshot,id)
 	MarketUI.refresh(self)
@@ -1556,6 +1899,8 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 	TowerUI.refresh(self)
 	MineUI.refresh(self)
 	MineSurveyUI.refresh(self)
+	GuardianUI.refresh(self)
+	ShyUI.refresh(self)
 	FreightUI.refresh(self)
 	AutoFreightUI.refresh(self)
 	BoboSortUI.refresh(self)
@@ -1564,13 +1909,39 @@ func _state_changed(snapshot:Dictionary,id:String) -> void:
 	WaterworksUI.refresh(self)
 	MineDrillUI.refresh(self)
 	CookingQueueUI.refresh(self)
+	_refresh_classic_flour_offer()
+	LifeTasks.refresh_nursery_box(self)
+	LifeTasks.refresh_fish_counter(self)
+	LifeTasks.refresh_tea_display_cabinet(self)
+	LifeTasks.refresh_shell_table(self)
+	LifeTasks.refresh_cotton_sofa(self)
+	LifeTasks.refresh_tool_board(self)
+	RoundedTableUI.refresh(self)
+	StoneWorkbenchUI.refresh(self)
+	LifeTasks.refresh_four_seat_table(self)
+	PostcardRackUI.refresh(self)
 	LifeShell.refresh_location(self,snapshot,snapshot.get("players",{}).get(id,{}))
+	# 貓空茶館室內：標題改成館名，離開後下一次快照由 refresh_location 還原地區名。
+	var tea_house_title:=hud.find_child("RegionTitle",true,false) as Label
+	if tea_house_title and destination==World.TEA_HOUSE_INTERIOR.REGION and World.TEA_HOUSE_INTERIOR.inside(snapshot.get("players",{}).get(id,{})):
+		tea_house_title.text="貓空茶館"
+	if tea_house_title and destination==World.POTTERY_WORKSHOP_INTERIOR.REGION and World.POTTERY_WORKSHOP_INTERIOR.inside(snapshot.get("players",{}).get(id,{})):
+		tea_house_title.text="鶯歌合作陶坊"
 	if not origin.is_empty() and origin!=destination:
 		WanganUI.dismiss(self)
 		TravelUI.arrived(self,origin,destination)
 	if playing:_offer_return_news(snapshot)
 
 func _action_completed(sequence:int,action:String,result:Dictionary) -> void:
+	GuardianUI.handle_result(self,action,result)
+	ShyUI.handle_result(self,action,result)
+	if action=="order_accept" and not result.get("ok",false):LifeAlmanac.reject_order_accept(self,sequence)
+	if action==World.RESIDENT_GOALS.ACTION and not result.get("ok",false):
+		LifeTasks.retry_story_hand_in(self,sequence)
+	if action==World.INDUSTRY.PAVILION_INSPECT and playing:
+		LifeTasks.inspect_tea_pavilion(self,result)
+	if action==World.WALL_FIXTURES.WATER_CHIME_RING and result.get("ok",false) and result.get("region")==view.region_id():
+		view.ring_water_chime(str(result.tile))
 	if action=="night_vote" and is_instance_valid(modal) and int(modal.get_meta("night_vote_pending",0))==sequence:
 		modal.set_meta("night_vote_pending",0)
 		_refresh_night_vote(session.snapshot)
@@ -1583,7 +1954,7 @@ func _action_completed(sequence:int,action:String,result:Dictionary) -> void:
 			gather_hold.pending=0
 		else:gather_hold.clear()
 	if sound and playing and result.get("ok",false):
-		var cue:=SoftAudio.action_cue(action,str(result.get("animal","")))
+		var cue:=SoftAudio.action_cue(action,str(result.get("animal","")),result.get("mill_claimed",false))
 		if not cue.is_empty():sound.defer_action(cue)
 	if action=="undo_build":undo_ui.complete(result)
 	if action=="ship" and modal is ShippingPanel and modal.pending_sequence==sequence:
@@ -1593,17 +1964,29 @@ func _notice(message:String,success:bool) -> void:
 	if not success and not playing and message==session.VERSION_MISMATCH_NOTICE:
 		if not is_instance_valid(room_update_dialog):
 			room_update_dialog=IdentityEntry.make_update_prompt(ui,self)
+		toast_time=0.0
+		if is_instance_valid(toast):toast.hide()
+		print("NOTICE "+message)
+		return
 	message=_display_notice(message)
 	print(("OK " if success else "NOTICE ")+message)
 	if sound and playing:
 		var kind:="notice" if not success else "action"
-		if success and (message.contains("收成") or message.contains("完成") or message.contains("風鈴") or message.contains("獲得")):kind="reward"
+		if success and (message.contains("收成") or message.contains("完成") or message.contains("風鈴") or message.contains("獲得") or message.begins_with("撿到 ")):kind="reward"
 		if success and (message.begins_with("叮——紀念鐘") or message.contains("完成了〈不用等風來〉")):kind="memorial_bell"
 		if success and message.begins_with("叮——簷下陶風鈴"):kind="ceramic_chime"
 		if success and message.begins_with("叮——潮紋貝殼"):kind="shell_chime"
+		if success and message.begins_with("叮——聽水風鈴"):kind="water_chime"
+		if success and (message.begins_with("叮——暖燈") or message.begins_with("叮——留下祝福") or message.begins_with("叮——三枚印章")):kind="warm_lantern"
+		if success and message.contains("線索變得更清楚了"):kind="hoe_soil"
+		if success and message.contains("挖到寶物！"):kind="reward"
+		if success and message.begins_with("拿了一份") and message.ends_with("放上托盤。"):kind="seed_drop"
+		if success and message.begins_with("擺好「") and message.ends_with("送到出餐台吧！"):kind="stove_start"
+		if success and message.begins_with("送出「") and message.contains("下一道"):kind="meal_serve"
 		if success and message.begins_with("風鈴鹿垂下頭"):kind="shell_chime"
 		if success:sound.defer_action(kind)
 		else:sound.play_cue(kind)
+	if success and TravelUI.covers_arrival_notice(self,message):return
 	if toast:
 		# A new action result replaces the old transient caption in the same lane.
 		activity_caption_time=0.0
@@ -1651,6 +2034,40 @@ func _layout_transient_notice(control:Label,bounds:Vector2)->void:
 	control.size.x=minf(available,maxf(220.0,ceilf(content_width)+32.0))
 	control.size.y=maxf(36.0,control.get_minimum_size().y)
 	control.position=Vector2(roundf((right-control.size.x)/2.0),roundf(bounds.y-160.0-control.size.y))
+	var data:Dictionary=session.snapshot
+	var objects:Dictionary=data.get("objects",{})
+	if objects.get(view.focused_label,{}).get("type")==World.INDUSTRY.COAST_CART:
+		var anchor:=World.station_anchor(objects,World.cell(view.focused_label))
+		var scale_value:float=view.view_zoom()
+		var top:Vector2=view.screen(Vector2(anchor))*scale_value
+		var cart_rect:=Rect2(top+Vector2(-2,-10)*scale_value,Vector2(204,72)*scale_value)
+		if control.get_global_rect().intersects(cart_rect):
+			control.position.y=maxf(12.0,cart_rect.position.y-control.size.y-14.0)
+	var seat:String=data.get("players",{}).get(session.own_id,{}).get(World.RESIDENT_GOALS.MASTER_BENCH_SEAT,{}).get("cell","")
+	var furniture:Dictionary=data.get("objects",{}).get(seat,{})
+	if furniture.get("type") in [World.INDUSTRY.BEACH_CHAIR,World.INDUSTRY.SHELL_TABLE,World.INDUSTRY.HOLLOW_BED,World.INDUSTRY.MUSHROOM_TABLE,World.INDUSTRY.BAMBOO_TEA_TABLE,World.INDUSTRY.MUSHROOM_STOOL]:
+		var scale_value:float=view.view_zoom()
+		var chair_top:Vector2=view.screen(Vector2(World.cell(seat)))*scale_value
+		var footprint:=Vector2(32,68) if World.INDUSTRY.is_vertical(furniture) else Vector2(64,34)
+		if furniture.type==World.INDUSTRY.SHELL_TABLE:
+			chair_top+=Vector2(-10,-10)*scale_value
+			footprint=Vector2(96,54)
+		elif furniture.type==World.INDUSTRY.HOLLOW_BED:
+			chair_top+=Vector2(0,-15)*scale_value
+			footprint=Vector2(118,79)
+		elif furniture.type==World.INDUSTRY.BAMBOO_TEA_TABLE:
+			chair_top+=Vector2(-18,-30)*scale_value
+			footprint=Vector2(74,121) if World.INDUSTRY.is_vertical(furniture) else Vector2(100,79)
+		elif furniture.type==World.INDUSTRY.MUSHROOM_TABLE:
+			chair_top+=Vector2(-8,-10)*scale_value
+			footprint=Vector2(144,78)
+		elif furniture.type==World.INDUSTRY.MUSHROOM_STOOL:
+			chair_top+=Vector2(-6,-10)*scale_value
+			footprint=Vector2(79,47)
+		var chair_rect:=Rect2(chair_top,footprint*scale_value).grow(12.0)
+		if control.get_global_rect().intersects(chair_rect):
+			var left:=chair_rect.position.x-control.size.x-12.0
+			control.position.x=left if left>=12.0 else clampf(chair_rect.end.x+12.0,12.0,maxf(12.0,right-control.size.x-12.0))
 
 func _process(dt:float) -> void:
 	if test_seconds>0:
@@ -1659,28 +2076,44 @@ func _process(dt:float) -> void:
 	if not playing:return
 	_update_activity_caption(dt)
 	_update_world_label_obstacles()
+	session.set_full_view("structure",_structure_view_needed())
+	session.update_view_interest(World.SIZE if is_instance_valid(map_view) else view.view_interest_half(),true)
 	toast_time-=dt
 	if toast_time<=0:
-		toast.text=binding_text("{movement} 移動  ·  滑鼠指向地面使用工具  ·  靠近公告板或攤位按 {interact}")
+		toast.text=binding_text("滑鼠指向地面使用工具  ·  靠近公告板或攤位按 {interact}")
 		if village_art_preview:toast.hide()
 	ui_clock+=dt
 	if ui_clock>0.2:
 		ui_clock=0
 		_refresh_hud()
 	var d:=movement_direction()
+	sound.update_footsteps(session.snapshot,session.own_id,view.display_positions.get(session.own_id,Vector2.INF),not d.is_zero_approx())
 	input_clock+=dt
-	if input_clock>=0.05:
+	var moving:=not d.is_zero_approx()
+	var was_moving:=not last_sent_movement.is_zero_approx()
+	var sharp_turn:=moving and was_moving and d.dot(last_sent_movement)<=0.0
+	# Send the control edge in the current frame. Regular updates still renew
+	# the host's movement timeout and recover an input lost in transit.
+	if input_clock>=0.05 or moving!=was_moving or sharp_turn:
 		input_clock=0
+		last_sent_movement=d
 		session.input_direction(d)
 	var mouse:=get_viewport().get_mouse_position()
 	target=_controller_target() if controller_aim else view.to_cell(mouse)
 	if arg_value("capture-panel","") in ["tiller","seeder","harvester"]:target=World.cell(arg_value("capture-cell","42,36"))
 	view.target=target
-	view.show_target=_world_keyboard_allowed() if controller_aim else _world_pointer_allowed(mouse)
+	view.solo_motion=session.solo_motion if local_mode and session.solo_rest_enabled else {}
+	view.show_target=not _in_cart_gallery() and not _lost_chicks_active() and not _in_maokong_tea_room() and not _in_pottery_workshop() and not _on_aru_bench() and (_world_keyboard_allowed() if controller_aim else _world_pointer_allowed(mouse))
 	if arg_value("capture-panel","") in ["tiller","seeder","harvester"] and modal==null:view.show_target=true
 	view.selected=selected
+	view.hand_farm_wide=(controller_farm_wide if controller_aim else Input.is_key_pressed(int(bindings.keys.get("area_modifier",KEY_NONE)))) and not _carried_range_tool().is_empty()
+	view.guardian_lit_bell=GuardianUI.lit_bell(self)
+	view.shy_view=ShyUI.view_state(self)
 	view.seed_kind=crop
 	view.building=building
+	view.edge_preview_kind=_edge_preview_kind()
+	view.edge_pointer_override=_edge_controller_pointer(target) if controller_aim and not view.edge_preview_kind.is_empty() else Vector2.INF
+	view.mill_build_facing=mill_build_facing
 	view.placement_style=building_style
 	view.area_drag=area_drag
 	view.area_start=area_start
@@ -1691,7 +2124,7 @@ func _process(dt:float) -> void:
 func _update_world_label_obstacles() -> void:
 	if not is_instance_valid(view):return
 	var workshop_panel_open:bool=is_instance_valid(modal) and modal.is_visible_in_tree() and str(modal.get_meta("life_modal_layout","")) in ["forestry_device","automation_workbench","processing_queue","industry_device","automation_device","logistics_device","workshop_guide","livestock_card"]
-	view.hide_interaction_prompt=workshop_panel_open or modal is InventoryPanel or SaltUI.suppress_world_prompts(self) or TowerUI.is_open(self) or GateUI.is_open(self)
+	view.hide_interaction_prompt=workshop_panel_open or modal is InventoryPanel or modal is ShippingPanel or (is_instance_valid(modal) and modal.get_meta("life_modal_layout","") in ["leaf_mat","acorn_cabinet","tea_snack_shelf","bark_frame","leaf_desk","mushroom_mail","bookcase","bookcase_compact","forest_wardrobe","cedar_bed","bobo_rest_pattern","milu_first_soup","milu_recipe_book","milu_tasting","milu_tasting_folio","milu_supper_plan","milu_supper_book","mianmian_notes","mianmian_journal","chacha_tea_gathering","chacha_handwritten_menu","xinghe_growth_notebook","sheep_comfort_project"]) or SaltUI.suppress_world_prompts(self) or TowerUI.is_open(self) or GateUI.is_open(self)
 	var regions:Array[Rect2]=[]
 	if is_instance_valid(hud) and hud.is_visible_in_tree():
 		for child in hud.get_children():
@@ -1726,7 +2159,8 @@ func _refresh_fishing_hint(snapshot:Dictionary,angler:Dictionary) -> void:
 			elif World.WANGAN_COAST.VISITOR_AREA.has_point(position):
 				water_edge="沿南岸棧道走到底，點外海水面拋竿。"
 		if controller_navigation:water_edge="用十字鍵瞄準水面，按 X 拋竿。"
-		hint="釣魚（%s） · %s"%["標準" if sound.standard_fishing else "輕鬆",water_edge]
+		var rod:=World.gathering_tool_upgrade("fish",angler.get("inventory",{}))
+		hint="%s（%s） · %s"%[World.NAMES.get(rod,"釣魚"),"標準" if sound.standard_fishing else "輕鬆",water_edge]
 	hint=binding_text(hint)
 	if selected_label.text!=hint:selected_label.text=hint
 
@@ -1745,9 +2179,9 @@ func _refresh_hud() -> void:
 	forestry_ui.refresh(self)
 	logistics_ui.refresh(self)
 	undo_ui.refresh()
+	life_panels.refresh(self)
 	if village_art_preview:
 		coin_label.text="鈴幣 %d"%p.coins
-		life_panels.refresh(self)
 		ChapterUI.refresh(self)
 		_add_tea_chapter_link()
 		FlowerUI.chapter_link(self)
@@ -1764,17 +2198,18 @@ func _refresh_hud() -> void:
 	if not village_art_preview:
 		inventory_label.text="鈴幣  %d\n木材  %d     石材  %d\n纖維  %d\n種子  蘿蔔 %d / 萵苣 %d / 麥 %d"%[p.coins,inv.get("wood",0),inv.get("stone",0),inv.get("fiber",0),inv.get("radish_seed",0),inv.get("lettuce_seed",0),inv.get("wheat_seed",0)]
 	objective.text="① 種下並收成第一株作物 %s\n② 放置一件自己的家具 %s\n③ 一起修好渡口公告板\n木材 %d / 30   石材 %d / 10"%["✓" if p.harvests>0 else "", "✓" if p.builds>0 else "",s.donations.wood,s.donations.stone]
-	if s.board:objective.text="河灣橋已經開通！\n帶著朋友往東邊探索。\n\n把收成賣給小栗，\n再替家園添一盞燈吧。"
-	if s.board and not s.get("picnic",false):objective.text="河灣橋已經開通！\n再為大家準備一場野餐：\n蘿蔔湯 %d / 2\n麵包 %d / 1\n蓋小石灶，完成後交給公告板。"%[s.picnic_materials.soup,s.picnic_materials.bread]
+	if s.board:objective.text="河灣橋已經開通！\n帶著朋友往東邊探索。\n\n把收成賣給小栗，\n再替家園添一盞燈吧。" if World.STONE_WORKSHOP.bridge_open(s) else "Q03 公告板修好了！\n下一件：Q05 河對岸的鈴聲\n%s\n公告板捐木材 60、繩索 4；\n蓋石工台（石材 20、木材 8）做橋基。"%World.STONE_WORKSHOP.progress_text(s)
+	if s.board and not s.get("picnic",false):objective.text=("河灣橋已經開通！" if World.STONE_WORKSHOP.bridge_open(s) else World.STONE_WORKSHOP.progress_text(s))+"\n再為大家準備一場野餐：\n蘿蔔湯 %d / 2\n麵包 %d / 1\n蓋小石灶，完成後交給公告板。"%[s.picnic_materials.soup,s.picnic_materials.bread]
 	if s.get("picnic",false):objective.text="渡口野餐準備好了！\n找阿榆與米露聊聊，\n解鎖長椅、花箱與沙發。\n\n{journal} 看故事，公告板交生活訂單。"
 	if s.festival.active:objective.text="風鈴接力  %d / 12\n靠近金色風鈴按 {interact} 接住，\n跟朋友接力完成十二枚。\n\n沒有失敗倒數；{festival} 看活動。"%int(s.festival.collected)
 	if selected=="fish":_refresh_fishing_hint(s,p)
 	if selected=="build":selected_label.text=_build_tool_hint()
+	if selected=="remove":selected_label.text=_remove_tool_hint(s)
 	if selected=="plant_tree":
 		var problem:String=view.tree_planting_preview(target) if view.show_target else ""
 		selected_label.text="樹苗 ×%d · %s"%[int(inv.get("sapling",0)),"點空地種植，不需澆水" if problem.is_empty() else problem]
 	if selected=="till_area":
-		if int(inv.get("tiller",0))<1:_select_tool("hoe")
+		if not World.PUBLIC_TILLER.can_till(p):_select_tool("hoe")
 		else:
 			var available:int=view.tiller_preview(target).cells.size()
 			selected_label.text="耕田機 · 可整地 %d／9 格 · 木炭 %d · 成功施工耗 1 木炭"%[available,int(inv.get("charcoal",0))]
@@ -1862,6 +2297,68 @@ func _refresh_hud() -> void:
 		if button:button.text="查看種田指引  →"
 	# The normal tool hint is irrelevant while both hands hold the hen. The
 	# actor label explains release, and the existing hint returns unchanged.
+	var beach_shovel:=_beach_shovel_active()
+	var cooking_tools:=_cooking_relay_active()
+	var chick_bucket:=_lost_chicks_active()
+	var cart_gallery:=current_region==World.PARTY_CART.REGION
+	var tea_room:=_in_maokong_tea_room() or _in_pottery_workshop()
+	if village_art_preview and is_instance_valid(preview_tracker):LifeShell.compact_tracker(self,tea_room)
+	if not is_instance_valid(modal) and not voyage_active:
+		if is_instance_valid(preview_toolbar):preview_toolbar.visible=not (beach_shovel or cooking_tools or chick_bucket or cart_gallery or tea_room or _on_aru_bench())
+		if beach_shovel or cooking_tools or chick_bucket or cart_gallery:
+			area_drag=false
+			gather_hold.clear()
+		if cart_gallery:
+			selected_label.text=binding_text("走到礦車或機關旁按 {interact}")
+		elif chick_bucket:
+			selected_label.text="飼料桶 · 靠近小雞，放慢腳步帶牠進圍欄"
+		elif cooking_tools:
+			selected_label.text=binding_text("活動廚具 · 到工位旁按 {interact}")
+		elif beach_shovel:
+			selected_label.text="活動小鏟 · 用十字鍵瞄準沙堆，按 X 挖掘" if controller_navigation else "活動小鏟 · 點沙堆挖掘，走近按 %s 共用標記"%binding_label("interact")
+	if beach_shovel:
+		var beach:Dictionary=s.get(World.BEACH_TREASURE.KEY,{})
+		var heading:=hud.find_child("TrackerHeading",true,false) as Button
+		var clue_button:=hud.find_child("TrackerNext",true,false) as Button
+		if heading:heading.text="海灘尋寶  ▾"
+		if clue_button:clue_button.text="查看共用線索  →"
+		objective.text="找到 %d／3 處・%d 分"%[beach.get("found",{}).size(),int(beach.get("score",0))]
+		if int(beach.get("remaining",0))<=10:objective.text+="\n還有 %d 秒"%int(beach.get("remaining",0))
+	if cooking_tools:
+		var round:Dictionary=s.get(World.COOKING_RELAY.KEY,{})
+		var order:Dictionary=World.COOKING_RELAY.RECIPES.get(str(round.get("dish","")),{})
+		var heading:=hud.find_child("TrackerHeading",true,false) as Button
+		var recipe_button:=hud.find_child("TrackerNext",true,false) as Button
+		if heading:heading.text="料理接力  ▾"
+		if recipe_button:recipe_button.text="查看接力食譜  →"
+		objective.text="%s\n已端出 %d 份"%[str(order.get("title","")),int(round.get("plates",0))]
+		if int(round.get("remaining",0))<=10:objective.text+="\n還有 %d 秒"%int(round.get("remaining",0))
+	if chick_bucket:
+		var chase:Dictionary=s.get(World.LOST_CHICKS.KEY,{})
+		var heading:=hud.find_child("TrackerHeading",true,false) as Button
+		var route_button:=hud.find_child("TrackerNext",true,false) as Button
+		if heading:heading.text="迷路小雞  ▾"
+		if route_button:route_button.text="查看小雞位置  →"
+		objective.text="已回圈 %d／%d 隻・%d 分"%[int(chase.get("returned",0)),int(chase.get("total",0)),int(chase.get("score",0))]
+		if int(chase.get("remaining",0))<=10:objective.text+="\n還有 %d 秒"%int(chase.get("remaining",0))
+	if _stroll_tracking() and not (cooking_tools or beach_shovel or chick_bucket):
+		var book:Dictionary=s.get(World.LANTERN_STROLL.VIEW_KEY,{})
+		var trail:Dictionary=s.get(World.LANTERN_STROLL.KEY,{})
+		var title:=hud.find_child("TrackerHeading",true,false) as Button
+		var route:=hud.find_child("TrackerNext",true,false) as Button
+		if title:title.text="燈籠散步  ▾"
+		if route:route.text="查看燈籠路線  →"
+		objective.text="已收集 %d／3 枚印章"%book.get("stamps",{}).size()
+		if int(trail.get("remaining",0))<=10:objective.text+="\n本輪剩 %d 秒"%int(trail.get("remaining",0))
+	if cart_gallery:
+		var cart:Dictionary=s.get(World.PARTY_CART.KEY,{})
+		var header:=hud.find_child("TrackerHeading",true,false) as Button
+		var board:=hud.find_child("TrackerNext",true,false) as Button
+		if header:header.text="礦車搬運  ▾"
+		if board:board.text="查看搬運路線  →"
+		objective.text="已送達 %d／%d 箱・%d 分"%[int(cart.get("delivered",0)),int(cart.get("total",3)),int(cart.get("score",0))]
+		if cart.get("phase","idle")=="idle":objective.text="到坑道告示牌開始搬運"
+		if cart.get("phase")=="run" and int(cart.get("remaining",0))<=10:objective.text+="\n還有 %d 秒"%int(cart.get("remaining",0))
 	selected_label.visible=_tool_hint_visible()
 
 func _harvest_menu()->void:
@@ -1888,6 +2385,12 @@ func _showcase_tracking()->bool:
 
 func _souvenir_menu()->void:
 	SouvenirUI.open(self)
+
+func _beach_treasure_menu()->void:
+	BeachTreasureUI.open(self)
+
+func _cooking_relay_menu()->void:
+	CookingRelayUI.open(self)
 
 func _tea_guidance_active()->bool:
 	var s:Dictionary=session.snapshot
@@ -1930,16 +2433,19 @@ static func dormant_crop_hint(snapshot:Dictionary,cell:Vector2i) -> String:
 	var roof=snapshot.get("roofs",{}).get(k,{})
 	if not roof is Dictionary:roof={}
 	var region:=str(snapshot.get("region_id",World.REGIONS.HOME))
-	if not World.plot_dormant(plot,roof,region,cell,float(snapshot.get("time",0.0))):return ""
+	if not World.plot_dormant(plot,roof,region,cell,float(snapshot.get("time",0.0)),World.GREENHOUSE_GLASS.covered(snapshot,k)):return ""
 	var kind:=str(plot.kind)
 	var text:="%s休眠中 · %s季會接著長（進度保留）"%[World.CROPS[kind].name,World.crop_season_text(kind)]
 	if int(World.CROPS[kind].get("cycles",1))>1:text+=" · 還能收 %d 次"%int(plot.get("remaining",1))
+	if roof.get("type")==World.GREENHOUSE_GLASS.XINGHE_ROOF:return text+" · 補齊玻璃與圍牆，再關好門"
 	return text+" · 蓋溫室玻璃棚可不分季節"
 
 ## keep_blueprint: label/binding refreshes re-select the current tool and must not
 ## cancel a blueprint mode the player is still working in.
 func _select_tool(action:String,keep_blueprint:=false) -> void:
-	if action!=selected:gather_hold.clear()
+	if action!=selected:
+		gather_hold.clear()
+		controller_farm_wide=false
 	if not keep_blueprint and blueprints!=null:
 		var blueprint_mode:=_blueprint_mode()
 		if blueprint_mode in BLUEPRINT_SENT_MODES and action in ["build","remove","move_object"]:
@@ -1959,30 +2465,87 @@ func _select_tool(action:String,keep_blueprint:=false) -> void:
 			_notice("先到工作台製作手推播種機，再按 {seed_area} 使用",false)
 			return
 	if action=="till_area":
-		var bag:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{}).get("inventory",{})
-		if int(bag.get("tiller",0))<1:
-			_notice("先到工作台製作手推耕田機，再按 {till_area} 使用",false)
+		if not World.PUBLIC_TILLER.can_till(session.snapshot.get("players",{}).get(session.own_id,{})):
+			_notice("先到工作台製作手推耕田機，或到渡口農機架借用公用耕田機，再按 {till_area} 使用",false)
 			return
 	area_drag=false
 	moving_object=false
 	selected=action
 	var actions:=["hoe","seed","water","harvest","axe","pick","build","remove"]
 	for i in range(tool_buttons.size()):tool_buttons[i].set_pressed_no_signal(actions[i]==action)
-	var descriptions:={"hoe":"鋤頭：點空地開田", "seed":"播種："+World.CROPS[crop].name+"（按 {seeds} 換種子）", "water":WeatherForecast.water_hint(session.snapshot if session else {}) if action=="water" else "", "harvest":"採收：點成熟作物收入背包", "axe":"斧頭：點附近樹木或雜草", "pick":"十字鎬：點附近岩石", "build":"建造："+World.BUILD[building].name+"（按 {build_menu} 選物件）", "remove":"拆除：退回材料；也能移回自己的樹苗、恢復空農田", "plant_tree":"種樹：點空地種樹苗，約三分鐘長成（不需澆水）"}
+	var descriptions:={"hoe":"鋤頭：點空地開田", "seed":"播種："+World.CROPS[crop].name+"（按 {seeds} 換種子）", "water":WeatherForecast.water_hint(session.snapshot if session else {}) if action=="water" else "", "harvest":"採收：點成熟作物收入背包", "axe":"斧頭：點附近樹木或雜草", "pick":"十字鎬：點附近岩石", "build":"建造："+World.BUILD[building].name+"（按 {build_menu} 選物件）", "remove":REMOVE_TOOL_HINT, "plant_tree":"種樹：點空地種樹苗，約三分鐘長成（不需澆水）"}
 	selected_label.text=descriptions.get(action,"釣魚：靠近河岸，點水面拋竿；咬鉤後點浮標或按 {fish_catch} 收竿。")
 	if action=="build":selected_label.text=_build_tool_hint()
+	if action=="remove" and session:selected_label.text=_remove_tool_hint(session.snapshot)
 	if action in ["axe","pick"]:selected_label.text+=" · 可按住連續採集"
 	if action=="move_object":selected_label.text="搬家具：先點自己的家具，再點新位置；箱內物品一起搬，Esc 取消。"
 	if action=="till_area":selected_label.text="耕田機：點附近空地，一次最多 9 格 · 每次成功施工耗 1 木炭"
 	if action=="seed_area":selected_label.text="播種機：點自己的空農田 · 每格 1 種子、每次 1 木炭 · {seeds} 換種子"
 	if action=="harvest_area":selected_label.text="收割機：點有權採收的成熟作物 · 一次最多 9 格 · 成功耗 1 木炭"
-	if action=="build" and building in ["floor","path","spring_pebble_path","roof"]:selected_label.text+=" · 按住 {area_modifier} 拖曳可成片施工"
+	if action=="build" and building in ["floor","stone_floor","path","spring_pebble_path","roof",World.TERRACOTTA_ROOF.KIND]:selected_label.text+=" · 按住 {area_modifier} 拖曳可成片施工"
 	selected_label.text=binding_text(selected_label.text)
 	if session:
 		_apply_regional_tool_hint(str(session.snapshot.get("region_id","home")))
 	get_viewport().gui_release_focus()
 
+func _remove_tool_hint(snapshot:Dictionary) -> String:
+	if not is_instance_valid(view) or not view.show_target:return REMOVE_TOOL_HINT
+	var key:=World.key(target)
+	if World.WOODLAND.stumps(snapshot).has(key):return "資源林樹樁 · 點擊挖除後可建造"
+	var plot:Dictionary=snapshot.get("crops",{}).get(key,{})
+	if plot.is_empty():return REMOVE_TOOL_HINT
+	if World.GREENHOUSE_GLASS.is_glass(snapshot.get("roofs",{}).get(key,{}).get("type","")):return REMOVE_TOOL_HINT
+	if snapshot.get("objects",{}).get(key,{}).get("type","")==World.ROOF_FIXTURES.HANGING_POT:return REMOVE_TOOL_HINT
+	return "空農田 · 點擊恢復草地" if str(plot.get("kind","")).is_empty() else "農田還有作物 · 收成後才能恢復草地"
+
 func _apply_regional_tool_hint(region:String) -> bool:
+	if region==World.REGIONS.HOME and selected in ["hoe","water","seed","harvest"]:
+		var upgraded_tool:=_carried_range_tool()
+		if not upgraded_tool.is_empty():
+			var size:int=World.TILLER.HAND_PATTERNS[upgraded_tool].size()
+			var mode:="範圍模式 · R3 切回單格" if controller_farm_wide else "R3 切換範圍模式"
+			var target_name:String={"hoe":"空地","water":"作物","seed":"自己的空田","harvest":"成熟作物"}[selected]
+			if not controller_aim:mode=binding_text("按住 {area_modifier} 點%s，最多 %d 格"%[target_name,size])
+			if selected=="seed":
+				var own:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
+				var stock:int=own.get("inventory",{}).get(crop+"_seed",0)
+				mode+=" · %s ×%d"%[World.CROPS[crop].name,stock]
+			selected_label.text="%s · %s"%[World.NAMES[upgraded_tool],mode]
+			return true
+	if region==World.REGIONS.HOME and selected in ["axe","pick"]:
+		var target_name:="岩石" if selected=="pick" else "樹木或雜草"
+		var tool_name:="十字鎬" if selected=="pick" else "斧頭"
+		var person:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
+		var upgrade:=World.gathering_tool_upgrade(selected,person.get("inventory",{}))
+		if not upgrade.is_empty():tool_name=World.NAMES[upgrade]
+		selected_label.text="%s · 點附近%s，可按住 · 走近撿材料"%[tool_name,target_name]
+		return true
+	if region in World.MINES.IDS:
+		if selected=="hoe":
+			selected_label.text="採礦 · 按 %s 換十字鎬"%binding_label("pick")
+			return true
+		if selected=="pick":
+			var miner:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
+			var mining_pick:=World.active_mining_pick(miner.get("inventory",{}))
+			var shallow:=World.MINES.depth_of(region)<=World.MINES.SHALLOW_DEPTH
+			if World.MINING_PICK_EFFECTS.has(mining_pick):
+				selected_label.text="%s · 靠近礦脈後點擊採掘"%World.NAMES[mining_pick]
+			elif not mining_pick.is_empty() or (shallow and miner.get("borrowed_mine_pick",false)):
+				selected_label.text="十字鎬 · 靠近礦脈後點擊採掘"
+			elif shallow:
+				selected_label.text="採礦需要強化石鎬 · 休息站可借公用鎬"
+			else:
+				selected_label.text="深層礦道需要自備強化石鎬"
+			return true
+	if region==World.TEA_HOUSE_INTERIOR.REGION and World.TEA_HOUSE_INTERIOR.inside(session.snapshot.get("players",{}).get(session.own_id,{})):
+		selected_label.text="茶席 · 靠近椅子按 %s 坐下"%binding_label("interact")
+		return true
+	if region==World.POTTERY_WORKSHOP_INTERIOR.REGION and World.POTTERY_WORKSHOP_INTERIOR.inside(session.snapshot.get("players",{}).get(session.own_id,{})):
+		selected_label.text="陶坊 · 靠近備土台、陶師或製罐窯按 %s"%binding_label("interact")
+		return true
+	if region==World.REGIONS.Bamboo.REGION and selected=="axe":
+		selected_label.text="斧頭 · 點竹叢採竹材，走近撿起"
+		return true
 	var place:String
 	if region==SaltUI.REGION:
 		place="鹽田"
@@ -1994,6 +2557,19 @@ func _apply_regional_tool_hint(region:String) -> bool:
 	return true
 
 func _input(event:InputEvent) -> void:
+	if event is InputEventJoypadMotion and event.axis in [JOY_AXIS_LEFT_X,JOY_AXIS_LEFT_Y]:
+		var stick:Vector2=controller_sticks.get(event.device,Vector2.ZERO)
+		stick[event.axis]=clampf(event.axis_value,-1.0,1.0)
+		controller_sticks[event.device]=stick
+		if stick.length()>0.22:
+			controller_device=event.device
+			controller_navigation=true
+	if is_instance_valid(version_update_dialog):
+		if event is InputEventJoypadButton and event.pressed:controller_navigation=true
+		if event is InputEventKey:bindings.observe(event)
+		if preload("res://scripts/update_card.gd").handle_navigation(version_update_dialog,event):
+			get_viewport().set_input_as_handled()
+		return
 	if not gather_hold.is_empty():
 		var device:int=gather_hold.device
 		if event is InputEventMouseButton:
@@ -2023,13 +2599,6 @@ func _input(event:InputEvent) -> void:
 				var solo:=get_viewport().gui_get_focus_owner() as Button
 				if solo!=null and solo.name=="TitleSolo" and not solo.disabled:solo.pressed.emit()
 			return
-	if event is InputEventJoypadMotion and event.axis in [JOY_AXIS_LEFT_X,JOY_AXIS_LEFT_Y]:
-		var stick:Vector2=controller_sticks.get(event.device,Vector2.ZERO)
-		stick[event.axis]=clampf(event.axis_value,-1.0,1.0)
-		controller_sticks[event.device]=stick
-		if stick.length()>0.22:
-			controller_device=event.device
-			controller_navigation=true
 	if not playing:return
 	if event is InputEventJoypadButton and event.pressed:
 		if is_instance_valid(modal) and modal.has_meta("controller_shortcuts") and LifeShell.shortcut_direction(self,event.button_index):
@@ -2046,13 +2615,14 @@ func _input(event:InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 		var resident_controls:bool=is_instance_valid(modal) and (modal.get_meta("life_modal_layout","")=="resident_dialogue" or modal.has_meta("resident_gift_picker"))
-		if is_instance_valid(modal) and (resident_controls or modal.has_meta("trade_view") or modal.has_meta("pocket_guide") or modal.get_meta("life_modal_layout","")=="workshop_guide" or modal.find_child("PauseTrade",true,false)!=null or modal.find_child("SaveComfort",true,false)!=null):
-			if _controller_menu_direction(event.button_index):
+		var board_controls:bool=is_instance_valid(modal) and modal.get_meta("life_modal_layout","")=="community_board"
+		if is_instance_valid(modal) and (board_controls or resident_controls or modal.has_meta("trade_view") or modal.has_meta("pocket_guide") or modal.get_meta("life_modal_layout","")=="workshop_guide" or modal.find_child("PauseTrade",true,false)!=null or modal.find_child("SaveComfort",true,false)!=null):
+			if _controller_menu_direction(event.button_index,board_controls):
 				get_viewport().set_input_as_handled()
 				return
 		if event.button_index==JOY_BUTTON_A and is_instance_valid(modal):
 			var focused:=get_viewport().gui_get_focus_owner() as BaseButton
-			if focused!=null and modal.is_ancestor_of(focused) and not focused.disabled and (focused is CheckBox or focused is CheckButton or focused.name in ["BuildPlace","SaveComfort","PauseTrade","PauseComfort","PauseHelp"] or (resident_controls or modal.has_meta("trade_view")) and focused is Button):
+			if focused!=null and modal.is_ancestor_of(focused) and not focused.disabled and (focused is CheckBox or focused is CheckButton or focused.name in ["BuildPlace","SaveComfort","PauseTrade","PauseComfort","PauseHelp"] or (board_controls or resident_controls or modal.has_meta("trade_view")) and focused is Button):
 				if focused.name=="BuildPlace":controller_aim=true
 				if focused.toggle_mode:focused.button_pressed=not focused.button_pressed
 				focused.pressed.emit()
@@ -2081,6 +2651,9 @@ func _input(event:InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if event.button_index==JOY_BUTTON_X and CommunityUI.focus_dish_action(self):
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index==JOY_BUTTON_X and MarketUI.focus_settlement(self):
 			get_viewport().set_input_as_handled()
 			return
 		if event.button_index==JOY_BUTTON_X and preload("res://scripts/public_kitchen_ui.gd").focus_kitchen_action(self):
@@ -2164,6 +2737,7 @@ func _forecast_focus_shortcut(event:InputEventKey) -> bool:
 	return LifeShell.toggle_forecast_focus(self)
 
 func _unhandled_input(event:InputEvent) -> void:
+	if is_instance_valid(version_update_dialog):return
 	if not playing:return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if InputBindings.event_key(event)==KEY_ESCAPE:
@@ -2177,6 +2751,11 @@ func _unhandled_input(event:InputEvent) -> void:
 		if bindings.matches("map",event):
 			if is_instance_valid(map_view):_close_modal()
 			elif _world_keyboard_allowed():_map_menu()
+			return
+		# T11: the interact key that opened the tea snack shelf also puts it away, like Esc.
+		if bindings.matches("interact",event) and is_instance_valid(modal) and modal.get_meta("life_modal_layout","")=="tea_snack_shelf":
+			_close_modal()
+			get_viewport().set_input_as_handled()
 			return
 		if not _world_keyboard_allowed():return
 		# 望安下船卡：互動鍵或確認鍵（Enter／Space）收起卡片，這一下不做別的事。
@@ -2193,7 +2772,7 @@ func _unhandled_input(event:InputEvent) -> void:
 			return
 		for action in TOOL_ACTIONS:
 			if bindings.matches(action,event):
-				_select_tool(action)
+				if not _beach_shovel_active() and not _cooking_relay_active() and not _lost_chicks_active() and not _in_cart_gallery():_select_tool(action)
 				get_viewport().set_input_as_handled()
 				return
 		if bindings.matches("build_menu",event):_build_menu()
@@ -2212,17 +2791,20 @@ func _unhandled_input(event:InputEvent) -> void:
 	if modal:return
 	# Clicking the world closes the forecast focus tip; the click still acts normally.
 	if village_art_preview and event is InputEventMouseButton and event.pressed:LifeShell.release_forecast_focus(self)
-	if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT and _blueprint_world_click(event.position):
+	if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT and not _beach_shovel_active() and not _cooking_relay_active() and not _lost_chicks_active() and not _in_cart_gallery() and _blueprint_world_click(event.position):
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:
 		if action_clock>0 or not (_world_pointer_allowed(event.position) if village_art_preview else view.show_target):return
 		action_clock=0.16
 		target=view.to_cell(event.position)
-		if selected=="build" and building in ["floor","path","spring_pebble_path","roof"] and area_modifier_held(event):
+		if _beach_shovel_active() or _cooking_relay_active() or _lost_chicks_active():
+			_use_selected_at(target,GATHER_NONE,event.position)
+			return
+		if selected=="build" and building in ["floor","stone_floor","path","spring_pebble_path","roof",World.TERRACOTTA_ROOF.KIND] and area_modifier_held(event):
 			area_drag=true;area_start=target
 			return
-		_use_selected_at(target,GATHER_MOUSE)
+		_use_selected_at(target,GATHER_MOUSE,event.position,area_modifier_held(event))
 
 func _controller_target() -> Vector2i:
 	var person:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
@@ -2231,6 +2813,17 @@ func _controller_target() -> Vector2i:
 
 func _build_tool_hint() -> String:
 	var name:String=World.BUILD[building].name
+	if _edge_preview_kind().begins_with("edge_"):
+		if controller_aim:return "%s · %s側 · 按下右搖桿換邊 · X 施工"%[name,EDGE_SIDE_NAMES[edge_controller_side]]
+		return "%s · 把游標移到格線，點一下施工"%name
+	if building == World.INDUSTRY.MILL and mill_build_facing >= 0:
+		name += " · 入口朝" + ["南", "西", "北", "東"][mill_build_facing]
+	# C11: say why the preview will be refused instead of letting the click fail silently.
+	var stone_snapshot:Dictionary=session.snapshot if session!=null else {}
+	if building==World.INDUSTRY.STONE_WORKBENCH and stone_snapshot.get("board",false)!=true:
+		return "%s · %s"%[name,World.STONE_WORKSHOP.LOCKED_MSG]
+	if building in World.STONE_WORKSHOP.STATION_BUILDS and not (stone_snapshot.get("stone_workshop_ready",false)==true or World.STONE_WORKSHOP.has_station(stone_snapshot.get("objects",{}))):
+		return "%s · %s"%[name,World.STONE_WORKSHOP.STATION_MSG]
 	if is_instance_valid(view) and view.show_target:
 		var blocked:Dictionary=view.build_placement_blocks(view.target,building)
 		if not blocked.is_empty():
@@ -2257,14 +2850,25 @@ func _controller_world_button(index:int,device:int=GATHER_NONE) -> bool:
 			controller_aim=true
 			if action_clock<=0.0:
 				action_clock=0.16
+				if _beach_shovel_active() or _cooking_relay_active() or _lost_chicks_active():
+					_use_selected_at(_controller_target(),device)
+					return true
 				if selected=="fish" and _reel_active_cast():return true
 				var cell:=_controller_target()
 				if area_drag:
 					area_drag=false
 					_perform_build_action("build_area",area_start,"%s|%d|%d"%[building,cell.x,cell.y])
-				else:_use_selected_at(cell,device)
+				else:_use_selected_at(cell,device,Vector2.INF,controller_farm_wide)
 		JOY_BUTTON_RIGHT_STICK:
-			if selected!="build" or building not in ["floor","path","spring_pebble_path","roof"]:return false
+			if not _carried_range_tool().is_empty():
+				controller_aim=true
+				controller_farm_wide=not controller_farm_wide
+				return true
+			if _edge_preview_kind() in ["edge_wall","edge_door","edge_window","remove_edge"]:
+				controller_aim=true
+				edge_controller_side=(edge_controller_side+1)%4
+				return true
+			if selected!="build" or building not in ["floor","stone_floor","path","spring_pebble_path","roof",World.TERRACOTTA_ROOF.KIND]:return false
 			controller_aim=true
 			area_start=_controller_target()
 			area_drag=true
@@ -2288,18 +2892,89 @@ func controller_tool_cycle() -> Array:
 	var bag:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{}).get("inventory",{}) if session else {}
 	var at:=cycle.find("fish")+1
 	for machine in [["till_area","tiller"],["seed_area","seeder"],["harvest_area","harvester"]]:
-		if int(bag.get(machine[1],0))>0:
+		if int(bag.get(machine[1],0))>0 or (machine[1]==World.PUBLIC_TILLER.ITEM and session and World.PUBLIC_TILLER.borrowed(session.snapshot.get("players",{}).get(session.own_id,{}))):
 			cycle.insert(at,machine[0])
 			at+=1
 	return cycle
 
-func _use_selected_at(cell:Vector2i,gather_device:int=GATHER_NONE) -> void:
+func _beach_shovel_active()->bool:
+	var snapshot:Dictionary=session.snapshot
+	if snapshot.get("region_id","")!=World.REGIONS.HOME:return false
+	if snapshot.get(World.BEACH_TREASURE.KEY,{}).get("phase")!="search":return false
+	if not snapshot.get(World.BEACH_TREASURE.VIEW_KEY,{}).get("joined",false):return false
+	var person:Dictionary=snapshot.get("players",{}).get(session.own_id,{})
+	return not person.is_empty() and World.BEACH_TREASURE.AREA.has_point(Vector2i(floori(person.x),floori(person.y)))
+
+func _cooking_relay_active()->bool:
+	var snapshot:Dictionary=session.snapshot
+	if snapshot.get("region_id","")!=World.REGIONS.HOME:return false
+	if snapshot.get(World.COOKING_RELAY.KEY,{}).get("phase")!="run":return false
+	if not snapshot.get(World.COOKING_RELAY.VIEW_KEY,{}).get("joined",false):return false
+	var person:Dictionary=snapshot.get("players",{}).get(session.own_id,{})
+	return not person.is_empty() and World.COOKING_RELAY.AREA.has_point(Vector2i(floori(person.x),floori(person.y)))
+
+func _stroll_tracking()->bool:
+	return session!=null and session.snapshot.get(World.LANTERN_STROLL.VIEW_KEY,{}).get("joined",false)
+
+func _stroll_menu()->void:
+	StrollUI.open(self)
+
+func _set_stroll_dim(dim:bool)->void:
+	if not sound.save_stroll_dim(settings_path,dim):
+		_notice("燈光設定保存失敗。",false)
+		return
+	view.stroll_dim=dim
+	StrollUI.refresh(self)
+
+func _in_cart_gallery()->bool:
+	return session!=null and session.snapshot.get("region_id","")==World.PARTY_CART.REGION
+
+func _party_cart_menu()->void:
+	PartyCartUI.open(self)
+
+func _party_cart_interact(point:String)->void:
+	var cart:Dictionary=session.snapshot.get(World.PARTY_CART.KEY,{})
+	var joined:bool=session.snapshot.get(World.PARTY_CART.VIEW_KEY,{}).get("joined",false)
+	if point!="cart" or not joined or cart.get("phase")!="run" or int(cart.get("to",-1))!=-1:
+		PartyCartUI.open(self,point)
+		return
+	var stop:=int(cart.get("stop",0))
+	var verb:="unload" if stop==World.PARTY_CART.DOCK else "push"
+	session.perform(World.PARTY_CART.ACTION,World.PARTY_CART.STOPS[stop],"%s:%d"%[verb,int(cart.round)])
+
+func _lost_chicks_active()->bool:
+	var snapshot:Dictionary=session.snapshot
+	if snapshot.get("region_id","")!=World.REGIONS.HOME:return false
+	if snapshot.get(World.LOST_CHICKS.KEY,{}).get("phase")!="run":return false
+	if not snapshot.get(World.LOST_CHICKS.VIEW_KEY,{}).get("joined",false):return false
+	var person:Dictionary=snapshot.get("players",{}).get(session.own_id,{})
+	return not person.is_empty() and World.LOST_CHICKS.AREA.has_point(Vector2i(floori(person.x),floori(person.y)))
+
+func _lost_chicks_menu()->void:
+	LostChicksUI.open(self)
+
+func _carried_range_tool()->String:
+	if selected not in ["hoe","water","seed","harvest"]:return ""
+	if session.snapshot.get("region_id",World.REGIONS.HOME)!=World.REGIONS.HOME:return ""
+	var own:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
+	return World.gathering_tool_upgrade(selected,own.get("inventory",{}))
+
+func _use_selected_at(cell:Vector2i,gather_device:int=GATHER_NONE,pointer:=Vector2.INF,spread_tool:bool=false) -> void:
+	if _in_cart_gallery() or _cooking_relay_active() or _lost_chicks_active():return
+	if _beach_shovel_active():
+		for site:Dictionary in World.BEACH_TREASURE.SPOTS.values():
+			if site.cell!=cell:continue
+			var round_id:int=session.snapshot[World.BEACH_TREASURE.KEY].round
+			session.perform(World.BEACH_TREASURE.ACTION,cell,"dig:%d"%round_id)
+			return
+		return
 	if World.CHICKEN_CUDDLE.holder(session.snapshot)==session.own_id and not session.own_id.is_empty():
 		_notice(binding_text("雙手正抱著糯米雞，按 {interact} 讓牠回雞圈後再使用工具。"),false)
 		return
 	target=cell
 	# T071 家園布置題：已加入時點選（或手把 X）展示地塊格＝擺上／收起，不使用手上的工具。
 	if str(session.snapshot.get("region_id","home"))=="home" and ShowcaseUI.click(self,cell):return
+	if _use_edge_tool(cell,pointer):return
 	if selected=="move_object":
 		if moving_object:
 			session.perform("move_object",move_from,World.key(target));moving_object=false
@@ -2320,7 +2995,47 @@ func _use_selected_at(cell:Vector2i,gather_device:int=GATHER_NONE) -> void:
 		gather_hold={"tool":selected,"cell":cell,"device":gather_device}
 		_send_gather_hit()
 		return
+	if spread_tool and not _carried_range_tool().is_empty():
+		session.perform(selected,target,"spread:"+crop if selected=="seed" else "spread")
+		return
 	_perform_build_action(selected,target,crop if selected in ["seed","seed_area"] else (building if selected=="build" else ""))
+
+## T046 phase 2: with ground, roofs and edges projected to the view window, a
+## room, roof plan or blueprint can reach past it into cells that are only the
+## last known ones. While a structure tool is in hand, a blueprint mode is
+## active or the blueprint folio or roof confirmation is open, the whole island
+## is requested so previews and quotes read current walls. The server remains
+## the authority either way.
+func _structure_view_needed() -> bool:
+	if selected in ["build","remove"]:return true
+	if blueprints!=null and (_blueprint_mode()!="idle" or blueprints.busy()):return true
+	return is_instance_valid(modal) and modal.get_meta("life_modal_layout","")==BlueprintUI.LAYOUT
+
+func _edge_preview_kind() -> String:
+	if not session.snapshot.get("edge_construction",false):return ""
+	if selected=="build" and building_on_edge and building in EDGE_BUILD_TYPES:return "edge_"+building
+	if selected=="remove":return "remove_edge"
+	return ""
+
+func _edge_controller_pointer(cell:Vector2i) -> Vector2:
+	var offset:Vector2=[Vector2(0,-0.46),Vector2(0.46,0),Vector2(0,0.46),Vector2(-0.46,0)][edge_controller_side]
+	return view.screen(Vector2(cell)+Vector2(0.5,0.5)+offset)*view.view_zoom()
+
+func _use_edge_tool(cell:Vector2i,pointer:Vector2) -> bool:
+	var kind:=_edge_preview_kind()
+	if kind.is_empty():return false
+	var aimed:=_edge_controller_pointer(cell) if controller_aim else pointer
+	var hit:Dictionary=view.target_edge_at(aimed,kind) if aimed.is_finite() else {}
+	if hit.is_empty():return kind!="remove_edge"
+	var at:Vector2i=hit.cell
+	var side:=str(hit.side)
+	if kind=="remove_edge":
+		var edge:=World.EDGE_CONSTRUCTION.decode("remove_edge",at,side,World.SIZE)
+		if not session.snapshot.get("edges",{}).has(edge.get("id","")):return false
+		_perform_build_action("remove_edge",at,side)
+	else:
+		_perform_build_action("build_edge",at,kind+"|"+side)
+	return true
 
 func _send_gather_hit() -> void:
 	gather_hold.pending=session.counter+1
@@ -2348,8 +3063,16 @@ func _update_gather_hold(dt:float,mouse:Vector2) -> void:
 ## quoted once (never per frame); only when automatic roofs would be added or removed
 ## does a confirmation modal appear. Everything else is the original perform call.
 func _perform_build_action(action:String,at:Vector2i,extra:String="") -> void:
+	if action == "build" and extra == World.INDUSTRY.MILL and mill_build_facing >= 0:
+		extra += ":%d" % mill_build_facing
 	if action not in ROOF_QUOTE_ACTIONS:
 		session.perform(action,at,extra)
+		return
+	if not session.structure_view_complete():
+		# T046 phase 2: a roof quote over last-known far walls could skip the
+		# confirmation. The whole view was requested when the tool was taken up
+		# (_structure_view_needed) and arrives within a round trip.
+		_notice(STRUCTURE_VIEW_PENDING,false)
 		return
 	var quote:=_roof_quote(action,at,extra)
 	if action in ["build","build_area"] and not building_style.is_empty():
@@ -2529,6 +3252,9 @@ func _confirm_roof_quote() -> void:
 	if not is_instance_valid(modal) or not modal.has_meta("roof_request"):return
 	var request:Dictionary=modal.get_meta("roof_request")
 	var shown:Dictionary=modal.get_meta("roof_quote",{})
+	if not session.structure_view_complete():
+		_notice(STRUCTURE_VIEW_PENDING,false)
+		return
 	var fresh:=_roof_quote(str(request.action),request.at,str(request.extra))
 	if fresh!=shown:
 		_roof_confirm_menu(request,fresh,true)
@@ -2634,7 +3360,19 @@ func _blueprint_applied(_result:Dictionary) -> void:
 	_refresh_hud()
 
 ## Strip visibility follows controller state; contents are owned by the strip.
+func _in_maokong_tea_room()->bool:
+	return session!=null and session.snapshot.get("region_id","")==World.TEA_HOUSE_INTERIOR.REGION and World.TEA_HOUSE_INTERIOR.inside(session.snapshot.get("players",{}).get(session.own_id,{}))
+
+## 鶯歌合作陶坊 indoors: same minimal HUD as the tea room (no tool hint, toolbar or exterior click hints).
+func _in_pottery_workshop()->bool:
+	return session!=null and session.snapshot.get("region_id","")==World.POTTERY_WORKSHOP_INTERIOR.REGION and World.POTTERY_WORKSHOP_INTERIOR.inside(session.snapshot.get("players",{}).get(session.own_id,{}))
+
+func _on_aru_bench()->bool:
+	return session!=null and not session.own_id.is_empty() and AruRest.seated(session.snapshot,session.own_id)
+
 func _tool_hint_visible()->bool:
+	if _in_maokong_tea_room() or _in_pottery_workshop() or _on_aru_bench():return false
+	if is_instance_valid(modal) and modal.get_meta("life_modal_layout","")==CookingQueueUI.LAYOUT:return false
 	var holding:bool=not session.own_id.is_empty() and World.CHICKEN_CUDDLE.holder(session.snapshot)==session.own_id
 	var blueprint_active:bool=blueprints!=null and playing and modal==null and (_blueprint_mode()!="idle" or blueprints.busy())
 	return not holding and not blueprint_active
@@ -2723,11 +3461,46 @@ func _interact() -> void:
 		session.perform(World.CHICKEN_CUDDLE.RELEASE,World.CHICKEN_CELL)
 		return
 	if LifeTasks.achao_return_if_sailing(self):return
+	# T066 N01-3: seated on 阿榆's bench, the interact key stands up (the server confirms; no local guess).
+	if not session.own_id.is_empty() and AruRest.seated(session.snapshot,session.own_id):
+		LifeTasks.aru_leave(self)
+		return
 	var s:Dictionary=session.snapshot
 	if not s.has("players") or not s.players.has(session.own_id):return
 	var p:Dictionary=s.players[session.own_id]
+	var seat:Dictionary=p.get(World.RESIDENT_GOALS.MASTER_BENCH_SEAT,{})
+	var seat_key:String=seat.get("cell","")
+	if World.RESIDENT_GOALS.aru_public_bench(s.objects.get(seat_key,{})):
+		session.perform(World.RESIDENT_GOALS.MASTER_BENCH_SIT,World.cell(seat_key))
+		return
+	if s.objects.get(seat_key,{}).get("type")==World.INDUSTRY.BEACH_CHAIR:
+		session.perform(World.INDUSTRY.BEACH_SIT,World.cell(seat_key))
+		return
+	if s.objects.get(seat_key,{}).get("type")==World.INDUSTRY.BAMBOO_LOUNGER:
+		session.perform(World.INDUSTRY.LOUNGER_REST,World.cell(seat_key))
+		return
+	if s.objects.get(seat_key,{}).get("type") in [World.INDUSTRY.MUSHROOM_STOOL,World.INDUSTRY.WOOD_CHAIR,World.INDUSTRY.INDIGO_CUSHION]:
+		session.perform(World.RESIDENT_GOALS.MASTER_BENCH_SIT,World.cell(seat_key))
+		return
+	if s.objects.get(seat_key,{}).get("type") in World.INDUSTRY.FOUR_SEAT_TABLES:
+		LifeTasks.four_seat_table(self,World.cell(seat_key))
+		return
+	if s.objects.get(seat_key,{}).get("type") in World.RESIDENT_GOALS.INDEPENDENT_TWO_SEATS:
+		LifeTasks.cotton_sofa(self,World.cell(seat_key))
+		return
+	if s.objects.get(seat_key,{}).get("type")==World.INDUSTRY.HOLLOW_BED:
+		session.perform(World.INDUSTRY.HOLLOW_REST,World.cell(seat_key))
+		return
+	if s.objects.get(seat_key,{}).get("type")==World.INDUSTRY.SHELL_TABLE:
+		session.perform(World.INDUSTRY.SHELL_SIT,World.cell(seat_key),str(seat.side))
+		return
 	var pos:=Vector2(p.x,p.y)
 	var region:=str(s.get("region_id","home"))
+	var mat_cell:=preload("res://scripts/leaf_mat_art.gd").own_mat_cell(s,session.own_id)
+	if mat_cell.x>=0:
+		var mat:Dictionary=s.ground[World.key(World.station_anchor(s.ground,mat_cell))]
+		LifeTasks.leaf_mat_colors(self,mat_cell,mat)
+		return
 	if region==World.MINES.MUD_REGION and World.MINES.mud_engaged(p,float(s.time)):
 		_mine_mud_menu(0)
 		return
@@ -2740,7 +3513,7 @@ func _interact() -> void:
 	if region=="home" and ShowcaseUI.interact(self):return
 	if region==World.REGIONS.HOME and selected=="build" and view.show_target and pos.distance_to(Vector2(target)+Vector2(0.5,0.5))<=3.2:
 		var floor_piece:Dictionary=s.ground.get(World.key(target),{})
-		if floor_piece.get("type")=="floor" and floor_piece.get("owner")==session.own_id:
+		if World.ROOM_ENCLOSURE.is_floor_kind(floor_piece.get("type")) and floor_piece.get("owner")==session.own_id:
 			_floor_placement_menu(target,floor_piece)
 			return
 	if region==World.REGIONS.HOME and selected=="remove" and view.show_target and pos.distance_to(Vector2(target)+Vector2(0.5,0.5))<=3.2:
@@ -2748,6 +3521,10 @@ func _interact() -> void:
 		if furniture.get("owner")==session.own_id and furniture.get("type") in World.PLOT_PERMISSIONS.SHARED_REMOVAL_FURNITURE and not furniture.get("aru_public",false):
 			_furniture_removal_menu(target,furniture)
 			return
+	# 已坐在暖泉旅舍休息處（主位或第二座位）時，互動鍵只在本機拍旅舍合照，不送伺服器動作。
+	if region==World.WARM_SPRINGS.REGION and not World.WARM_SPRINGS.rest_choice(str(p.get(World.WARM_SPRINGS.REST_SEAT_KEY,""))).is_empty():
+		LifeTasks.take_inn_photo(self)
+		return
 	var closest:=""
 	var dist:=3.2
 	var points:Dictionary={}
@@ -2755,10 +3532,23 @@ func _interact() -> void:
 	points.merge(TeaUI.interaction_points(region,s))
 	points.merge(FlowerUI.interaction_points(region))
 	points.merge(SaltUI.interaction_points(region))
+	points.merge(PartyCartArt.points(s))
 	# 第 40 章北門儲滷槽（工寮東側）：不在 SaltUI.interaction_points（那份與 salt_world_art.sites() 對應）。
 	if region==SaltBrineUI.Brine.REGION:points[SaltBrineUI.POINT]=Vector2(SaltBrineUI.Brine.TANK)+Vector2(0.5,0.5)
 	if region=="home":
 		points={"board":Vector2(40.5,29.5),"shop":Vector2(43.5,29.5),"animal":Vector2(45.7,33.8),"quarry":Vector2(54.5,25.5),"copper":Vector2(World.COPPER_CELL)+Vector2(0.5,0.5)}
+		if s.get(World.MILL_RESTORATION.SITE_VISIBLE,false):
+			points[World.MILL_RESTORATION.POINT]=Vector2(World.MILL_RESTORATION.DOOR)+Vector2(0.5,0.5)
+		var spring:Dictionary=s.get("own_spring_garden",{})
+		if spring.get("active",false):
+			for station:String in World.SPRING_GARDEN.SPOTS:
+				if not World.SPRING_GARDEN.has_stamp(int(spring.get("mask",0)),station):
+					points["spring_garden:"+station]=Vector2(World.SPRING_GARDEN.SPOTS[station].cell)+Vector2(0.5,0.5)
+		points.merge(WarmLanternArt.points(s))
+		points.merge(StrollArt.points(s))
+		points.merge(BeachTreasureArt.points(s))
+		points.merge(CookingRelayArt.points(s))
+		points.merge(LostChicksArt.points(s))
 		if LifeTasks.bell_tree_available(s):points["lingpopo_tree"]=Vector2(World.Festival.TREE_CELL)+Vector2(0.5,0.5)
 		var shipping_cell:Vector2i=World.SHIPPING.cell_for(s)
 		if shipping_cell!=World.SHIPPING.NO_CELL:points["shipping"]=Vector2(shipping_cell)+Vector2(0.5,0.5)
@@ -2778,8 +3568,17 @@ func _interact() -> void:
 	if region==World.WARM_SPRINGS.REGION:
 		points[World.WARM_SPRINGS.BATH_ACTION]=Vector2(World.WARM_SPRINGS.BATH_ENTRANCE)+Vector2(0.5,0.5)
 		points[World.WARM_SPRINGS.INN_POINT]=Vector2(World.WARM_SPRINGS.INN_DOOR)+Vector2(0.5,0.5)
+		World.WARM_SPRINGS.crack_interactions(s,points,pos)
 		if World.WARM_SPRINGS.in_inn(p):World.WARM_SPRINGS.room_interactions(points)
+		World.WARM_SPRINGS.rest_interactions(s,points,pos,session.own_id)
+	# 貓空茶館室內：在室內時只留室內的門與座位，室外茶屋展示桌與產業點位不變（與 world_view 相同）。
+	if region==World.TEA_HOUSE_INTERIOR.REGION:
+		if World.TEA_HOUSE_INTERIOR.inside(p):points.clear()
+		World.TEA_HOUSE_INTERIOR.points(s,p,points)
 	if s.get("region_id","home")==World.REGIONS.HOME:points["aru_park"]=Vector2(World.RESIDENT_GOALS.ARU_PARK_VIEW)+Vector2(0.5,0.5)
+	var forest_tree:=World.forest_mushroom_tree(s,pos)
+	if forest_tree!=World.FOREST_MUSHROOM.NO_TREE:
+		points[World.FOREST_MUSHROOM.SURVEY_POINT]=Vector2(forest_tree)+Vector2(0.5,0.5)
 	if region=="home":points[World.WANGAN_MEMORY.POINT]=Vector2(World.WANGAN_MEMORY.SITE)+Vector2(0.5,0.5)
 	if region=="home" and World.WANGAN_MEMORY.courtyard_available(s):points[World.WANGAN_MEMORY.COURT_POINT]=Vector2(World.WANGAN_MEMORY.COURT_SIGN)+Vector2(0.5,0.5)
 	if region=="home":points[World.Hedgehog.POINT]=Vector2(World.Hedgehog.site(s))+Vector2(0.5,0.5)
@@ -2793,6 +3592,7 @@ func _interact() -> void:
 	if region=="home" and s.get("wangan_star_walk",false):
 		points[World.WANGAN_COAST.STAR_SAND_POINT]=Vector2(World.WANGAN_COAST.STAR_SAND)+Vector2(0.5,0.5)
 		points[World.WANGAN_COAST.DOCK_ORDERS_POINT]=Vector2(World.WANGAN_COAST.DOCK_ORDERS)+Vector2(0.5,0.5)
+		points[World.WANGAN_COAST.SALT_PARCEL_POINT]=Vector2(World.WANGAN_COAST.SALT_PARCEL)+Vector2(0.5,0.5)
 	elif region=="home":points[World.WANGAN_COAST.STAR_REPAIR_POINT]=Vector2(World.WANGAN_COAST.STAR_REPAIR)+Vector2(0.5,0.5)
 	# T071：市集攤位（渡口野餐後），排在走近型居民之後、物件之前，與 world_view 相同。
 	var market_cell:Vector2i=MarketUI.Market.active_cell(s) if region=="home" else MarketUI.Market.NO_CELL
@@ -2806,6 +3606,8 @@ func _interact() -> void:
 	if region=="home" and ShowcaseUI.sign_shown(s):points[ShowcaseUI.POINT]=Vector2(World.SHOWCASE.SIGN)+Vector2(0.5,0.5)
 	# T071 紀念品交換攤，緊接在家園布置題告示牌之後（與 world_view 相同）。
 	if region=="home" and SouvenirUI.booth_shown(s):points[SouvenirUI.POINT]=Vector2(SouvenirUI.booth_cell(s))+Vector2(0.5,0.5)
+	# T064 公用耕田機的農機架，緊接在紀念品交換攤之後（與 world_view 相同）。
+	if region=="home":points.merge(PublicTillerUI.points(s))
 	# 第 40 章風鈴節廣場地方記憶展，緊接在紀念品交換攤之後（與 world_view 相同）。
 	if region=="home" and MemoryExhibitUI.stand_shown(s):points[MemoryExhibitUI.POINT]=Vector2(MemoryExhibitUI.stand_cell(s))+Vector2(0.5,0.5)
 	if region=="lanyang":points["travel"]=Vector2(World.REGIONS.exit_cell(region))+Vector2(0.5,0.5)
@@ -2826,10 +3628,11 @@ func _interact() -> void:
 		points["mine_site:entry"]=Vector2(World.MINES.ENTRY)+Vector2(0.5,0.5)
 		for site in World.JINGUASHI.NODES:points["mine:"+World.key(site)]=Vector2(site)+Vector2(0.5,0.5)
 		points[GoldPanUI.POINT]=Vector2(World.GOLD_PANNING.SITE)+Vector2(0.5,0.5) # 第 40 章河邊淘砂金
-		points[OreRouteUI.POINT]=Vector2(World.ORE_ROUTE.cart_cell(World.ORE_ROUTE.stage(s)))+Vector2(0.5,0.5) # 第 40 章運礦台車（位置隨階段移動）
+		points[OreRouteUI.POINT]=Vector2(OreRouteUI.cart_point_cell(s))+Vector2(0.5,0.5) # 第 40 章運礦台車（位置隨階段移動；T066 推空車時改成劇情空車）
 	elif region.begins_with("mine_"):
 		var survey_point:Vector2i=World.MINE_SURVEY.POINTS[int(region.trim_prefix("mine_"))]
-		if not s.objects.has(World.key(survey_point)):points["mine_survey"]=Vector2(survey_point)+Vector2(0.5,0.5)
+		if not s.objects.has(World.key(survey_point)) and not ShyUI.spores_moving(s) and not GuardianUI.trial_active(s):
+			points["mine_survey"]=Vector2(survey_point)+Vector2(0.5,0.5)
 		for station in {"up":World.MINES.UP,"down":World.MINES.DOWN,"rest":World.MINES.REST,"service":World.MINES.SERVICE}:
 			if station=="down" and World.MINES.depth_of(region)>=World.MINES.MAX_DEPTH:continue
 			var stations:Dictionary={"up":World.MINES.UP,"down":World.MINES.DOWN,"rest":World.MINES.REST,"service":World.MINES.SERVICE}
@@ -2838,27 +3641,38 @@ func _interact() -> void:
 		if region==World.MINES.MUD_REGION and int(p.get("mud_alcove",0))<2:
 			var mud_site:=World.MINES.MUD_GATE if int(p.get("mud_alcove",0))==0 else World.MINES.MUD_REWARD
 			points["mine_mud"]=Vector2(mud_site)+Vector2(0.5,0.5)
+		points.merge(GuardianUI.points(s,p,region,int(s.get("mine_depths",{}).get("unlocked",1))))
+		points.merge(ShyUI.points(s,p,region,int(s.get("mine_depths",{}).get("unlocked",1))))
+		points.merge(World.PORTER.interaction_points(s,p))
+		points.merge(World.MEADOW_ADVENTURE.interaction_points(s,p))
 		for site in World.MINES.NODES:points["extract:"+World.key(site)]=Vector2(site)+Vector2(0.5,0.5)
 	for k in s.objects:
-		if s.objects[k].type in World.RESIDENT_GOALS.FESTIVAL_BELL_KINDS:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
-		if s.objects[k].type==World.WELCOME_SIGN.KIND:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in World.INDUSTRY.SWITCHABLE_LAMPS and s.objects[k].get("owner")==session.own_id:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in World.RESIDENT_GOALS.FESTIVAL_BELL_KINDS or s.objects[k].type==World.WALL_FIXTURES.WATER_LISTENING_CHIME:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in [World.WELCOME_SIGN.KIND,World.WALL_FIXTURES.HOME_SIGN]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
 		if s.objects[k].type==World.INN_TEA_TABLE:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
-		if s.objects[k].type==World.INDUSTRY.LUGGAGE_RACK:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
-		if s.objects[k].type in ["chest","private_chest","supply_box","bench","bed","inn_quilt_bed","inn_stone_footbath","door","stove","sprinkler","medium_sprinkler","large_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","small_smelter","clay_kiln","dye_table","assembly_table","animal_collector","sketch_easel","guest_wardrobe","inn_lattice_wardrobe","wood_mailbox","rope_rack","fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket","long_bench","master_bench","spring_stone_bench","sign"]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
-	if region!=World.FLOWER_NURSERY.REGION:
-		var sketches:Dictionary=s.get("own_crop_sketches",{})
-		var seek_sketches:bool=region==World.REGIONS.HOME and int(s.get("resident_bonds",{}).get("diandian",{}).get("stage",0))>=1 and sketches.size()<World.RESIDENT_GOALS.SKETCH_TARGET
-		for plot_key in s.crops:
-			var own_plot:bool=s.crops[plot_key].get("owner","")==session.own_id
-			var kind:String=s.crops[plot_key].get("kind","")
-			var can_sketch:bool=seek_sketches and World.CROPS.has(kind) and not sketches.has(kind)
-			if own_plot or can_sketch:
-				points["plot:"+plot_key]=Vector2(World.cell(plot_key))+Vector2(0.5,0.5)
+		if s.objects[k].type in [World.RESIDENT_GOALS.GARDEN_CHAIR,World.INDUSTRY.MUSHROOM_STOOL,World.INDUSTRY.WOOD_CHAIR,World.INDUSTRY.INDIGO_CUSHION]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in [World.INDUSTRY.LUGGAGE_RACK,World.INDUSTRY.OBSERVATION_DESK,World.INDUSTRY.LEAF_DESK,World.INDUSTRY.SEED_CABINET,World.INDUSTRY.AQUARIUM,World.INDUSTRY.VINE_ARCH,World.INDUSTRY.POT_RACK,World.NURSERY_BOX.KIND,World.INDUSTRY.COAST_FISH_COUNTER,World.INDUSTRY.COAST_REGISTER,World.INDUSTRY.COAST_CART,World.INDUSTRY.MUSHROOM_TABLE,World.INDUSTRY.BAMBOO_TEA_TABLE,World.INDUSTRY.TEA_DISPLAY_CABINET,World.INDUSTRY.HOLLOW_BED,World.INDUSTRY.BEACH_CHAIR,World.INDUSTRY.RIVERSIDE_SCREEN,World.INDUSTRY.BAMBOO_LOUNGER,World.INDUSTRY.SHELL_TABLE,World.INDUSTRY.ROUNDED_TABLE,World.INDUSTRY.GRID_BOOKCASE,"table"]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+		if s.objects[k].type in [World.WALL_FIXTURES.BARK_FRAME,World.WALL_FIXTURES.TOOL_BOARD,"chest","private_chest","supply_box",World.INDUSTRY.ACORN_CABINET,World.INDUSTRY.TEA_SNACK_SHELF,"bench","bed",World.INDUSTRY.CEDAR_BED,"inn_quilt_bed","inn_stone_footbath","door","stove",World.INDUSTRY.KITCHEN_STOVE,"sprinkler","medium_sprinkler","large_sprinkler","water_tank","water_pump","sawmill","charcoal_kiln","forester","conveyor","waterworks","mine_drill","mill","seed_maker","loom","glass_furnace","small_smelter","clay_kiln","dye_table","assembly_table","animal_collector","sketch_easel","guest_wardrobe","inn_lattice_wardrobe",World.RESIDENT_GOALS.COAST_WARDROBE,World.RESIDENT_GOALS.FOREST_WARDROBE,"wood_mailbox",World.INDUSTRY.MUSHROOM_POST,"rope_rack",World.POSTCARDS.RACK,World.OAR_SIGN.KIND,"fish_display","author_sign","author_shelf","expedition_tent","diversion_gate","water_tower","water_share_plaque","mine_lantern","tea_ware","salt_basket","long_bench","master_bench","spring_stone_bench",World.RESIDENT_GOALS.COTTON_SOFA,World.RESIDENT_GOALS.BAMBOO_BENCH,"sign",World.INDUSTRY.STONE_WORKBENCH]:points[k]=Vector2(World.cell(k))+Vector2(0.5,0.5)
+	points.merge(World.crop_detail_points(s,session.own_id,pos,region))
+	if region==World.REGIONS.HOME:points.merge(World.edge_door_points(s,pos))
+	# 鶯歌合作陶坊：室內只留門與三個工作點（其餘點位一律不算）；門只在 REACH 內才成為目標，與 world_view 相同。
+	if region==World.POTTERY_WORKSHOP_INTERIOR.REGION:
+		if World.POTTERY_WORKSHOP_INTERIOR.inside(p):points.clear()
+		World.POTTERY_WORKSHOP_INTERIOR.points(p,points)
+		if points.has(World.POTTERY_WORKSHOP_INTERIOR.PORTAL) and pos.distance_to(points[World.POTTERY_WORKSHOP_INTERIOR.PORTAL])>World.POTTERY_WORKSHOP_INTERIOR.REACH:
+			points.erase(World.POTTERY_WORKSHOP_INTERIOR.PORTAL)
 	for key in points:
 		var distance:=pos.distance_to(points[key])
 		if distance<dist:closest=key;dist=distance
-	if region==World.ORE_ROUTE.REGION:closest=World.ORE_ROUTE.preferred_interaction(s,pos,closest,points)
+	if region==World.ORE_ROUTE.REGION:closest=OreRouteUI.preferred_interaction(s,pos,closest,points)
+	# T12: the open pavilion is only a fallback, so it never hides a nearer resident, chest, sign or any other point.
+	if closest.is_empty():closest=World.PAVILION.focus(s.objects,pos)
 	if not closest.is_empty():
+		if closest.begins_with("edge_door:"):
+			var edge:=World.EDGE_GRID.decode(closest.trim_prefix("edge_door:"))
+			if not edge.is_empty():session.perform("toggle_edge",edge.cell,str(edge.side))
+			return
 		if closest.begins_with("plot:"):
 			var plot_key:=closest.trim_prefix("plot:")
 			var tile:=World.cell(plot_key)
@@ -2930,10 +3744,21 @@ func _interact() -> void:
 			return
 		if closest==SaltBrineUI.POINT:SaltBrineUI.open(self);return
 		if closest==GoldPanUI.POINT:GoldPanUI.open(self);return
+		if closest=="party_cart_portal":
+			if PartyCartArt.portal_locked(session.snapshot):
+				_notice(PartyCartArt.LOCKED_NOTICE,false)
+				return
+			session.perform(World.PARTY_CART.ACTION,World.PARTY_CART.SURFACE_PORTAL,"enter")
+			return
+		if closest=="party_cart_exit":
+			session.perform(World.PARTY_CART.ACTION,World.PARTY_CART.EXIT,"exit")
+			return
+		if closest.begins_with("party_cart:"):_party_cart_interact(closest.get_slice(":",1));return
 		if closest==OreRouteUI.POINT:OreRouteUI.interact(self);return
 		if closest.begins_with("tea:"):
 			var site:=closest.trim_prefix("tea:")
 			if site.begins_with("pick:"):TeaUI.open(self,"pick",World.cell(site.trim_prefix("pick:")))
+			elif _in_pottery_workshop():TeaUI.open(self,site,World.POTTERY_WORKSHOP_INTERIOR.station_cell(site))
 			else:TeaUI.open(self,site)
 			return
 		if closest.begins_with("station_resident:"):_station_resident_menu(closest.trim_prefix("station_resident:"));return
@@ -2941,6 +3766,28 @@ func _interact() -> void:
 		if closest=="travel":_travel_menu();return
 		if closest.begins_with("transit:"):_travel_menu(closest.trim_prefix("transit:"));return
 		if closest=="mine_mud":_mine_mud_menu(int(p.get("mud_alcove",0)));return
+		if closest.begins_with(GuardianUI.POINT):GuardianUI.open(self,closest);return
+		if closest==ShyUI.POINT:ShyUI.interact(self);return
+		if closest==World.PORTER.POINT:
+			var step:=World.PORTER.next_step(int(p.get(World.PORTER.FIELD,0)))
+			if not step.is_empty():session.perform(step.action,step.cell)
+			return
+		if closest==World.MEADOW.POINT:
+			session.perform(World.MEADOW.CLAIM,World.MEADOW.CENTER)
+			return
+		if closest.begins_with(World.MEADOW.TABLE_PREFIX):
+			var index:=int(closest.trim_prefix(World.MEADOW.TABLE_PREFIX))
+			session.perform(World.MEADOW.OFFER,World.MEADOW.TABLES[index])
+			return
+		var meadow_trial:=World.MEADOW_ADVENTURE
+		if closest in [meadow_trial.WAKE_POINT,meadow_trial.CALM_POINT]:
+			var step:=meadow_trial.WAKE if closest==meadow_trial.WAKE_POINT else meadow_trial.CALM
+			session.perform(meadow_trial.ACTION,World.MEADOW.CENTER,step)
+			return
+		if closest.begins_with(meadow_trial.LIGHT_PREFIX):
+			var index:=int(closest.trim_prefix(meadow_trial.LIGHT_PREFIX))
+			session.perform(meadow_trial.ACTION,World.MEADOW.TABLES[index],meadow_trial.LIGHT)
+			return
 		if closest.begins_with("mine_site:"):_mine_site_menu(closest.trim_prefix("mine_site:"));return
 		if closest=="mine_survey":MineSurveyUI.open(self,int(region.trim_prefix("mine_")),true);return
 		if closest.begins_with("extract:"):session.perform("mine_extract",World.cell(closest.trim_prefix("extract:")));return
@@ -2961,6 +3808,9 @@ func _interact() -> void:
 		if closest=="copper":automation_ui.copper(self);return
 		if closest=="lingpopo_tree":LifeTasks.bell_inspection(self,"tree");return
 		if closest=="board":_board();return
+		if closest==World.MILL_RESTORATION.POINT:
+			LifeTasks.mill_project(self,_close_modal,World.MILL_RESTORATION.DOOR)
+			return
 		if closest=="shop":_shop();return
 		if closest=="shipping":_shipping_menu();return
 		if closest=="community":_community_menu();return
@@ -2973,8 +3823,17 @@ func _interact() -> void:
 			return
 		if closest.begins_with("livestock:"):LifeAlmanac.livestock_menu(self,closest.get_slice(":",1));return
 		if closest in World.RESIDENT_BOND.WALK_UP:_resident_bond_menu(closest);return
+		if closest.begins_with(World.WARM_SPRINGS.CRACK_ACTION+":"):
+			var index:=int(closest.get_slice(":",1))
+			session.perform(World.WARM_SPRINGS.CRACK_ACTION,World.WARM_SPRINGS.CRACK_SITES[index])
+			return
 		if closest==World.WARM_SPRINGS.BATH_ACTION:
 			session.perform(closest,World.WARM_SPRINGS.BATH_ENTRANCE)
+			return
+		if closest.begins_with(World.WARM_SPRINGS.REST_JOIN+":"):
+			var join_choice:=closest.get_slice(":",1)
+			if World.WARM_SPRINGS.REST_SEATS.has(join_choice):
+				session.perform(World.WARM_SPRINGS.REST_JOIN,World.WARM_SPRINGS.REST_SEATS[join_choice],join_choice)
 			return
 		if closest==World.WARM_SPRINGS.INN_POINT:LifeTasks.warm_springs_inn(self);return
 		if closest==World.WARM_SPRINGS.INN_PORTAL:
@@ -2983,12 +3842,38 @@ func _interact() -> void:
 		if closest.begins_with(World.WARM_SPRINGS.INN_USE+":"):
 			session.perform(World.WARM_SPRINGS.INN_USE,World.cell(closest.get_slice(":",1)))
 			return
+		if closest==World.TEA_HOUSE_INTERIOR.PORTAL:
+			session.perform(closest,World.TEA_HOUSE_INTERIOR.EXIT if World.TEA_HOUSE_INTERIOR.inside(p) else World.TEA_HOUSE_INTERIOR.DOOR)
+			return
+		if closest==World.POTTERY_WORKSHOP_INTERIOR.PORTAL:
+			session.perform(closest,World.POTTERY_WORKSHOP_INTERIOR.EXIT if World.POTTERY_WORKSHOP_INTERIOR.inside(p) else World.POTTERY_WORKSHOP_INTERIOR.DOOR)
+			return
+		if closest.begins_with(World.TEA_HOUSE_INTERIOR.SIT+":"):
+			session.perform(World.TEA_HOUSE_INTERIOR.SIT,World.cell(closest.get_slice(":",1)))
+			return
 		if closest=="market":MarketUI.open(self);return
+		if closest=="beach_treasure_sign":BeachTreasureUI.open(self);return
+		if closest.begins_with("beach_treasure:"):BeachTreasureUI.open(self,closest.get_slice(":",1));return
+		if closest.begins_with(StrollArt.PREFIX):StrollUI.open(self,closest.trim_prefix(StrollArt.PREFIX));return
+		if closest=="lost_chicks_sign":_lost_chicks_menu();return
+		if closest=="cooking_relay_sign":CookingRelayUI.open(self);return
+		if closest.begins_with("cooking_relay:"):CookingRelayUI.open(self,closest.get_slice(":",1));return
+		if closest.begins_with(WarmLanternArt.POINT_PREFIX):
+			WarmNightUI.open(self,closest.get_slice(":",1))
+			return
+		if closest.begins_with("spring_garden:"):
+			var station:=closest.get_slice(":",1)
+			session.perform(World.SPRING_GARDEN.ACTION,World.SPRING_GARDEN.SPOTS[station].cell,station)
+			return
 		if closest.begins_with("harvest:"):HarvestUI.interact(self,closest.trim_prefix("harvest:"));return
 		if closest==FishMeetUI.POINT:_fishmeet_menu();return
 		if closest==ShowcaseUI.POINT:ShowcaseUI.open(self);return
 		if closest==SouvenirUI.POINT:SouvenirUI.open(self);return
+		if closest==PublicTillerUI.POINT:PublicTillerUI.open(self);return
 		if closest=="aru_park":LifeTasks.aru_park(self);return
+		if closest==World.FOREST_MUSHROOM.SURVEY_POINT:
+			session.perform(World.FOREST_MUSHROOM.ACTION,forest_tree,World.FOREST_MUSHROOM.SURVEY)
+			return
 		if closest in [World.WANGAN_MEMORY.POINT,World.WANGAN_MEMORY.COURT_POINT]:HistoryUI.open(self,"wangan");return
 		if closest==World.Hedgehog.POINT:LifeAlmanac.hedgehog_menu(self);return
 		if closest==World.Squirrel.POINT:LifeAlmanac.squirrel_menu(self);return
@@ -3004,37 +3889,101 @@ func _interact() -> void:
 		if closest==World.WANGAN_COAST.STAR_SAND_POINT:
 			session.perform(World.WANGAN_COAST.STAR_SAND_POINT,World.WANGAN_COAST.STAR_SAND)
 			return
+		if closest==World.WANGAN_COAST.SALT_PARCEL_POINT:
+			session.perform(World.WANGAN_COAST.SALT_PARCEL_POINT,World.WANGAN_COAST.SALT_PARCEL)
+			return
 		if closest==World.WANGAN_COAST.STAR_REPAIR_POINT:
 			_star_walk_project()
 			return
 		if closest==World.WANGAN_COAST.DOCK_ORDERS_POINT:
-			LifeAlmanac.orders_menu(self,true)
+			LifeAlmanac.orders_menu(self,"dock")
 			return
 		if closest==MemoryExhibitUI.POINT:MemoryExhibitUI.open(self);return
 		var obj:Dictionary=s.objects[closest]
 		if obj.type in ["chest","private_chest","supply_box"]:
 			if obj.get("locked",false) and not (obj.get("guest_deposit",false) or obj.get("guest_withdraw",false)):_notice("這個私人箱尚未向你開放。",false)
 			else:_chest(World.cell(closest))
-		elif obj.type=="bench":automation_ui.workbench(self,World.cell(closest))
+		elif obj.type==World.WALL_FIXTURES.BARK_FRAME:LifeTasks.bark_frame(self,World.cell(closest),obj)
+		elif obj.type==World.WALL_FIXTURES.TOOL_BOARD:LifeTasks.tool_board(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.ACORN_CABINET:life_panels.acorn_cabinet(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.TEA_SNACK_SHELF:
+			if obj.get("locked",false):_notice("這座點心架目前只有主人能存取。",false)
+			else:life_panels.tea_snack_shelf(self,World.cell(closest))
+		elif obj.type=="bench":automation_ui.workbench(self,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type==World.INDUSTRY.STONE_WORKBENCH:StoneWorkbenchUI.open(self,World.cell(closest))
 		elif obj.type=="expedition_tent":
 			var content:=_open_modal(World.BUILD[obj.type].name)
 			content.add_child(label(str(obj.author)+" 的探險紀念",21))
 			content.add_child(label("從渡口的第一班船，到礦坑深處與北門海岸。這頂帳篷紀念搭建者走過的 14 個地區。",16))
+		elif obj.type==World.WALL_FIXTURES.WATER_LISTENING_CHIME:
+			session.perform(World.WALL_FIXTURES.WATER_CHIME_RING,World.cell(closest))
 		elif obj.type in World.RESIDENT_GOALS.FESTIVAL_BELL_KINDS:session.perform(World.RESIDENT_GOALS.FESTIVAL_BELL_RING,World.cell(closest))
-		elif obj.type==World.WELCOME_SIGN.KIND:LifeTasks.welcome_sign(self,World.cell(closest),obj)
+		elif obj.type in [World.WELCOME_SIGN.KIND,World.WALL_FIXTURES.HOME_SIGN]:LifeTasks.welcome_sign(self,World.cell(closest),obj)
 		elif obj.type==World.INN_TEA_TABLE:LifeTasks.inn_tea_table(self,World.cell(closest),obj)
+		elif obj.type in [World.RESIDENT_GOALS.GARDEN_CHAIR,World.INDUSTRY.MUSHROOM_STOOL,World.INDUSTRY.WOOD_CHAIR,World.INDUSTRY.INDIGO_CUSHION]:session.perform(World.RESIDENT_GOALS.MASTER_BENCH_SIT,World.cell(closest))
 		elif obj.type==World.INDUSTRY.LUGGAGE_RACK:
 			var anchor:=World.station_anchor(s.objects,World.cell(closest))
 			LifeTasks.luggage_rack(self,World.cell(closest),s.objects[World.key(anchor)])
+		elif World.RESIDENT_GOALS.aru_public_bench(obj):
+			LifeTasks.aru_inscription(self,World.cell(closest),obj)
+		elif obj.type in World.RESIDENT_GOALS.INDEPENDENT_TWO_SEATS:
+			LifeTasks.cotton_sofa(self,World.master_bench_anchor(s.objects,World.cell(closest)))
 		elif obj.type in World.RESIDENT_GOALS.INSCRIPTION_KINDS or obj.type==World.RESIDENT_GOALS.STONE_BENCH:
 			var anchor:=World.master_bench_anchor(s.objects,World.cell(closest))
 			LifeTasks.aru_inscription(self,anchor,s.objects[World.key(anchor)])
 		elif obj.type in ["author_sign","author_shelf"]:
 			var content:=_open_modal(World.BUILD[obj.type].name)
 			content.add_child(label("建造者 · "+str(obj.get("author","")),21))
+		elif obj.type==World.INDUSTRY.MUSHROOM_POST:LifeTasks.mushroom_mailbox(self,World.cell(closest),obj)
 		elif obj.type==World.RESIDENT_GOALS.MAILBOX_KIND:LifeTasks.address_letter(self)
 		elif obj.type in World.RESIDENT_GOALS.WARDROBES:LifeTasks.guest_wardrobe(self,World.cell(closest),obj.type)
 		elif obj.type=="sketch_easel":LifeAlmanac.collection_menu(self,1)
+		elif obj.type==World.INDUSTRY.LEAF_DESK:LifeTasks.leaf_desk(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.GRID_BOOKCASE:LifeTasks.grid_bookcase(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.OBSERVATION_DESK:LifeTasks.crop_observation_desk(self)
+		elif obj.type==World.INDUSTRY.SEED_CABINET:
+			var cell:=World.cell(closest)
+			LifeTasks.seed_specimen_cabinet(self,cell,s.objects[World.key(World.station_anchor(s.objects,cell))])
+		elif obj.type==World.INDUSTRY.AQUARIUM:
+			var cell:=World.cell(closest)
+			LifeTasks.small_aquarium(self,cell,s.objects[World.key(World.station_anchor(s.objects,cell))])
+		elif obj.type==World.INDUSTRY.VINE_ARCH:
+			var cell:=World.cell(closest)
+			LifeTasks.vine_arch_colors(self,cell,s.objects[World.key(World.station_anchor(s.objects,cell))])
+		elif obj.type==World.INDUSTRY.POT_RACK:
+			var cell:=World.cell(closest)
+			LifeTasks.copper_flower_rack(self,cell,s.objects[World.key(World.station_anchor(s.objects,cell))])
+		elif obj.type==World.NURSERY_BOX.KIND:
+			LifeTasks.nursery_box(self,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type==World.INDUSTRY.COAST_FISH_COUNTER:
+			LifeTasks.fish_counter(self,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type==World.INDUSTRY.TEA_DISPLAY_CABINET:
+			LifeTasks.tea_display_cabinet(self,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type==World.INDUSTRY.COAST_REGISTER:
+			MarketUI.open(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.COAST_CART:
+			var anchor:=World.station_anchor(s.objects,World.cell(closest))
+			var cart:Dictionary=s.objects[World.key(anchor)]
+			if cart.owner==session.own_id:MarketUI.open(self,anchor)
+			else:_notice("小栗的招牌攤車 · "+("營業中" if cart.get("market_cart_open",false) else "休業中"),true)
+		elif obj.type==World.INDUSTRY.BEACH_CHAIR:
+			_beach_chair_menu(World.cell(closest))
+		elif obj.type==World.INDUSTRY.BAMBOO_LOUNGER:
+			session.perform(World.INDUSTRY.LOUNGER_REST,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type==World.INDUSTRY.IMPERFECT_TEA_PAVILION:
+			session.perform(World.INDUSTRY.PAVILION_INSPECT,World.cell(closest))
+		elif obj.type==World.INDUSTRY.RIVERSIDE_SCREEN:
+			_riverside_screen_menu(World.cell(closest))
+		elif obj.type in World.INDUSTRY.FOUR_SEAT_TABLES:
+			LifeTasks.four_seat_table(self,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type in [World.INDUSTRY.SHELL_TABLE,"table"]:
+			LifeTasks.shell_table(self,World.cell(closest))
+		elif obj.type==World.INDUSTRY.ROUNDED_TABLE:
+			RoundedTableUI.open(self,World.cell(closest))
+		elif obj.type==World.POSTCARDS.RACK:
+			PostcardRackUI.open(self,World.cell(closest))
+		elif obj.type==World.OAR_SIGN.KIND:
+			_map_menu(Callable(),"",World.cell(closest))
 		elif obj.type=="rope_rack":LifeTasks.bond_events(self,"achao")
 		elif obj.type=="fish_display":LifeAlmanac.collection_menu(self,2)
 		elif obj.type==World.INDUSTRY.GATE_KIND:GateUI.open(self,World.cell(closest))
@@ -3051,15 +4000,83 @@ func _interact() -> void:
 		elif obj.type==World.INDUSTRY.ANIMAL_COLLECTOR:automation_ui.animal_collector(self,World.cell(closest))
 		elif obj.type==World.INDUSTRY.ASSEMBLY_TABLE:automation_ui.assembly(self,World.station_anchor(s.objects,World.cell(closest)))
 		elif obj.type in ["water_tank","water_pump","sawmill","charcoal_kiln","mill","seed_maker","loom","glass_furnace","small_smelter","jam_pot","clay_kiln","dye_table"]:industry_ui.device(self,World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type in World.INDUSTRY.SWITCHABLE_LAMPS:session.perform("floor_lamp_toggle",World.cell(closest))
 		elif obj.type=="door":session.perform("door",World.cell(closest))
-		elif obj.type=="stove":_cook_menu(World.cell(closest))
+		elif World.INDUSTRY.is_stove(str(obj.type)):_cook_menu(World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type==World.INDUSTRY.HOLLOW_BED:
+			_hollow_bed_menu(World.station_anchor(s.objects,World.cell(closest)))
+		elif obj.type==World.INDUSTRY.CEDAR_BED:
+			LifeTasks.cedar_bed(self,World.cell(closest))
 		elif obj.type=="bed" and session.solo_rest_enabled:_night_rest_menu()
 		elif obj.type==World.INDUSTRY.INN_BED:session.perform("inn_bed_rest",World.cell(closest))
 		elif obj.type==World.INDUSTRY.FOOT_BATH:LifeTasks.foot_bath(self,World.cell(closest),World.station_anchor(s.objects,World.cell(closest)))
 		else:_notice("這是你的落腳處。晚上可以繼續在島上活動。",true)
 	else:_notice("靠近箱子、工作台、公告板或種子攤，再按 {interact}。",false)
 
-func _open_modal(title:String,epilogue_music:=false) -> VBoxContainer:
+func _beach_chair_menu(tile:Vector2i)->void:
+	var snapshot:Dictionary=session.snapshot
+	var anchor:=World.station_anchor(snapshot.objects,tile)
+	var chair:Dictionary=snapshot.objects.get(World.key(anchor),{})
+	var folded:bool=chair.get("beach_chair_folded",false)
+	var occupied:=false
+	for person:Dictionary in snapshot.players.values():
+		if person.get(World.RESIDENT_GOALS.MASTER_BENCH_SEAT,{}).get("cell")==World.key(anchor):
+			occupied=true
+			break
+	var body:=_open_modal("折疊沙灘椅")
+	modal.set_meta("life_modal_layout","keepsake_paper")
+	var row:=HBoxContainer.new()
+	row.add_theme_constant_override("separation",14)
+	body.add_child(row)
+	row.add_child(LifeShell.picture(view.BEACH_FOLDED if folded else (view.BEACH_LONG if World.INDUSTRY.is_vertical(chair) else view.BEACH_WIDE),92))
+	row.add_child(label("有人正在椅上休息。" if occupied else ("椅子已收起。展開後就能坐下。" if folded else "坐下曬曬太陽。走動或再按互動鍵就能起身。"),17))
+	var sit:=button("坐下休息",func():
+		_close_modal()
+		session.perform(World.INDUSTRY.BEACH_SIT,tile))
+	sit.name="BeachChairSit"
+	sit.disabled=occupied or folded
+	body.add_child(sit)
+	if chair.get("owner")==session.own_id:
+		var toggle:=button("展開椅子" if folded else "收起椅子",func():
+			_close_modal()
+			session.perform(World.INDUSTRY.BEACH_FOLD,tile))
+		toggle.name="BeachChairFold"
+		toggle.disabled=occupied
+		body.add_child(toggle)
+	_layout_preview.call_deferred()
+
+## T08 河岸屏風: either tile opens this card. Only the owner gets the fold switch; the server
+## re-checks ownership and that nobody stands on the screen before it unfolds.
+func _riverside_screen_menu(tile:Vector2i)->void:
+	var snapshot:Dictionary=session.snapshot
+	var anchor:=World.station_anchor(snapshot.objects,tile)
+	var screen:Dictionary=snapshot.objects.get(World.key(anchor),{})
+	var folded:bool=World.INDUSTRY.is_folded_screen(screen)
+	var body:=_open_modal("河岸屏風")
+	modal.set_meta("life_modal_layout","riverside_screen")
+	modal.theme=PixelTheme.make(hud.theme)
+	modal.add_theme_stylebox_override("panel",PixelTheme.frame_style())
+	var row:=HBoxContainer.new()
+	row.add_theme_constant_override("separation",14)
+	body.add_child(row)
+	var art:Texture2D=view.RIVERSIDE_FOLDED if folded else (view.RIVERSIDE_LONG if World.INDUSTRY.is_vertical(screen) else view.RIVERSIDE_WIDE)
+	row.add_child(LifeShell.picture(art,92))
+	var description:=label("屏風已折起，兩格都能通行。" if folded else "屏風已展開，請從兩側繞行。",17)
+	description.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	description.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	description.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	row.add_child(description)
+	if screen.get("owner")==session.own_id:
+		var toggle:=button("展開屏風" if folded else "收起屏風",func():
+			_close_modal()
+			session.perform(World.INDUSTRY.RIVERSIDE_FOLD,tile))
+		toggle.name="RiversideScreenFold"
+		body.add_child(toggle)
+	else:
+		body.add_child(label("只有屏風的主人能收起或展開。",15))
+	_layout_preview.call_deferred()
+
+func _open_modal(title:String,epilogue_music:=false,controller_scroll:=false) -> VBoxContainer:
 	if playing:session.input_direction(Vector2.ZERO)
 	area_drag=false
 	capture_drag=false
@@ -3086,7 +4103,7 @@ func _open_modal(title:String,epilogue_music:=false) -> VBoxContainer:
 		heading.add_child(title_label)
 		heading.add_child(button("關閉  Esc",_close_modal))
 		shell.add_child(HSeparator.new())
-		var scroll:=ScrollContainer.new()
+		var scroll:ScrollContainer=preload("res://scripts/controller_scroll_container.gd").new() if controller_scroll else ScrollContainer.new()
 		scroll.name="ModalScroll"
 		scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 		scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
@@ -3141,7 +4158,7 @@ func _focus_controller_menu(scope:Control) -> void:
 			control.grab_focus()
 			return
 
-func _controller_menu_direction(index:int) -> bool:
+func _controller_menu_direction(index:int,board_controls:=false) -> bool:
 	const SIDES:={JOY_BUTTON_DPAD_LEFT:SIDE_LEFT,JOY_BUTTON_DPAD_RIGHT:SIDE_RIGHT,
 		JOY_BUTTON_DPAD_UP:SIDE_TOP,JOY_BUTTON_DPAD_DOWN:SIDE_BOTTOM}
 	if not SIDES.has(index):return false
@@ -3149,10 +4166,23 @@ func _controller_menu_direction(index:int) -> bool:
 	if focus==null or not modal.is_ancestor_of(focus):
 		_focus_controller_menu(modal)
 		return true
+	if focus is HSlider and focus.has_meta("comfort_volume") and index in [JOY_BUTTON_DPAD_LEFT,JOY_BUTTON_DPAD_RIGHT]:
+		var slider:=focus as HSlider
+		slider.value+=slider.step*(1.0 if index==JOY_BUTTON_DPAD_RIGHT else -1.0)
+		return true
+	var scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
 	var next:=focus.find_valid_focus_neighbor(SIDES[index])
+	if board_controls and scroll!=null and index in [JOY_BUTTON_DPAD_UP,JOY_BUTTON_DPAD_DOWN]:
+		# The engine's directional search skips clipped controls. On this scrolling
+		# board, follow the reading order vertically and reveal each new entry.
+		var buttons:Array=scroll.find_children("*","Button",true,false).filter(func(control):
+			return control.focus_mode==Control.FOCUS_ALL and control.is_visible_in_tree() and not control.disabled)
+		if not buttons.is_empty():
+			var current:=buttons.find(focus)
+			var step:=1 if index==JOY_BUTTON_DPAD_DOWN else -1
+			next=buttons[clampi(current+step,0,buttons.size()-1)]
 	if next!=null and modal.is_ancestor_of(next):
 		next.grab_focus()
-		var scroll:=modal.find_child("ModalScroll",true,false) as ScrollContainer
 		if scroll!=null and not modal.has_meta("pocket_guide") and scroll.is_ancestor_of(next):scroll.ensure_control_visible(next)
 	return true
 
@@ -3321,8 +4351,11 @@ func _greenhouse_letter() -> void:
 	var person:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
 	var completed:String=person.get("greenhouse_cross_season_crop","")
 	var crafted:bool=person.get("greenhouse_glass_crafted",false)
-	var covered:bool=session.snapshot.get("roofs",{}).values().any(func(roof):
-		return roof.get("type","")=="greenhouse_roof" and roof.get("owner","")==session.own_id)
+	var snapshot:Dictionary=session.snapshot
+	var roofs:Dictionary=snapshot.get("roofs",{})
+	var checked:Dictionary={}
+	var covered:bool=roofs.keys().any(func(tile):
+		return roofs[tile].get("owner","")==session.own_id and World.GREENHOUSE_GLASS.covered(snapshot,tile,checked))
 	progress.add_child(label("星禾的來信",21))
 	progress.add_child(label("冬天一到，花田就安靜下來了。我想留一小塊暖地，讓錯過花季的種子，也有機會慢慢長大。",16))
 	_greenhouse_step(progress,crafted,"製作溫室玻璃","到望安星砂海岸或金瓜石第五層採晶砂，再到工作台用晶砂 2、木炭 1 製作。")
@@ -3374,8 +4407,8 @@ func _gardener_menu() -> void:
 	LanyangUI.open(self)
 	_layout_preview.call_deferred()
 
-func _history_menu() -> void:
-	HistoryUI.open(self)
+func _history_menu(return_to:Callable=Callable()) -> void:
+	HistoryUI.open(self,"journal",Vector2i(-1,-1),return_to)
 
 func _travel_menu(station_id:String="",selected:String="") -> void:
 	TravelUI.open(self,station_id,selected)
@@ -3387,7 +4420,7 @@ func _station_resident_menu(region:String) -> void:
 	_layout_preview.call_deferred()
 
 func _floor_placement_menu(tile:Vector2i,floor_piece:Dictionary) -> void:
-	var column:=_open_modal("木地板 · 家園權限")
+	var column:=_open_modal("地板 · 家園權限")
 	var current:=str(floor_piece.get("placement_access","legacy"))
 	for option in [["owner","只限地板主人"],["island","開放同島玩家"],["legacy","沿用預設規則"]]:
 		var mode:String=option[0]
@@ -3396,6 +4429,7 @@ func _floor_placement_menu(tile:Vector2i,floor_piece:Dictionary) -> void:
 		choice.disabled=mode==current
 		column.add_child(choice)
 	column.add_child(label("預設規則允許手動擺放，藍圖施工限地板主人。",15))
+	column.add_child(label("選擇只限地板主人時，這格的共用木箱僅地板主人與箱主可存取。",15))
 	column.add_child(HSeparator.new())
 	var private_room:bool=floor_piece.get("owner_visit",false)
 	var guest_id:=str(floor_piece.get("visit_guest",""))
@@ -3410,7 +4444,7 @@ func _floor_placement_menu(tile:Vector2i,floor_piece:Dictionary) -> void:
 		visit_status="屋主與 "+str(session.snapshot.players.get(guest_id,{}).get("name","指定島民"))
 	column.add_child(label(place+"參觀 · "+visit_status,18))
 	if not room.sealed:
-		column.add_child(label("相連木地板 %d 格 · 戶外最多 %d 格，公共通道需保持開放。"%[room.area,World.MAX_OUTDOOR_VISIT_TILES],15))
+		column.add_child(label("相連地板 %d 格 · 戶外最多 %d 格，公共通道需保持開放。"%[room.area,World.MAX_OUTDOOR_VISIT_TILES],15))
 	var access:=button("開放"+place+"參觀" if private_room else "將"+place+"設為僅屋主可進",func():
 		session.perform("room_visit_access",tile,"island" if private_room else "owner")
 		_close_modal())
@@ -3462,19 +4496,26 @@ func _star_walk_project() -> void:
 	repair.disabled=not available
 	column.add_child(repair)
 
-func _map_menu(return_to_ticket:=Callable()) -> void:
-	var col:=_open_modal("周邊地圖  {map}")
+func _map_menu(return_to_ticket:=Callable(),return_caption:="返回旅途車票",oar_site:=World.OAR_SIGN.NO_CELL) -> void:
+	var for_oar:=oar_site!=World.OAR_SIGN.NO_CELL
+	var col:=_open_modal("木槳路標  {map}" if for_oar else "周邊地圖  {map}")
 	modal.set_meta("life_modal_layout","island_map")
 	if return_to_ticket.is_valid():
 		modal.set_meta("return_to_travel_ticket",return_to_ticket)
 	map_view=IslandMap.new()
+	map_view.reduced_motion=sound.reduced_motion
 	col.add_child(map_view)
 	map_view.update_world(session.snapshot,session.own_id)
+	if for_oar:
+		_oar_map_controls(col,oar_site)
+		_layout_preview.call_deferred()
+		return
+	if session.snapshot.get("region_id")==World.REGIONS.HOME:_home_walk_controls(col)
 	var map_heading:Node=col.get_parent().get_parent().get_child(0) if village_art_preview else col.get_child(0)
 	var trip_link:Button
 	if return_to_ticket.is_valid():
 		trip_link=map_heading.get_child(1) as Button
-		trip_link.text="返回旅途車票"
+		trip_link.text=return_caption
 		trip_link.pressed.disconnect(_close_modal)
 		trip_link.pressed.connect(return_to_ticket)
 		if controller_navigation:trip_link.grab_focus.call_deferred()
@@ -3491,6 +4532,65 @@ func _map_menu(return_to_ticket:=Callable()) -> void:
 		salt_history.name="BeimenMapHistory"
 		map_heading.add_child(salt_history)
 	_layout_preview.call_deferred()
+
+func _home_walk_controls(col:VBoxContainer)->void:
+	modal.set_meta("home_walk_routes",true)
+	var controls:=HFlowContainer.new()
+	controls.add_theme_constant_override("h_separation",8)
+	col.add_child(controls)
+	col.move_child(controls,map_view.get_index())
+	var choices:Dictionary={}
+	var destinations:=[["ForestWalkRoute","西北資源林","forest"],["RiverWalkRoute","河灣橋","river"],["MillWalkRoute","渡口磨坊","mill"]]
+	if World.PUBLIC_TILLER.open(session.snapshot):destinations.append(["TillerWalkRoute","公用耕田機","tiller"])
+	for entry:Array in destinations:
+		var route:=button(entry[1],map_view.select_home_route.bind(entry[2]))
+		route.name=entry[0]
+		route.toggle_mode=true
+		choices[entry[2]]=route
+		controls.add_child(route)
+	var status:=label("選一個地點，看看可以怎麼走。",15)
+	status.name="HomeWalkRouteStatus"
+	status.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	controls.add_child(status)
+	var map:=map_view
+	map.home_route_hint.connect(func(message:String):
+		status.text=message
+		for target:String in choices:choices[target].set_pressed_no_signal(map.home_route==target))
+
+func _oar_map_controls(col:VBoxContainer,site:Vector2i)->void:
+	var rules:=World.OAR_SIGN
+	var sign:Dictionary=session.snapshot.get("objects",{}).get(World.key(site),{})
+	var editable:bool=sign.get("owner","")==session.own_id
+	var current:=rules.cell(sign.get(rules.FIELD))
+	var controls:=HBoxContainer.new()
+	col.add_child(controls)
+	col.move_child(controls,map_view.get_index())
+	var status:=label("目前指向 "+rules.direction_name(site,current) if current!=rules.NO_CELL else "這面路標尚未設定目的地。",15)
+	status.name="OarTargetStatus"
+	status.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	controls.add_child(status)
+	map_view.configure_oar(site,editable)
+	if not editable:return
+	map_view.grab_focus.call_deferred()
+	var region:String=session.snapshot.get("region_id","home")
+	if current==rules.NO_CELL:status.text="選一處陸地，或用方向鍵移動標記。"
+	var choose:=button("確認標記",func():
+		if map_view.oar_candidate==rules.NO_CELL or session.snapshot.get("region_id","home")!=region:return
+		session.perform(rules.ACTION,site,World.key(map_view.oar_candidate))
+		_close_modal())
+	choose.name="OarTargetConfirm"
+	choose.disabled=true
+	controls.add_child(choose)
+	var clear:=button("清除",func():
+		if session.snapshot.get("region_id","home")!=region:return
+		session.perform(rules.ACTION,site)
+		_close_modal())
+	clear.name="OarTargetClear"
+	clear.disabled=current==rules.NO_CELL
+	controls.add_child(clear)
+	map_view.oar_target_selected.connect(func(cell:Vector2i):
+		status.text="指向%s · %d，%d"%[rules.direction_name(site,cell),cell.x,cell.y]
+		choose.disabled=false)
 
 func _build_menu() -> void:
 	if village_art_preview:life_panels.build_menu(self);return
@@ -3521,7 +4621,7 @@ func _build_menu() -> void:
 		var selected_kind:String=kind
 		var person:Dictionary=session.snapshot.players.get(session.own_id,{})
 		var allowed:=Village.unlocked(person,kind)
-		var entry:=button(recipe.name+"     "+price if allowed else recipe.name+"  ·  完成居民故事解鎖（{journal}）",func():building=selected_kind;building_style="";_select_tool("build");_close_modal())
+		var entry:=button(recipe.name+"     "+price if allowed else recipe.name+"  ·  完成居民故事解鎖（{journal}）",func():building=selected_kind;building_on_edge=false;building_style="";mill_build_facing=0;_select_tool("build");_close_modal())
 		entry.disabled=not allowed
 		rows.add_child(entry)
 
@@ -3575,6 +4675,8 @@ func _open_inventory_grid() -> void:
 	backpack.close_requested.connect(_close_modal)
 	backpack.rice_ball_requested.connect(func():session.perform("eat_rice_ball",Vector2i.ZERO))
 	backpack.ginger_tea_requested.connect(func():session.perform("drink_ginger_tea",Vector2i.ZERO))
+	backpack.ginger_tea_replace_requested.connect(func():session.perform("drink_ginger_tea",Vector2i.ZERO,World.MEAL_BUFF.CONFIRM))
+	backpack.meal_requested.connect(func(dish:String):session.perform(World.KITCHEN_STOVE.EAT_ACTION,Vector2i.ZERO,dish))
 	backpack.rope_requested.connect(func():session.perform("handcraft_rope",Vector2i.ZERO))
 	backpack.setup(session.snapshot,session.own_id,hud.theme,binding_label)
 	backpack.layout_for(get_viewport().get_visible_rect().size)
@@ -3633,6 +4735,10 @@ func _board() -> void:
 		col.add_child(button(SouvenirUI.entry_caption(s.picnic),_souvenir_menu))
 	if int(s.get("mine_depths",{}).get("unlocked",1))>=5:col.add_child(button("礦車寄運與待領貨物",_freight_menu))
 	LifeTasks.add_fund_controls(self,col,s)
+	SpringGardenUI.add_board_link(self,col)
+	SeaFairUI.add_board_link(self,col)
+	AutumnFeastUI.add_board_link(self,col)
+	WarmNightUI.add_board_link(self,col)
 
 func _auto_freight_menu() -> void:
 	AutoFreightUI.open(self)
@@ -3705,7 +4811,9 @@ func _shop() -> void:
 		return
 	var col:=_open_modal("小栗的種子攤")
 	LifeTasks.add_milu_recipe_page(self,"shop")
-	col.add_child(button("和小栗聊聊",func():_resident_menu("xiaoli")))
+	var chat:=button("和小栗聊聊",func():_resident_menu("xiaoli"))
+	chat.name="XiaoliShopChat"
+	col.add_child(chat)
 	if session.snapshot.has("own_shop_history"):
 		var trade_book:=button("翻開交易簿",life_panels.trade_book.bind(self))
 		trade_book.name="ShopTradeBook"
@@ -3742,7 +4850,37 @@ func _shop() -> void:
 		rows.add_child(button("出售全部 %s · 每個 %d 鈴幣"%[World.NAMES[item],World.CROP_CATALOG.quality_price(item)],
 			session.perform.bind("sell",Vector2i(43,29),item)))
 	rows.add_child(button("購買樹苗 · 每棵 20 鈴幣",func():session.perform("buy",Vector2i(43,29),"sapling")))
+	var flour_buy:Button=button("買麵粉",func():session.perform("buy",Vector2i(43,29),World.FLOUR_ITEM))
+	flour_buy.name="ShopBuyFlour"
+	rows.add_child(flour_buy)
+	rows.move_child(flour_buy,0)
+	modal.set_meta("flour_offer",flour_buy)
+	var sugar_buy:Button=button("買糖",func():session.perform("buy",Vector2i(43,29),World.SUGAR_ITEM))
+	sugar_buy.name="ShopBuySugar"
+	sugar_buy.icon=LifePanels.item_icon(World.SUGAR_ITEM)
+	sugar_buy.expand_icon=true
+	sugar_buy.tooltip_text="冬季甜菜開放前的少量供應；不能出售。"
+	rows.add_child(sugar_buy)
+	rows.move_child(sugar_buy,1)
+	modal.set_meta("sugar_offer",sugar_buy)
+	_refresh_classic_flour_offer()
 	col.add_child(label("買一包種子會扣一次錢；出售前請留意按鈕會賣出該作物全部收成。",15))
+
+func _refresh_classic_flour_offer() -> void:
+	if not is_instance_valid(modal) or not modal.has_meta("flour_offer"):return
+	var offer:=modal.get_meta("flour_offer") as Button
+	if offer==null:return
+	var person:Dictionary=session.snapshot.get("players",{}).get(session.own_id,{})
+	var left:=World.flour_left(person,float(session.snapshot.get("time",0.0)))
+	offer.text="買麵粉 · 每份 %d 鈴幣 · 今天還剩 %d / %d 份"%[World.FLOUR_PRICE,left,World.FLOUR_DAILY]
+	offer.disabled=left<=0 or int(person.get("coins",0))<World.FLOUR_PRICE
+	if modal.has_meta("sugar_offer"):
+		var sugar_offer:=modal.get_meta("sugar_offer") as Button
+		if sugar_offer==null:return
+		var sugar_left:=World.sugar_left(person,float(session.snapshot.get("time",0.0)))
+		var held:int=int(person.get("inventory",{}).get(World.SUGAR_ITEM,0))
+		sugar_offer.text="買糖 · 每份 %d 鈴幣 · 持有 %d · 今天還剩 %d / %d 份"%[World.SUGAR_PRICE,held,sugar_left,World.SUGAR_DAILY]
+		sugar_offer.disabled=sugar_left<=0 or int(person.get("coins",0))<World.SUGAR_PRICE
 
 func _add_tea_counter_link(content:VBoxContainer) -> void:
 	if not TeaUI.unlocked(session.snapshot):return
@@ -3762,8 +4900,17 @@ func _chest(p:Vector2i) -> void:
 	var visitor:bool=box.get("locked",false)
 	var can_withdraw:bool=not visitor or box.get("guest_withdraw",false)
 	var can_deposit:bool=not visitor or box.get("guest_deposit",false)
-	var col:=_open_modal("私人箱" if private_box else "共用箱")
+	var col:=_open_modal(("私人木箱" if World.BOX_CAPACITY.applies(box.type) else "私人箱") if private_box else "共用木箱")
 	col.add_child(label("每次存取一個。裡面有物品時不能拆除。",15))
+	if visitor and box.type=="chest":col.add_child(label(World.PLOT_PERMISSIONS.MSG_SHARED_CHEST_FLOOR,15))
+	var sized:bool=World.BOX_CAPACITY.applies(box.type) and can_withdraw
+	if sized and session.snapshot.get("chest_history",false):
+		col.add_child(button("操作紀錄",life_panels.chest_history.bind(self,p)))
+	var capacity:Dictionary=World.BOX_CAPACITY.summary(box.get("items",{}) if can_withdraw else {})
+	if sized:
+		var capacity_label:=label(World.BOX_CAPACITY.usage_text(capacity),15)
+		capacity_label.name="ChestCapacity"
+		col.add_child(capacity_label)
 	if box.type=="private_chest" and not visitor:
 		col.add_child(_chest_deposit_toggle(p,box))
 		col.add_child(_chest_withdraw_picker(p))
@@ -3781,7 +4928,12 @@ func _chest(p:Vector2i) -> void:
 		var l:=label("%s  箱內 %d"%[World.NAMES[item],obj.items.get(item,0)] if can_withdraw else World.NAMES[item],16)
 		l.custom_minimum_size.x=270
 		row.add_child(l)
-		if can_deposit:row.add_child(button("存 1",func():session.perform("deposit",p,chosen);_close_modal()))
+		if can_deposit:
+			var deposit:=button("存 1",func():session.perform("deposit",p,chosen);_close_modal())
+			if sized and capacity.full and int(obj.items.get(item,0))==0:
+				deposit.disabled=true
+				deposit.tooltip_text=World.BOX_CAPACITY.FULL_MESSAGE
+			row.add_child(deposit)
 		if can_withdraw:row.add_child(button("取 1",func():session.perform("withdraw",p,chosen);_close_modal()))
 
 func _chest_deposit_toggle(p:Vector2i,box:Dictionary) -> Button:
@@ -3821,8 +4973,8 @@ func _chest_withdraw_menu(p:Vector2i) -> void:
 		choice.disabled=player_id==current
 		column.add_child(choice)
 
-func _workshop_guide(topic:int=-1)->void:
-	load("res://scripts/workshop_guide.gd").open(self,topic)
+func _workshop_guide(topic:int=-1,resume:Dictionary={})->void:
+	load("res://scripts/workshop_guide.gd").open(self,topic,resume)
 
 func _help() -> void:
 	if village_art_preview:LifeShell.help(self);return
@@ -3918,6 +5070,9 @@ func _journal(selected_resident:String="") -> void:
 
 func _orders_menu() -> void:
 	LifeAlmanac.orders_menu(self)
+
+func _lanyang_orders() -> void:
+	if session.snapshot.has("lanyang_order_board"):LifeAlmanac.orders_menu(self,"lanyang")
 
 func _quarry_menu() -> void:
 	var col:=_open_modal("河灣公共採石點")
@@ -4021,6 +5176,13 @@ func _collection_menu() -> void:
 			rows.add_child(label(("✓ " if found else "○ ")+entries[id].name,17))
 	rows.add_child(label("新版開始記錄親手取得的種類；舊背包物品不會自動算入圖鑑。",15))
 
+func _apply_display_preferences() -> void:
+	if DisplayServer.get_name()=="headless":return
+	var compatibility:bool=sound.display_compatibility
+	var desired_sync:=DisplayServer.VSYNC_DISABLED if compatibility else default_vsync_mode
+	if DisplayServer.window_get_vsync_mode()!=desired_sync:DisplayServer.window_set_vsync_mode(desired_sync)
+	Engine.max_fps=60 if compatibility else default_frame_limit
+
 func _settings_menu() -> void:
 	if village_art_preview:LifeShell.settings(self);return
 	var col:=_open_modal("音效與舒適設定")
@@ -4041,15 +5203,17 @@ func _settings_menu() -> void:
 	zoom.custom_minimum_size.y=44
 	col.add_child(zoom)
 	var text_scale:=LifeShell.text_scale_setting(self,col)
+	var display_mode:=LifeShell.display_setting(self,col)
 	var fishing:=CheckBox.new()
 	fishing.text="標準釣魚 · 對準魚影"
 	fishing.button_pressed=sound.standard_fishing
 	fishing.tooltip_text="取消勾選可用輕鬆釣魚：咬鉤後按一次收竿，無倒數。"
 	col.add_child(fishing)
 	var save_button:=button("儲存設定並試聽",func():
-		if not sound.save_preferences(settings_path,audio.volume.value/100.0,motion.button_pressed,zoom.get_selected_id(),null,fishing.button_pressed,text_scale.get_selected_id(),audio.music_volume.value/100.0,LifeShell.audio_levels(audio),camera.selected==1):_notice("設定保存失敗，原本設定仍保留。",false);return
+		if not sound.save_preferences(settings_path,audio.volume.value/100.0,motion.button_pressed,zoom.get_selected_id(),null,fishing.button_pressed,text_scale.get_selected_id(),audio.music_volume.value/100.0,LifeShell.audio_levels(audio),camera.selected==1,display_mode.button_pressed):_notice("設定保存失敗，原本設定仍保留。",false);return
 		view.reduced_motion=sound.reduced_motion;view.zoom=float(sound.preferred_zoom)
 		view.fixed_area_camera=sound.fixed_area_camera
+		_apply_display_preferences()
 		_apply_font_scale_tree()
 		_notice("設定已儲存，下次啟動會沿用。",true)
 		sound.play_cue("reward",true)
@@ -4060,7 +5224,10 @@ func _settings_menu() -> void:
 
 func _show_emote(actor:String,region:String,caption:String) -> void:
 	if not mute_emotes and is_instance_valid(view) and view.region_id()==region:
-		view.player_emotes[actor]={"region":region,"caption":caption,"until":Time.get_ticks_msec()+3000}
+		var started:=Time.get_ticks_msec()
+		view.player_emotes[actor]={"region":region,"caption":caption,"started":started,"until":started+3000}
+		# T07: pouring emotes get a small cosmetic cup-and-stream next to the caption.
+		if caption in World.INDUSTRY.TEA_SET_EMOTES.values():view.player_emotes[actor]["fx"]="pour"
 
 func _emote_menu() -> void:
 	var aim:Vector2i=_controller_target() if controller_aim else view.to_cell(get_viewport().get_mouse_position())
@@ -4130,6 +5297,19 @@ func _chat_menu() -> void:
 
 func _trade_menu() -> void:
 	preload("res://scripts/trade_ui.gd").open(self)
+
+func _hollow_bed_menu(cell:Vector2i) -> void:
+	var body:=_open_modal("樹洞小床")
+	modal.set_meta("life_modal_layout","hollow_bed")
+	var lie_down:=button("躺下休息",func():
+		_close_modal()
+		session.perform(World.INDUSTRY.HOLLOW_REST,cell))
+	lie_down.name="HollowBedRest"
+	body.add_child(lie_down)
+	var overnight:=button("休息到清晨" if session.solo_rest_enabled else "夜間休息投票",_night_rest_menu)
+	overnight.name="HollowBedNight"
+	body.add_child(overnight)
+	_layout_preview.call_deferred()
 
 func _night_rest_menu() -> void:
 	if not session.solo_rest_enabled:
@@ -4247,9 +5427,14 @@ func _pause_menu() -> void:
 	rows.add_child(comfort_button)
 	rows.add_child(button("鍵盤操作設定",_bindings_menu))
 	if not island_passport.is_empty():rows.add_child(button("島嶼通行簿",_passport_menu))
-	rows.add_child(button("卡住了，回到渡口",func():session.perform("rescue",Vector2i.ZERO);_close_modal()))
+	var rescue:=button(_rescue_label(),func():session.perform("rescue",Vector2i.ZERO);_close_modal())
+	rescue.name="PauseRescue"
+	rows.add_child(rescue)
 	rows.add_child(button("儲存並離開遊戲",_quit))
 	col.add_child(label("目前為原型：直接跟隨鏡頭、預設無震動、無閃光。\n存檔位於此電腦的 Godot 使用者資料夾，並保留一份上一版備份。",15))
+
+func _rescue_label() -> String:
+	return "迷路了？回到渡口" if session.snapshot.get("region_id","home")==World.REGIONS.HOME else "卡住了？返回本區入口"
 
 func _passport_menu() -> void:
 	if island_passport.is_empty():return

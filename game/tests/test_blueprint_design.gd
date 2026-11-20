@@ -13,7 +13,10 @@ const MODULE_PATH:="res://scripts/blueprint_design.gd"
 const API:=["validate","capture","rotate","base_cost"]
 const SECTIONS:=["hand_worked_validate_and_cost","all_build_kinds","layer_capacity_boundary","same_cell_duplicates","invalid_validate_inputs","rotation","capture_integration","capture_rejections","base_cost_rejections"]
 ## Hand-worked copy of the current World.BUILD kind list.
-const ALL_KINDS:=["jam_pot","flower_pot","ore_display","floor","wall","path","spring_pebble_path","chest","bench","bed","lamp","door","window","roof","table","chair","stove","private_chest","long_bench","planter","sign","sofa","sprinkler","water_pipe","water_tank","mine_drill","waterworks","water_pump","sawmill","charcoal_kiln","forester","conveyor","mill","seed_maker","loom","glass_furnace","greenhouse_roof","greenhouse_rack","medium_sprinkler","large_sprinkler","master_flower_bed","rope_rack","sketch_easel","guest_wardrobe","wood_mailbox","basic_tea_set","fish_display","author_sign","author_shelf","supply_box","expedition_tent","veg_basket_rack","relay_crate_stack","carp_banner","float_garland","lantern_post","flower_arch","trio_keepsake","water_share_plaque","diversion_gate","mine_lantern","tea_ware","salt_basket","water_tower","keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_nuannuan_room","festival_memorial_bell","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","master_bench","small_smelter","clay_kiln","dye_table","assembly_table","animal_collector","ceramic_eave_chime","shell_chime","warm_lamp_niche","towel_rack","inn_welcome_sign","inn_tea_table","spring_stone_bench","inn_lattice_wardrobe","inn_fabric_screen","inn_quilt_bed","inn_stone_footbath","inn_luggage_rack","acorn_ornament"]
+const ALL_KINDS:=["jam_pot","flower_pot","ore_display","floor","wall","path","spring_pebble_path","chest","bench","bed","lamp","door","window","roof","table","chair","stove","private_chest","long_bench","planter","sign","sofa","sprinkler","water_pipe","water_tank","mine_drill","waterworks","water_pump","sawmill","charcoal_kiln","forester","conveyor","mill","seed_maker","loom","glass_furnace","greenhouse_roof","greenhouse_rack","medium_sprinkler","large_sprinkler","master_flower_bed","rope_rack","sketch_easel","guest_wardrobe","wood_mailbox","basic_tea_set","fish_display","author_sign","author_shelf","supply_box","expedition_tent","veg_basket_rack","relay_crate_stack","carp_banner","float_garland","lantern_post","flower_arch","trio_keepsake","water_share_plaque","diversion_gate","mine_lantern","tea_ware","salt_basket","water_tower","keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_nuannuan_room","festival_memorial_bell","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","master_bench","small_smelter","clay_kiln","dye_table","assembly_table","animal_collector","ceramic_eave_chime","shell_chime","warm_lamp_niche","towel_rack","inn_welcome_sign","inn_tea_table","spring_stone_bench","inn_lattice_wardrobe","inn_fabric_screen","inn_quilt_bed","inn_stone_footbath","inn_luggage_rack","acorn_ornament","garden_basin","crop_observation_desk","star_garden_lamp","copper_garden_chair","seed_specimen_cabinet","small_aquarium","glass_flower_table","vine_garden_arch","copper_flower_rack","xinghe_greenhouse_roof","hanging_flower_pot","greenhouse_nursery_box","ice_blue_fish_counter","coast_changing_booth","wall_lifebuoy","sea_breeze_postcard_rack","wooden_oar_sign","blue_stripe_awning","whitewood_register","folding_beach_chair","shell_round_table","xiaoli_market_cart","tree_hollow_bed","mushroom_cap_table","mushroom_cap_stool","leaf_floor_mat","spore_nightlight","acorn_cabinet","hedgehog_nap_basket","bark_picture_frame","forest_arch","fallen_leaf_desk","mushroom_door_mailbox","quiet_birdhouse","braided_round_rug","handcarved_home_sign","rounded_wood_table","cotton_double_sofa","wall_tool_board","grid_bookcase","forest_wardrobe","cedar_bed","bamboo_tea_table","bamboo_double_bench","indigo_cushion","bamboo_curtain","paper_tea_lamp","tea_display_cabinet","riverside_screen","water_listening_chime","bamboo_lounger","tea_snack_shelf","imperfect_tea_pavilion","stone_floor","stone_workbench","kitchen_stove","keepsake_bobo_cart","terracotta_roof"]
+## The 3×3 shelter does not fit the 16×16 one-of-everything layout; it is validated alone below and
+## end to end in test_imperfect_tea_pavilion.gd.
+const OFF_GRID:=["imperfect_tea_pavilion"]
 
 var checks:=0
 var failures:=0
@@ -155,8 +158,8 @@ func materials(kind:String)->Dictionary:
 
 ## Contract layer rank: floor/path ground, roof roofs, everything else objects.
 func rank(kind:String)->int:
-	if kind in ["floor","path","spring_pebble_path"]:return 0
-	if kind in ["roof","greenhouse_roof"]:return 2
+	if kind in ["floor","stone_floor","path","spring_pebble_path","leaf_floor_mat"]:return 0
+	if kind in ["roof","greenhouse_roof","xinghe_greenhouse_roof","terracotta_roof"]:return 2
 	return 1
 
 ## Same shape world.gd gives a freshly built structure (lines 1607-1616).
@@ -183,6 +186,7 @@ func auto_roof(owner:String)->Dictionary:
 func hand_worked_validate_and_cost()->bool:
 	# Premises: the real recipe numbers the hand totals below rely on.
 	expect(same(materials("floor"),{"wood":2}) and same(materials("path"),{"stone":2}) and same(materials("roof"),{"wood":1,"fiber":3}),"premise: floor/path/roof recipes")
+	expect(same(materials("stone_floor"),{"stone":2}),"premise: C09 stone floor costs 2 stone")
 	expect(same(materials("ore_display"),{"wood":4,"gold_sample":1}),"premise: ore_display consumes a gold_sample")
 	expect(same(materials("conveyor"),{"conveyor_kit":1}) and same(materials("mine_drill"),{"mine_drill_kit":1}) and same(materials("waterworks"),{"waterworks_kit":1}),"premise: devices consume kits")
 	# Unsorted input, JSON-style integral floats, padded name.
@@ -237,15 +241,24 @@ func all_build_kinds()->bool:
 	for item in ["gold_sample","mine_drill_kit","waterworks_kit","conveyor_kit","forester_kit","sprinkler_kit","pipe_kit","tank_kit","pump_kit","sawmill_kit","kiln_kit","wood","stone","fiber"]:
 		expect(N.has(item),"premise: World.NAMES knows "+item)
 	for kind in World.BUILD:
-		var size:=Vector2i(3,2) if kind==World.INDUSTRY.FOOT_BATH else Vector2i(2 if kind in ["master_bench","small_smelter","clay_kiln","dye_table","assembly_table","spring_stone_bench","inn_fabric_screen","inn_quilt_bed","inn_luggage_rack"] else 1,2 if kind in World.INDUSTRY.FIXED_SQUARE_STATIONS else 1)
+		var size:=Vector2i.ONE
+		if kind in World.INDUSTRY.ORIENTABLE_FOOTPRINTS or kind in World.INDUSTRY.FIXED_SQUARE_STATIONS:
+			size+=Vector2i(World.INDUSTRY.station_cells(kind).back())
+		elif kind in World.RESIDENT_GOALS.DOUBLE_BENCHES:size.x=2
 		var single:=design("單件",size.x,size.y,[piece(kind,0,0)])
 		var expected_single:=single.duplicate(true)
 		if kind=="conveyor":expected_single.pieces[0]["settings"]={"dir":0,"filter":"wood"}
 		accepted_as(val(single),expected_single,"blueprint","every real kind validates alone: "+kind)
-		accepted_as(cost(single),materials(kind),"cost","single-piece base_cost equals recipe materials: "+kind)
+		# C13: a settings-less mill piece is the legacy 1x1 kit mill (one mill_kit); the 3x3 is a mill piece with
+		# settings.facing and costs BUILD.mill (see test_mill_c13_blueprint.gd).
+		accepted_as(cost(single),{"mill_kit":1} if kind=="mill" else materials(kind),"cost","single-piece base_cost equals recipe materials: "+kind)
 	var pieces:=[]
+	var greenhouse_sites:={"garden_basin":Vector2i(8,8),"star_garden_lamp":Vector2i(9,8),"copper_garden_chair":Vector2i(10,8),
+		"crop_observation_desk":Vector2i(3,9),"seed_specimen_cabinet":Vector2i(6,9),"small_aquarium":Vector2i(8,9),
+		"glass_flower_table":Vector2i(10,9),"vine_garden_arch":Vector2i(12,9),"copper_flower_rack":Vector2i(11,8),"xinghe_greenhouse_roof":Vector2i(13,8),"hanging_flower_pot":Vector2i(14,8),"greenhouse_nursery_box":Vector2i(14,7),"ice_blue_fish_counter":Vector2i(9,7),"coast_changing_booth":Vector2i(11,7),"wall_lifebuoy":Vector2i(12,7),"sea_breeze_postcard_rack":Vector2i(13,7),"wooden_oar_sign":Vector2i(15,8),"blue_stripe_awning":Vector2i(0,10),"whitewood_register":Vector2i(3,10),"folding_beach_chair":Vector2i(5,10),"shell_round_table":Vector2i(7,10),"xiaoli_market_cart":Vector2i(8,10),"tree_hollow_bed":Vector2i(10,10),"mushroom_cap_table":Vector2i(12,10),"mushroom_cap_stool":Vector2i(14,10),"leaf_floor_mat":Vector2i(14,10),"spore_nightlight":Vector2i(15,10),"acorn_cabinet":Vector2i(15,11),"hedgehog_nap_basket":Vector2i(15,12),"bark_picture_frame":Vector2i(14,11),"forest_arch":Vector2i(10,12),"fallen_leaf_desk":Vector2i(6,12),"mushroom_door_mailbox":Vector2i(13,12),"quiet_birdhouse":Vector2i(14,12)}
 	for i in ALL_KINDS.size():
 		var kind:String=ALL_KINDS[i]
+		if kind in OFF_GRID:continue
 		if kind=="acorn_ornament":pieces.append(piece(kind,7,8))
 		elif kind=="master_bench":pieces.append(piece(kind,0,6))
 		elif kind=="small_smelter":pieces.append(piece(kind,2,6))
@@ -257,23 +270,46 @@ func all_build_kinds()->bool:
 		elif kind=="inn_quilt_bed":pieces.append(piece(kind,14,6))
 		elif kind=="inn_stone_footbath":pieces.append(piece(kind,0,8))
 		elif kind=="inn_luggage_rack":pieces.append(piece(kind,4,8))
+		elif kind=="braided_round_rug":pieces.append(piece(kind,0,13))
+		elif kind=="handcarved_home_sign":pieces.append(piece(kind,2,13))
+		elif kind=="rounded_wood_table":pieces.append(piece(kind,3,13))
+		elif kind=="cotton_double_sofa":pieces.append(piece(kind,5,13))
+		elif kind=="wall_tool_board":pieces.append(piece(kind,7,13))
+		elif kind=="grid_bookcase":pieces.append(piece(kind,9,13))
+		elif kind=="forest_wardrobe":pieces.append(piece(kind,11,13))
+		elif kind=="cedar_bed":pieces.append(piece(kind,12,13))
+		elif kind=="bamboo_tea_table":pieces.append(piece(kind,14,13))
+		elif kind=="bamboo_double_bench":pieces.append(piece(kind,5,14))
+		elif kind=="indigo_cushion":pieces.append(piece(kind,7,14))
+		elif kind=="bamboo_curtain":pieces.append(piece(kind,11,14))
+		elif kind=="paper_tea_lamp":pieces.append(piece(kind,13,14))
+		elif kind=="tea_display_cabinet":pieces.append(piece(kind,14,14))
+		elif kind=="riverside_screen":pieces.append(piece(kind,0,15))
+		elif kind=="water_listening_chime":pieces.append(piece(kind,2,15))
+		elif kind=="bamboo_lounger":pieces.append(piece(kind,4,15))
+		elif kind=="tea_snack_shelf":pieces.append(piece(kind,7,15))
+		elif kind=="stone_workbench":pieces.append(piece(kind,9,15))
+		elif kind=="keepsake_bobo_cart":pieces.append(piece(kind,15,15))
+		elif kind=="terracotta_roof":pieces.append(piece(kind,14,0)) # C16: roofs layer, beside the thatch roof at (13,0)
+		elif kind=="kitchen_stove":pieces.append(piece(kind,3,11)) # C12: a free 2x2 slot (cells 3..4 x 11..12)
+		elif greenhouse_sites.has(kind):pieces.append(piece(kind,greenhouse_sites[kind].x,greenhouse_sites[kind].y))
 		else:pieces.append(piece(kind,i%16,i/16))
-	var all:=design("全部",16,10,pieces)
+	var all:=design("全部",16,16,pieces)
 	var r=val(all)
 	if accepted(r,"one of every kind validates"):
 		var out:Array=r.blueprint.pieces
-		expect(out.size()==ALL_KINDS.size(),"all catalog pieces kept")
+		expect(out.size()==ALL_KINDS.size()-OFF_GRID.size(),"all catalog pieces kept")
 		var ordered:=true
 		for i in range(1,out.size()):
 			if not ordered_before(out[i-1],out[i]):ordered=false
 		expect(ordered,"output is ordered ground->objects->roofs then y then x")
-		expect(out.size()>2 and out[0].kind=="floor" and out[1].kind=="path" and out[out.size()-1].kind=="greenhouse_roof","floor/path first, roof last")
+		expect(out.size()>2 and out[0].kind=="floor" and out[1].kind=="path" and out[out.size()-1].kind=="xinghe_greenhouse_roof","floor/path first, roof last")
 		var settings_correct:=true
 		for p in out:
 			if p.kind=="conveyor":settings_correct=settings_correct and p.get("settings",{})=={"dir":0,"filter":"wood"}
 			elif p.has("settings"):settings_correct=false
 		expect(settings_correct,"only conveyor receives normalized default configuration")
-	accepted_as(cost(all),{"acorn_ornament_kit":1,"wood":276,"seashell":2,"hardwood":104,"copper_ore":5,"clay":46,"stone":154,"fiber":44,"plank":33,"copper_joint":3,"iron_ingot":27,"copper_ingot":14,"woodwork_parts":12,"animal_collector_kit":1,"rope":3,"flower_pot":1,"cotton_cloth":23,"wool_cloth":5,"glass":12,"supply_box_kit":1,"gold_sample":1,"pipe_kit":1,"tank_kit":1,"mine_drill_kit":1,"waterworks_kit":1,"pump_kit":1,"sawmill_kit":1,"kiln_kit":1,"forester_kit":1,"conveyor_kit":1,"mill_kit":1,"veg_basket_rack_kit":1,"relay_crate_stack_kit":1,"carp_banner_kit":1,"float_garland_kit":1,"lantern_post_kit":1,"flower_arch_kit":1,"trio_keepsake_kit":1,"water_share_plaque_kit":1,"diversion_gate_kit":1,"mine_lantern_kit":1,"tea_ware_kit":1,"salt_basket_kit":1,"water_tower_kit":1,"keepsake_aru_kit":1,"keepsake_milu_kit":1,"keepsake_bobo_kit":1,"keepsake_chacha_kit":1,"keepsake_achao_kit":1,"keepsake_mianmian_kit":1,"keepsake_xinghe_kit":1,"keepsake_lingpopo_kit":1,"keepsake_xiaoli_kit":1,"keepsake_luoluo_kit":1,"keepsake_diandian_kit":1,"keepsake_nuannuan_kit":1,"keepsake_nuannuan_room_kit":1,"keepsake_aru_bird_kit":1,"keepsake_achao_oar_kit":1,"keepsake_xinghe_sign_kit":1,"keepsake_lingpopo_memorial_kit":1},"cost","hand-summed base_cost of every real kind")
+	accepted_as(cost(all),{"roof_tile":1,"acorn_ornament_kit":1,"wood":620,"bamboo":80,"resin":2,"seashell":6,"hardwood":172,"star_mushroom":6,"copper_ore":5,"clay":66,"stone":205,"fiber":141,"plank":33,"copper_joint":3,"iron_ingot":27,"copper_ingot":48,"woodwork_parts":12,"animal_collector_kit":1,"rope":3,"flower_pot":1,"cotton_cloth":77,"blue_dye":1,"wool_cloth":5,"glass":49,"crystal_sand":2,"chime_herb":13,"supply_box_kit":1,"gold_sample":1,"pipe_kit":1,"tank_kit":1,"mine_drill_kit":1,"waterworks_kit":1,"pump_kit":1,"sawmill_kit":1,"kiln_kit":1,"forester_kit":1,"conveyor_kit":1,"mill_kit":1,"veg_basket_rack_kit":1,"relay_crate_stack_kit":1,"carp_banner_kit":1,"float_garland_kit":1,"lantern_post_kit":1,"flower_arch_kit":1,"trio_keepsake_kit":1,"water_share_plaque_kit":1,"diversion_gate_kit":1,"mine_lantern_kit":1,"tea_ware_kit":1,"salt_basket_kit":1,"water_tower_kit":1,"keepsake_aru_kit":1,"keepsake_milu_kit":1,"keepsake_bobo_kit":1,"keepsake_chacha_kit":1,"keepsake_achao_kit":1,"keepsake_mianmian_kit":1,"keepsake_xinghe_kit":1,"keepsake_lingpopo_kit":1,"keepsake_xiaoli_kit":1,"keepsake_luoluo_kit":1,"keepsake_diandian_kit":1,"keepsake_nuannuan_kit":1,"keepsake_nuannuan_room_kit":1,"keepsake_bobo_cart_kit":1,"keepsake_aru_bird_kit":1,"keepsake_achao_oar_kit":1,"keepsake_xinghe_sign_kit":1,"keepsake_lingpopo_memorial_kit":1},"cost","hand-summed base_cost of every real kind")
 	var missing:=World.BUILD.duplicate(true)
 	missing.erase("conveyor")
 	rejected(val(design("帶",1,1,[piece("conveyor",0,0)]),missing),"kind absent from passed recipes rejected")

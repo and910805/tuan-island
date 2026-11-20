@@ -47,20 +47,31 @@ func run() -> void:
 	app.session.peers[1] = "tester"
 	app.session.set_physics_process(false)
 	var player: Dictionary = world.state.players.tester
+	# Fixture beyond the first-crop guide: chapter one already shipped (and no personal start),
+	# so first_crop_step() is empty and the full, uncompacted toolbar is shown.
+	world.state.chapter_one.shipped = true
+	expect(World.CHAPTER_ONE.first_crop_step(world.state, "tester").is_empty(), "fixture is past the first-crop guide")
 	var slot: Button = app.preview_toolbar.find_child("HarvesterSlot", true, false)
+	var tiller_slot: Button = app.preview_toolbar.find_child("TillerSlot", true, false)
+	var seeder_slot: Button = app.preview_toolbar.find_child("SeederSlot", true, false)
+	var toggle: Button = app.preview_toolbar.find_child("AllToolsToggle", true, false)
+	var rod: Button = app.preview_toolbar.find_child("FishingSlot", true, false)
 	for extent in [Vector2i(1024,640), Vector2i(1280,800), Vector2i(1920,1080)]:
 		root.size = extent
-		player.inventory.erase("harvester")
-		player.inventory.erase("tiller")
-		player.inventory.erase("seeder")
+		for portable in ["tiller", "seeder", "harvester"]:player.inventory.erase(portable)
 		app._select_tool("hoe")
 		shell.refresh_hud(app, world.state, player)
 		for frame in 4:await process_frame
-		expect(not slot.visible and app.preview_toolbar.size.x == 700, "unowned harvester stays hidden at %s" % extent)
+		var base: float = app.preview_toolbar.size.x
+		expect(not slot.visible and base > 0.0, "unowned harvester stays hidden at %s" % extent)
+		expect(app.tool_buttons.all(func(button): return button.visible) and rod.visible and not toggle.visible,
+			"all basic tools stay visible without the first-crop compact guide at %s" % extent)
 		player.inventory.harvester = 1
 		shell.refresh_hud(app, world.state, player)
 		for frame in 4:await process_frame
-		expect(slot.visible and app.preview_toolbar.size.x == 776, "harvester expands toolbar at %s" % extent)
+		var step: float = slot.get_combined_minimum_size().x + 4.0
+		expect(slot.visible and slot.get_combined_minimum_size().x > 0.0 and is_equal_approx(app.preview_toolbar.size.x, base + step),
+			"harvester expands toolbar by its own button at %s (%s -> %s)" % [extent, base, app.preview_toolbar.size.x])
 		var toolbar: Rect2 = app.preview_toolbar.get_global_rect()
 		expect(root.get_visible_rect().encloses(toolbar) and absf(toolbar.get_center().x - extent.x * 0.5) < 1,
 			"expanded toolbar fits and remains centered")
@@ -81,7 +92,9 @@ func run() -> void:
 		for frame in 4:await process_frame
 		var both: Rect2 = app.preview_toolbar.get_global_rect()
 		var shortcuts: Control = app.hud.get_node("LifeShortcuts")
-		expect(both.size.x == 928 and root.get_visible_rect().encloses(both), "all three portable tools fit")
+		var all_step: float = step + tiller_slot.get_combined_minimum_size().x + seeder_slot.get_combined_minimum_size().x + 8.0
+		expect(tiller_slot.visible and seeder_slot.visible and is_equal_approx(both.size.x, base + all_step) and root.get_visible_rect().encloses(both),
+			"all three portable tools fit and add their own widths at %s" % extent)
 		expect(not both.intersects(shortcuts.get_global_rect()), "portable tools never overlap shortcuts")
 	app._inventory()
 	expect(app.modal.category_for("harvester") == 4, "portable harvester appears under other items")

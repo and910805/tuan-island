@@ -232,45 +232,72 @@ static func _shortfall_text(short:Dictionary) -> String:
 		if short.has(activity):parts.append("%s的紀念票 %d 張"%[ACTIVITY_NAMES[activity],int(short[activity])])
 	return "、".join(parts)
 
-## 本人擺在各地區（家園與 state.regions）的該種裝飾件數。
-static func _placed(state:Dictionary,token:String,kind:String) -> int:
-	var count:=0
+static func _object_layers(state:Dictionary) -> Array:
 	var layers:=[state.get("objects",{})]
 	var regions:Variant=state.get("regions",{})
 	if regions is Dictionary:
 		for region in regions:
 			var local:Variant=regions[region]
 			if local is Dictionary:layers.append(local.get("objects",{}))
-	for layer:Variant in layers:
+	return layers
+
+## 一次掃過所有地區，統計本人擺出的各兌換品件數。
+static func _placed_counts(state:Dictionary,token:String) -> Dictionary:
+	var counts:={}
+	for layer:Variant in _object_layers(state):
 		if not layer is Dictionary:continue
 		for obj:Variant in layer.values():
-			if obj is Dictionary and str(obj.get("type",""))==kind and str(obj.get("owner",""))==token:count+=1
-	return count
+			if not obj is Dictionary:continue
+			var kind:=str(obj.get("type",""))
+			if ENTRIES.has(kind) and str(obj.get("owner",""))==token:counts[kind]=int(counts.get(kind,0))+1
+	return counts
+
+## 供專服在同一輪廣播共用，玩家代碼只留在主機。
+static func placed_by_owner(state:Dictionary) -> Dictionary:
+	var counts:={}
+	for layer:Variant in _object_layers(state):
+		if not layer is Dictionary:continue
+		for obj:Variant in layer.values():
+			if not obj is Dictionary:continue
+			var kind:=str(obj.get("type",""))
+			if not ENTRIES.has(kind):continue
+			var owner:=str(obj.get("owner",""))
+			var own:Dictionary=counts.get_or_add(owner,{})
+			own[kind]=int(own.get(kind,0))+1
+	return counts
 
 ## 只給本人看的摘要（Session 以 data.own_souvenir 送給本人）。不含任何 token。
-static func view(state:Dictionary,token:String) -> Dictionary:
+static func view(state:Dictionary,token:String,placements:Variant=null) -> Dictionary:
 	var found:Variant=state.get("players",{}).get(token,{})
 	var person:Dictionary=found if found is Dictionary else {}
 	var got:=earned(person)
 	var own:=record(person)
 	var spent:={}
-	for activity:String in ACTIVITIES:spent[activity]=int(own.spent.get(activity,0)) if own.get("spent") is Dictionary else 0
-	var balance:=balances(person)
+	var balance:={}
 	var activities:=[]
+	var spent_record:Variant=own.get("spent")
 	for activity:String in ACTIVITIES:
-		activities.append({"id":activity,"name":str(ACTIVITY_NAMES[activity]),"earned":int(got[activity]),"spent":int(spent[activity]),"balance":int(balance[activity])})
+		var earned_count:=int(got[activity])
+		var spent_count:=int(spent_record.get(activity,0)) if spent_record is Dictionary else 0
+		var remaining:=earned_count-spent_count
+		spent[activity]=spent_count
+		balance[activity]=remaining
+		activities.append({"id":activity,"name":str(ACTIVITY_NAMES[activity]),"earned":earned_count,"spent":spent_count,"balance":remaining})
 	var inv:Variant=person.get("inventory",{})
+	var redeemed:Variant=own.get("redeemed")
 	var entries:=[]
+	var placed:Dictionary=placements.get(token,{}) if placements is Dictionary else _placed_counts(state,token)
 	var total:=0
 	for entry:String in ENTRY_ORDER:
 		var short:=_shortfall(entry,balance)
-		var count:=_redeemed(person,entry)
+		var count:=int(redeemed.get(entry,0)) if redeemed is Dictionary else 0
+		var item:=item_of(entry)
 		total+=count
-		entries.append({"id":entry,"name":str(ENTRIES[entry].name),"blurb":str(ENTRIES[entry].blurb),"item":item_of(entry),
+		entries.append({"id":entry,"name":str(ENTRIES[entry].name),"blurb":str(ENTRIES[entry].blurb),"item":item,
 			"cost":(ENTRIES[entry].cost as Dictionary).duplicate(),"cost_text":cost_text(entry),
 			"affordable":short.is_empty(),"short":short,"redeemed":count,
-			"held":int(inv.get(item_of(entry),0)) if inv is Dictionary else 0,
-			"placed":_placed(state,token,entry),"extra":extra_for(entry,person)})
+			"held":int(inv.get(item,0)) if inv is Dictionary else 0,
+			"placed":int(placed.get(entry,0)),"extra":"%s|%d"%[entry,count]})
 	var point:=active_cell(state)
 	return {"unlocked":unlocked(state),"available":point!=NO_CELL,"point":point,"candidates":CANDIDATES.duplicate(),"reach":REACH,
 		"activities":activities,"earned":got,"spent":spent,"balance":balance,"entries":entries,"redeemed_total":total,

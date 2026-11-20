@@ -28,13 +28,18 @@ func regions_of(options:Array)->Array:
 func clean(text:String,where:String)->void:
 	for word in FORBIDDEN:check(not text.contains(word),"Forbidden wording「%s」in %s: %s"%[word,where,text])
 
-func give_flower_letter(w:World,token:String)->void:
-	var nursery:Dictionary=w.state.get("flower_nursery",FlowerNursery.fresh())
-	if not nursery.has("players"):nursery.players={}
-	var record:Dictionary=FlowerNursery.own_record(w.state,token)
-	record.letter=true
-	nursery.players[token]=record
-	w.state.flower_nursery=nursery
+func completed_flower_fixture(w:World,token:String)->void:
+	var tea:Dictionary=World.TEA_CERAMICS.FRESH.duplicate(true)
+	tea.merge({"intro":true,"potter":true,"reused":true,"reuse_count":1,
+		"trials":{"jar":true,"fiber":true},"tea_discussed":true,"comparison_complete":true},true)
+	w.state.tea_ceramics.players[token]=tea
+	var flowers:Dictionary=FlowerNursery.FRESH.duplicate(true)
+	flowers.merge({"letter":true,"intro":true,"shipped":true,"complete":true},true)
+	for kind in FlowerNursery.FLOWERS:
+		flowers.planted[kind]=true
+		flowers.harvested[kind]=2
+		flowers.saved[kind]=true
+	w.state.flower_nursery.players[token]=flowers
 
 func give_salt_letter(w:World,token:String)->void:
 	var salt:Dictionary=w.state.get("salt_pan",{})
@@ -50,7 +55,8 @@ func give_salt_letter(w:World,token:String)->void:
 func _initialize()->void:
 	# 圖與常數：beimen 只附加在尾端，舊順序完全保留。
 	check(Transit.ROUTE==OLD_ROUTE+["beimen","jiaoxi","bamboo_grove","star_garden"],"Existing route order is preserved before the Jiaoxi branch")
-	check(Regions.ALL==OLD_ALL+["beimen","jiaoxi","bamboo_grove","star_garden"]+Regions.DEEP_MINES,"Existing region order is preserved before Jiaoxi (T067 deep floors appended last)")
+	var original_regions:=OLD_ALL+["beimen","jiaoxi","bamboo_grove","star_garden"]+Regions.DEEP_MINES
+	check(Regions.ALL.slice(0,original_regions.size())==original_regions,"The original region and mine order survives later activity areas")
 	check(Regions.BEIMEN=="beimen" and Transit.SALT_STOP=="beimen" and SaltPan.REGION=="beimen","Region id agrees with SaltPan.REGION")
 	check(Transit.CONNECTIONS.tianwei==["yingge","beimen","star_garden"] and Transit.CONNECTIONS.beimen==["tianwei"] and Transit.CONNECTIONS.yingge==["maokong","tianwei"],"tianwei<->beimen connection, yingge unchanged")
 	check(Transit.STATIONS.beimen=={"name":"北門・鹽風合作鹽田","cell":Vector2i(48,25),"arrival":Vector2(47.5,25.5),"size":Vector2i(80,60)},"Beimen station exact")
@@ -103,10 +109,6 @@ func _initialize()->void:
 	for region in Transit.ROUTE:
 		for id in Transit.points(region):Transit.options(region,flower_book,true,id,true,true,true)
 	check(var_to_bytes(flower_book)==before_bytes,"Listing routes never writes visited")
-	var world_source:=FileAccess.get_file_as_string("res://scripts/world.gd")
-	var writes:=world_source.count("visited[")+world_source.count("visited.beimen")
-	var arrival_line:=world_source.find("player.travel_book.visited[destination]=true")
-	check(writes==1 and arrival_line>0 and world_source.rfind("player.region = destination",arrival_line)>world_source.rfind("func ",arrival_line),"World writes visited in exactly one place, right after arrival sets the region")
 
 	# Transit.valid：舊簿相容，含 beimen 的簿也有效。
 	check(Transit.valid(salt_book),"Book with visited.beimen is valid")
@@ -167,7 +169,9 @@ func _initialize()->void:
 	for token in ["alpha","beta"]:
 		w.state.players[token].region="tianwei"
 		for station in ["maokong","yingge","tianwei"]:w.state.players[token].travel_book.visited[station]=true
-		give_flower_letter(w,token)
+		completed_flower_fixture(w,token)
+	w.state.flower_nursery.garden={"given":{"blue_dye":4,"orange_blossom":4,"chime_herb":2},
+		"contributors":{"alpha":10},"complete":true,"completed_at":0.0}
 	check(not SaltPan.route_open(w.state,"alpha"),"No salt letter in fresh state")
 	check(find(Transit.route_options(w.state,"alpha","transfer"),"beimen").is_empty() and not find(Transit.route_options(w.state,"alpha","transfer"),"yingge").is_empty(),"Without letter Beimen is hidden")
 	give_salt_letter(w,"alpha")
@@ -178,6 +182,7 @@ func _initialize()->void:
 	check(TravelUI.salt_open(w.state,"alpha") and not TravelUI.salt_open(w.state,"beta"),"Travel UI uses server state when no own view")
 	check(TravelUI.salt_open({"salt_pan":{"own":{"record":{"letter":true}}}},"x") and not TravelUI.salt_open({"salt_pan":{"own":{"record":{"letter":false}}}},"x"),"Travel UI reads client own record letter")
 	check(not TravelUI.salt_open({"players":{}},"x"),"Missing salt data is closed")
+	check_visit_record(w)
 
 	# 文字：模式與說明標明合併、縮短，不出現站名、班次、票價。
 	for station in Transit.STATIONS:clean(str(Transit.STATIONS[station].name),"STATIONS."+station)
@@ -231,3 +236,22 @@ func _initialize()->void:
 	map.free()
 	print("SALT_TRANSIT_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0))
+
+func check_visit_record(world:World)->void:
+	var departure:Vector2i=Transit.POINTS.tianwei.transfer.cell
+	for person:Dictionary in world.state.players.values():
+		person.x=departure.x+0.5
+		person.y=departure.y+0.5
+	var path:="user://salt-transit-%d-%d.json"%[OS.get_process_id(),Time.get_ticks_usec()]
+	world.save_path=path
+	var other_book:Dictionary=world.state.players.beta.travel_book.duplicate(true)
+	var refused:=world.act("beta","refuse-salt", "transit",departure,"beimen")
+	check(not refused.ok and world.player_region("beta")=="tianwei","A player without the letter remains in Tianwei")
+	check(world.state.players.beta.travel_book==other_book,"A refused transfer leaves the visit record unchanged")
+	var arrived:=world.act("alpha","visit-salt","transit",departure,"beimen")
+	check(arrived.ok and world.player_region("alpha")=="beimen","The unlocked ticket arrives in Beimen")
+	check(world.state.players.alpha.travel_book.visited.get("beimen",false) and world.state.players.beta.travel_book==other_book,"Only the traveler records a successful visit")
+	var reloaded:=World.new()
+	check(reloaded.load_world(path) and reloaded.player_region("alpha")=="beimen" and reloaded.state.players.alpha.travel_book.visited.get("beimen",false),"The new visit survives reloading the world")
+	for suffix in ["",".bak",".tmp"]:
+		if FileAccess.file_exists(path+suffix):DirAccess.remove_absolute(path+suffix)

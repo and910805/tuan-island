@@ -48,4 +48,3 @@ static func draw_rock_ledge(canvas:Node2D,at:Vector2,village_art,p:Vector2i) -> 
 
 static func draw_mine_bed(canvas:CanvasItem,at:Vector2) -> void:
 	canvas.draw_texture_rect_region(TERRAIN,Rect2(at,Vector2(32,32)),Rect2(32,32,32,32),Color("a49286"))
-

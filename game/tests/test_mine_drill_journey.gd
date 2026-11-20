@@ -5,8 +5,8 @@ const FUEL_BELT := Vector2i(28,25)
 const FUEL_BOX := Vector2i(28,26)
 const DRILL_OUT_BELT := Vector2i(27,24)
 const DRILL_OUT_BOX := Vector2i(26,24)
-const EXTRA_SPRINKLER := Vector2i(52,25)
-const EXTRA_FIELD := Vector2i(52,24)
+const EXTRA_SPRINKLER := Vector2i(53,26)
+const EXTRA_FIELD := Vector2i(53,27)
 
 func after_chapter() -> void:
 	super.after_chapter()

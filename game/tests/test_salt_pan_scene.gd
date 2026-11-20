@@ -563,6 +563,10 @@ func run()->void:
 	expect(sign_error<0.25,"heritage sign drawn (err %.3f)"%sign_error)
 	shot.save_png(out_dir+"/beimen-heritage-sign.png")
 	expect(view.interaction_focus()=="salt:heritage","standing at the heritage sign focuses it")
+	var safe_view:=Rect2(Vector2.ZERO,Vector2(root.size)/view.view_zoom())
+	var prompts:Array=view.world_label_placements(safe_view).filter(func(entry:Dictionary):return entry.id=="salt:heritage" and entry.active)
+	var sign_rect:=Rect2(sign_tl.round(),Vector2(SaltArt.structure_texture("sign").get_size()))
+	expect(prompts.size()==1 and not sign_rect.intersects(prompts[0].rect),"heritage interaction prompt leaves the sign visible")
 
 	# ---------------------------------------------- rain: diluted / covered
 	set_time(rainy)

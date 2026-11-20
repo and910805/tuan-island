@@ -192,6 +192,9 @@ func check_resources() -> void:
 				expect(World.RECIPES.has(use.product) and World.RECIPES[use.product].ingredients.has(item),"%s is an ingredient of recipe %s"%[item,use.product])
 			"freight":
 				expect(item in Freight.ITEMS,"%s is accepted by mine freight"%item)
+			"ship":
+				var prices:=World.SHIPPING.prices(World.CROPS,World.FISH,World.OTHER_SALES,true)
+				expect(int(prices.get(item,0))>0,"%s has a shipping box price"%item)
 			"build":
 				expect(World.BUILD.has(use.product) and World.BUILD[use.product].has(item) and item!="name","%s is a build cost of %s"%[item,use.product])
 			"process":

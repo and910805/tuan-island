@@ -44,7 +44,6 @@ func run()->void:
 	var seed_before:int=person.inventory.get("radish_seed",0)
 	for step in [["hoe",""],["seed","radish"],["water",""],["harvest",""]]:
 		var tool:String=step[0]
-		if tool=="harvest":world.state.crops[World.key(plot)].growth=float(World.CROPS.radish.time)
 		if tool=="water" and app.arg_value("qa-grown","")=="true":world.state.crops[World.key(plot)].growth=float(World.CROPS.radish.time)*0.7
 		app.selected=tool
 		app.view.selected=tool
@@ -76,6 +75,7 @@ func run()->void:
 		if tool=="water":
 			var quiet:bool=app.view.reduced_motion or app.view.photograph_mode
 			expect(presses.size()==1 if quiet else presses.size()>=3,"Watered plant settles only with normal motion")
+			await capture_ripening(plot,world,camera_before,records)
 		if tool=="seed":
 			var quiet:bool=app.view.reduced_motion or app.view.photograph_mode
 			expect(int(person.inventory.get("radish_seed",0))==seed_before-1,"Three visual kernels consume exactly one seed item")
@@ -94,3 +94,29 @@ func run()->void:
 	record.store_string(JSON.stringify(records,"\t"))
 	print("FARM_BODY_CAPTURE checks=%d failures=%d frames=%d"%[checks,failures,records.size()])
 	quit(int(failures>0))
+
+func capture_ripening(plot:Vector2i,world,camera_before:Vector2,records:Array) -> void:
+	var cell:=World.key(plot)
+	var maturity:=float(World.CROPS.radish.time)
+	world.state.crops[cell].growth=maturity-0.1
+	app.view.elapsed+=1.0
+	app.session._send_snapshot(1)
+	expect(app.view.farm_feedback.ripening_age(cell,app.view.elapsed)<0.0,"Nearly ripe crop stays quiet")
+	world.step(0.2,true,false)
+	app.session._send_snapshot(1)
+	var started:float=app.view.elapsed
+	expect(float(world.state.crops[cell].growth)>=maturity,"Watered crop matures through the world clock")
+	expect(app.view.farm_feedback.ripening_age(cell,started)==0.0,"Maturity crossing starts its sparkle")
+	var state_before:Dictionary=world.state.duplicate(true)
+	for frame in 12:
+		app.view.elapsed=started+float(frame)*0.1
+		if frame==3:app.session._send_snapshot(1)
+		app.view.queue_redraw()
+		await process_frame
+		await RenderingServer.frame_post_draw
+		var path:="ripe_%02d.png"%frame
+		expect(root.get_texture().get_image().save_png(directory.path_join(path))==OK,"Capture "+path)
+		records.append({"file":path})
+	expect(app.view.farm_feedback.ripening_age(cell,started+0.3)>0.0,"Duplicate snapshot does not restart the sparkle")
+	expect(app.view.farm_feedback.ripening_age(cell,started+1.2)<0.0,"Sparkle expires")
+	expect(world.state==state_before and app.view.camera==camera_before,"Ripening leaves world state and camera fixed")

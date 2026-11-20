@@ -37,7 +37,7 @@ const WAIT := Color("8a6326")
 const POCKET_THUMB := Vector2(128, 80)
 const POCKET_MIN := Vector2(140, 122)
 const POCKET_CAPTION_H := 22.0
-const STAGE_BOX := Vector2(304, 120)
+const STAGE_BOX := Vector2(304, 100)
 const DETAIL_W := 352.0
 const GRID_GAP := 8
 const BODY_GAP := 14
@@ -204,12 +204,14 @@ static func open(app, controller) -> void:
 	var title_row := HBoxContainer.new()
 	title_row.name = "BlueprintTitleRow"
 	title_row.add_theme_constant_override("separation", 6)
-	dinner.add_child(title_row)
+	dbox.add_child(title_row)
+	dbox.move_child(title_row,0)
 	var title: Label = app.label("", 21)
 	title.name = "BlueprintName"
 	title.autowrap_mode = TextServer.AUTOWRAP_OFF
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title.clip_text = true
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_row.add_child(title)
 	ui.title = title
 	var rename_toggle: Button = _small(app, "改名", func(): _begin_rename(ui))
@@ -221,7 +223,8 @@ static func open(app, controller) -> void:
 	var rename_row := HBoxContainer.new()
 	rename_row.name = "BlueprintRenameRow"
 	rename_row.add_theme_constant_override("separation", 6)
-	dinner.add_child(rename_row)
+	dbox.add_child(rename_row)
+	dbox.move_child(rename_row,1)
 	var name_edit := LineEdit.new()
 	name_edit.name = "BlueprintNameEdit"
 	name_edit.max_length = NAME_MAX
@@ -266,7 +269,7 @@ static func open(app, controller) -> void:
 	var stats: Label = app.label("", 14)
 	stats.name = "BlueprintStats"
 	stats.add_theme_color_override("font_color", INK_SOFT)
-	dinner.add_child(stats)
+	dbox.add_child(stats)
 	ui.stats = stats
 	var cost_title: Label = app.label("", 13)
 	cost_title.name = "BlueprintBaseCostTitle"
@@ -801,7 +804,7 @@ static func make_strip(app, controller) -> Control:
 	var warning_box := PanelContainer.new()
 	warning_box.name = "BlueprintStripWarningBox"
 	warning_box.add_theme_stylebox_override("panel", LifeTheme.badge_style())
-	body.add_child(warning_box)
+	box.add_child(warning_box)
 	ui.warning_box = warning_box
 	ui.warning = _strip_label(app, warning_box, "BlueprintStripWarning", 13, SHORT)
 	ui.message_label = _strip_label(app, body, "BlueprintStripMessage", 13, INK_SOFT)
@@ -886,7 +889,7 @@ static func layout_strip(strip: Control, bounds: Vector2) -> void:
 	if not is_instance_valid(strip):return
 	strip.set_meta("bounds", bounds)
 	var width := minf(300.0 if bounds.x < 1180.0 else 320.0, maxf(220.0, bounds.x - 2 * STRIP_MARGIN))
-	var top := STRIP_TOP
+	var top := 160.0 if bounds.y<=680.0 else STRIP_TOP
 	var available := maxf(160.0, bounds.y - STRIP_BOTTOM_RESERVE - top)
 	if absf(strip.custom_minimum_size.x - width) > 0.5:strip.custom_minimum_size.x = width
 	var ui = strip.get_meta("blueprint_ui", null)
@@ -985,10 +988,10 @@ static func _refresh_strip(ui: Dictionary) -> void:
 					show_quote = true
 				else:
 					state_text = "可以施工"
-					hint_text = "價格已更新，請重新檢查材料後再確認。" if bool(q.get("requote", false)) else str(q.get("message", ""))
+					hint_text = "價格已更新，請重新檢查材料後再確認。" if bool(q.get("requote", false)) else ""
 					if bool(q.get("requote", false)):state_color = WAIT
 					show_quote = true
-					warning_text = "確認後會立即施工並扣除材料，不能用「復原」撤回。"
+					warning_text = "確認後立即施工並扣除材料。可在建造選單使用「復原」。" if bool(q.get("undoable",false)) else "確認後立即施工並扣除材料，不能用「復原」撤回。"
 			"submitting":
 				state_text = "施工已送出，等待島上回覆"
 				state_color = WAIT
@@ -1058,7 +1061,7 @@ static func _refresh_strip(ui: Dictionary) -> void:
 	confirm.visible = show_confirm
 	confirm.disabled = not (show_confirm and locked and not waiting and bool(q.get("ok", false)))
 	_set_text(confirm, "確認新價格" if bool(q.get("requote", false)) else "確認施工")
-	confirm.tooltip_text = "先點地面鎖定落點並取得有效估價" if confirm.disabled else "按下後立即施工，無法復原"
+	confirm.tooltip_text = "先點地面鎖定落點並取得有效估價" if confirm.disabled else warning_text
 	(ui.retry as Button).visible = show_retry
 	(ui.retry as Button).disabled = pending.is_empty()
 	(ui.cancel as Button).visible = show_cancel

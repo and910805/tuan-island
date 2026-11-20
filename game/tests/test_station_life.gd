@@ -39,7 +39,7 @@ func _initialize()->void:
 	old.erase("salt_pan")
 	old.regions.erase("beimen")
 	old.erase("station_life")
-	expect(valid(old) and old.version==26 and old.station_life==Life.fresh() and old.players.alpha.inventory==world.state.players.alpha.inventory,"v9 migration preserves inventory and adds empty records")
+	expect(valid(old) and old.version==preload("res://scripts/save_schema.gd").VERSION and old.station_life==Life.fresh() and old.players.alpha.inventory==world.state.players.alpha.inventory,"v9 migration preserves inventory and adds empty records")
 	place("toucheng")
 	expect(not action("locked","station_story","toucheng","0").ok,"Picnic is required")
 	world.state.picnic=true

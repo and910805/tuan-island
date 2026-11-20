@@ -11,8 +11,7 @@ extends RefCounted
 ##
 ## Purity: no IO, no randomness, no wall clock, never preloads World, never
 ## mutates its arguments. Every "book" helper returns a NEW dictionary; the
-## caller (World._apply) decides whether to commit it. Only Village (static
-## ORDERS data) and Weather (calendar math) are preloaded.
+## caller (World._apply) decides whether to commit it.
 ##
 ## ----------------------------------------------------------------------------
 ## ORDER IDS ARE STABLE. Definitions are read from Village.ORDERS ("radish",
@@ -62,13 +61,14 @@ extends RefCounted
 ##    accepted order is never revoked because a season ended mid-deadline;
 ##    delivery only checks the inventory.
 ##
-## Materials gating model: reachability, not supply. An item is obtainable if
-## some route in SOURCES has all its requirement tags satisfied and all its
-## inputs are themselves obtainable (cycle-safe recursion). Quantities in
-## `inputs` document the recipe but are not stock-checked.
+## A source can cover the order's missing quantities through remaining crop
+## time, usable recipes and the requesting player's pantry.
 
 const VILLAGE := preload("res://scripts/village.gd")
 const WEATHER := preload("res://scripts/weather.gd")
+const CROPS := preload("res://scripts/crop_catalog.gd").CROPS
+const GLASS := preload("res://scripts/greenhouse_glass.gd")
+const PANTRY_ITEMS := ["radish","rice","wheat","bread","strawberry","strawberry_jam"]
 
 const SCHEMA := 1
 ## 接單後給 3 個遊戲日完成.
@@ -100,17 +100,18 @@ const MSG_SHORT := "這張訂單還缺少"
 const SOURCES := {
 	"radish": [{"via":"farm", "requires":["season:radish"], "inputs":{"radish_seed":1}}],
 	"radish_seed": [{"via":"shop", "requires":["shop"], "inputs":{}}],
+	"rice": [
+		{"via":"home_seed_lanyang_paddy", "requires":["shop","rice_window"], "inputs":{}},
+	],
 	"wheat": [{"via":"farm", "requires":["season:wheat"], "inputs":{"wheat_seed":1}}],
 	"wheat_seed": [{"via":"shop", "requires":["shop"], "inputs":{}}],
 	"carp": [{"via":"home_river_fishing", "requires":[], "inputs":{}}],
 	"minnow": [{"via":"home_river_fishing", "requires":[], "inputs":{}}],
 	"bread": [{"via":"cook", "requires":[], "inputs":{"wheat":2, "@stove":1}}],
 	"strawberry_jam": [
-		{"via":"stocked", "requires":["stock:jam_batch","station:jam_pot"], "inputs":{}},
-		{"via":"jam_pot", "requires":["station:jam_pot","stock:sugar"], "inputs":{"strawberry":3}},
+		{"via":"jam_pot", "requires":["station:jam_pot","stock:sugar"], "inputs":{"strawberry":3}, "yield":2},
 	],
 	"strawberry": [
-		{"via":"stocked", "requires":["stock:strawberry_batch"], "inputs":{}},
 		{"via":"farm", "requires":["season:strawberry","shop"], "inputs":{}},
 	],
 	"@stove": [
@@ -176,15 +177,54 @@ static func validate_catalog() -> Array:
 ##   day          zero-based world day (Weather.day_index(state.time))
 ##   board        state.board repaired
 ##   shop         seed stall usable (always true at home today)
-##   greenhouse   own_greenhouse(): the requesting player owns a greenhouse_roof
+##   greenhouse   own_greenhouse(): the requesting player owns a working glass roof
 ##                standing on a home crop plot that player also owns (so they
 ##                can actually plant under it). Other players' glass never counts.
 ##   stations     sorted unique station types placed in the home layer
 ##   crop_seasons World.CROP_SEASONS (empty list = year-round, as in World)
-static func context_from_world(world, token: String) -> Dictionary:
+static func context_from_world(world, token: String, channel := "village") -> Dictionary:
+	return contexts_from_world(world,token,[channel])[channel]
+
+static func contexts_from_world(world,token:String,channels:Array[String]) -> Dictionary:
 	var state: Dictionary = world.state
-	return context_from_layers(state, world.home_layer("roofs"), world.home_layer("crops"),
-		world.home_layer("objects"), token, world.CROP_SEASONS)
+	var home:={"roofs":world.home_layer("roofs"),"crops":world.home_layer("crops"),"objects":world.home_layer("objects")}
+	var base:=context_from_layers(state,home.roofs,home.crops,home.objects,token,world.CROP_SEASONS)
+	var contexts:={}
+	for channel in channels:
+		# Each channel gets its own pantry, since field supply is added per board.
+		var ctx:=base.duplicate(true) if channels.size()>1 else base
+		ctx.channel=channel
+		if channel=="village" and not ctx.greenhouse:
+			_add_field_supply(ctx,home,token,["radish","wheat","strawberry"])
+		elif channel=="lanyang":
+			ctx.rice_window=_crop_window("rice",ctx)
+			var field:Dictionary=state if world._region=="lanyang" else state.regions.get("lanyang",{})
+			_add_field_supply(ctx,field,token,["rice"])
+		contexts[channel]=ctx
+	return contexts
+
+static func _add_field_supply(ctx:Dictionary,field:Dictionary,token:String,kinds:Array) -> void:
+	var seasonal_time:Dictionary={}
+	for kind:String in kinds:
+		var seconds:=_growing_seconds(kind,ctx)
+		if seconds<float(CROPS[kind].time):seasonal_time[kind]=seconds
+	if seasonal_time.is_empty():return
+	var covered:Dictionary={}
+	for tile:String in field.get("crops",{}):
+		var plot:Dictionary=field.crops[tile]
+		var kind:=str(plot.get("kind",""))
+		if not seasonal_time.has(kind) or plot.get("owner","")!=token:continue
+		var remaining:=int(plot.get("remaining",1))
+		if remaining<1:continue
+		var crop:Dictionary=CROPS[kind]
+		var available:float=seasonal_time[kind]
+		if field.get("roofs",{}).has(tile) and GLASS.covered(field,tile,covered):available=DEADLINE_DAYS*VILLAGE.DAY
+		var needed:=maxf(0.0,float(crop.time)-float(plot.get("growth",0.0)))
+		if needed>available:continue
+		var harvests:=1
+		if crop.has("regrow"):
+			harvests=mini(remaining,1+floori((available-needed)/float(crop.regrow)))
+		ctx.pantry[kind]+=harvests*int(crop.yield)
 
 
 static func context_from_layers(state: Dictionary, roofs: Variant, crops: Variant, objects: Variant,
@@ -192,34 +232,39 @@ static func context_from_layers(state: Dictionary, roofs: Variant, crops: Varian
 	var stations := {}
 	if objects is Dictionary:
 		for obj: Variant in (objects as Dictionary).values():
-			if obj is Dictionary and obj.get("type")=="jam_pot" and obj.get("owner")==token:
-				stations["jam_pot"]=true
-			if obj is Dictionary and str(obj.get("type", "")) in ["stove", "bench", "mill"]:
-				stations[str(obj.type)] = true
+			if not obj is Dictionary:continue
+			var kind:=str(obj.get("type",""))
+			if kind=="jam_pot" and obj.get("owner")==token:
+				stations[kind]=true
+			elif kind=="stove" or kind=="bench" or kind=="mill":
+				stations[kind]=true
+			else:continue
+			if stations.size()==4:break
 	var station_list: Array = stations.keys()
 	station_list.sort()
 	var context:=make_context(int(WEATHER.day_index(state.get("time", 0.0))), state.get("board", false) == true,
-		own_greenhouse(roofs, crops, token), station_list, crop_seasons)
+		own_greenhouse(roofs, crops, token, objects), station_list, crop_seasons)
 	context.star_shore=state.get("wangan_star_walk",false)
+	context.time=float(state.get("time",0.0))
 	var bag:Dictionary=state.get("players",{}).get(token,{}).get("inventory",{})
-	context.stock={
-		"jam_batch":int(bag.get("strawberry_jam",0))>=2,
-		"sugar":int(bag.get("sugar",0))>=1,
-		"strawberry_batch":int(bag.get("strawberry",0))>=3,
-	}
+	context.pantry={}
+	for item:String in PANTRY_ITEMS:context.pantry[item]=int(bag.get(item,0))
+	context.stock={"sugar":int(bag.get("sugar",0))>=1}
 	return context
 
 
-## True when `token` owns a greenhouse_roof whose tile is a crop plot also owned
+## True when `token` owns an active glass roof whose tile is a crop plot also owned
 ## by `token`. Empty tokens never match (fail closed).
-static func own_greenhouse(roofs: Variant, crops: Variant, token: String) -> bool:
+static func own_greenhouse(roofs: Variant, crops: Variant, token: String,objects:Variant={}) -> bool:
 	if token.is_empty() or not roofs is Dictionary or not crops is Dictionary:return false
+	var snapshot:={"objects":objects if objects is Dictionary else {},"roofs":roofs}
+	var checked:Dictionary={}
 	for tile: Variant in roofs:
 		var roof: Variant = roofs[tile]
-		if not roof is Dictionary or str(roof.get("type", "")) != "greenhouse_roof":continue
+		if not roof is Dictionary or not GLASS.is_glass(str(roof.get("type", ""))):continue
 		if str(roof.get("owner", "")) != token:continue
 		var plot: Variant = (crops as Dictionary).get(tile)
-		if plot is Dictionary and str(plot.get("owner", "")) == token:return true
+		if plot is Dictionary and str(plot.get("owner", "")) == token and GLASS.covered(snapshot,str(tile),checked):return true
 	return false
 
 
@@ -232,7 +277,7 @@ static func make_context(day: int, board: bool, greenhouse := false, stations: A
 # ------------------------------------------------------------ gating
 
 static func obtainable(item: String, ctx: Dictionary) -> bool:
-	return _reachable(item, ctx, {}, 0)
+	return _reachable(item, 1, ctx, {}, 0)
 
 
 ## Sorted list of order items that cannot currently be obtained.
@@ -241,7 +286,7 @@ static func missing_sources(order: Dictionary, ctx: Dictionary) -> Array:
 	var items: Variant = order.get("items")
 	if not items is Dictionary:return ["?"]
 	for item: Variant in items:
-		if not obtainable(str(item), ctx):out.append(str(item))
+		if not _reachable(str(item), int(items[item]), ctx, {}, 0):out.append(str(item))
 	out.sort()
 	return out
 
@@ -265,11 +310,16 @@ static func eligible(ctx: Dictionary) -> Array:
 ## sha256("<day>|<id>"), first MAX_DAILY_CANDIDATES, returned in catalog order
 ## (stable UI). Same day + same ctx => same list on every peer and reload.
 static func daily_candidates(day: int, ctx: Dictionary) -> Array:
-	var pool := eligible(ctx)
+	return _limit_candidates(eligible(ctx), day)
+
+
+static func _limit_candidates(pool: Array, day: int) -> Array:
 	if pool.size() > MAX_DAILY_CANDIDATES:
+		var ranks := {}
+		for order: Dictionary in pool:ranks[order.id] = _rank(day, str(order.id))
 		var ranked := pool.duplicate()
 		ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-			return _rank(day, str(a.id)) < _rank(day, str(b.id)))
+			return ranks[a.id] < ranks[b.id])
 		var keep := {}
 		for i in MAX_DAILY_CANDIDATES:keep[str(ranked[i].id)] = true
 		pool = pool.filter(func(o: Dictionary) -> bool: return keep.has(str(o.id)))
@@ -318,6 +368,22 @@ static func expire_book(book: Variant, now: float) -> Dictionary:
 	for id: Variant in expired:(out.active as Dictionary).erase(id)
 	return {"book":out, "expired":expired}
 
+static func journal_rows(book: Variant, now: float) -> Array[Dictionary]:
+	var normalized:=normalize_book(book,now)
+	var rows:Array[Dictionary]=[]
+	for id:String in normalized.active:
+		var row:=find(id)
+		row.due=float(normalized.active[id].due)
+		row.remaining=maxf(0.0,row.due-now)
+		row.status="active" if row.due>now else "expired"
+		rows.append(row)
+	rows.sort_custom(func(a:Dictionary,b:Dictionary)->bool:
+		if a.status!=b.status:return a.status=="active"
+		if a.due!=b.due:return a.due<b.due
+		return a.id<b.id
+	)
+	return rows
+
 
 ## Board snapshot for the UI: today's candidates with per-order status
 ## ("open" | "active" | "done") plus remaining seconds for active orders.
@@ -345,25 +411,32 @@ static func board_view(book: Variant, now: float, ctx: Dictionary) -> Array:
 ##   means it simply rotated off today's board).
 ## `expired` lists active orders whose deadline has passed (not yet committed).
 static func snapshot(book: Variant, now: float, ctx: Dictionary) -> Dictionary:
-	var rows := {}
-	for row: Dictionary in board_view(book, now, ctx):rows[str(row.id)] = row
-	var out: Array = []
+	var sweep := expire_book(book, now)
+	var normalized: Dictionary = sweep.book
+	var catalog_rows: Array = []
+	var pool: Array = []
+	var missing_by_id := {}
 	for order: Variant in VILLAGE.ORDERS:
 		if not order is Dictionary or not matches_board(order,ctx):continue
-		var id := str(order.get("id", ""))
-		var row: Dictionary = rows.get(id, {})
-		if row.is_empty():
-			row = (order as Dictionary).duplicate(true)
-			row.status = "done" if _done_today(book, now, id) else "unavailable"
-			row.missing = missing_sources(order, ctx)
+		catalog_rows.append(order)
+		var missing := missing_sources(order, ctx)
+		missing_by_id[order.id] = missing
+		if missing.is_empty():pool.append(order)
+	var listed := {}
+	for order: Dictionary in _limit_candidates(pool, int(normalized.day)):listed[order.id] = true
+	var out: Array = []
+	for order: Dictionary in catalog_rows:
+		var id: String = order.id
+		if listed.has(id) or normalized.active.has(id):
+			out.append(_row(order, normalized, now))
+			continue
+		var row := order.duplicate(true)
+		row.status = "done" if normalized.done.has(id) else "unavailable"
+		row.missing = missing_by_id[id]
 		out.append(row)
-	var expired:Array=expire_book(book,now).expired
-	return {"day":day_of(now), "deadline_days":DEADLINE_DAYS, "rows":out,
+	var expired: Array = sweep.expired
+	return {"day":normalized.day, "deadline_days":DEADLINE_DAYS, "rows":out,
 		"expired":expired.filter(func(id):return matches_board(find(id),ctx))}
-
-
-static func _done_today(book: Variant, now: float, id: String) -> bool:
-	return (normalize_book(book, now).done as Array).has(id)
 
 
 static func accept(book: Variant, id: String, now: float, ctx: Dictionary) -> Dictionary:
@@ -416,10 +489,13 @@ static func check_delivery(book: Variant, id: String, now: float, inv: Dictionar
 
 # --------------------------------------------------------------- internals
 
-static func _reachable(item: String, ctx: Dictionary, visiting: Dictionary, depth: int) -> bool:
+static func _reachable(item: String, quantity: int, ctx: Dictionary, visiting: Dictionary, depth: int) -> bool:
 	if depth > MAX_DEPTH or visiting.has(item):return false
 	var routes: Variant = SOURCES.get(item)
 	if not routes is Array:return false
+	if item!="strawberry_jam" or _tag("station:jam_pot",ctx):
+		quantity-=int(ctx.get("pantry",{}).get(item,0))
+	if quantity<=0:return true
 	visiting[item] = true
 	var found := false
 	for route: Variant in routes:
@@ -430,8 +506,11 @@ static func _reachable(item: String, ctx: Dictionary, visiting: Dictionary, dept
 				ok = false
 				break
 		if ok:
-			for input: Variant in (route as Dictionary).get("inputs", {}):
-				if not _reachable(str(input), ctx, visiting, depth + 1):
+			var batches:=ceili(float(quantity)/int(route.get("yield",1)))
+			var inputs:Dictionary=route.get("inputs",{})
+			for input:String in inputs:
+				var amount:=int(inputs[input]) * (1 if input.begins_with("@") else batches)
+				if not _reachable(input, amount, ctx, visiting, depth + 1):
 					ok = false
 					break
 		if ok:
@@ -444,6 +523,7 @@ static func _reachable(item: String, ctx: Dictionary, visiting: Dictionary, dept
 static func _tag(tag: String, ctx: Dictionary) -> bool:
 	if tag == "board":return ctx.get("board", false) == true
 	if tag == "star_shore":return ctx.get("star_shore",false)==true
+	if tag == "rice_window":return ctx.get("rice_window",false)==true
 	if tag == "shop":return ctx.get("shop", false) == true
 	if tag.begins_with("stock:"):return ctx.get("stock",{}).get(tag.substr(6),false)==true
 	if tag.begins_with("station:"):
@@ -451,13 +531,27 @@ static func _tag(tag: String, ctx: Dictionary) -> bool:
 		return stations is Array and (stations as Array).has(tag.substr(8))
 	if tag.begins_with("season:"):
 		if ctx.get("greenhouse", false) == true:return true
-		var table: Variant = ctx.get("crop_seasons")
-		if not table is Dictionary or (table as Dictionary).is_empty():return false # fail closed
-		var crop := tag.substr(7)
-		var seasons: Variant = (table as Dictionary).get(crop, [])
-		if not seasons is Array or (seasons as Array).is_empty():return true # World: empty = year-round
-		return WEATHER.season_on_day(float(int(ctx.get("day", 0)))) in seasons
+		return _crop_window(tag.substr(7),ctx)
 	return false # unknown tag: fail closed
+
+static func _crop_window(crop:String,ctx:Dictionary) -> bool:
+	return CROPS.has(crop) and _growing_seconds(crop,ctx)>=float(CROPS[crop].time)
+
+static func _growing_seconds(crop:String,ctx:Dictionary) -> float:
+	var table:Dictionary=ctx.get("crop_seasons",{})
+	if table.is_empty():return 0.0
+	var seasons:Array=table.get(crop,[])
+	if seasons.is_empty():return DEADLINE_DAYS*VILLAGE.DAY
+	var now:=float(ctx.get("time",float(ctx.get("day",0))*VILLAGE.DAY))
+	var deadline:=now+DEADLINE_DAYS*VILLAGE.DAY
+	var day:=day_of(now)
+	var available:=0.0
+	for offset in range(DEADLINE_DAYS+1):
+		if WEATHER.season_on_day(day+offset) not in seasons:continue
+		var start:=maxf(now,(day+offset)*VILLAGE.DAY)
+		var end:=minf(deadline,(day+offset+1)*VILLAGE.DAY)
+		available+=maxf(0.0,end-start)
+	return available
 
 
 static func _rank(day: int, id: String) -> String:

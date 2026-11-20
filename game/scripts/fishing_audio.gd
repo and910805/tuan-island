@@ -1,4 +1,5 @@
 extends RefCounted
+const FishingFeedback=preload("res://scripts/fishing_feedback.gd")
 
 var context:Array=[]
 var previous_fishing:Dictionary={}
@@ -30,7 +31,10 @@ func update(snapshot:Dictionary,own_id:String) -> Array[String]:
 		cues.append("fish_cast")
 		observed_cast=true
 	elif fishing.is_empty() and not previous_fishing.is_empty():
-		if caught>previous_caught:cues.append("fish_catch")
+		var reel:=FishingFeedback.reel_for(snapshot,own_id,previous_fishing)
+		if reel.get("released",false):cues.append("fish_release")
+		elif caught>previous_caught:cues.append("fish_catch")
+		elif observed_cast:cues.append("fish_cancel")
 		observed_cast=false
 	elif fishing!=previous_fishing:
 		observed_cast=false

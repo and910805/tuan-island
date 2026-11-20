@@ -52,7 +52,7 @@ func check_layout(panel: Control, size: Vector2i) -> void:
 		"first slot is fully visible in the grid at %s" % size)
 
 func check_categories(main: Node, panel: Control, point: Vector2) -> void:
-	var expected := [World.NAMES.keys(), ["orange_dye","fired_brick","woodwork_parts","rope","copper_ingot","iron_ore","iron_ingot","hardwood","crystal_sand", "ochre_earth", "vein_quartz", "warm_stone", "glass", "clay", "tea_jar", "tea_returned_jar", "tea_worn_jar", "tea_spent_jar", "wood", "stone", "fiber", "copper_ore", "copper_joint", "plank", "resin", "charcoal", "flour", "blue_dye", "sugar","cotton_cloth","wool_cloth"], [], [], []]
+	var expected := [World.NAMES.keys(), ["bamboo","orange_dye","fired_brick","roof_tile","woodwork_parts","rope","copper_ingot","iron_ore","iron_ingot","hardwood","crystal_sand", "ochre_earth", "vein_quartz", "warm_stone", "glass", "clay", "tea_jar", "tea_returned_jar", "tea_worn_jar", "tea_spent_jar", "wood", "stone", "fiber", "copper_ore", "copper_joint", "plank", "resin", "charcoal", "flour", "blue_dye", "sugar","cotton_cloth","wool_cloth"], [], [], []]
 	for id in World.NAMES:
 		if id.begins_with("quality_") and int(panel.inventory.get(id,0))==0:
 			expected[0].erase(id)

@@ -14,7 +14,7 @@ extends SceneTree
 ## lanyang_clear ×3, lanyang_donate), alpha's first 分水 memory (memory_observe ×3,
 ## memory_gate/memory_flow ×3), the plaque, and the Lanyang revisit itself (alpha:
 ## revisit_gate a:3 / b:2, revisit_check upstream / middle / tail on day 1 spring ->
-## completed, which unlocks the tower recipe), and alpha's workbench at (50,27).
+## completed, which unlocks the tower recipe), and alpha's workbench at (50,22).
 ## WRITTEN DIRECTLY: repair materials, wood/stone for the bench, then alpha's bag set to
 ## exactly plank 6 / copper_joint 2 / stone 6 / tank_kit 1, every standing spot (Lanyang
 ## spots for the seed actions; home spots next to the bench/tank/tower cells for alpha
@@ -37,11 +37,11 @@ const KEY:="water-tower-session"
 const ALPHA:="tower-session-alpha-token"
 const BETA:="tower-session-beta-token"
 const GAMMA:="tower-session-gamma-token"
-const BENCH:=Vector2i(50,27)
-const TANK:=Vector2i(49,24)
-const TOWER:=Vector2i(48,24)
-const TOWER_KEY:="48,24"
-const GATE:=Vector2i(47,24)
+const BENCH:=Vector2i(50,22)
+const TANK:=Vector2i(49,22)
+const TOWER:=Vector2i(48,22)
+const TOWER_KEY:="48,22"
+const GATE:=Vector2i(47,22)
 const A_SPOT:=Vector2(32.5,24.5)
 const B_SPOT:=Vector2(32.5,30.5)
 
@@ -410,7 +410,7 @@ func scenario()->bool:
 	expect(await all_see([alpha,beta],want_row(96,false),3.0),"case 4 both see 只蓄水 with 96 kept")
 	await refuse(beta,Industry.TOWER_ACTION,TOWER,"",Industry.TOWER_NOT_OWNER,"case 4 beta toggles alpha's tower",[alpha])
 	await refuse(beta,"remove",TOWER,"","只能拆除自己放置的物件","case 4 beta removes alpha's tower",[alpha])
-	await refuse(beta,"move_object",TOWER,"%d,%d"%[TOWER.x,TOWER.y+2],"只能搬自己放置的家具","case 4 beta moves alpha's tower",[alpha])
+	await refuse(beta,"move_object",TOWER,"%d,%d"%[TOWER.x,TOWER.y-1],"只能搬自己放置的家具","case 4 beta moves alpha's tower",[alpha])
 	expect(await all_see([alpha,beta],want_row(96,false),1.0),"case 4 tower still 96 / 只蓄水 for both")
 
 	# 5. Duplicate and replayed toggle messages.

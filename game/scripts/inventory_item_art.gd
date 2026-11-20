@@ -7,6 +7,15 @@ const IDS:=["wood","stone","fiber","radish","lettuce","wheat",
 	"carrot","potato","tomato","carrot_seed","potato_seed","tomato_seed",
 	"salad","baked_potato","grilled_fish","carrot_soup","backpack","coins"]
 const PATH:="res://assets/ui-inventory/items.png"
+const FIELD_CROP_ATLAS="res://assets/ui-inventory/field-crops.png"
+const FIELD_CROP_IDS:=["cotton","sweet_corn","strawberry","star_mushroom",
+	"cotton_seed","sweet_corn_seed","strawberry_seed","star_mushroom_seed",
+	"cabbage","cauliflower","sugar_beet","ginger",
+	"cabbage_seed","cauliflower_seed","sugar_beet_seed","ginger_seed",
+	"cucumber","rice","sweet_potato","eggplant",
+	"cucumber_seed","rice_seed","sweet_potato_seed","eggplant_seed",
+	"watermelon","mist_tea","watermelon_seed","mist_tea_seed",
+	"cucumber_salad","eggplant_rice","roasted_sweet_potato","mist_tea_brew"]
 const Squirrel=preload("res://scripts/woodland_squirrel.gd")
 const Duck=preload("res://scripts/river_duck.gd")
 static var cache:Dictionary={}
@@ -15,7 +24,10 @@ static func icon(id:String) -> Texture2D:
 	if id in [Squirrel.ACORN,Squirrel.KIT]:return Squirrel.texture(id)
 	if id.begins_with("quality_"):return icon(id.trim_prefix("quality_"))
 	if id==Duck.EGG:return Duck.texture(true)
+	var crop_index:=FIELD_CROP_IDS.find(id)
+	if crop_index>=0:return atlas_icon(id,FIELD_CROP_ATLAS,crop_index,4)
 	match id:
+		"xiaoli_memorial_scale":return preload("res://scripts/xiaoli_shop_art.gd").scale_texture()
 		"festival_memorial_bell":return preload("res://assets/ui-inventory/memorial-bell-copper.png")
 		"iron_ore":return preload("res://assets/ui-inventory/iron-ore.png")
 		"large_sprinkler":return preload("res://assets/automation/large-sprinkler-icon.png")
@@ -25,10 +37,33 @@ static func icon(id:String) -> Texture2D:
 		"large_sprinkler_kit":return preload("res://assets/automation/large-sprinkler-kit.png")
 		"orange_dye":return preload("res://assets/bakery/orange-dye.png")
 		"fired_brick":return preload("res://assets/bakery/fired-brick.png")
+		"roof_tile":return preload("res://scripts/terracotta_roof_art.gd").tile_icon()
 		"woodwork_parts":return preload("res://assets/automation/woodwork-parts.png")
 		"iron_ingot":return preload("res://assets/ui-inventory/iron-ingot.png")
 		"copper_ingot":return preload("res://assets/ui-inventory/copper-ingot.png")
+		"copper_pick":return preload("res://assets/ui-inventory/copper-pick.png")
+		"iron_pick":return preload("res://assets/ui-inventory/iron-pick.png")
+		"precision_pick":return preload("res://assets/ui-inventory/precision-pick.png")
+		"copper_axe":return preload("res://assets/ui-inventory/copper-axe.png")
+		"iron_axe":return preload("res://assets/ui-inventory/iron-axe.png")
+		"precision_axe":return preload("res://assets/ui-inventory/precision-axe.png")
+		"copper_hoe":return preload("res://assets/ui-inventory/copper-hoe.png")
+		"iron_hoe":return preload("res://assets/ui-inventory/iron-hoe.png")
+		"precision_hoe":return preload("res://assets/ui-inventory/precision-hoe.png")
+		"copper_can":return preload("res://assets/ui-inventory/copper-can.png")
+		"iron_can":return preload("res://assets/ui-inventory/iron-can.png")
+		"precision_can":return preload("res://assets/ui-inventory/precision-can.png")
+		"copper_rod":return preload("res://assets/ui-inventory/copper-rod.png")
+		"iron_rod":return preload("res://assets/ui-inventory/iron-rod.png")
+		"precision_rod":return preload("res://assets/ui-inventory/precision-rod.png")
+		"copper_seed_pouch":return preload("res://assets/ui-inventory/copper-seed-pouch.png")
+		"iron_seed_pouch":return preload("res://assets/ui-inventory/iron-seed-pouch.png")
+		"precision_seed_pouch":return preload("res://assets/ui-inventory/precision-seed-pouch.png")
+		"copper_sickle":return preload("res://assets/ui-inventory/copper-sickle.png")
+		"iron_sickle":return preload("res://assets/ui-inventory/iron-sickle.png")
+		"precision_sickle":return preload("res://assets/ui-inventory/precision-sickle.png")
 		"hardwood":return preload("res://assets/ui-inventory/hardwood.png")
+		"bamboo":return preload("res://assets/ui-inventory/bamboo-bundle.png")
 		"egg_basket":return preload("res://scripts/salt_revisit_art.gd").empty_basket_texture()
 		"rope":return preload("res://assets/ui-inventory/rope.png")
 		"flower_pot":return preload("res://assets/ui-inventory/flower-pot.png")
@@ -40,30 +75,21 @@ static func icon(id:String) -> Texture2D:
 		"corn_chowder":return chowder_icon()
 		"tea_pudding":return preload("res://assets/ui-inventory/tea-pudding.png")
 		"seaweed":return preload("res://assets/ui-inventory/shore-seaweed.png")
+		"shell_bottle_scallop":return preload("res://assets/ui-inventory/shell-bottle-scallop.png")
+		"shell_bottle_conch":return preload("res://assets/ui-inventory/shell-bottle-conch.png")
+		"shell_bottle_tide":return preload("res://assets/ui-inventory/shell-bottle-tide.png")
+		"small_ceramic_tea_set":return preload("res://assets/ui-inventory/small-ceramic-tea-set.png")
+		"table_vase_herb":return preload("res://assets/ui-inventory/table-vase-herb.png")
+		"table_vase_bluebell":return preload("res://assets/ui-inventory/table-vase-bluebell.png")
+		"table_vase_orange":return preload("res://assets/ui-inventory/table-vase-orange.png")
 		"seashell":return preload("res://assets/ui-inventory/wangan-shell.png")
 		"star_rice_ball":return preload("res://assets/ui-inventory/star-rice-ball.png")
 		"strawberry_toast":return preload("res://assets/ui-inventory/strawberry-toast.png")
-		"mist_tea":return icon("tea_leaf")
-		"mist_tea_seed":return icon("sapling")
-		"mist_tea_brew":return icon("tea_light")
 		"ginger_tea":return preload("res://assets/ui-inventory/ginger-tea.png")
-		"watermelon":return icon("pumpkin")
-		"watermelon_seed":return icon("pumpkin_seed")
-		"ginger":return icon("potato")
-		"ginger_seed":return icon("potato_seed")
-		"cotton":return icon("bluebell")
-		"cotton_seed":return icon("bluebell_seed")
 		"seafood_rice":return preload("res://assets/ui-inventory/seafood-rice.png")
-		"eggplant_rice":return icon("salad")
-		"rice":return icon("wheat")
-		"rice_seed":return icon("wheat_seed")
-		"roasted_sweet_potato":return icon("baked_potato")
-		"sweet_potato":return icon("potato")
-		"sweet_potato_seed":return icon("potato_seed")
-		"eggplant":return icon("tomato")
-		"eggplant_seed":return icon("tomato_seed")
-		"star_mushroom":return icon("potato")
-		"star_mushroom_seed":return icon("potato_seed")
+		# C12 D05 / D14: themed fallbacks until dedicated art exists (a soup bowl, a vegetable plate).
+		"forest_mushroom_soup":return preload("res://assets/ui-life/forest-mushroom-soup.png")
+		"rainbow_skewer":return preload("res://assets/ui-life/rainbow-skewer.png")
 		"trout_hotpot":return preload("res://assets/ui-inventory/snow-trout-hotpot.png")
 		"warm_stone":return warm_stone_icon()
 		# 第 40 章：程式繪製的 32px 圖示（lanyang_revisit_art.gd；分水木牌與世界圖同一張，
@@ -77,20 +103,7 @@ static func icon(id:String) -> Texture2D:
 		"tea_ware_kit":return preload("res://scripts/tea_revisit_art.gd").icon(id)
 		# 第 40 章鹽籃（臺南北門回訪）：程式繪製的 32px 竹編鹽籃圖（salt_revisit_art.gd；與世界圖同一張）。
 		"salt_basket_kit":return preload("res://scripts/salt_revisit_art.gd").icon(id)
-		"cabbage":return icon("lettuce")
-		"cabbage_seed":return icon("lettuce_seed")
-		"sugar_beet":return icon("radish")
-		"sugar_beet_seed":return icon("radish_seed")
 		"strawberry_jam":return preload("res://assets/ui-inventory/strawberry-jam.png")
-		"cucumber_salad":return icon("salad")
-		"strawberry":return icon("tomato")
-		"cucumber":return icon("lettuce")
-		"strawberry_seed":return icon("tomato_seed")
-		"cucumber_seed":return icon("lettuce_seed")
-		"cauliflower":return icon("lettuce")
-		"sweet_corn":return icon("wheat")
-		"cauliflower_seed":return icon("lettuce_seed")
-		"sweet_corn_seed":return icon("wheat_seed")
 	if id=="star_spot":return preload("res://assets/ui-inventory/star-spot.png")
 	if id=="bamboo_ayu":return preload("res://assets/ui-inventory/bamboo-ayu.png")
 	if id=="glass_shrimp":return preload("res://assets/ui-inventory/glass-shrimp.png")
@@ -161,9 +174,13 @@ static func icon(id:String) -> Texture2D:
 	if cache.has(id):return cache[id]
 	var index:=IDS.find(id)
 	if index<0 or not ResourceLoader.exists(PATH):return null
+	return atlas_icon(id,PATH,index,6)
+
+static func atlas_icon(id:String,path:String,index:int,columns:int)->Texture2D:
+	if cache.has(id):return cache[id]
 	var result:=AtlasTexture.new()
-	result.atlas=load(PATH) as Texture2D
-	result.region=Rect2((index%6)*32,(index/6)*32,32,32)
+	result.atlas=load(path) as Texture2D
+	result.region=Rect2((index%columns)*32,floori(float(index)/columns)*32,32,32)
 	result.filter_clip=true
 	cache[id]=result
 	return result

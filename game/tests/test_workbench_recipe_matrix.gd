@@ -52,7 +52,8 @@ func exact_inventory(ingredients: Dictionary, recipe_id: String, recipe: Diction
 func run() -> void:
 	var ids: Array = World.CRAFT.keys()
 	ids.sort()
-	expect(ids.size() == 25,"the matrix covers all 25 recipes in World.CRAFT, including the water tower")
+	var gathering_tools:=World.MINING_PICKS+World.FORESTRY_AXES+World.FARM_HOES+World.WATERING_CANS+World.SEED_POUCHES+World.HARVEST_SICKLES+World.FishingTracking.ROD_TIERS
+	expect(ids.size() == 50 and not ids.has("mill_kit") and gathering_tools.all(func(id):return ids.has(id)) and ids.has("small_ceramic_tea_set") and ids.has(World.INDUSTRY.TABLE_VASE) and World.INDUSTRY.SHELL_BOTTLES.all(func(id):return ids.has(id)),"the workbench includes all tool tiers, tabletop tea set, vase and three shell bottles")
 	for recipe_id in ids:
 		var recipe: Dictionary = World.CRAFT[recipe_id]
 		var w := ready_world(true)
@@ -90,7 +91,9 @@ func run() -> void:
 		var overflow_result: Dictionary = overflow.act(OWNER,"over-cap-%s"%recipe_id,"craft",BENCH,recipe_id)
 		expect(overflow_result.get("ok",false)==false and overflow_player.inventory==before and
 			int(overflow_player.get("crafting_points",0))==0,"%s rejects overflow without debit, output or progress"%recipe_id)
-	for recipe_id in ["supply_box_kit","mine_drill_kit","waterworks_kit","mill_kit",
+	# C13: mill_kit is no longer a CRAFT recipe (the 3x3 mill is built from materials), so it is not a locked recipe here.
+	expect(not World.CRAFT.has("mill_kit"),"mill_kit is not a bench recipe any more")
+	for recipe_id in ["supply_box_kit","mine_drill_kit","waterworks_kit",
 		"salt_wheel_kit","salt_rake_kit","diversion_gate_kit","water_tower_kit"]:
 		var recipe: Dictionary = World.CRAFT[recipe_id]
 		var w := ready_world(false)

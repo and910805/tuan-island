@@ -11,6 +11,10 @@ const COLLECTOR_CAPACITY:=12
 const PEN_RADIUS:=4
 const PEN_NEIGHBORS:=[Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
 const Duck=preload("res://scripts/river_duck.gd")
+const BoxCapacity=preload("res://scripts/box_capacity.gd")
+const ChestHistory=preload("res://scripts/chest_history.gd")
+## Actor label written to wooden chest history for pen products moved into a chest.
+const HISTORY_LABEL:="畜牧"
 const PERSONALITIES:={
 	"chicken":{"traits":"好奇・活潑","favorite":"喜歡聽到開飯的聲音。"},
 	"cow":{"traits":"慢熟・貪吃","favorite":"最期待你補上一份飼料。"},
@@ -23,8 +27,30 @@ const ANIMALS:={
 	"duck":{"name":"花斑鴨","item":Duck.EGG,"days":1,"cell":Duck.SITE},
 }
 
+## D07: species that must be adopted (once per island, shared by every player) before any
+## care, feed, milk or equipment action. The durable fact is the species' own record in
+## `livestock`: a world that already holds a cow record (raised cow, ready milk, bond,
+## collector or registered pen) counts as adopted, so no old save is migrated or charged.
+const ADOPTION_COST:={"cow":60}
+const NOT_ADOPTED_MESSAGE:="奶糖牛還沒有領養，先到飼料站領養牠。"
+
 static func fresh()->Dictionary:
 	return {"feed":0,"ready":0,"next":-1.0}
+
+static func adoption_required(id:String)->bool:
+	return ADOPTION_COST.has(id)
+
+static func adopted(records:Dictionary,id:String)->bool:
+	return not ADOPTION_COST.has(id) or records.get(id) is Dictionary
+
+## Pure rule: creates the shared record when `coins` cover the fee. The caller deducts `cost`.
+static func adopt(records:Dictionary,id:String,coins:int)->Dictionary:
+	if not ADOPTION_COST.has(id):return {"ok":false,"message":"這隻動物不需要領養。"}
+	if adopted(records,id):return {"ok":false,"message":"%s已經是島上的一員了。"%ANIMALS[id].name}
+	var cost:int=ADOPTION_COST[id]
+	if coins<cost:return {"ok":false,"message":"領養%s需要 %d 鈴幣。"%[ANIMALS[id].name,cost]}
+	records[id]=fresh()
+	return {"ok":true,"cost":cost,"message":"領養了%s！牠會一直住在飼料站旁，記得準備飼料。"%ANIMALS[id].name}
 
 static func quality_item(item:String)->bool:
 	return item in ["quality_egg","quality_milk","quality_wool",Duck.QUALITY_EGG]
@@ -49,13 +75,15 @@ static func store_chicken_cycle(animal:Dictionary,basket:Dictionary,field:String
 	basket[field]=total+1+bonus
 	return 1+bonus
 
-static func transfer_products(source:Dictionary,field:String,inventory:Dictionary,item:String,limit:int)->int:
+## `skip` lists item IDs the destination cannot take right now (e.g. a chest with
+## no free slot); their share stays in `source`.
+static func transfer_products(source:Dictionary,field:String,inventory:Dictionary,item:String,limit:int,skip:Array=[])->int:
 	var quality_field:=field+"_quality"
 	var quality:=int(source.get(quality_field,0))
 	var total:=int(source.get(field,0))
 	var premium:="quality_"+item
-	var quality_moved:=mini(quality,mini(limit,1000000000-int(inventory.get(premium,0))))
-	var ordinary_moved:=mini(total-quality,mini(limit-quality_moved,1000000000-int(inventory.get(item,0))))
+	var quality_moved:=0 if premium in skip else mini(quality,mini(limit,1000000000-int(inventory.get(premium,0))))
+	var ordinary_moved:=0 if item in skip else mini(total-quality,mini(limit-quality_moved,1000000000-int(inventory.get(item,0))))
 	if quality_moved>0:
 		inventory[premium]=int(inventory.get(premium,0))+quality_moved
 		source[quality_field]=quality-quality_moved
@@ -83,15 +111,20 @@ static func collector_side(id:String)->String:
 	return "西" if id=="duck" else "南"
 
 static func pen_status(objects:Dictionary,id:String)->bool:
-	var seed:Vector2i=ANIMALS[id].cell
-	if objects.get("%d,%d"%[seed.x,seed.y],{}).get("type","") in ["wall","window","door"]:return false
+	return not pen_cells(objects,ANIMALS[id].cell).is_empty()
+
+## Interior cells (Vector2i -> true) of the enclosure around `seed`; empty when the
+## enclosure is open, lacks a door, is a single cell or leaves PEN_RADIUS. This is the
+## one enclosure rule shared by pen registration and the C24 pen-bound collector.
+static func pen_cells(objects:Dictionary,seed:Vector2i)->Dictionary:
+	if objects.get("%d,%d"%[seed.x,seed.y],{}).get("type","") in ["wall","window","door"]:return {}
 	var visited:Dictionary={seed:true}
+	var inside:Dictionary={}
 	var pending:Array[Vector2i]=[seed]
 	var has_door:=false
-	var area:=0
 	while not pending.is_empty():
 		var current:Vector2i=pending.pop_back()
-		area+=1
+		inside[current]=true
 		for offset:Vector2i in PEN_NEIGHBORS:
 			var next:=current+offset
 			if visited.has(next):continue
@@ -101,9 +134,10 @@ static func pen_status(objects:Dictionary,id:String)->bool:
 				has_door=true
 				continue
 			if kind in ["wall","window"]:continue
-			if maxi(absi(next.x-seed.x),absi(next.y-seed.y))>PEN_RADIUS:return false
+			if maxi(absi(next.x-seed.x),absi(next.y-seed.y))>PEN_RADIUS:return {}
 			pending.append(next)
-	return has_door and area>=2
+	if has_door and inside.size()>=2:return inside
+	return {}
 
 static func refill_collector(animal:Dictionary,id:String,now:float)->bool:
 	var moved:=transfer_to_collector(animal,animal,"collector",COLLECTOR_CAPACITY-int(animal.collector))
@@ -128,8 +162,21 @@ static func collect_into_chests(world)->Array[String]:
 		var chest:Dictionary=world.state.objects.get(key,{})
 		if chest.get("type","")!="chest":continue
 		var item:String=ANIMALS[id].item
-		var moved:=transfer_products(animal,"ready",chest.items,item,LIMIT)
+		# 16-slot rule: premium output is offered first, then the ordinary item; an ID
+		# without a free slot stays in the pen instead of being written.
+		var wanted:Array[String]=[]
+		var premium_ready:=int(animal.get("ready_quality",0))
+		if premium_ready>0:wanted.append("quality_"+item)
+		if int(animal.ready)-premium_ready>0:wanted.append(item)
+		var before_premium:=int(chest.items.get("quality_"+item,0))
+		var before_ordinary:=int(chest.items.get(item,0))
+		var moved:=transfer_products(animal,"ready",chest.items,item,LIMIT,BoxCapacity.refused(chest.items,wanted))
 		if moved<=0:continue
+		# Chest history: net committed amount per item ID (premium first, as moved).
+		var stamp:=float(world.state.time)
+		for entry:Array in [["quality_"+item,before_premium],[item,before_ordinary]]:
+			var gained:=int(chest.items.get(entry[0],0))-int(entry[1])
+			if gained>0:ChestHistory.record(chest,HISTORY_LABEL,str(entry[0]),gained,true,stamp)
 		resume_production(animal,id,float(world.state.time))
 		changed.append(key)
 	return changed
@@ -167,6 +214,7 @@ static func step(records:Dictionary,now:float,objects:Dictionary={},elapsed:floa
 static func perform(records:Dictionary,inventory:Dictionary,id:String,action:String,now:float)->Dictionary:
 	var animal:Dictionary=records.get(id,fresh())
 	var spec:Dictionary=ANIMALS[id]
+	if not adopted(records,id):return {"ok":false,"message":NOT_ADOPTED_MESSAGE}
 	if action=="livestock_pen":
 		if animal.get("managed_pen",false):return {"ok":false,"message":"這座圈舍已登記。"}
 		animal.managed_pen=true

@@ -526,6 +526,27 @@ func size_flow()->void:
 	if not await open_panel():return
 	await shot("panel_empty")
 	panel_fits("empty "+tag)
+	await press("MarketDecorToggle")
+	await press("MarketDecor_cloth_indigo")
+	await press("MarketDecor_sign_flower")
+	check(own().get("decor")=={"cloth":"indigo","sign":"flower"},"Both choices reached the host snapshot ("+tag+")")
+	check(label_text("MarketDecorSummary").contains("藍染布") and label_text("MarketDecorSummary").contains("花飾招牌"),"Both selected styles are named in the panel ("+tag+")")
+	panel_fits("decor picker "+tag)
+	await shot("panel_decor")
+	app._close_modal()
+	await stand(spot)
+	app.view.camera=closed_camera
+	var dressed:Image=await shot("world_decor")
+	var stall_origin:Vector2=app.view.market_stall_rect(cell).position
+	var runner:=Rect2i(view_to_pixels(Rect2(stall_origin+Vector2(14,49),Vector2(36,3))))
+	var charm:=Rect2i(view_to_pixels(Rect2(stall_origin+Vector2(52,21),Vector2(9,14))))
+	check(box_difference(closed,dressed,runner)>0.15,"The indigo runner changes stall pixels ("+tag+")")
+	check(box_difference(closed,dressed,charm)>0.08,"The flower charm changes stall pixels ("+tag+")")
+	if not await open_panel():return
+	await press("MarketDecorToggle")
+	await press("MarketDecor_cloth_natural")
+	await press("MarketDecor_sign_plain")
+	await press("MarketDecorToggle")
 	await press("MarketStock_%s_5"%picks[0])
 	await press("MarketStock_%s_1"%picks[1])
 	await press("MarketStock_%s_5"%picks[2])
@@ -564,7 +585,7 @@ func size_flow()->void:
 	app._close_modal()
 	await stand(spot)
 	var open:Image=await shot("world_open")
-	label_ok("市集攤位・營業中","open "+tag)
+	label_ok("市集旅人的攤位","open "+tag)
 	var open_tags:=tags_match(cell,"open "+tag)
 	check(open_tags.size()==shelf_tags.size(),"Shelf tags still shown while open (%s): %d"%[tag,open_tags.size()])
 	tags_on_screen(open_tags,"open "+tag)
@@ -681,6 +702,8 @@ func guests_flow(cell:Vector2i,spot:Vector2,closed:Image,open:Image)->void:
 	market.pending=true
 	second["market"]=market
 	second["region"]=away
+	second.name="山風旅人"
+	second.market_decor={"cloth":"indigo","sign":"flower"}
 	w.state.players[SECOND_STALL]=second  # PRESET
 	await refresh()
 	check(int(own().get("stalls_today",0))==2,"PRESET second stall counted: stalls_today==2 (%s): %s"%[tag,str(own().get("stalls_today"))])
@@ -692,6 +715,18 @@ func guests_flow(cell:Vector2i,spot:Vector2,closed:Image,open:Image)->void:
 	for guest:Dictionary in three:
 		var box3:=guest_box(guest)
 		print("NOTE %s: two stalls, guest slot %d box changed %.0f%% vs world_closed"%[tag,int(guest.slot),box_difference(closed,two_open,box3)*100.0])
+	var original_time:=float(w.state.time)
+	var visible_booth:Dictionary=app.session.snapshot.get("market_plaza",{})
+	if visible_booth.get("vendor")!=SECOND_STALL.sha256_text().left(16):
+		w.state.time=original_time+World.MARKET_DECOR.PLAZA_TURN
+		await refresh()
+		visible_booth=app.session.snapshot.get("market_plaza",{})
+	var public_tags:Array=app.view.market_shelf_tags(cell)
+	check(visible_booth.get("name")=="山風旅人" and visible_booth.get("style")==second.market_decor,"Visitor sees the other vendor's selected art after rotating")
+	check(public_tags.size()==1 and public_tags[0].item==str(picks[0]),"Only the displayed vendor's product art appears on the counter")
+	await shot("world_shared_stall")
+	label_ok("山風旅人的攤位","visiting the displayed stall "+tag)
+	w.state.time=original_time
 	w.state.players.erase(SECOND_STALL)
 	await refresh()
 	check(int(own().get("stalls_today",0))==1 and app.view.market_guests().size()==2,"PRESET second stall removed again (%s)"%tag)

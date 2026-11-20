@@ -68,9 +68,23 @@ func run() -> void:
 	if not check(await wait_for(func():
 		return person(grower,grower_id).get("seal_seen",false) and not person(friend,grower_id).has("seal_seen")),
 		"The wildlife observation is sent only to its owner"):return
+	if not check(await action(friend,World.Seal.ACTION,World.Seal.SITE),"A neighbor can independently observe the same seal at the same tide"):return
+	if not check(await wait_for(func():
+		return person(friend,friend.own_id).get("seal_seen",false) and not person(grower,friend.own_id).has("seal_seen")),
+		"Each profile retains only its own sighting"):return
 	for token in [GROWER,FRIEND]:stand(host.world,token,DUCK.SITE)
 	if not check(await action(grower,"collector_bind",collector,"duck"),"Bind the collector to the duck remotely"):return
+	var spectator:=preload("res://scripts/world_view.gd").new()
+	root.add_child(spectator)
+	spectator.set_process(false)
+	spectator.update_snapshot(friend.snapshot,friend.own_id)
+	friend.changed.connect(func(snapshot:Dictionary,owner:String):spectator.update_snapshot(snapshot,owner))
 	if not check(await action(grower,"livestock_feed",DUCK.SITE,"duck"),"Feed the bonded duck over the network"):return
+	if not check(await wait_for(func():return is_finite(spectator.duck_feed_started)),"The other client sees the duck react to feeding"):return
+	var reaction_start:=spectator.duck_feed_started
+	spectator.elapsed+=0.25
+	spectator.update_snapshot(friend.snapshot,friend.own_id)
+	if not check(spectator.duck_feed_started==reaction_start,"Repeated snapshots do not restart the duck animation"):return
 	if not check(host.world.step(World.LIVESTOCK.DAY,true),"Advance one production day on the host"):return
 	if not check(await wait_for(func():
 		var machine:Dictionary=friend.snapshot.get("objects",{}).get(key,{})

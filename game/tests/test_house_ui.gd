@@ -130,10 +130,10 @@ func verify_layout(case_name: String) -> void:
 			expect(visible_in(part(kind), area) and bounds.encloses(part(kind).get_global_rect()),
 				"%s: %s part button visible without scrolling at %s" % [case_name, kind, extent])
 		var footer: Control = app.modal.find_child("HouseFooter", true, false)
-		expect(visible_in(footer, area) and bounds.encloses(footer.get_global_rect()), "%s: footer visible at %s" % [case_name, extent])
+		expect(visible_in(footer, bounds) and not scroll.is_ancestor_of(footer), "%s: footer stays visible outside the scroll at %s" % [case_name, extent])
 		for node_name in ["HouseRecheck", "HouseBack"]:
 			var control: Control = app.modal.find_child(node_name, true, false)
-			expect(visible_in(control, area) and bounds.encloses(control.get_global_rect()) and control.size.y >= 32,
+			expect(visible_in(control, bounds) and footer.get_global_rect().encloses(control.get_global_rect()) and control.size.y >= 32,
 				"%s: %s fully visible without scrolling at %s" % [case_name, node_name, extent])
 		var guide: Control = app.modal.find_child("HouseNext", true, false)
 		expect(visible_in(guide, area), "%s: next-step section visible at %s" % [case_name, extent])

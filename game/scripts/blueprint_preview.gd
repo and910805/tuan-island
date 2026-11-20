@@ -16,6 +16,7 @@ extends "res://scripts/world_view.gd"
 ## quote; red cells come only from that quote's `problems`.
 
 const Design=preload("res://scripts/blueprint_design.gd")
+const EdgePieces=preload("res://scripts/blueprint_edge_pieces.gd")
 const GHOST:=Color(1,1,1,0.62)
 const ROOF_ALPHA:=0.7
 const NEUTRAL:=Color("fff4c2")
@@ -60,13 +61,19 @@ func _draw() -> void:
 	for item in pieces:
 		var piece:Dictionary=item
 		var kind:=str(piece.kind)
-		if kind in Design.GROUND_KINDS or kind in Design.ROOF_KINDS:continue
+		if kind in Design.GROUND_KINDS or kind in Design.ROOF_KINDS or EdgePieces.is_edge(piece):continue
 		var cell:=origin+Vector2i(int(piece.x),int(piece.y))
 		var obj:={"type":kind,"owner":"blueprint_preview"}
 		if piece.has("style"):obj.style=piece.style
 		if kind in World.RESIDENT_GOALS.DOUBLE_BENCHES:obj.bench_vertical=piece.get("settings",{}).get("vertical",false)
 		if kind in Industry.ORIENTABLE_FOOTPRINTS:obj[Industry.vertical_field(kind)]=piece.get("settings",{}).get("vertical",false)
 		if kind in Industry.EXPANDABLE_STATIONS and Design.is_square_piece(piece):obj[Industry.square_part_field(kind)]=0
+		if Design.is_wide_bench_piece(piece):
+			obj[Industry.WORKBENCH_PART]=0
+			obj[Industry.WORKBENCH_VERTICAL]=piece.settings.get("vertical",false)
+		if Design.is_mill_piece(piece):
+			obj[Industry.MILL_PART]=0
+			obj[Industry.MILL_FACING]=piece.settings.facing
 		if piece.has("settings"):
 			var settings:Dictionary=piece.settings
 			obj["dir"]=int(settings.get("dir",1))
@@ -79,12 +86,23 @@ func _draw() -> void:
 	for item in pieces:
 		var piece:Dictionary=item
 		var kind:=str(piece.kind)
+		if EdgePieces.is_edge(piece):continue
 		var cell:=origin+Vector2i(int(piece.x),int(piece.y))
 		var at:=screen(Vector2(cell))
 		var style := str(piece.get("style",""))
-		if kind in Design.GROUND_KINDS:ground_tile(at,kind,style)
+		if kind==Industry.LEAF_MAT:
+			draw_texture(LeafMatArt.TEXTURE,at,LeafMatArt.tint(piece.get("settings",{}).get("leaf_mat_shade","light")))
+		elif kind==Industry.BRAIDED_RUG:draw_texture(BRAIDED_RUG_ART,at)
+		elif kind in Design.GROUND_KINDS:ground_tile(at,kind,style)
 		elif kind in Design.ROOF_KINDS:roof_sprite(at,ROOF_ALPHA,kind,style)
+		elif kind in Industry.ARCHES:
+			var settings:Dictionary=piece.get("settings",{})
+			draw_arch(at,kind,settings.get("vine_color","pink"),settings.get("vertical",false))
 		else:object_sprite(at,kind,objects.get(World.key(cell),{}))
+	# v2 edges: E/S normalised to the neighbour's W/N, drawn in the same scaled transform.
+	for edge:Dictionary in EdgePieces.collect(pieces):
+		var edge_cell:Vector2i=origin+(edge.cell as Vector2i)
+		EdgePieces.EdgeArt.draw_edge(self,screen(Vector2(edge_cell)),int(edge.side),str(edge.kind),bool(edge.open),build_tint(str(edge.style)),1.0)
 
 func _draw_frame() -> void:
 	if not is_instance_valid(_frame) or not _sync_view():return
@@ -101,6 +119,14 @@ func _draw_frame() -> void:
 		_frame.draw_line(top_left+Vector2(x*TILE,0),top_left+Vector2(x*TILE,extent.y),GRID,1.0)
 	for y in range(1,size.y):
 		_frame.draw_line(top_left+Vector2(0,y*TILE),top_left+Vector2(extent.x,y*TILE),GRID,1.0)
+	for piece: Dictionary in layout.pieces:
+		if not Design.is_mill_piece(piece):continue
+		var mill := origin+Vector2i(piece.x,piece.y)
+		var facing: int=piece.settings.facing
+		var at := screen(Vector2(mill+Industry.mill_entrance_offset(facing)))
+		var outside := screen(Vector2(mill+Industry.mill_front_offset(facing)))
+		_frame.draw_rect(Rect2(at+Vector2(2,2),Vector2(28,28)),NEUTRAL,false,2.0)
+		_frame.draw_line(at+Vector2(16,16),outside+Vector2(16,16),NEUTRAL,2.0)
 	var quote:=_current_quote(origin,int(layout.turns))
 	var tint:=NEUTRAL
 	if not quote.is_empty():

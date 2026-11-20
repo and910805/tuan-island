@@ -231,7 +231,7 @@ func close(a:float,b:float) -> bool:
 func seeded_picks(person:Dictionary) -> Array:
 	var rng:=RandomNumberGenerator.new()
 	rng.seed=SEED
-	var kinds:Array=World.RECIPES.keys().filter(func(kind:String):return World.has_recipe(person,kind))
+	var kinds:Array=World.stove_recipes("stove").keys().filter(func(kind:String):return World.has_recipe(person,kind))
 	kinds.sort()
 	var picks:=[]
 	for i in Queue.CAPACITY:picks.append(str(kinds[rng.randi_range(0,kinds.size()-1)]))

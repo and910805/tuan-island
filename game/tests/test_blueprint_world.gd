@@ -30,9 +30,10 @@ const PARK:=World.SPAWN
 const QUOTE_KEYS:=["ok","message","cost","mine_refund","others_refund","other_people","roof_add","roof_remove","pieces","problems","hash","undoable"]
 const PROBLEM_KEYS:=["kind","reason","x","y"]
 ## 3x3 floor interior + 5x5 outline (14 walls, 1 window, 1 door) + 1 bed = 26.
-const HOUSE_BASE:={"wood":87,"fiber":12,"stone":1}
+## The 木窗 costs 4 wood + 1 glass.
+const HOUSE_BASE:={"wood":85,"fiber":12,"glass":1}
 ## Plus 9 automatic roofs (wood 1, fiber 3 each).
-const HOUSE_COST:={"wood":96,"fiber":39,"stone":1}
+const HOUSE_COST:={"wood":94,"fiber":39,"glass":1}
 
 class FakeClock extends RefCounted:
 	var utc:float=1800000000.0
@@ -107,7 +108,7 @@ func new_world():
 	w.add_player(A,"Alice")
 	w.add_player(B,"Bob")
 	# Explicit fixture stock, not normal-play balances.
-	for t in [A,B]:w.state.players[t].inventory={"wood":500,"stone":100,"fiber":300}
+	for t in [A,B]:w.state.players[t].inventory={"wood":500,"stone":100,"fiber":300,"glass":20}
 	serial+=1
 	w.save_path=dir+"/world-%d.json"%serial
 	clock=FakeClock.new()
@@ -387,8 +388,8 @@ func house_world() -> Array:
 # ------------------------------------------------------------------- tests --
 
 func test_contract_constants(probe) -> void:
-	expect(int(probe.state.version)==26,"fresh world version is 20, got %s"%str(probe.state.version))
-	expect(int(SCHEMA.VERSION)==26,"save schema VERSION is 20")
+	expect(int(probe.state.version)==preload("res://scripts/save_schema.gd").VERSION,"fresh world version is 20, got %s"%str(probe.state.version))
+	expect(SCHEMA.BLUEPRINT_HISTORY_VERSION==19,"blueprint history migration retains its version 19 cutoff")
 	expect(HISTORY.MAX_BLUEPRINT_BUILDS==768,"MAX_BLUEPRINT_BUILDS is 768")
 	expect("blueprint" in HISTORY.ACTIONS,"history whitelists the blueprint action")
 	expect(HISTORY.MAX_AREA==49 and World.BASIC_BUILD_AREA==25,"Base area limit stays at 25 and skilled area history permits 49")
@@ -401,7 +402,7 @@ func test_house_quote_apply_reload_undo() -> void:
 	var w=f[0]
 	var o:Vector2i=f[1]
 	if o.x<0:return
-	w.state.players[A].inventory={"wood":200,"stone":10,"fiber":100}
+	w.state.players[A].inventory={"wood":200,"stone":10,"fiber":100,"glass":5}
 	expect(w.save(),"baseline save written")
 	var bytes:=FileAccess.get_file_as_bytes(w.save_path)
 	var snap:=full(w)

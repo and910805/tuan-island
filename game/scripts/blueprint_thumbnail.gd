@@ -17,6 +17,7 @@ extends "res://scripts/world_view.gd"
 
 const Design=preload("res://scripts/blueprint_design.gd")
 const PixelBuildThumbnail=preload("res://scripts/pixel_build_thumbnail.gd")
+const EdgePieces=preload("res://scripts/blueprint_edge_pieces.gd")
 ## Inside VillagePreview.REGION even for a 16x16 design, so ground uses its tiles.
 const ANCHOR:=Vector2i(40,30)
 const MARGIN_TOP_LEFT:=Vector2(8,16)
@@ -71,12 +72,15 @@ func _rebuild() -> void:
 	for item in _pieces:
 		var piece:Dictionary=item
 		var kind:=str(piece.kind)
-		if kind in Design.GROUND_KINDS or kind in Design.ROOF_KINDS:continue
+		if kind in Design.GROUND_KINDS or kind in Design.ROOF_KINDS or EdgePieces.is_edge(piece):continue
 		var obj:={"type":kind,"owner":"blueprint_thumbnail"}
 		if piece.has("style"):obj.style=piece.style
 		if kind in World.RESIDENT_GOALS.DOUBLE_BENCHES:obj.bench_vertical=piece.get("settings",{}).get("vertical",false)
 		if kind in Industry.ORIENTABLE_FOOTPRINTS:obj[Industry.vertical_field(kind)]=piece.get("settings",{}).get("vertical",false)
 		if kind in Industry.EXPANDABLE_STATIONS and Design.is_square_piece(piece):obj[Industry.square_part_field(kind)]=0
+		if Design.is_wide_bench_piece(piece):
+			obj[Industry.WORKBENCH_PART]=0
+			obj[Industry.WORKBENCH_VERTICAL]=piece.settings.get("vertical",false)
 		if piece.has("settings"):
 			var settings:Dictionary=piece.settings
 			obj["dir"]=int(settings.get("dir",1))
@@ -95,14 +99,16 @@ func fit_scale(content:Vector2) -> float:
 func _draw() -> void:
 	if _pieces.is_empty() or _cells.x<=0 or _cells.y<=0:return
 	var footprint:=Vector2(_cells)*TILE
-	var content:=footprint+MARGIN_TOP_LEFT+MARGIN_BOTTOM_RIGHT
+	var top_left:=MARGIN_TOP_LEFT
+	if _pieces.any(func(piece):return piece.kind in Industry.ARCHES and not piece.get("settings",{}).get("vertical",false)):top_left.y=48.0
+	elif _pieces.any(func(piece):return piece.kind==Industry.FOREST_ARCH):top_left.y=ForestArchArt.TALL_RISE
+	var content:=footprint+top_left+MARGIN_BOTTOM_RIGHT
 	var factor:=fit_scale(content)
 	if factor<=0.0:return
 	var offset:=((box_size-content*factor)*0.5).floor()
-	camera=Vector2(ANCHOR)*TILE-MARGIN_TOP_LEFT
+	camera=Vector2(ANCHOR)*TILE-top_left
 	draw_set_transform(offset,0,Vector2.ONE*factor)
 	# Footprint grid: outlines only, as context for empty cells.
-	var top_left:=MARGIN_TOP_LEFT
 	for x in range(_cells.x+1):
 		draw_line(top_left+Vector2(x*TILE,0),top_left+Vector2(x*TILE,footprint.y),GRID,-1.0)
 	for y in range(_cells.y+1):
@@ -111,9 +117,20 @@ func _draw() -> void:
 	for item in _pieces:
 		var piece:Dictionary=item
 		var kind:=str(piece.kind)
+		if EdgePieces.is_edge(piece):continue
 		var cell:=ANCHOR+Vector2i(int(piece.x),int(piece.y))
 		var at:=screen(Vector2(cell))
 		var style := str(piece.get("style",""))
-		if kind in Design.GROUND_KINDS:ground_tile(at,kind,style)
+		if kind==Industry.LEAF_MAT:
+			draw_texture(LeafMatArt.TEXTURE,at,LeafMatArt.tint(piece.get("settings",{}).get("leaf_mat_shade","light")))
+		elif kind==Industry.BRAIDED_RUG:draw_texture(BRAIDED_RUG_ART,at)
+		elif kind in Design.GROUND_KINDS:ground_tile(at,kind,style)
 		elif kind in Design.ROOF_KINDS:roof_sprite(at,ROOF_ALPHA,kind,style)
+		elif kind in Industry.ARCHES:
+			var settings:Dictionary=piece.get("settings",{})
+			draw_arch(at,kind,settings.get("vine_color","pink"),settings.get("vertical",false))
 		else:object_sprite(at,kind,_objects.get(World.key(cell),{}))
+	# v2 edges: E/S normalised to the neighbour's W/N, drawn at the fitted thumbnail scale.
+	for edge:Dictionary in EdgePieces.collect(_pieces):
+		var edge_cell:Vector2i=ANCHOR+(edge.cell as Vector2i)
+		EdgePieces.EdgeArt.draw_edge(self,screen(Vector2(edge_cell)),int(edge.side),str(edge.kind),bool(edge.open),build_tint(str(edge.style)),1.0)

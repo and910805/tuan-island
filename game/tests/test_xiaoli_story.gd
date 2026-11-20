@@ -85,6 +85,7 @@ func _initialize() -> void:
 	old.regions.erase("beimen")
 	for region in World.REGIONS.ANGLING_RESERVES:old.regions.erase(region)
 	for region in World.TRANSIT.LOCAL:old.regions.erase(region)
+	old.regions.erase(World.PARTY_CART.REGION) # v7 predates the cart gallery
 	old.erase("bobo_workshop")
 	old.players.alice.stories = {"aru": 2, "milu": 3}
 	write_fixture(path, old)

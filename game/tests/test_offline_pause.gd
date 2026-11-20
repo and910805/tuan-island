@@ -432,7 +432,8 @@ func frame_checks(world_ref,live_before:PackedByteArray,canon_before:PackedByteA
 	expect(canon_bytes(entry(after,"forest",tree_key))==canon_bytes(entry(state_before,"forest",tree_key)),"frame: tree growth unchanged %s"%str(entry(after,"forest",tree_key)))
 	expect(canon_bytes(processing_of(after,site_key))==canon_bytes(processing_of(state_before,site_key)),"frame: processing queue unchanged")
 	assert_empty("after frame")
-	expect(server.save_clock==0.0 and server.broadcast_clock==0.0,"frame: periodic save branch ran (save_clock reset after a %.0f s frame)"%OFFLINE_DT)
+	expect(server.save_clock==0.0,"frame: periodic save reset its clock after a %.0f s frame"%OFFLINE_DT)
+	expect(server.broadcast_clock>=0.0 and server.broadcast_clock<0.1,"frame: broadcast retains at most the fractional remainder of one interval")
 	expect(FileAccess.get_file_as_string(save_path)==json_before,"frame: periodic save wrote exactly the unchanged state, byte for byte")
 	expect(FileAccess.file_exists(save_path+".bak"),"frame: periodic save rotated the previous file to .bak")
 

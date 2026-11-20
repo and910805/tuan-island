@@ -48,4 +48,3 @@ func run() -> void:
 		quit(1)
 	await create_timer(6).timeout
 	quit(1)
-

@@ -110,6 +110,10 @@ const RARE_WATERS := {
 
 static func fishing_result(region:String,season:String,total:int,person:Dictionary,minute:=720.0,spot:="coast",raining:=false) -> Dictionary:
 	if region=="home" and spot==WanganCoast.STAR_POOL_SPOT:return {"id":"gold_shrimp"}
+	# Q05 河灣橋釣點 (opened with the bridge): its own catch, never the plain river rotation.
+	if region=="home" and spot=="river_bridge_pool":return {"id":"redfish" if coast_is_day(minute) else "loach"}
+	# D06 銀線溪魚淺灘 (beside the pool, opened with the bridge): the dependable minnow source for 香煎溪魚.
+	if region=="home" and spot=="river_bridge_shoal":return {"id":"minnow"}
 	if region=="home" and spot==WanganCoast.FISHING_SPOT:
 		return {"id":"flounder" if not coast_is_day(minute) and total%5==4 else "sardine"}
 	var water:Dictionary=RARE_WATERS.get(region,{})

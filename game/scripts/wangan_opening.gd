@@ -12,6 +12,17 @@ const PLOT_TAG:="小栗留的田"
 const PLOT_LABEL_ID:="wangan_plot"
 const HEADING:="第一件事・種一株蘿蔔"
 
+static func heading(snapshot:Dictionary) -> String:
+	return HEADING if season_seed(snapshot)=="radish" else "第一件事・種出第一份收成"
+
+static func line_for(snapshot:Dictionary) -> String:
+	var kind:=season_seed(snapshot)
+	if kind=="radish":return OPENING_LINE
+	return "小栗在渡口旁留了一塊地給你。先種%s，收成後帶到出貨箱。"%CHAPTER_ONE.STARTER_CROPS[kind]
+
+static func season_seed(snapshot:Dictionary) -> String:
+	return CHAPTER_ONE.starter_seed_for_season(float(snapshot.get("time",0.0)))
+
 ## 新島民的下船點附近多遠以內仍算「剛下船」。
 const ARRIVAL_REACH:=3.0
 

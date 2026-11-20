@@ -8,7 +8,6 @@ extends RefCounted
 ##
 ## 與設定集的差距（實作選擇）：
 ## - 紀念只是手帳上的一行字，沒有對應的圖樣、配方、家具或功能。
-## - 竹材物品尚未接入，既有相關事件使用纖維；數量照設定集或略減。
 ## - 完成不加好感、不給鈴幣與物品；不做的話好感與既有事件照常。
 ##
 ## 第二批（共 28 項）：再接入 11 項，其中 6 項有「前提」（needs，見 NEEDS）——
@@ -20,9 +19,18 @@ extends RefCounted
 ## player.bond_goals={居民:{"階數":"選項 id 或空字串"}}（第一次完成才寫入），
 ## 舊存檔不需遷移。台詞取自設定集，皆為遊戲原創情節，不陳述地方史實。
 const Bond=preload("res://scripts/resident_bond.gd")
+const Springs=preload("res://scripts/warm_springs.gd")
 const Weather=preload("res://scripts/weather.gd")
+const XiaoliShop=preload("res://scripts/xiaoli_shop.gd")
+const BoboCart=preload("res://scripts/bobo_empty_cart.gd")
+const IslandNotes=preload("res://scripts/island_notes.gd")
 
 const ACTION:="resident_goal"
+const FUTURE_PREFIX:="luoluo:4:write:"
+const FUTURE_NOTE_KEY:="luoluo_future_note"
+const FUTURE_NOTE_REQUIRED:="請寫一句話，或選擇先留白。"
+const COURIER_CAP_ACTION:="luoluo_courier_cap"
+const COURIER_CAP_KEY:="luoluo_courier_cap"
 const SHEEP_SHELTER_ACTION:="mianmian_sheep_comfort"
 const SHEEP_SHELTER_KEY:="mianmian_sheep_comfort"
 const SHEEP_TOY_ACTION:="mianmian_sheep_toy"
@@ -40,9 +48,22 @@ const TEA_CHAIRS:={
 	"wood":{"name":"原木椅","cell":Vector2i(19,21),"tint":Color.WHITE},
 	"coast":{"name":"海風木椅","cell":Vector2i(21,21),"tint":Color("a5c8c6")},
 }
+## T12: finishing chacha stage 3 unlocks the 不完美的茶亭 pattern (rules in imperfect_tea_pavilion.gd,
+## which reads the player's own bond_goals; this note only tells the player where it went).
+const PAVILION_UNLOCK_NOTE:="不完美的茶亭圖樣已加入家園工坊的「茶屋」頁。"
+const XIAOLI_CART_NOTE:="小栗把選址和招牌攤車圖樣一起留在關係事件裡。"
+const XIAOLI_RETURN_NOTE:="栗棕攤布與栗果招牌已加入市集攤位的布置選單。"
+const XIAOLI_CART_SITES:={
+	"tree":{"cell":Vector2i(41,28),"name":"風鈴樹下","hint":"告示板北邊，來看風鈴樹的人會經過這裡。"},
+	"dock":{"cell":Vector2i(49,30),"name":"渡口路邊","hint":"廣場東邊通往渡口的路，從渡口回來的人會經過這裡。"},
+	"plaza":{"cell":Vector2i(36,30),"name":"廣場西側","hint":"公共市集攤位附近，慢慢逛的人容易停下來。"},
+}
+const FESTIVAL_BELL_UNLOCK_NOTE:="風鈴節紀念鐘圖樣已加入家園工坊的「家具」頁。"
 const TEA_SETUP_ACTION:="chacha_tea_setup"
 const TEA_SETUP_KEY:="chacha_tea_setup"
 const TEA_AXES:=["horizontal","vertical"]
+## T066 N04-3: optional player.chacha_tea_topics = the 3-digit topic order actually chosen when chacha stage 3 was completed.
+const TEA_TOPICS_KEY:="chacha_tea_topics"
 const BASIC_TEA_SET:="basic_tea_set"
 const MURAL_HANG_ACTION:="diandian_mural_hang"
 const MURAL_SIGN_ACTION:="diandian_mural_sign"
@@ -50,6 +71,10 @@ const MURAL_KEY:="diandian_mural"
 const MURAL_SITE:=Vector2i(40,29)
 const PAINT_INVITE_ACTION:="diandian_paint_invite"
 const PAINT_INVITES_KEY:="diandian_paint_invites"
+const DIANDIAN_SEAT_ACTION:="diandian_sit"
+const DIANDIAN_SEAT_KEY:="diandian_seated"
+const DIANDIAN_SEATS:=[Vector2i(21,21),Vector2i(21,22),Vector2i(20,22),Vector2i(21,20)]
+const BARK_FRAME_LOCK:="完成點點的〈沒畫好的手〉後可建造樹皮畫框。"
 const PAINT_INVITE_COUNT:=3
 const GROWTH_ACTION:="xinghe_growth"
 const GROWTH_KEY:="xinghe_growth"
@@ -63,11 +88,30 @@ const ADDRESS_DELIVERED:=2
 const ADDRESS_RECIPIENT:="aru"
 const ADDRESS_CANDIDATES:=["aru","milu","xiaoli"]
 const MAILBOX_KIND:="wood_mailbox"
+const ADDRESS_CLUES:=["他會修長椅，也常替村裡修木家具。","平常從種子攤往西，過了公告板就到了。","他的名字裡藏著一種樹。"]
+const POSTCARD_CLUE_ACTION:="luoluo_postcard_clue"
+const POSTCARD_CLUES_KEY:="luoluo_postcard_clues"
+const POSTCARD_CLUES:={
+	"aru":"這片葉子讓我想起碼頭的老樹。下雨時，我們會把等船的長椅搬到樹下。",
+	"milu":"等船的人有時拿葉子夾住紙角。等得久了，乾脆把想說的話寫成一張明信片。",
+	"xiaoli":"我整理舊種子袋時見過這種葉子。有人拿它當書籤，上面還沾了一點海鹽。",
+	"bobo":"葉梗沒折斷。把它夾得這麼平的人，應該是打算留很久的。",
+	"chacha":"我也用葉子記地方。竹葉記家門口，闊葉記那年第一次看海。",
+	"xinghe":"葉緣留著乾掉的鹽痕。摘它的那棵樹，應該離海不遠。",
+	"mianmian":"衣袋裡常有從牧場帶回的草籽。這片葉子大概也是某人捨不得扔的小紀念。",
+	"achao":"以前離島寄信，沒寫地址的會先交給碼頭的人。熟客見到葉子，可能比看到字還快認出來。",
+	"nuannuan":"旅客會把葉子夾進旅社的留言簿。我想，他們是想記住自己在哪裡停過一晚。",
+	"lingpopo":"老樹下的人等的有時是渡船，有時是回家的人。替這封信留個位置吧。",
+	"diandian":"葉子是風景的一小塊。沒有寫回信地址，也還是可以把這片風景好好留下來。",
+}
 const GUEST_ROOM_ACTION:="nuannuan_guest_room"
 const GUEST_ROOM_KEY:="nuannuan_guest_room"
 const WARDROBE_KIND:="guest_wardrobe"
 const INN_WARDROBE:="inn_lattice_wardrobe"
-const WARDROBES:=[WARDROBE_KIND,INN_WARDROBE]
+const COAST_WARDROBE:="coast_changing_booth"
+const FOREST_WARDROBE:="forest_wardrobe"
+const WORKWEAR_WARDROBES:=[INN_WARDROBE,COAST_WARDROBE,FOREST_WARDROBE]
+const WARDROBES:=[WARDROBE_KIND]+WORKWEAR_WARDROBES
 const INN_CLEAR_ACTION:="nuannuan_clear_entrance"
 const INN_CLEAR_KEY:="nuannuan_cleared_entrance"
 const GUEST_CLOTH_ACTION:="nuannuan_guest_cloth"
@@ -115,14 +159,21 @@ const SEED_BOUGHT:=2
 const SHARED_MEAL_EVENT:="shared_meal"
 const CHICKEN_FED_KEY:="first_chicken_feed_at"
 const CHICKEN_APPROACH_SECONDS:=5.0
+## N06-4: first time the player quietly watched the sheep step out from its shelter (world seconds).
+const SHEEP_STEP_ACTION:="mianmian_sheep_step"
+const SHEEP_STEP_KEY:="first_sheep_step_at"
+const SHEEP_STEP_SECONDS:=6.0
+## N06-4 reward: a wool hat the player can put on or take off (only a true flag is stored).
+const WOOL_HAT_ACTION:="mianmian_wool_hat"
+const WOOL_HAT_KEY:="mianmian_wool_hat"
 
 ## 鍵為階數 1–4（對應 Bond.STAGES）。欄位：
 ## title 設定集標題；task 要做的事；items 要交的物品；options 等價選項
 ## （id、label，可帶各自要交的 items）；steps 三個步驟的名稱；order 有指定順序時
 ## 的步驟索引（沒有這個鍵就是任意順序）；quote 完成時的兩句台詞；keepsake 紀念。
 const ARU_REST_ACTION:="aru_bench_rest"
+const ARU_REST_LEAVE:="aru_bench_leave"
 const ARU_REST_KEY:="aru_bench_rest_at"
-const ARU_REST_SECONDS:=12.0
 const FESTIVAL_BELL:="festival_memorial_bell"
 const FESTIVAL_BELL_REWARD:="keepsake_lingpopo_memorial"
 const CERAMIC_CHIME:="ceramic_eave_chime"
@@ -162,6 +213,10 @@ const ARU_PARK_PHOTO:="aru_park_photo"
 const ARU_PHOTO_KEY:="aru_park_photographed"
 const ARU_PARK_VIEW:=Vector2i(36,34)
 const ARU_PARK_SLOTS:={"long_bench":Vector2i(36,33),"lamp":Vector2i(37,33)}
+const ARU_PARK_SEAT_X:=[0.2,0.8]
+
+static func aru_public_bench(item:Dictionary) -> bool:
+	return item.get("aru_public",false)==true and item.get("type")=="long_bench"
 
 static func aru_park_has(objects:Dictionary,kind:String) -> bool:
 	var cell:Vector2i=ARU_PARK_SLOTS[kind]
@@ -171,8 +226,19 @@ static func aru_park_has(objects:Dictionary,kind:String) -> bool:
 const INSCRIBE_ACTION:="aru_inscribe"
 const INSCRIPTION_LIMIT:=18
 const MASTER_BENCH:="master_bench"
+const GARDEN_CHAIR:="copper_garden_chair"
 const STONE_BENCH:="spring_stone_bench"
-const DOUBLE_BENCHES:=[MASTER_BENCH,STONE_BENCH]
+const COTTON_SOFA:="cotton_double_sofa"
+const COTTON_SOFA_BUSY:="棉布雙人沙發有人坐著，等大家起身後再操作。"
+const BAMBOO_BENCH:="bamboo_double_bench"
+const BAMBOO_BENCH_BUSY:="雙人竹長椅有人坐著，等大家起身後再操作。"
+## Two-cell seats whose halves are separate seats: two people can sit side by side, and the whole piece is locked while anyone sits.
+const INDEPENDENT_TWO_SEATS:=[COTTON_SOFA,BAMBOO_BENCH]
+const DOUBLE_BENCHES:=[MASTER_BENCH,STONE_BENCH,COTTON_SOFA,BAMBOO_BENCH]
+
+static func two_seat_busy(kind:String)->String:
+	return BAMBOO_BENCH_BUSY if kind==BAMBOO_BENCH else COTTON_SOFA_BUSY
+
 const MASTER_BENCH_SIT:="master_bench_sit"
 const MASTER_BENCH_SEAT:="master_bench_seat"
 const INSCRIPTION_KINDS:=["sign","long_bench",MASTER_BENCH]
@@ -202,8 +268,8 @@ const GOALS:={
 		2:{"title":"沾到麵粉的頁角","task":"依米露的地圖線索，在渡口公告板、種子攤和共餐桌找齊三片食譜紙角，再回來交給她。",
 			"needs":["recipe_pages"],
 			"quote":["這頁不是被風吹走的，是我拿去墊熱鍋了。","看不見字的地方，我們用味道慢慢找回來。"],"keepsake":"米露的共餐桌手記"},
-		3:{"title":"不是同一道湯","task":"帶兩碗湯來辦一場小試吃。蘿蔔湯或胡蘿蔔濃湯都可以。",
-			"options":[{"id":"soup","label":"蘿蔔湯","items":{"soup":2}},{"id":"carrot_soup","label":"胡蘿蔔濃湯","items":{"carrot_soup":2}}],
+		3:{"title":"不是同一道湯","task":"帶兩碗同樣的湯來辦一場小試吃。蘿蔔湯、森林菇湯或胡蘿蔔濃湯都可以。",
+			"options":[{"id":"soup","label":"蘿蔔湯","items":{"soup":2}},{"id":"forest_mushroom_soup","label":"森林菇湯","items":{"forest_mushroom_soup":2}},{"id":"carrot_soup","label":"胡蘿蔔濃湯","items":{"carrot_soup":2}}],
 			"quote":["味道和以前不同，卻有人喝完還想再添。","原來食譜最後一行，不一定得寫得一模一樣。"],"keepsake":"試吃會的空碗"},
 		4:{"title":"記得替自己留一碗","task":"親手把至少四份料理擺上渡口共餐桌，再找米露回報。一個人也能完成。",
 			"needs":["shared_meal"],
@@ -213,14 +279,15 @@ const GOALS:={
 		1:{"title":"口袋裡的小山","task":"交給波波 8 塊石材，看他把石頭排成一座小島。",
 			"items":{"stone":8},
 			"quote":["這顆像你的帽子，這顆像一隻正在裝睡的雞。","不是所有石頭都要送進爐子裡啦。"],"keepsake":"排成小島的石頭"},
-		2:{"title":"動不了的礦車","task":"交 2 個銅接頭和 2 塊木板，再替礦車選一個停下來修的位置。三個位置都可以修。",
-			"items":{"copper_joint":2,"plank":2},
+		2:{"title":"動不了的礦車","task":"帶 4 個銅錠和 2 個木工零件，選一處安全的位置修煞車。完成後，同島的朋友都能進礦車搬運坑道。",
+			"items":{"copper_ingot":4,"woodwork_parts":2},
 			"options":[{"id":"entrance","label":"坑口的平地"},{"id":"siding","label":"岔道的側線"},{"id":"shed","label":"工具棚旁"}],
 			"quote":["祖父說，會停下來的車才算修好了。","所以我們先修煞車，再想它能跑多快。"],"keepsake":"礦車的舊煞車片"},
 		3:{"title":"不往深處也可以","task":"到金瓜石合作礦場第一層的提燈休息站，做好回程路標與補給箱，再回山城找波波。不必往下探。",
 			"needs":["rest_kit"],
 			"quote":["以前我總想找到最亮的那一顆。","現在覺得，有燈讓大家走回來也很亮。"],"keepsake":"休息站便攜箱圖樣"},
-		4:{"title":"最後一趟空車","task":"陪波波把空礦車推到展覽的位置，再替紀念牌選一句話。三句都可以。",
+		4:{"title":"最後一趟空車","task":"在金瓜石陪波波把祖父的空礦車沿運礦軌道推到展覽的位置（先找波波開始，再走到礦車旁推六段），回來替紀念牌選一句話。三句都可以。",
+			"needs":["bobo_cart_arrived"],
 			"options":[{"id":"home","label":"不用載滿也能回家"},{"id":"rest","label":"辛苦了，慢慢停"},{"id":"name","label":"只刻祖父的名字"}],
 			"quote":["不用載滿也能回家。","這句話我想刻在車上，比金屬還結實。"],"keepsake":"紀念牌的拓印"},
 	},
@@ -228,8 +295,8 @@ const GOALS:={
 		1:{"title":"杯子要排成一線","task":"到貓空茶屋排好一張茶桌與兩只杯子，再和茶茶說一聲。橫擺或直擺都可以。",
 			"needs":["tea_setup"],
 			"quote":["杯口朝外，客人就不會碰到壺嘴。","至於椅子稍微歪一點……先這樣也可以。"],"keepsake":"基本茶具圖樣"},
-		2:{"title":"漏下來的一束光","task":"檢查茶亭遮簾的三處，再交 8 份纖維和 2 塊布料。先看哪一處都可以。",
-			"items":{"fiber":8,"cotton_cloth":2},"steps":["靠山的那一幅","中間的那一幅","靠路的那一幅"],
+		2:{"title":"漏下來的一束光","task":"檢查茶亭遮簾的三處，再交 8 份竹材和 2 塊布料。竹材可在霧竹溪谷用斧頭採收。",
+			"items":{"bamboo":8,"cotton_cloth":2},"steps":["靠山的那一幅","中間的那一幅","靠路的那一幅"],
 			"quote":["這裡少一片竹，光線每天都落在不同位置。","我還沒決定，它算不算一個缺點。"],"keepsake":"換下來的舊竹片"},
 		3:{"title":"一場沒有流程的茶會","task":"替茶會排三個話題的順序。怎麼排都可以，沒有比較好的答案。",
 			"steps":["今年的茶","山上的天氣","最近學會的事"],
@@ -239,7 +306,7 @@ const GOALS:={
 			"quote":["這把椅子和其他的很不一樣。","所以我一看見它，就知道有人要來了。"],"keepsake":"茶茶手寫茶單"},
 	},
 	"achao":{
-		1:{"title":"打不開的繩結","task":"照阿潮畫的圖示鬆開三段繩：先鬆船尾，再鬆中段，最後鬆船頭。不限時間，順序不對可以重來。",
+		1:{"title":"打不開的繩結","task":"看木牌上的刻痕，由少到多鬆開三段繩。不限時間，順序不對可以重來。",
 			"steps":["船頭那一段","中段","船尾那一段"],"order":[2,1,0],
 			"quote":["拉得更用力，不一定會更快。","先看看是哪一端在等你鬆手。"],"keepsake":"鬆開的舊繩結"},
 		2:{"title":"褪色的航線","task":"走訪渡口公告板、轉乘牌和河岸釣魚會告示牌，各記下一處方向，再回來找阿潮。",
@@ -263,18 +330,18 @@ const GOALS:={
 			"items":{"cotton_cloth":3,"fiber":4},
 			"options":[{"id":"ball","label":"布球"},{"id":"doll","label":"布偶"}],
 			"quote":["縫線有一點歪，可是牠抱得很緊。","我想牠在意的，可能不是縫線。"],"keepsake":"縫線有點歪的玩具"},
-		4:{"title":"自己走出屋簷","task":"挑一個渡口沒下雨的日子，陪棉棉看小羊自己跨出屋簷。",
-			"needs":["fair_weather"],
+		4:{"title":"自己走出屋簷","task":"晴天（或開啟減少動態）到飼料站旁，安靜看小羊自己跨出屋簷一步，再回來找棉棉。",
+			"needs":["sheep_step"],
 			"quote":["我們沒有把牠拉出來。","所以這一步，完完整整是牠自己的。"],"keepsake":"棉棉的照料手札"},
 	},
 	"xinghe":{
 		1:{"title":"一顆沒有名字的芽","task":"在渡口或蘭陽種一株作物。到田邊從農田面板各記一次幼苗與成熟，再找蘭陽水圳旁的星禾。",
 			"needs":["growth_record"],
 			"quote":["還不知道名字，也可以先照顧它。","等它長大，我們就多知道一件事。"],"keepsake":"星禾的作物觀察簿"},
-		3:{"title":"不必把冬天趕走","task":"自己燒過溫室玻璃之後，交 2 片溫室玻璃和 2 個銅接頭，幫星禾搭一座小溫室。哪個季節來都可以。",
+		3:{"title":"不必把冬天趕走","task":"用工作台或玻璃爐製作溫室玻璃，再帶 2 片玻璃與 2 個銅接頭到蘭陽找星禾。四季都能回報。",
 			"items":{"glass":2,"copper_joint":2},"needs":["glass_crafted"],
 			"quote":["溫室不是讓冬天消失。","是替想慢慢長大的孩子，多留一個選擇。"],"keepsake":"小溫室的銅框邊料"},
-		2:{"title":"空花圃的圖紙","task":"替四格花圃選兩種花，各帶 2 朵來。",
+		2:{"title":"空花圃的圖紙","task":"選兩種花排進四格花圃，每種兩格，點一格可換花。季節不合的花，星禾借你教學苗。","layout":true,
 			"options":[
 				{"id":"bluebell_orange","label":"鈴蘭藍花與蜜橙花","items":{"bluebell":2,"orange_blossom":2}},
 				{"id":"bluebell_chime","label":"鈴蘭藍花與風鈴香草","items":{"bluebell":2,"chime_herb":2}},
@@ -288,7 +355,7 @@ const GOALS:={
 		1:{"title":"不響的小鈴","task":"看看廣場北側的風鈴樹，再到鈴婆婆身邊檢查裂開的小鈴。兩處順序不限，不必聽聲音。",
 			"needs":["bell_inspected"],
 			"quote":["不響，不代表它忘了聲音。","也可能是在等一陣願意停下來的風。"],"keepsake":"島史第一頁"},
-		2:{"title":"分不清的節拍","task":"照鈴婆婆畫的圖案排三枚鈴：△、○、□。只看圖案就好，不用聽音高；排錯可以重來。",
+		2:{"title":"分不清的節拍","task":"鈴婆婆在紙上畫下三枚鈴的樣子。照圖排就好，不用聽音高。",
 			"steps":["○ 圓鈴","△ 角鈴","□ 方鈴"],"order":[1,0,2],
 			"quote":["你照圖案排就好，我來聽。","每個人都有自己好用的耳朵，眼睛有時候也算。"],"keepsake":"島史第二頁"},
 		3:{"title":"最後一枚鈴","task":"交 4 塊銅錠、2 片溫室玻璃，再帶一道家常菜。銅錠可用小熔爐將銅礦和木炭熔煉。",
@@ -306,13 +373,15 @@ const GOALS:={
 			"quote":["不用一次把背包賣空。","留一點給晚餐，也留一點給明天的計畫。"],"keepsake":"小栗的第一筆交易"},
 		2:{"title":"輪子停在哪裡","task":"交 12 根木材和 2 塊布料，再替攤車選一個停下來的地方。三個地方都可以。",
 			"items":{"wood":12,"cotton_cloth":2},
+			"needs":["xiaoli_first_trade"],
 			"options":[{"id":"tree","label":"風鈴樹下"},{"id":"dock","label":"渡口路邊"},{"id":"plaza","label":"廣場西側"}],
 			"quote":["我每次說再找個地方，其實是還不敢停下來。","你覺得這裡，會有人記得來嗎？"],"keepsake":"攤車的木輪擋"},
-		3:{"title":"第一位回頭客","task":"在廣場的市集攤位開張、結算過一輪之後，來告訴小栗客人說了什麼。",
-			"needs":["market_round"],
-			"quote":["他說上次那罐果醬很好吃。","原來人會因為一小罐甜甜的東西，記得一條路。"],"keepsake":"回頭客留下的空果醬罐"},
+		3:{"title":"第一位回頭客","task":"在廣場市集試營運一輪。午夜結算後，來找小栗，看看是哪位熟客回來了。",
+			"needs":["xiaoli_cart_plan","market_round"],
+			"quote":["她說上次那罐果醬很好吃。","原來人會因為一小罐甜甜的東西，記得一條路。"],"keepsake":"回頭客留下的空果醬罐"},
 		4:{"title":"明天也在這裡","task":"交 2 塊木板，替小栗的固定小店掛上招牌。店名可以先不取。",
 			"items":{"plank":2},
+			"needs":["xiaoli_return_guest"],
 			"options":[{"id":"none","label":"先不取店名"},{"id":"chestnut","label":"小栗的種子舖"},{"id":"tomorrow","label":"明天也在"}],
 			"quote":["明天不用問我會停在哪裡了。","我就在這裡，等你帶新的收成來。"],"keepsake":"招牌的試寫木片"},
 	},
@@ -320,14 +389,16 @@ const GOALS:={
 		1:{"title":"寫得太小的地址","task":"向洛洛取信，讀信封上的三個地址線索，再把信交給渡口對應的居民。信封文字可以放大。",
 			"needs":["address_delivered"],
 			"quote":["我怕佔太多地方，所以字越寫越小。","原來看得清楚，也是一種替人著想。"],"keepsake":"普通信箱圖樣"},
-		2:{"title":"沒有地址的信","task":"先認識洛洛以外的三位居民，再回來和洛洛一起問問，那片壓乾的葉子是哪棵樹的。",
-			"needs":["known_three"],
+		2:{"title":"沒有地址的信","task":"拿壓乾的葉子向三位已認識的居民詢問。線索會收進手冊，集齊後回來告訴洛洛。",
+			"needs":["known_three","postcard_clues"],
 			"quote":["信上沒有地址，可是有一片壓乾的葉子。","說不定收信的人，記得那棵樹。"],"keepsake":"壓乾的葉子"},
 		3:{"title":"想說卻沒送出的話","task":"洛洛有一段話想告訴收信的人。陪他選一種方式，兩種都一樣好。",
+			"needs":["postcard_reported"],
 			"options":[{"id":"aloud","label":"陪他親口念出來"},{"id":"letter","label":"陪他把信交給對方讀"}],
 			"quote":["我可以不用當著大家的面念嗎？","你說可以，那我想我還是願意走過去。"],"keepsake":"摺了又攤開的信稿"},
 		4:{"title":"第一封寫給自己的信","task":"陪洛洛寫一封給以後的自己的信。要不要寫下一句話都可以。",
-			"options":[{"id":"blank","label":"先留白"},{"id":"stay","label":"希望那時候還住在這裡"},{"id":"thanks","label":"謝謝現在的自己"}],
+			"needs":["memory_shared"],
+			"options":[{"id":"blank","label":"先留白"},{"id":"write","label":"寫下自己的話"},{"id":"stay","label":"希望那時候還住在這裡"},{"id":"thanks","label":"謝謝現在的自己"}],
 			"quote":["今天沒有誰等著收這封信。","可是以後的我，應該會很高興。"],"keepsake":"寫給以後的信封"},
 	},
 	"diandian":{
@@ -335,6 +406,7 @@ const GOALS:={
 			"needs":["crop_sketches"],
 			"quote":["你走得慢一點，我就看見帽沿的影子了。","影子也是你的顏色。"],"keepsake":"點點的菜園貼紙"},
 		2:{"title":"沒畫好的手","task":"在池邊陪點點坐一會兒，選一個姿勢讓她參考。哪一個都可以。",
+			"needs":["diandian_seated"],
 			"options":[{"id":"knees","label":"手放在膝上"},{"id":"grass","label":"手撐著草地"},{"id":"cup","label":"捧著一只杯子"}],
 			"quote":["我總把手畫得太僵。","可能因為我忘了，它們也會在不知道做什麼時放鬆。"],"keepsake":"畫著放鬆的手的速寫"},
 		3:{"title":"畫面外的位置","task":"在三位不同的居民身邊邀請他們入畫，再回星芽庭園找點點。任何三位居民都可以，不用同時到場。",
@@ -349,7 +421,7 @@ const GOALS:={
 			"items":{"stone":8,"wood":8},"needs":["inn_entrance"],
 			"quote":["我每天都擦門牌，只是很久沒有把燈打開。","今天開一下吧，亮著比較像有人在家。"],"keepsake":"亮起來的門牌"},
 		2:{"title":"池邊的裂縫","task":"標記池邊的三處裂縫，再交 8 份陶土和 12 塊石材。先標哪一處都可以。",
-			"items":{"clay":8,"stone":12},"steps":["靠溪的那一道","池角的那一道","台階旁的那一道"],
+			"items":{"clay":8,"stone":12},"needs":["inn_cracks"],
 			"quote":["水漏得很慢，慢得我總說明天再修。","謝謝你把明天，往今天移了一點。"],"keepsake":"標過裂縫的粉筆頭"},
 		3:{"title":"給誰留的房間","task":"在家園布置一間有床、燈和椅子的房間，至少親手放一件家具。站到房內，在家園工坊的「小屋結構檢查」登記，再到礁溪找暖暖。",
 			"needs":["guest_room"],
@@ -382,12 +454,15 @@ const NEEDS:={
 	"growth_record":"記下同一株作物的幼苗與成熟",
 	"address_delivered":"把洛洛的信交給正確的收件人",
 	"inn_entrance":"清理旅舍門口",
+	"inn_cracks":"到公共泡腳池標記三處裂縫",
 	"guest_room":"在家園登記有床、燈和椅子的客房",
 	"bell_inspected":"查看風鈴樹與裂開的小鈴",
 	"rest_kit":"在第一層休息站做好路標與補給箱",
+	"bobo_cart_arrived":"在金瓜石把祖父的空礦車推到展覽位",
 	"recipe_pages":"找齊三片食譜紙角",
 	"route_marks":"記下渡口的三處路標方向",
 	"crop_sketches":"記錄三種不同動物或作物的色彩",
+	"diandian_seated":"在映星池邊和點點一起坐下",
 	"shared_meal":"親手上一輪共享料理",
 	"crop_sold":"在種子攤或出貨箱賣出一份作物",
 	"seed_after_sale":"賣出作物後，買一包當季種子",
@@ -395,9 +470,16 @@ const NEEDS:={
 	"own_bed":"家園裡有一張你放的小床",
 	"glass_crafted":"自己燒過一次溫室玻璃",
 	"market_round":"你的市集攤位結算過一輪",
+	"xiaoli_first_trade":"和小栗完成〈今天先賣一點點〉",
+	"xiaoli_cart_plan":"和小栗完成〈輪子停在哪裡〉",
+	"xiaoli_return_guest":"和小栗完成〈第一位回頭客〉",
 	"festival_done":"島上完成過一次風鈴接力",
 	"known_three":"認識洛洛以外的三位居民",
+	"postcard_clues":"向已認識的居民詢問線索",
+	"postcard_reported":"完成洛洛的〈沒有地址的信〉",
+	"memory_shared":"完成洛洛的〈想說卻沒送出的話〉",
 	"fair_weather":"今天渡口沒有下雨",
+	"sheep_step":"安靜看小羊自己跨出屋簷",
 }
 const KNOWN_NEEDED:=3
 
@@ -432,14 +514,25 @@ const KEEPSAKES:={
 	"keepsake_diandian":{"resident":"diandian","stage":2,"name":"畫著放鬆的手的速寫","blurb":"點點在池邊畫的速寫，夾在小畫架上，畫的是一雙放鬆的手。"},
 	"keepsake_nuannuan":{"resident":"nuannuan","stage":1,"name":"亮起來的門牌","blurb":"暖暖門口那塊門牌的複製品，立在短柱上，旁邊點著一盞小燈。只是裝飾，不會照明。"},
 	"keepsake_nuannuan_room":{"resident":"nuannuan","stage":4,"name":"暖暖的房間名牌","blurb":"暖暖替自己寫的第一塊房間名牌。陶牌上的兩縷白線像剛升起的泉霧。"},
+	"keepsake_bobo_cart":{"resident":"bobo","stage":4,"name":"祖父的礦車","blurb":"波波祖父那台礦車的小小展示品，車斗是空的，車邊掛著刻了字的紀念牌。只是裝飾，不能載運。"},
 }
-const KEEPSAKE_ORDER:=["keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","keepsake_nuannuan_room"]
+const KEEPSAKE_ORDER:=["keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","keepsake_nuannuan_room","keepsake_bobo_cart"]
 
 ## 這一項行動的紀念小物種類（= World.BUILD 的種類）；沒有時為 ""。
 static func keepsake_kind(resident:String,stage:int) -> String:
-	for kind:String in KEEPSAKE_ORDER:
-		if str(KEEPSAKES[kind].resident)==resident and int(KEEPSAKES[kind].stage)==stage:return kind
-	return ""
+	var by_stage:Variant=_keepsake_index().get(resident)
+	return str(by_stage.get(stage,"")) if by_stage is Dictionary else ""
+
+## resident -> {stage -> kind}，由 KEEPSAKE_ORDER 衍生、只建一次；同組合保留第一個符合者。
+static var _keepsake_kind_index:Dictionary={}
+static func _keepsake_index() -> Dictionary:
+	if _keepsake_kind_index.is_empty():
+		for kind:String in KEEPSAKE_ORDER:
+			var resident:String=str(KEEPSAKES[kind].resident)
+			var stage:int=int(KEEPSAKES[kind].stage)
+			if not _keepsake_kind_index.has(resident):_keepsake_kind_index[resident]={}
+			if not _keepsake_kind_index[resident].has(stage):_keepsake_kind_index[resident][stage]=kind
+	return _keepsake_kind_index
 
 static func keepsake_item(kind:String) -> String:
 	return kind+KIT_SUFFIX if KEEPSAKES.has(kind) else ""
@@ -509,6 +602,25 @@ static func known_count(person:Dictionary,except:String) -> int:
 		if resident!=except and Bond.stage(person,resident)>=1:count+=1
 	return count
 
+static func postcard_clues(person:Dictionary) -> Array:
+	var source:Variant=person.get(POSTCARD_CLUES_KEY)
+	var clues:Array=[]
+	if not source is Array:return clues
+	for id in source:
+		if id is String and POSTCARD_CLUES.has(id) and id not in clues:clues.append(id)
+		if clues.size()>=KNOWN_NEEDED:break
+	return clues
+
+static func valid_postcard_clues(person:Dictionary) -> bool:
+	if not person.has(POSTCARD_CLUES_KEY):return true
+	var notes:Variant=person[POSTCARD_CLUES_KEY]
+	if not notes is Array or notes.is_empty() or notes.size()>KNOWN_NEEDED or Bond.stage(person,"luoluo")<2:return false
+	var seen:Dictionary={}
+	for id in notes:
+		if not id is String or not POSTCARD_CLUES.has(id) or seen.has(id) or Bond.stage(person,id)<1:return false
+		seen[id]=true
+	return true
+
 ## 某項前提現在是否成立。state 為伺服器的世界狀態；缺欄位一律視為不成立。
 static func mural_contributed(state:Dictionary,token:String) -> bool:
 	var mural:Dictionary=state.get(MURAL_KEY,{})
@@ -568,12 +680,17 @@ static func need_met(id:String,state:Dictionary,token:String) -> bool:
 		"growth_record":return not person.get(GROWTH_LOG_KEY,{}).is_empty()
 		"address_delivered":return int(person.get(ADDRESS_KEY,0))==ADDRESS_DELIVERED
 		"inn_entrance":return person.get(INN_CLEAR_KEY,false)==true
+		"inn_cracks":return int(person.get(Springs.CRACK_KEY,0))==Springs.CRACK_MASK
 		"guest_room":return person.get(GUEST_ROOM_KEY,false)==true
 		"bell_inspected":return int(person.get(BELL_INSPECT_KEY,0))==BELL_INSPECT_MASK
 		"rest_kit":return int(person.get(REST_KIT_KEY,0))==REST_KIT_MASK
+		"bobo_cart_arrived":return BoboCart.person_stage(person)==BoboCart.LAST
 		"recipe_pages":return int(person.get(RECIPE_PAGE_KEY,0))==RECIPE_PAGE_MASK
 		"route_marks":return int(person.get(ROUTE_KEY,0))==ROUTE_MASK
 		"crop_sketches":return person.get(SKETCH_KEY,{}).size()>=SKETCH_TARGET
+		"diandian_seated":
+			var seated:Variant=person.get(DIANDIAN_SEAT_KEY)
+			return seated is bool and seated and done(person,"diandian").has(1) and Bond.stage(person,"diandian")>=2
 		"shared_meal":return person.get("resident_participation",{}).get(SHARED_MEAL_EVENT,false)==true
 		"crop_sold":return int(person.get(CROP_TRADE_KEY,0))>=CROP_SOLD
 		"seed_after_sale":return int(person.get(CROP_TRADE_KEY,0))==SEED_BOUGHT
@@ -589,6 +706,9 @@ static func need_met(id:String,state:Dictionary,token:String) -> bool:
 			return false
 		"glass_crafted":
 			return person.get("greenhouse_glass_crafted") is bool and person.greenhouse_glass_crafted
+		"xiaoli_first_trade":return done(person,"xiaoli").has(1)
+		"xiaoli_cart_plan":return done(person,"xiaoli").has(2)
+		"xiaoli_return_guest":return done(person,"xiaoli").has(3)
 		"market_round":
 			var market:Variant=person.get("market")
 			return market is Dictionary and market.get("report") is Dictionary and not market.report.is_empty()
@@ -598,6 +718,16 @@ static func need_met(id:String,state:Dictionary,token:String) -> bool:
 			return int(festival.get("round",0))-(1 if festival.get("active",false)==true else 0)>=1
 		"known_three":
 			return known_count(person,"luoluo")>=KNOWN_NEEDED
+		"postcard_clues":
+			return postcard_clues(person).size()>=KNOWN_NEEDED
+		"postcard_reported":
+			return done(person,"luoluo").has(2)
+		"memory_shared":
+			return done(person,"luoluo").has(3)
+		"sheep_step":
+			var watched:Variant=person.get(SHEEP_STEP_KEY)
+			var clock:Variant=state.get("time")
+			return (watched is float or watched is int) and (clock is float or clock is int) and float(clock)-float(watched)>=SHEEP_STEP_SECONDS
 		"fair_weather":
 			var now:Variant=state.get("time")
 			if not (now is float or now is int):return false
@@ -606,17 +736,20 @@ static func need_met(id:String,state:Dictionary,token:String) -> bool:
 
 ## 介面用的說明文字；known_three 附上目前人數。
 static func need_label(id:String,state:Dictionary,token:String) -> String:
-	if id=="known_three":
+	if id in ["known_three","postcard_clues"]:
 		var players:Variant=state.get("players")
 		var found:Variant=players.get(token) if players is Dictionary else null
-		return "%s（目前 %d 位）"%[str(NEEDS[id]),mini(KNOWN_NEEDED,known_count(found if found is Dictionary else {},"luoluo"))]
+		var person:Dictionary=found if found is Dictionary else {}
+		if id=="postcard_clues":return "%s（目前 %d／%d 位）"%[str(NEEDS[id]),postcard_clues(person).size(),KNOWN_NEEDED]
+		return "%s（目前 %d 位）"%[str(NEEDS[id]),mini(KNOWN_NEEDED,known_count(person,"luoluo"))]
 	return str(NEEDS.get(id,id))
 
 ## 這項行動的前提一覽：[{"id","label","met"}]；沒有前提時為空陣列。
-static func needs_view(entry:Dictionary,state:Dictionary,token:String) -> Array:
+static func needs_view(entry:Dictionary,state:Dictionary,token:String,own_bed:Variant=null) -> Array:
 	var result:=[]
 	for id:String in entry.get("needs",[]):
-		result.append({"id":id,"label":need_label(id,state,token),"met":need_met(id,state,token)})
+		var met:bool=own_bed if id=="own_bed" and own_bed is bool else need_met(id,state,token)
+		result.append({"id":id,"label":need_label(id,state,token),"met":met})
 	return result
 
 static func has_goal(resident:String,stage:int) -> bool:
@@ -631,9 +764,48 @@ static func total() -> int:
 	return count
 
 static func option(entry:Dictionary,id:String) -> Dictionary:
+	var base:=choice_base(entry,id)
 	for found:Dictionary in entry.get("options",[]):
-		if str(found.id)==id:return found
+		if str(found.id)==base:return found
 	return {}
+
+## N07-2: a layout goal accepts "<option>-<4 cells>" (cells 0/1 pick the first/second flower of the
+## pair, two of each); the bare option id still works. Returns the option id, or "" when malformed.
+static func choice_base(entry:Dictionary,id:String) -> String:
+	if not entry.get("layout",false) or not "-" in id:return id
+	var bits:=id.split("-")
+	return str(bits[0]) if bits.size()==2 and valid_layout(str(bits[1])) else ""
+
+static func valid_layout(cells:String) -> bool:
+	if cells.length()!=BED_CELLS:return false
+	var ones:=0
+	for index in cells.length():
+		if cells[index] not in ["0","1"]:return false
+		ones+=int(cells[index]=="1")
+	return ones==BED_CELLS/2
+
+static func choice_layout(id:String) -> String:
+	var bits:=id.split("-")
+	return str(bits[1]) if bits.size()==2 and valid_layout(str(bits[1])) else ""
+
+## N07-2: flowers that cannot grow in the current season (same table as World.CROP_SEASONS;
+## chime_herb has no season limit). Tutorial seedlings stand in for these in a layout.
+const FLOWER_SEASONS:={"bluebell":["spring"],"orange_blossom":["summer","autumn"]}
+const BED_CELLS:=4
+
+static func flower_in_season(item:String,state:Dictionary) -> bool:
+	if not FLOWER_SEASONS.has(item):return true
+	var clock:Variant=state.get("time")
+	if not (clock is float or clock is int):return true
+	return Weather.season_on_day(Weather.day_index(float(clock))) in FLOWER_SEASONS[item]
+
+## Items a layout hand-in really costs: out-of-season flowers are covered by tutorial seedlings.
+static func layout_cost(entry:Dictionary,choice_id:String,state:Dictionary) -> Dictionary:
+	var result:=cost(entry,choice_id)
+	if choice_layout(choice_id).is_empty():return result
+	for item:String in result.keys():
+		if not flower_in_season(item,state):result.erase(item)
+	return result
 
 ## 這項行動（含所選選項）一共要交的物品。
 static func cost(entry:Dictionary,option_id:String) -> Dictionary:
@@ -643,6 +815,9 @@ static func cost(entry:Dictionary,option_id:String) -> Dictionary:
 	return result
 
 ## 讀取（不寫入）本人完成過的行動：{階數:選項 id}。
+static func address_progress(person:Dictionary) -> int:
+	return ADDRESS_DELIVERED if done(person,"luoluo").has(1) else int(person.get(ADDRESS_KEY,0))
+
 static func done(person:Dictionary,resident:String) -> Dictionary:
 	var result:={}
 	var all:Variant=person.get(RECORD_KEY)
@@ -657,6 +832,33 @@ static func valid_sketches(value:Variant,crops:Dictionary) -> bool:
 	for kind in value:
 		if (not crops.has(kind) and not SKETCH_ANIMALS.has(kind)) or not value[kind] is bool or not value[kind]:return false
 	return true
+
+## The flower rack opens after 星禾's winter report (Q11) or after N07-2 (the four-cell bed plan).
+static func flower_rack_unlocked(person:Dictionary) -> bool:
+	return person.get("greenhouse_reported",false)==true or done(person,"xinghe").has(2)
+
+static func future_note(person:Dictionary) -> String:
+	var choice:=str(done(person,"luoluo").get(4,""))
+	if choice=="write":return str(person.get(FUTURE_NOTE_KEY,""))
+	if choice in ["stay","thanks"]:return str(option(goal("luoluo",4),choice).get("label",""))
+	return ""
+
+static func valid_future_note(person:Dictionary) -> bool:
+	var custom:bool=done(person,"luoluo").get(4)=="write"
+	if not custom:return not person.has(FUTURE_NOTE_KEY)
+	var value:Variant=person.get(FUTURE_NOTE_KEY)
+	return value is String and not value.is_empty() and IslandNotes.clean(value)==value
+
+static func wool_hat_unlocked(person:Dictionary) -> bool:
+	return done(person,"mianmian").has(4)
+
+## True once some player built the shared rain shelter (bit 1 of the personal project mask).
+static func shelter_built(state:Dictionary) -> bool:
+	var players:Variant=state.get("players")
+	if not players is Dictionary:return false
+	for person:Variant in players.values():
+		if person is Dictionary and (int(person.get(SHEEP_SHELTER_KEY,0))&1)!=0:return true
+	return false
 
 static func apron_unlocked(person:Dictionary) -> bool:
 	return done(person,"milu").has(4)
@@ -676,21 +878,33 @@ static func sequence(text:String) -> Array:
 		result.append(int(digit))
 	return result
 
+## Chacha stage-3 topic order as step indexes, e.g. [2,0,1]. [] when absent, malformed, or stage 3 not done (no legacy guesses).
+static func tea_topic_order(person:Dictionary) -> Array:
+	var text:Variant=person.get(TEA_TOPICS_KEY)
+	if not text is String or not done(person,"chacha").has(3):return []
+	return sequence(text)
+
+## Save check for player.chacha_tea_topics: a valid 3-digit permutation string and chacha stage 3 recorded as done.
+static func valid_tea_topics(value:Variant,person:Dictionary) -> bool:
+	return value is String and not sequence(value).is_empty() and done(person,"chacha").has(3)
+
 ## 只給本人看的摘要（Session 以 data.resident_goals 附在自己的快照上）：
 ## {居民:{"階數":{"state":"locked"／"open"／"done","choice":選項 id}}}，只列有行動的階。
 ## 有前提（needs）而且還沒完成的行動另帶 "needs":[{"id","label","met"}]，
 ## 需要傳入伺服器的 state 與本人的 token；沒有前提的行動不多這個鍵。
-static func view(person:Dictionary,state:Dictionary={},token:String="") -> Dictionary:
+static func view(person:Dictionary,state:Dictionary={},token:String="",bond_view:Dictionary={},own_bed:Variant=null) -> Dictionary:
 	var result:={}
 	for resident:String in GOALS:
-		var reached:=Bond.stage(person,resident)
+		var reached:=int(bond_view[resident].stage) if bond_view.has(resident) else Bond.stage(person,resident)
 		var finished:=done(person,resident)
 		var own:={}
 		for stage:int in GOALS[resident]:
-			if finished.has(stage):own[str(stage)]={"state":"done","choice":str(finished[stage])}
+			if finished.has(stage):
+				own[str(stage)]={"state":"done","choice":str(finished[stage])}
+				if resident=="chacha" and stage==3 and not tea_topic_order(person).is_empty():own[str(stage)]["topics"]=str(person[TEA_TOPICS_KEY])
 			else:
 				own[str(stage)]={"state":"open" if reached>=stage else "locked","choice":""}
-				if GOALS[resident][stage].has("needs"):own[str(stage)]["needs"]=needs_view(GOALS[resident][stage],state,token)
+				if GOALS[resident][stage].has("needs"):own[str(stage)]["needs"]=needs_view(GOALS[resident][stage],state,token,own_bed)
 			var kind:=keepsake_kind(resident,stage)
 			if not kind.is_empty():own[str(stage)]["keepsake"]=keepsake_view(person,kind)
 		result[resident]=own
@@ -714,14 +928,22 @@ static func apply(person:Dictionary,inv:Dictionary,parts:PackedStringArray,names
 		if option(entry,choice).is_empty():return _fail("請先選一個做法。")
 	elif not choice.is_empty():return _fail("請重新打開關係事件。")
 	var steps:=str(parts[3])
-	if entry.has("steps"):
+	var xiaoli_sign:=resident=="xiaoli" and stage==4
+	var future_letter:=resident=="luoluo" and stage==4 and choice=="write"
+	var message_draft:=""
+	if future_letter:
+		message_draft=IslandNotes.clean(steps)
+		if message_draft.is_empty():return _fail(FUTURE_NOTE_REQUIRED)
+	elif xiaoli_sign:
+		if not XiaoliShop.valid_name(steps):return _fail(XiaoliShop.BAD_NAME)
+	elif entry.has("steps"):
 		var picked:=sequence(steps)
 		if picked.is_empty():return _fail("三個步驟都要做過一次。")
 		if entry.has("order") and picked!=entry.order:return _fail("順序不太對。%s說不急，再看一次圖示。"%npc_name)
 	elif not steps.is_empty():return _fail("請重新打開關係事件。")
 	for need:String in entry.get("needs",[]):
 		if not need_met(need,state,token):return _fail("還不能一起做這件事：要先「%s」。"%need_label(need,state,token))
-	var needed:=cost(entry,choice)
+	var needed:=layout_cost(entry,choice,state)
 	for item:String in needed:
 		if int(inv.get(item,0))<int(needed[item]):
 			return _fail("還差%s %d／%d。"%[str(names.get(item,item)),int(inv.get(item,0)),int(needed[item])])
@@ -735,9 +957,18 @@ static func apply(person:Dictionary,inv:Dictionary,parts:PackedStringArray,names
 	own[str(stage)]=choice
 	all[resident]=own
 	person[RECORD_KEY]=all
+	if resident=="diandian" and stage==2:person.erase(DIANDIAN_SEAT_KEY)
+	if resident=="chacha" and stage==3:person[TEA_TOPICS_KEY]=steps
+	if xiaoli_sign and not steps.is_empty():person[XiaoliShop.NAME_KEY]=steps
+	if future_letter:person[FUTURE_NOTE_KEY]=message_draft
 	var message:="%s：「%s」你們一起完成了〈%s〉，手帳記下紀念「%s」。"%[npc_name,entry.quote[0],entry.title,entry.keepsake]
+	if entry.get("layout",false) and cost(entry,choice).size()>needed.size():message+="季節不合的花用了星禾的教學苗。"
 	if resident=="nuannuan" and stage==1:message+="旅舍迎賓牌圖樣已加入家園工坊的「暖泉旅舍」頁。"
 	if resident=="nuannuan" and stage==2:message+="暖石泡腳池圖樣已加入家園工坊的「暖泉旅舍」頁。"
+	if resident=="chacha" and stage==3:message+=PAVILION_UNLOCK_NOTE
+	if resident=="xiaoli" and stage==2:message+=XIAOLI_CART_NOTE
+	if resident=="xiaoli" and stage==3:message+=XIAOLI_RETURN_NOTE
+	if resident=="lingpopo" and stage==3:message+=FESTIVAL_BELL_UNLOCK_NOTE
 	if not kind.is_empty():
 		_keepsake_grant(person,inv,kind)
 		message+="紀念小物也放進背包了，在家園工坊的「生活」頁可以擺到家園。"

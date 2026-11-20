@@ -40,7 +40,12 @@ func _initialize() -> void:
 	expect(not act("remove",location).ok,"mature tree uses harvesting rather than refund")
 	var before:int=p.inventory.wood
 	for i in range(3):expect(act("axe",location).ok,"mature planted tree can be harvested")
-	expect(p.inventory.wood==before+6 and p.inventory.sapling==2,"tree yields wood and replacement sapling exactly once")
+	expect(p.inventory.wood==before and w.region_snapshot("home").gather_drops[k].items.hardwood==World.HARDWOOD_YIELD,"mature tree leaves hardwood and the regular bundle")
+	w.move_player("alice",Vector2(-1,1),0.2)
+	w.step(0.1,true)
+	expect(p.inventory.wood==before,"drops cannot be collected before landing")
+	w.step(0.6,true)
+	expect(p.inventory.wood==before+6 and p.inventory.sapling==2,"walking near grants wood and replacement sapling exactly once")
 	expect(not act("axe",location).ok,"felled tree cannot duplicate yield")
 	expect(act("plant_tree",location).ok,"same location supports another growth cycle")
 	# Original procedural trees also produce replacement saplings.
@@ -52,8 +57,10 @@ func _initialize() -> void:
 	p.x=native.x+1.5;p.y=native.y+0.5
 	var old_saplings:int=p.inventory.sapling
 	for i in range(3):expect(act("axe",native).ok,"native tree chopped")
-	expect(p.inventory.sapling==old_saplings+1,"native tree returns sapling")
+	w.step(0.7,true)
+	expect(p.inventory.sapling==old_saplings+1,"native tree returns sapling when collected")
 	expect(act("plant_tree",native).ok,"can replant original resource tile")
+	p.x=native.x+1.5
 	w.step(181,true)
 	expect(w.resource(native)=="tree","planted tree overrides removed procedural marker")
 	# Reclaiming empty farmland permits reversible island planning.
@@ -97,5 +104,30 @@ func _initialize() -> void:
 	expect(loaded.load_world(path) and loaded.state.forest.is_empty(),"old world gains forest without resetting progress")
 	for suffix in ["",".bak",".tmp"]:
 		if FileAccess.file_exists(path+suffix):DirAccess.remove_absolute(path+suffix)
+	check_drop_capacity_and_rollback()
 	print("REGROWTH_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(0 if failures==0 else 1)
+
+func check_drop_capacity_and_rollback() -> void:
+	var world:=World.new()
+	world.add_player("collector","Collector")
+	var person:Dictionary=world.state.players.collector
+	person.inventory.stone=1000000000
+	var tile:=Vector2i(39,34)
+	var tile_key:=World.key(tile)
+	var position:=Vector2(tile)+Vector2(0.5,0.5)
+	person.x=position.x
+	person.y=position.y
+	expect(world._drop_gather_items("collector",tile_key,{"stone":5}),"seed a stone drop")
+	world.step(1.0,true)
+	expect(world.region_snapshot("home").gather_drops[tile_key].items.stone==5,"full backpack leaves the stack on the ground")
+	person.inventory.stone-=2
+	var blocked_path:="user://gather-save-fail-%d"%Time.get_ticks_usec()
+	assert(DirAccess.make_dir_absolute(blocked_path)==OK)
+	world.save_path=blocked_path
+	expect(not world.step(0.1,true) and world.gather_pickup_events.is_empty(),"failed commit emits no ghost pickup")
+	expect(world.state.players.collector.inventory.stone==999999998 and world.region_snapshot("home").gather_drops[tile_key].items.stone==5,"failed save restores the bag and the stack")
+	DirAccess.remove_absolute(blocked_path)
+	world.save_path=""
+	expect(world.step(0.1,true),"retry pickup after restoring storage")
+	expect(world.state.players.collector.inventory.stone==1000000000 and world.region_snapshot("home").gather_drops[tile_key].items.stone==3,"only available capacity is filled")

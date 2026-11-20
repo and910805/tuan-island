@@ -121,32 +121,53 @@ func run()->void:
 	Tasks.board(app)
 	var donate:=app.modal.find_child("BoardDonateBridge",true,false) as Button
 	expect(donate!=null and donate.disabled,"Bridge donation requires useful materials")
+	var bridge_hint:=app.modal.find_child("BridgeDonationHint",true,false) as Label
+	var wood_hint:="%s 砍樹"%app.binding_label("axe")
+	var stone_hint:="%s 敲岩石"%app.binding_label("pick")
+	expect(bridge_hint.text.contains(wood_hint) and bridge_hint.text.contains(stone_hint),"Unfinished materials have gathering directions")
 	expect(world.act("picnic-neighbor","share-wood","donate",Vector2i(40,29)).ok,"Neighbor donates wood")
 	app.session._send_snapshot(1)
 	var tree_meter:=app.modal.find_child("BridgeWood",true,false).find_child("ProgressMeter",true,false) as ProgressBar
 	expect(tree_meter.value==30 and donate.disabled,"Open board shows the neighbor's wood")
+	expect(not bridge_hint.text.contains(wood_hint) and bridge_hint.text.contains(stone_hint),"Remote contribution removes the completed material from the gathering hint")
 	neighbor.inventory.stone=10
 	expect(world.act("picnic-neighbor","share-stone","donate",Vector2i(40,29)).ok,"Neighbor opens the bridge")
 	app.session._send_snapshot(1)
 	await process_frame
 	await process_frame
 	var serve:=app.modal.find_child("BoardServePicnic",true,false) as Button
+	var picnic_hint:=app.modal.find_child("PicnicContributionHint",true,false) as Label
 	expect(serve!=null and serve.disabled and serve.text=="先到小石灶準備料理","Empty bag points to the stove")
 	person.inventory.soup=1
 	app.session._send_snapshot(1)
 	expect(serve!=null and not serve.disabled,"A partial donation is available")
-	neighbor.inventory.soup=2
+	expect(picnic_hint.text.contains("%s ×1"%World.NAMES.soup) and picnic_hint.text.contains(World.NAMES.bread),
+		"Partial contribution previews one soup and names the remaining dishes")
+	var current_board:Control=app.modal
+	app.session.rates[1].clear()
+	serve.pressed.emit()
+	expect(app.modal==current_board and world.state.picnic_materials.soup==1 and not world.state.picnic,
+		"Donating one soup leaves the same board open and the project incomplete")
+	person.inventory.soup=1
+	neighbor.inventory.soup=1
 	expect(world.act("picnic-neighbor","share-soup","picnic",Vector2i(40,29)).ok,"Neighbor contributes soup through World")
 	app.session._send_snapshot(1)
 	var soup_row:Node=app.modal.find_child("PicnicSoup",true,false)
 	expect(soup_row.find_child("ProgressCaption",true,false).text.ends_with("2 / 2") and soup_row.find_child("ProgressMeter",true,false).value==2,
 		"Open board updates both the soup count and meter")
 	expect(serve!=null and serve.disabled,"Extra soup is not useful when only bread is missing")
+	expect(picnic_hint.text=="桌上還缺 %s ×1"%World.NAMES.bread,"Remote soup completion leaves only the bread hint")
 	person.inventory.bread=1
 	app.session._send_snapshot(1)
 	expect(serve!=null and not serve.disabled,"Bread enables the final contribution")
-	neighbor.inventory.bread=1
+	neighbor.inventory.bread=3
+	var seeds_before:=int(neighbor.inventory.radish_seed)
 	expect(world.act("picnic-neighbor","share-bread","picnic",Vector2i(40,29)).ok,"Neighbor completes the picnic through World")
+	expect(neighbor.inventory.bread==2 and neighbor.inventory.radish_seed==seeds_before+3,
+		"Only the missing bread is consumed and the completion reward is granted once")
+	expect(not world.act("picnic-neighbor","extra-bread","picnic",Vector2i(40,29)).ok
+		and neighbor.inventory.bread==2 and neighbor.inventory.radish_seed==seeds_before+3,
+		"A second delivery cannot consume leftovers or repeat the completion reward")
 	app.session._send_snapshot(1)
 	var bread_row:Node=app.modal.find_child("PicnicBread",true,false)
 	expect(bread_row.find_child("ProgressCaption",true,false).text.ends_with("1 / 1") and bread_row.find_child("ProgressMeter",true,false).value==1,
@@ -156,6 +177,8 @@ func run()->void:
 		expect(not app.modal.find_child(entry,true,false).text.contains("野餐後開放"),"Remote completion updates "+entry)
 	await capture(app,"picnic-live")
 	await verify_board_scales(app,world)
+	await verify_story_route(app,world)
+	await verify_mill_site(app,world)
 	app.queue_free()
 	await process_frame
 	print("CHAPTER_UI_TEST checks=%d failures=%d"%[checks,failures])
@@ -197,6 +220,168 @@ func verify_board_scales(app,world:World)->void:
 					await create_timer(0.3).timeout
 					await capture(app,"board-xl")
 
+func verify_story_route(app,world:World)->void:
+	world.state[World.STONE_WORKSHOP.PROJECT_KEY]=World.STONE_WORKSHOP.fresh_project()
+	world.state.public_kitchen=World.PUBLIC_KITCHEN.fresh()
+	world.state.chapter_one.watered=true
+	world.state.picnic=true
+	app.session._send_snapshot(1)
+	app._journal()
+	var bookmark:=app.modal.find_child("StoryRouteBookmark",true,false) as Button
+	expect(bookmark!=null,"The island journal links to the story route")
+	if bookmark==null:return
+	bookmark.pressed.emit()
+	var route:Control=app.modal
+	var opening:=route.find_child("StoryRouteStatus0",true,false) as Label
+	var second:=route.find_child("StoryRouteStatus1",true,false) as Label
+	var third:=route.find_child("StoryRouteStatus2",true,false) as Label
+	var fourth:=route.find_child("StoryRouteStatus3",true,false) as Label
+	var fifth:=route.find_child("StoryRouteStatus4",true,false) as Label
+	expect(opening.text.contains("已完成") and not second.text.contains("已完成"),"The opening picnic completes only the first chapter")
+	world.state.public_kitchen.opened=true
+	app.session._send_snapshot(1)
+	expect(app.modal==route and second.text.contains("接著到公告板修河灣橋"),"The same open page updates when the kitchen opens")
+	world.state[World.STONE_WORKSHOP.PROJECT_KEY].done=true
+	world.state.mine_depths.hoist=true
+	world.state.mine_depths.unlocked=World.MINES.HOIST_DEPTH
+	world.state.dock_stage=1
+	app.session._send_snapshot(1)
+	expect(second.text.contains("已完成"),"The second chapter requires the bridge and kitchen")
+	expect(third.text.contains("升降台已修好") and third.text.contains("待修舊磨坊"),"The hoist is tracked separately from mill restoration")
+	expect(fourth.text.contains("接著準備小船") and not fifth.text.contains("已完成"),"The pier, boat, and festival are distinct milestones")
+	for size in [Vector2i(1024,640),Vector2i(1280,800)]:
+		root.size=size
+		app._layout_preview()
+		await process_frame
+		await process_frame
+		var scroll:=route.find_child("ModalScroll",true,false) as ScrollContainer
+		var content:=scroll.get_node("ModalContent") as VBoxContainer
+		expect(Rect2(Vector2.ZERO,Vector2(size)).encloses(route.get_global_rect()) and content.size.x<=scroll.size.x,"The route fits the viewport at "+str(size))
+		var back_button:=route.find_child("StoryRouteBack",true,false) as Button
+		expect(back_button!=null and scroll.get_global_rect().encloses(back_button.get_global_rect()),"All five chapters and their links fit without scrolling at "+str(size))
+	await capture(app,"story-route")
+	var mill:=button_at(route,"磨坊")
+	expect(mill!=null,"Chapter three links to the public mill")
+	if mill==null:return
+	mill.pressed.emit()
+	var mill_page:Control=app.modal
+	var repair:=button_at(mill_page,"交材料修磨坊")
+	expect(repair!=null and mill_page.get_meta("mill_project").repair.visible,"The restoration shows shared material progress")
+	var actor:Dictionary=world.state.players.tester
+	actor.x=40.5
+	actor.y=30.5
+	for item:String in World.MILL_RESTORATION.COST:
+		actor.inventory[item]=World.MILL_RESTORATION.COST[item]
+	app.session._send_snapshot(1)
+	if not app.arg_value("qa-capture","").is_empty():await create_timer(0.3).timeout
+	await capture(app,"mill-restoration")
+	if repair!=null:repair.pressed.emit()
+	expect(app.modal==mill_page and mill_page.get_meta("mill_project").service.visible,"Repair switches the same page to working milling")
+	actor.inventory["wheat"]=2
+	app.session._send_snapshot(1)
+	var flour:=mill_page.find_child("PublicMill_flour",true,false) as Button
+	expect(flour!=null and not flour.disabled,"A player can send wheat to the restored mill")
+	if flour!=null:flour.pressed.emit()
+	var collect:=mill_page.find_child("PublicMillClaim",true,false) as Button
+	expect(collect!=null and collect.disabled and actor.get(World.MILL_RESTORATION.JOB,{}).get("kind")=="flour","The flour control starts the proper recipe and waits")
+	app.session.peers[2]="picnic-neighbor"
+	var guest_view:Dictionary=app.session._snapshot_data(2,app.session._view_plan(2))
+	app.session.peers.erase(2)
+	var actor_id:="tester".sha256_text().left(16)
+	expect(guest_view.players.has(actor_id) and not guest_view.players.get(actor_id,{}).has(World.MILL_RESTORATION.JOB),"A nearby islander receives the shared repair but not the other player's milling job")
+	expect(World.MILL_RESTORATION.repaired(guest_view),"The same repaired project is visible to the other islander")
+	await capture(app,"mill-working")
+	expect(world.step(float(World.INDUSTRY.PROCESS.flour.time),true),"Advance the milling clock")
+	app.session._send_snapshot(1)
+	expect(collect!=null and not collect.disabled,"After the timer the owner can collect")
+	if collect!=null:collect.pressed.emit()
+	expect(int(actor.inventory.get("flour",0))==1,"Collecting from the UI gives the normal flour yield")
+	var close_mill:=button_at(mill_page,"返回")
+	if close_mill!=null:close_mill.pressed.emit()
+	route=app.modal
+	third=route.find_child("StoryRouteStatus2",true,false)
+	fourth=route.find_child("StoryRouteStatus3",true,false)
+	fifth=route.find_child("StoryRouteStatus4",true,false)
+	expect(third.text.contains("已完成"),"Repair and hoist together complete chapter three")
+	world.state.dock_stage=2
+	world.state.festival_story_open=true
+	app.session._send_snapshot(1)
+	expect(fourth.text.contains("已完成") and fifth.text.contains("可以重看"),"The boat and festival reflect the shared saved milestones")
+	var replay:=button_at(route,"重看風鈴節")
+	expect(replay!=null and not replay.disabled,"The completed story links to the real replay")
+	if replay==null:return
+	replay.pressed.emit()
+	var back:=button_at(app.modal,"返回五章故事")
+	expect(back!=null and app.modal.find_child("FestivalScenePage",true,false)!=null,"The replay returns to the story route")
+	if back!=null:back.pressed.emit()
+
+func verify_mill_site(app,world:World)->void:
+	const Mill=World.MILL_RESTORATION
+	var actor:Dictionary=world.state.players.tester
+	expect(Mill.site_clear(world.state) and world.blocked(Mill.SITE.position),"The empty village parcel contains a solid mill")
+	expect(world.protected(Mill.SITE.position) and world.protected(Mill.APPROACH),"Builds cannot cover the mill or its approach")
+	expect(not world.blocked(Mill.DOOR) and not world.blocked(Mill.APPROACH),"The door and its approach remain walkable")
+	app._close_modal()
+	actor.x=Mill.APPROACH.x+0.5
+	actor.y=Mill.APPROACH.y+0.5
+	world.move_player("tester",Vector2.UP,0.2)
+	expect(actor.y<float(Mill.APPROACH.y),"A player can walk through the door from its approach")
+	world.move_player("tester",Vector2.UP,0.45)
+	expect(actor.y>float(Mill.DOOR.y),"The next tile is solid and stops the player")
+	app.session._send_snapshot(1)
+	expect(app.session.snapshot.get(Mill.SITE_VISIBLE,false),"The server publishes the physical site")
+	expect(app.view.interaction_focus()==Mill.POINT,"The doorway is the player's interaction target")
+	if not app.arg_value("qa-capture","").is_empty():await create_timer(0.4).timeout
+	await capture(app,"mill-doorway")
+	app._interact()
+	expect(is_instance_valid(app.modal) and app.modal.get_meta("mill_project",{}).get("target")==Mill.DOOR,"The normal E interaction opens the physical mill")
+	var feed:=app.modal.find_child("PublicMill_feed",true,false) as Button
+	var results:Array[Dictionary]=[]
+	var listener:=func(_sequence:int,action:String,result:Dictionary):
+		if action==Mill.SERVICE:results.append(result)
+	app.session.action_completed.connect(listener)
+	actor.inventory["sweet_corn"]=1
+	actor.inventory["fiber"]=2
+	app.session._send_snapshot(1)
+	expect(feed!=null and not feed.disabled,"The player can send feed ingredients in from the doorway")
+	if feed!=null:feed.pressed.emit()
+	expect(actor.get(Mill.JOB,{}).get("kind")=="feed","The host accepts the recipe at the actual doorway")
+	expect(results.size()==1 and results[0].ok and not results[0].get("mill_claimed",false),"The host notifies the client that milling started")
+	expect(app.session.snapshot.get(Mill.BUSY,false),"The active batch marks the mill working in the world")
+	app.session.peers[2]="picnic-neighbor"
+	var neighbor_view:Dictionary=app.session._snapshot_data(2,app.session._view_plan(2))
+	app.session.peers.erase(2)
+	var actor_id:="tester".sha256_text().left(16)
+	expect(neighbor_view.get(Mill.BUSY,false) and not neighbor_view.players.get(actor_id,{}).has(Mill.JOB),"Other islanders see motion without receiving the owner's job data")
+	app._close_modal()
+	if not app.arg_value("qa-capture","").is_empty():await create_timer(0.35).timeout
+	await capture(app,"mill-running")
+	expect(world.step(float(World.INDUSTRY.PROCESS.feed.time),true),"World time completes the owner's queued batch")
+	app.session._send_snapshot(1)
+	expect(not app.session.snapshot.get(Mill.BUSY,false) and actor.has(Mill.JOB),"The wheel stops when the batch is ready and its output remains private")
+	await capture(app,"mill-ready")
+	var legacy_cell:=World.key(Mill.SITE.position)
+	world.state.objects[legacy_cell]={"type":"chest","owner":"tester","items":{}}
+	app.session._send_snapshot(1)
+	expect(not app.session.snapshot.get(Mill.SITE_VISIBLE,true) and world.state.objects.has(legacy_cell),"A legacy building keeps its lot and suppresses the public facade")
+	expect(not world.act("tester","mill-legacy-door",Mill.SERVICE,Mill.DOOR,"claim").ok,"A blocked legacy door does not become a hidden interaction")
+	actor.x=40.5
+	actor.y=30.5
+	app.session.perform(Mill.SERVICE,Mill.BOARD,"claim")
+	expect(results.size()==2 and results[1].ok and results[1].get("mill_claimed",false),"The board claims the same job and the host signals the pickup sound")
+	app.session.action_completed.disconnect(listener)
+	app.session._send_snapshot(1)
+	app._map_menu()
+	var route_button:=app.modal.find_child("MillWalkRoute",true,false) as Button
+	expect(route_button!=null,"The local map offers a walking route to the mill")
+	if route_button!=null:route_button.pressed.emit()
+	var status:=app.modal.find_child("HomeWalkRouteStatus",true,false) as Label
+	expect(status!=null and status.text.contains("公告板・磨坊代辦"),"The legacy route leads to the board")
+	world.state.objects.erase(legacy_cell)
+	app.session._send_snapshot(1)
+	var cells:Array=app.map_view.home_route_cells
+	expect(not cells.is_empty() and cells.back()==Mill.APPROACH,"The live map updates the route to the walkable mill approach")
+
 func capture(app,name:String)->void:
 	var target:String=app.arg_value("qa-capture","")
 	if target.is_empty():return
@@ -208,4 +393,3 @@ func capture(app,name:String)->void:
 	await process_frame
 	await RenderingServer.frame_post_draw
 	expect(root.get_texture().get_image().save_png(target.path_join(name+"-"+size+".png"))==OK,"Saved rendered fixture")
-

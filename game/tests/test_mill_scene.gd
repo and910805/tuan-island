@@ -10,6 +10,10 @@ class MillCanvas extends View:
 var surface:SubViewport
 var mill_canvas:MillCanvas
 var extra_done:=false
+func build_mill()->void:
+	world.state.players[HOST].inventory.woodwork_parts=4
+	act("build",MILL,"mill:0")
+	expect(World.INDUSTRY.is_new_mill(world.state.objects.get(World.key(MILL),{})),"the fixture builds the current three-by-three mill")
 func mill_pixels(device:Dictionary,now:float,t:float,quiet:bool)->Image:
 	mill_canvas.device=device.duplicate(true)
 	mill_canvas.data={"time":now}
@@ -41,8 +45,12 @@ func scene_frame(name:String,t:float,quiet:bool)->void:
 			focused=true
 			expect(viewport.encloses(placement.rect),"native focused label remains inside viewport")
 			expect(not body.intersects(placement.rect),"native focused label avoids player body")
-			var mill_rect:=Rect2(app.view.screen(Vector2(MILL))+Vector2(0,-24),Vector2(34,56))
+			var object_data:=current_mill()
+			var mill_size:=Vector2(96,112) if World.INDUSTRY.is_new_mill(object_data) else Vector2(32,48)
+			var mill_rect:=Rect2(app.view.screen(Vector2(MILL)).round()+Vector2(0,-24),mill_size+Vector2(2,8))
+			expect(app.session.snapshot.objects.has(placement.id) and World.station_anchor(app.session.snapshot.objects,World.cell(placement.id))==MILL,"native prompt targets the mill from its entrance tile (focused %s)"%placement.id)
 			expect(not mill_rect.intersects(placement.rect),"native focused label keeps mill and progress visible")
+			expect(absf(mill_rect.get_center().x-placement.rect.get_center().x)<=96.0,"native mill prompt remains close to its building")
 			for hud_rect in app.view.label_avoid_rects:
 				var region:=Rect2(hud_rect.position/app.view.view_zoom(),hud_rect.size/app.view.view_zoom())
 				expect(not region.intersects(placement.rect),"native focused label avoids visible HUD")
@@ -57,6 +65,13 @@ func shot(name:String)->void:
 	mill_canvas=MillCanvas.new();surface.add_child(mill_canvas)
 	mill_canvas.set_process(false)
 	var idle:=current_mill()
+	var entrance:=MILL+World.INDUSTRY.mill_entrance_offset(World.INDUSTRY.mill_facing(idle))
+	var position:=Vector2(entrance)+Vector2(0.5,0.5)
+	expect(world.can_stand(position),"mill entrance is walkable")
+	var player:Dictionary=world.state.players[HOST]
+	player.x=position.x;player.y=position.y
+	await publish_snapshot()
+	app.view._process(0.2)
 	var idle_a:=await mill_pixels(idle,float(world.state.time),0.0,false)
 	var idle_b:=await mill_pixels(idle,float(world.state.time),0.45,false)
 	expect(idle_a.get_data()==idle_b.get_data(),"idle mill has no phantom work animation")

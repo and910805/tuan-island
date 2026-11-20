@@ -1,0 +1,9 @@
+# 石殼蟹像素圖集
+
+《糰糰島》原創礦洞生物圖集，由 Codex 內建圖像生成工具製作。石殼是一塊深藍綠礦石，搭配兩隻銅紅色小螯。四張畫格用相同腳點和比例，讓牠伸眼或橫移時保持同一塊石殼的外形。
+
+64×80 透明 PNG，四格各 32×40。由左至右、由上至下依序是縮起、探眼、橫移、放鬆。每格腳點為 (16,38)。原圖及放大預覽在 work/stone-crab-art，裁切流程與石像共用。
+
+生成提示如下。
+
+Make one original pixel-art 2×2 transparent animation sprite sheet for a warm Taiwanese island life-simulation game. Character: 'Stone-shelled Crab' (石殼蟹), a tiny gentle cave crab carrying exactly one large dark mineral chunk on its back. It stays readable at native 32×40 px. Low wide body with two small rounded terracotta copper claws, four folded little legs visible from front, and two cute tiny eyes on short stalks; the ore shell is a single dominant angular smoky blue-green and slate rock mass with two muted teal calcite gleams, no crystal crown. All four pose silhouettes use the same camera: centered 3/4 top-down view from the south, facing screen-bottom, feet grounded at the same baseline; identical shell facets, eyes, and colors across cells. Upper left tucked asleep, with claws and eyes withdrawn slightly and stone dominant; upper right alert idle, eyes visible beneath stone, claws balanced. Lower left ready to sidestep, one claw forward and tucked opposing side, looking sideways by turning eye stalks only. Lower right relaxed, warm short eye smile and claws lowered, ore shell still physically on its back. Sprite animation should appear cohesive, with restrained changes; large intentional pixel clusters, sharp plum-brown 1 pixel equivalent outline, slightly amber edge light, limited palette. Exactly four distinct fully enclosed sprites in equal quadrants, centered with transparent outer padding and generous clear central gutters, crisp native nearest-neighbor pixel intent. Genuine alpha everywhere outside the figures, no cast shadow, no labels or panel dividers, no ground texture, light effects, objects, additional crystals, or UI.

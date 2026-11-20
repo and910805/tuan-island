@@ -78,6 +78,20 @@ func run() -> void:
 	feedback.reset()
 	expect(feedback.active("remote", 21.0).is_empty(), "reset clears visual events")
 
+	var projected:Dictionary={"time":22.0,"view_rect":[0,0,12,12],"view_full":false,"crops":{
+		"38,30":{"kind":"radish","growth":89.0,"owner":"remote"},
+		"39,30":{"kind":"radish","growth":89.0,"owner":"local"},
+		"4,5":{"kind":"radish","growth":89.0,"owner":"remote"}}}
+	var expanded:=projected.duplicate(true)
+	expanded.time=23.0
+	expanded.erase("view_rect")
+	for plot:Dictionary in expanded.crops.values():plot.growth=90.0
+	feedback.observe({},projected,22.0,"local")
+	feedback.observe(projected,expanded,23.0,"local")
+	expect(feedback.ripening_age("38,30",23.0)<0,"Expanding world coverage never replays an unknown remote ripening")
+	expect(feedback.ripening_age("4,5",23.0)==0 and feedback.ripening_age("39,30",23.0)==0,
+		"Continuously observed crops and the player's own crops still show their ripening")
+
 	var view = View.new()
 	root.add_child(view)
 	view.set_process(false)

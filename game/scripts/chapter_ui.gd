@@ -7,6 +7,7 @@ const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
 const Shell=preload("res://scripts/life_ui_shell.gd")
 const Tasks=preload("res://scripts/life_ui_tasks.gd")
 const Items=preload("res://scripts/inventory_item_art.gd")
+const Layouts=preload("res://scripts/workshop_layouts.gd")
 const STEPS:=["grow","ship","works","water","meal"]
 const ICONS:=["radish","wood","stone","sprinkler_kit","soup"]
 
@@ -88,6 +89,10 @@ static func refresh(app) -> void:
 		details.name="ChapterDetails"
 		details.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		body.add_child(details)
+	if phase=="water":
+		var guide:Button=app.button("看阿榆的入門接線圖",func():app._workshop_guide(Layouts.STARTER_IRRIGATION))
+		guide.name="ChapterStarterIrrigationGuide"
+		body.add_child(guide)
 	if phase=="meal":add_picnic_recipes(app,body,step.meal_counts,step.meal_delivered)
 	var footer:=HBoxContainer.new()
 	var shell:Node=content.get_parent().get_parent()
@@ -142,9 +147,9 @@ static func add_first_crop(app,body:VBoxContainer) -> void:
 	var heading:Label=app.label("第一件事・種一株蘿蔔",18)
 	heading.name="FirstCropHeading"
 	body.add_child(heading)
-	var move:Label=app.label("用 %s 走到小栗種子攤東北邊，木樁圍起的那塊田是她留給你的。背包已經有蘿蔔種子。"%app.movement_hint(),15)
-	move.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	body.add_child(move)
+	var plot:Label=app.label("小栗留給你的田在種子攤東北邊，四周有木樁。背包裡已經有蘿蔔種子。",15)
+	plot.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(plot)
 	var instructions:=VBoxContainer.new()
 	instructions.name="FirstCropInstructions"
 	body.add_child(instructions)

@@ -6,10 +6,14 @@ const World=preload("res://scripts/world.gd")
 const WeatherArt=preload("res://scripts/weather_art.gd")
 const Forecast=preload("res://scripts/weather_forecast.gd")
 const FORECAST_TIP_WIDTH:=360
+const SHORTCUT_WIDTH:=58
+const SHORTCUT_COMPACT_WIDTH:=44
 ## Keyboard path to the read-only forecast: Godot's existing ui_focus_prev
 ## (Shift+Tab). Plain Tab stays the (rebindable) inventory key.
 const FORECAST_HOVER_HINT:="鍵盤：Shift+Tab 開關這張預報"
 const FORECAST_TIP_HINT:="Shift+Tab／Esc 收起"
+const MINE_NOTE_ART:=preload("res://assets/ui-life/mine-notebook-32.png")
+const MINE_ENERGY_WARNING:=25
 const FOREST_TOOLS:={"axe":preload("res://assets/ui-life/forest-axe.png"),"pick":preload("res://assets/ui-life/forest-pick.png")}
 const TOOL_IDS=["hoe","seed","water","harvest","axe","pick","build","remove"]
 const TOOL_NAMES=["鋤頭","播種","澆水","採收","斧頭","十字鎬","建造","拆除"]
@@ -54,15 +58,17 @@ static func icon_button(app,id:String,title:String,key:String,callback:Callable,
 		var badge:=Label.new()
 		badge.name="KeyBadge"
 		badge.text=key
-		badge.position=Vector2(5,1)
-		badge.size.x=extent-10
+		badge.position=Vector2(4,3)
+		badge.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		badge.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 		badge.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-		badge.add_theme_font_size_override("font_size",12)
-		badge.add_theme_color_override("font_color",Color("fff5df"))
-		badge.add_theme_color_override("font_outline_color",Color("583c32"))
-		badge.add_theme_constant_override("outline_size",4)
+		badge.add_theme_font_size_override("font_size",13)
+		badge.add_theme_color_override("font_color",Color("fff4dc"))
+		badge.add_theme_stylebox_override("normal",Art.surface(Color("3e4436"),Color("8f7d55"),4.0,0.0))
 		badge.mouse_filter=Control.MOUSE_FILTER_IGNORE
 		result.add_child(badge)
+		badge.minimum_size_changed.connect(func():fit_key_badge(badge,result.custom_minimum_size.x-8),CONNECT_DEFERRED)
+		fit_key_badge(badge,extent-8)
 	result.mouse_entered.connect(func():
 		if app.sound and not app.sound.reduced_motion:
 			var tween:=result.create_tween()
@@ -70,6 +76,45 @@ static func icon_button(app,id:String,title:String,key:String,callback:Callable,
 	)
 	result.mouse_exited.connect(func():art.modulate=Color.WHITE)
 	return result
+
+static func fit_key_badge(badge:Label,available:float)->void:
+	if not is_instance_valid(badge) or not badge.is_inside_tree():return
+	var font:=badge.get_theme_font("font")
+	var font_size:=badge.get_theme_font_size("font_size")
+	var width:=font.get_string_size(badge.text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x
+	badge.size=Vector2(clampf(ceilf(width)+10.0,20.0,available),ceilf(font.get_height(font_size))+2.0)
+
+static func shortcut_button(app,id:String,title:String,action:String,callback:Callable)->Button:
+	var shortcut:=bound_button(app,id,title,action,callback,SHORTCUT_WIDTH) if action!="ui_cancel" else icon_button(app,id,title,"Esc",callback,SHORTCUT_WIDTH)
+	shortcut.custom_minimum_size.y=82
+	var art:=shortcut.get_node("ToolArt") as TextureRect
+	art.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	art.position=Vector2(13,27)
+	art.size=Vector2(32,32)
+	var caption:=Label.new()
+	caption.name="ShortcutTitle"
+	caption.text=title
+	caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	caption.add_theme_font_size_override("font_size",16)
+	caption.add_theme_color_override("font_color",Color("303e2e"))
+	caption.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	shortcut.add_child(caption)
+	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	caption.offset_bottom=-2
+	var key:=shortcut.get_node("KeyBadge") as Label
+	var fit_caption:=func():
+		if not is_instance_valid(caption) or not is_instance_valid(shortcut):return
+		var height:=maxf(22.0,caption.get_combined_minimum_size().y)
+		var key_height:=key.get_theme_font("font").get_height(key.get_theme_font_size("font_size"))
+		art.position.y=maxf(27.0,ceilf(key_height)+8.0)
+		caption.offset_top=-height-2.0
+		shortcut.custom_minimum_size.y=art.position.y+35.0+height
+		app._layout_preview.call_deferred()
+	caption.minimum_size_changed.connect(fit_caption,CONNECT_DEFERRED)
+	key.minimum_size_changed.connect(fit_caption,CONNECT_DEFERRED)
+	fit_caption.call()
+	return shortcut
 
 static func text(app,value:String,size:int=16) -> Label:
 	var result:Label=app.label(value,size)
@@ -104,6 +149,30 @@ static func make_hud(app) -> void:
 	tracker.add_theme_stylebox_override("panel",Art.badge_style())
 	app.hud.add_child(tracker)
 	app.preview_tracker=tracker
+	# 礦區專用：礦務隨身記預設收成一枚小圖示，點一下才在圖示下方展開同一張追蹤卡。
+	var mine_icon:=icon_button(app,"letter","礦務隨身記",
+		"",func():toggle_mine_note(app),48)
+	mine_icon.name="MineNoteIcon"
+	mine_icon.tooltip_text="礦務隨身記（點一下展開或收起）"
+	(mine_icon.get_node("ToolArt") as TextureRect).texture=MINE_NOTE_ART
+	mine_icon.focus_mode=Control.FOCUS_NONE # 不吃空白／Enter，也不與任何快捷鍵搶焦點
+	mine_icon.position=tracker.position
+	mine_icon.size=Vector2(48,48)
+	var stamina:=Label.new()
+	stamina.name="LowMineEnergy"
+	stamina.position=Vector2(23,22)
+	stamina.size=Vector2(23,23)
+	stamina.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	stamina.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	stamina.add_theme_font_size_override("font_size",13)
+	stamina.add_theme_color_override("font_color",Color("fff1cf"))
+	stamina.add_theme_stylebox_override("normal",Art.surface(Color("713525"),Color("e2a663"),1.0,0.0))
+	stamina.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	stamina.hide()
+	mine_icon.add_child(stamina)
+	mine_icon.hide()
+	app.hud.add_child(mine_icon)
+	app.preview_controls.append(mine_icon)
 	var note:=VBoxContainer.new()
 	tracker.add_child(note)
 	var heading:=HBoxContainer.new()
@@ -111,6 +180,7 @@ static func make_hud(app) -> void:
 	heading.add_child(picture(icon("letter"),24))
 	var toggle:Button=app.button("渡口的一封信  ▼",func():
 		app.objective.visible=not app.objective.visible
+		if bool(tracker.get_meta("tea_compact",false)):compact_tracker(app,true)
 		tracker.size.y=0
 	)
 	toggle.name="TrackerHeading"
@@ -123,7 +193,12 @@ static func make_hud(app) -> void:
 	note.add_child(app.objective)
 	var open:Button=app.button("看看下一步  →",func():
 		var onboarding=preload("res://scripts/wangan_opening_ui.gd")
-		if not onboarding.personal_step(app).is_empty():onboarding.show_personal_help(app)
+		if app._in_cart_gallery():app._party_cart_menu()
+		elif app._beach_shovel_active():app._beach_treasure_menu()
+		elif app._lost_chicks_active():app._lost_chicks_menu()
+		elif app._stroll_tracking():app._stroll_menu()
+		elif app._cooking_relay_active():app._cooking_relay_menu()
+		elif not onboarding.personal_step(app).is_empty():onboarding.show_personal_help(app)
 		elif app._harvest_tracking():app._harvest_menu() # T071 豐收接力（已加入進行中的一輪）
 		elif app._fishmeet_tracking():app._fishmeet_menu() # T071 河岸釣魚會（已加入進行中的一輪）
 		elif app._showcase_tracking():app._showcase_menu() # T071 家園布置題（已加入進行中的一輪）
@@ -246,6 +321,14 @@ static func make_hud(app) -> void:
 	harvester.name="HarvesterSlot"
 	harvester.hide()
 	row.add_child(harvester)
+	# 第一株作物指引：只在指引期間顯示的「所有工具」切換鈕（只存在於這個用戶端）。
+	var all_tools:Button=app.button("所有\n工具",func():toggle_all_tools(app))
+	all_tools.name="AllToolsToggle"
+	all_tools.custom_minimum_size=Vector2(76,72)
+	all_tools.add_theme_font_size_override("font_size",15)
+	all_tools.tooltip_text="展開或收合完整工具列"
+	all_tools.hide()
+	row.add_child(all_tools)
 	app.selected_label=app.label("",15)
 	app.selected_label.name="ToolHint"
 	app.selected_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
@@ -258,9 +341,10 @@ static func make_hud(app) -> void:
 	shortcuts.name="LifeShortcuts"
 	shortcuts.add_theme_constant_override("separation",6)
 	app.hud.add_child(shortcuts)
-	shortcuts.add_child(bound_button(app,"backpack","背包","inventory",app._inventory,48))
-	shortcuts.add_child(bound_button(app,"journal","島民手帳","journal",app._journal,48))
-	shortcuts.add_child(icon_button(app,"settings","生活選單","Esc",app._pause_menu,48))
+	shortcuts.minimum_size_changed.connect(app._layout_preview.call_deferred)
+	shortcuts.add_child(shortcut_button(app,"backpack","背包","inventory",app._inventory))
+	shortcuts.add_child(shortcut_button(app,"journal","手帳","journal",app._journal))
+	shortcuts.add_child(shortcut_button(app,"settings","選單","ui_cancel",app._pause_menu))
 	app.preview_controls.append_array([tracker,top,toolbar,shortcuts])
 
 static func bound_button(app,id:String,title:String,action:String,callback:Callable,extent:int=72) -> Button:
@@ -276,18 +360,184 @@ static func refresh_binding_hints(app) -> void:
 		if not node.has_meta("binding_action"):continue
 		var key:String=app.binding_label(node.get_meta("binding_action"))
 		var badge:=node.get_node_or_null("KeyBadge") as Label
-		if badge:badge.text="—" if key=="未設定" else key
+		if badge:
+			badge.text="—" if key=="未設定" else key
+			fit_key_badge(badge,node.custom_minimum_size.x-8)
 		node.tooltip_text="%s [%s]"%[node.get_meta("binding_title"),key]
+
+## 工具列寬度＝目前可見子節點的最小寬度加間距與外框，所以任何顯示組合都會置中。
+static func toolbar_width_for(toolbar:Control) -> int:
+	var row:=toolbar.get_child(0) as BoxContainer
+	var total:=0.0
+	var count:=0
+	for child in row.get_children():
+		var item:=child as Control
+		if item==null or not item.visible:continue
+		total+=item.get_combined_minimum_size().x
+		count+=1
+	if count>1:total+=float(row.get_theme_constant("separation"))*float(count-1)
+	return int(ceil(total+toolbar.get_theme_stylebox("panel").get_minimum_size().x))
+
+## 第一株作物各步驟累積解鎖的工具；空陣列代表不在指引中。
+static func guided_ids(step_id:String) -> Array:
+	match step_id:
+		"find","till":return ["hoe"]
+		"buy_seed","sow":return ["hoe","seed"]
+		"water","wait":return ["hoe","seed","water"]
+		"harvest","ship":return ["hoe","seed","water","harvest"]
+	return []
+
+## 「所有工具」展開狀態只記在這個執行中的用戶端（掛在工具列節點上，依玩家 id 分開），不送伺服器、不存檔。
+static func guided_overrides(toolbar:Control) -> Dictionary:
+	if not toolbar.has_meta("guided_expanded"):toolbar.set_meta("guided_expanded",{})
+	return toolbar.get_meta("guided_expanded")
+
+static func toggle_all_tools(app) -> void:
+	if not is_instance_valid(app.preview_toolbar):return
+	var overrides:=guided_overrides(app.preview_toolbar)
+	var key:=str(app.session.own_id)
+	overrides[key]=not bool(overrides.get(key,false))
+	app._refresh_hud()
+
+## 依第一株作物步驟顯示／收起基本工具與釣竿；回傳可見組合是否改變（需要重排）。
+## 目前選取的工具永遠可見；快捷鍵與手把仍直接呼叫 _select_tool，不受按鈕顯示影響。
+static func guided_toolbar(app,step:Dictionary) -> bool:
+	var toolbar:=app.preview_toolbar as Control
+	if toolbar==null:return false
+	var unlocked:Array=guided_ids(str(step.get("id","")))
+	var guided:=not unlocked.is_empty()
+	var expanded:bool=guided and bool(guided_overrides(toolbar).get(str(app.session.own_id),false))
+	var narrowed:=guided and not expanded
+	var changed:=false
+	for index in mini(TOOL_IDS.size(),app.tool_buttons.size()):
+		var button:Button=app.tool_buttons[index]
+		var show:bool=not narrowed or TOOL_IDS[index] in unlocked or str(app.selected)==TOOL_IDS[index]
+		if button.visible!=show:
+			button.visible=show
+			changed=true
+	var rod:=toolbar.find_child("FishingSlot",true,false) as Button
+	if rod:
+		var show_rod:=not narrowed or str(app.selected)=="fish"
+		if rod.visible!=show_rod:
+			rod.visible=show_rod
+			changed=true
+	var toggle:=toolbar.find_child("AllToolsToggle",true,false) as Button
+	if toggle:
+		var label:="收合\n工具" if expanded else "所有\n工具"
+		if toggle.text!=label:
+			toggle.text=label
+			changed=true
+		if toggle.visible!=guided:
+			toggle.visible=guided
+			changed=true
+	return changed
+
+## Fixed public tea room only: collapse the quest note to its clickable header
+## (expand it to reach the objective and the guide button) and restore the
+## outdoor state on exit. Runs after every refresh, so it never fights text writes.
+static func compact_tracker(app,active:bool) -> void:
+	var tracker:=app.preview_tracker as Control
+	if not is_instance_valid(tracker) or not is_instance_valid(app.objective):return
+	sync_mine_note(app)
+	var next:=tracker.find_child("TrackerNext",true,false) as Button
+	var heading:=tracker.find_child("TrackerHeading",true,false) as Button
+	var was:=bool(tracker.get_meta("tea_compact",false))
+	if active:
+		if not was:
+			tracker.set_meta("tea_compact",true)
+			tracker.set_meta("tea_saved_objective",app.objective.visible)
+			tracker.set_meta("tea_saved_next",next.visible if next else true)
+			app.objective.visible=false
+		if heading:heading.text="任務與指南  "+("▼" if app.objective.visible else "▸")
+		if next and next.visible!=app.objective.visible:next.visible=app.objective.visible
+		tracker.custom_minimum_size.x=150
+		tracker.size.x=150
+		tracker.size.y=0
+	elif was:
+		tracker.set_meta("tea_compact",false)
+		app.objective.visible=bool(tracker.get_meta("tea_saved_objective",true))
+		if next:next.visible=bool(tracker.get_meta("tea_saved_next",true))
+		tracker.custom_minimum_size.x=226
+		tracker.size=Vector2(226,0)
+
+static func mine_note_active(app) -> bool:
+	return is_instance_valid(app.preview_tracker) and bool(app.preview_tracker.get_meta("mine_note",false))
+
+## 礦區（mine_*）：礦務隨身記收成圖示。進礦場預設收起，玩家的展開／收起選擇
+## 在各礦層與重複的 HUD 更新之間保留；離開礦區才還原成平常的追蹤卡。
+static func sync_mine_note(app) -> void:
+	var tracker:=app.preview_tracker as Control
+	var icon:=app.hud.get_node_or_null("MineNoteIcon") as Button
+	if not is_instance_valid(tracker) or icon==null or not is_instance_valid(app.objective):return
+	var mine:=str(app.session.snapshot.get("region_id","home")).begins_with("mine_")
+	var was:=bool(tracker.get_meta("mine_note",false))
+	if mine and not was:
+		tracker.set_meta("mine_note",true)
+		tracker.set_meta("mine_open",false)
+		tracker.set_meta("mine_saved_objective",app.objective.visible)
+		app.objective.visible=true # 展開後要看得到體力、路線與勘查文字
+		set_note_visible(app,tracker,false)
+		set_note_visible(app,icon,true)
+		app._layout_preview.call_deferred()
+	elif was and not mine:
+		tracker.set_meta("mine_note",false)
+		tracker.remove_meta("mine_open")
+		app.objective.visible=bool(tracker.get_meta("mine_saved_objective",true))
+		set_note_visible(app,tracker,true)
+		tracker.size.y=0
+		set_note_visible(app,icon,false)
+		app._layout_preview.call_deferred()
+		return
+	if not mine:return
+	var person:Dictionary=app.session.snapshot.get("players",{}).get(app.session.own_id,{})
+	var energy:=World.MEAL_BUFF.whole_points(person)
+	var warning:=icon.get_node("LowMineEnergy") as Label
+	warning.text=str(energy)
+	warning.visible=not person.is_empty() and energy<=MINE_ENERGY_WARNING
+	icon.tooltip_text="礦務隨身記 · 體力 %d／100\n%s"%[energy,"體力偏低，回休息站喝水" if warning.visible else "點一下展開或收起"]
+	var open:=bool(tracker.get_meta("mine_open",false))
+	set_note_visible(app,icon,true)
+	var shown:bool=app.inventory_hidden_controls.has(tracker) if hud_suppressed(app) else tracker.visible
+	if shown!=open:
+		set_note_visible(app,tracker,open)
+		tracker.size.y=0
+
+static func hud_suppressed(app) -> bool:
+	return is_instance_valid(app.modal) and not app.inventory_hidden_controls.is_empty()
+
+## 背包等視窗開著時，main 會把可見的 HUD 暫時藏起來並記在 inventory_hidden_controls，
+## 關閉時再還原。這段期間筆記只更新「關閉後要顯示什麼」：把控制項放進或移出還原清單，
+## 實際保持隱藏，視窗關閉後才套用玩家的展開／收起狀態。
+static func set_note_visible(app,control:Control,want:bool) -> void:
+	if hud_suppressed(app):
+		control.hide()
+		var listed:int=app.inventory_hidden_controls.find(control)
+		if want and listed<0:app.inventory_hidden_controls.append(control)
+		elif not want and listed>=0:app.inventory_hidden_controls.remove_at(listed)
+		return
+	control.visible=want
+
+static func toggle_mine_note(app) -> void:
+	var tracker:=app.preview_tracker as Control
+	if not mine_note_active(app):return
+	var open:=not bool(tracker.get_meta("mine_open",false))
+	tracker.set_meta("mine_open",open)
+	if open:app.objective.visible=true
+	sync_mine_note(app)
+	tracker.size.y=0
+	app._layout_preview.call_deferred()
 
 static func layout_hud(app,bounds:Vector2) -> void:
 	var location:Control=app.hud.get_node("LocationBadge")
 	app.preview_tracker.position.y=maxf(92.0,location.position.y+location.get_combined_minimum_size().y+6.0)
-	var tiller:=app.preview_toolbar.find_child("TillerSlot",true,false) as Button
-	var seeder:=app.preview_toolbar.find_child("SeederSlot",true,false) as Button
-	var harvester:=app.preview_toolbar.find_child("HarvesterSlot",true,false) as Button
-	var toolbar_width:=700 + 76 * (int(tiller != null and tiller.visible) + int(seeder != null and seeder.visible) + int(harvester != null and harvester.visible))
+	var mine_icon:=app.hud.get_node_or_null("MineNoteIcon") as Control
+	if mine_icon and mine_note_active(app):
+		mine_icon.position=Vector2(app.preview_tracker.position.x,app.preview_tracker.position.y)
+		mine_icon.size=Vector2(48,48)
+		app.preview_tracker.position.y+=54.0
+	var toolbar_width:=toolbar_width_for(app.preview_toolbar)
 	app.preview_toolbar.size=Vector2(toolbar_width,92)
-	app.preview_toolbar.position=Vector2(floor((bounds.x-toolbar_width)/2),bounds.y-106)
+	app.preview_toolbar.position=Vector2(maxf(0.0,floor((bounds.x-toolbar_width)/2)),bounds.y-106)
 	var calendar:Control=app.preview_top
 	calendar.size=calendar.get_combined_minimum_size().max(Vector2(222,100))
 	var calendar_inset:=16.0 if bounds.x<=1024.0 else 22.0
@@ -299,11 +549,25 @@ static func layout_hud(app,bounds:Vector2) -> void:
 		tip.size=Vector2(FORECAST_TIP_WIDTH,0)
 	app.selected_label.position=Vector2((bounds.x-740)/2,bounds.y-142)
 	app.selected_label.size=Vector2(740,32)
-	var shortcuts:Control=app.hud.get_node("LifeShortcuts")
-	shortcuts.position=Vector2(bounds.x-180,bounds.y-66)
-	shortcuts.size=Vector2(156,48)
-	if bounds.x<toolbar_width+368:
-		shortcuts.position=Vector2(bounds.x-180,maxf(132.0,calendar.position.y+calendar.size.y+8.0))
+	var shortcuts:HBoxContainer=app.hud.get_node("LifeShortcuts")
+	var toolbar_right:float=app.preview_toolbar.position.x+toolbar_width
+	var gaps:int=shortcuts.get_theme_constant("separation")*(shortcuts.get_child_count()-1)
+	var standard_width:int=SHORTCUT_WIDTH*shortcuts.get_child_count()+gaps
+	var compact:bool=bounds.x-20.0-standard_width<toolbar_right+6.0
+	var button_width:=SHORTCUT_COMPACT_WIDTH if compact else SHORTCUT_WIDTH
+	for shortcut:Button in shortcuts.get_children():
+		if shortcut.custom_minimum_size.x==button_width:continue
+		shortcut.custom_minimum_size.x=button_width
+		var art:=shortcut.get_node("ToolArt") as TextureRect
+		art.position.x=floorf((button_width-art.size.x)/2)
+		fit_key_badge(shortcut.get_node("KeyBadge"),button_width-8)
+	var shortcut_size:=shortcuts.get_combined_minimum_size()
+	shortcuts.size=shortcut_size
+	var right_x:=bounds.x-shortcut_size.x-(12.0 if compact else 20.0)
+	shortcuts.position=Vector2(right_x,bounds.y-shortcut_size.y-16.0)
+	if right_x<toolbar_right+6.0:
+		shortcuts.position.y=maxf(calendar.position.y+calendar.size.y+8.0,
+			app.selected_label.position.y-shortcut_size.y-8.0)
 
 static func region_display_name(region:String) -> String:
 	if region.begins_with("mine_"):return "金瓜石合作礦場・地下第 %d 層"%int(region.trim_prefix("mine_"))
@@ -353,16 +617,17 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 			weather_icon.set_meta("weather_icon_id",wanted)
 	refresh_forecast(app,s)
 	var step:Dictionary=World.CHAPTER_ONE.next_step(s)
-	var short:Dictionary={"grow":"種下作物，收成第一批菜", "ship":"把收成放進出貨箱", "works":"修橋，讓配送重新出發", "water":"接起水桶、管線和灑水器", "meal":"準備湯和麵包，一起開飯", "complete":"渡口開飯了 · 下一站的信"}
+	var short:Dictionary={"grow":"種下作物，收成第一批菜", "ship":"把收成放進出貨箱", "works":"修好公告板，開放生活訂單", "water":"接起水桶、管線和灑水器", "meal":"準備湯和麵包，一起開飯", "complete":"渡口開飯了 · 下一站的信"}
 	app.objective.text="讓渡口重新開飯\n"+str(short[step.id])
 	# 望安開場：自己的第一株作物依序 find → till → sow → water → wait → harvest → ship。
 	var first_crop:Dictionary=World.CHAPTER_ONE.first_crop_step(s,app.session.own_id)
 	if not first_crop.is_empty():app.objective.text=preload("res://scripts/wangan_opening_ui.gd").tracker_text(app,first_crop)
-	elif step.id=="grow":app.objective.text="第一件事・種一株蘿蔔\n開田、播種、澆水，再採收"
+	elif step.id=="grow":app.objective.text=preload("res://scripts/wangan_opening.gd").heading(s)+"\n開田、播種、澆水，再採收"
 	elif step.id=="ship":app.objective.text+="\n✓ 第一批收成準備好了"
 	if depth_region=="home" and step.id=="works" and first_crop.is_empty():
-		app.objective.text="一起修河灣橋\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[
-			app.binding_label("interact"),s.donations.wood,s.donations.stone]
+		var cost:=World.CHAPTER_ONE.BOARD_COST
+		app.objective.text="修好渡口公告板\n到公告板按 %s 捐材料\n木材 %d/%d · 石材 %d/%d"%[
+			app.binding_label("interact"),s.donations.wood,cost.wood,s.donations.stone,cost.stone]
 	if depth_region=="home" and step.id=="water" and first_crop.is_empty():
 		if World.CHAPTER_ONE.needs_starter_kit(s,app.session.own_id):
 			var cost:=World.CHAPTER_ONE.STARTER_COST
@@ -407,7 +672,7 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 		if depth_region=="ruifang" and s.get("station_life",{}).get("repairs",{}).get("ruifang",false):resident_hint="穗禾替大家留了候車座位。"
 		app.objective.text="%s\n%s\n%s 交談／搭車 · %s 地圖"%[resident_hint,onward,app.binding_label("interact"),app.binding_label("map")]
 	if depth_region.begins_with("mine_"):
-		app.objective.text="礦內體力  %d\n在休息站補水，礦務站可整備下層。\n%s 查看路線"%[int(p.get("mine_energy",0)),app.binding_label("map")]
+		app.objective.text="礦內體力  %d\n休息站補水\n礦務站整備下層\n%s 查看路線"%[World.MEAL_BUFF.whole_points(p),app.binding_label("map")]
 	elif depth_region=="home" and step.id=="complete" and not s.get("festival",{}).get("active",false):
 		app.objective.text="田區的邀請\n在渡口搭交通船前往蘭陽\n%s 查看台灣旅圖"%app.binding_label("map")
 		# 第 40 章：旱日分流完成、自己還沒有分流閘時，提示回工作台製作（活動追蹤之後會蓋過）。
@@ -443,26 +708,37 @@ static func refresh_hud(app,s:Dictionary,p:Dictionary) -> void:
 			if tracker_heading:tracker_heading.text="臺南北門回訪  ▼"
 			if tracker_next:tracker_next.text="打開鹽籃批次  →"
 	var forest_skin:bool=app.sound.forest_tools and World.gathering_level(p)==10
-	for action in FOREST_TOOLS:
+	var inventory:Dictionary=p.get("inventory",{})
+	for action:String in ["hoe","seed","water","harvest","axe","pick"]:
 		var index:=TOOL_IDS.find(action)
 		if index>=app.tool_buttons.size():continue
 		var button:Button=app.tool_buttons[index]
-		if button.get_meta("forest_skin",false)==forest_skin:continue
-		var art:=button.get_node_or_null("ToolArt") as TextureRect
-		if art:art.texture=FOREST_TOOLS[action] if forest_skin else icon(action)
-		button.set_meta("forest_skin",forest_skin)
+		refresh_tool_appearance(app,button,action,TOOL_NAMES[index],inventory,forest_skin and FOREST_TOOLS.has(action))
 	var rod:=app.preview_toolbar.find_child("FishingSlot",true,false) as Button
-	if rod:rod.set_pressed_no_signal(app.selected=="fish")
-	var needs_layout := false
+	if rod:
+		rod.set_pressed_no_signal(app.selected=="fish")
+		refresh_tool_appearance(app,rod,"fish","釣竿",inventory,false)
+	var needs_layout := guided_toolbar(app,first_crop)
 	for tool in [["TillerSlot", "tiller", "till_area"], ["SeederSlot", "seeder", "seed_area"], ["HarvesterSlot", "harvester", "harvest_area"]]:
 		var slot := app.preview_toolbar.find_child(tool[0],true,false) as Button
 		if slot == null:continue
-		var owned := int(p.get("inventory",{}).get(tool[1],0)) > 0
+		var owned: bool = int(p.get("inventory",{}).get(tool[1],0)) > 0 or (tool[1]==World.PUBLIC_TILLER.ITEM and World.PUBLIC_TILLER.borrowed(p))
 		needs_layout = needs_layout or slot.visible != owned
 		slot.visible = owned
 		slot.set_pressed_no_signal(app.selected == tool[2] and owned)
 	if needs_layout:
 		layout_hud(app,app.get_viewport().get_visible_rect().size)
+
+static func refresh_tool_appearance(app,button:Button,action:String,base_name:String,inventory:Dictionary,use_forest:bool)->void:
+	var upgrade:=World.gathering_tool_upgrade(action,inventory)
+	var appearance:="forest" if use_forest else (upgrade if not upgrade.is_empty() else action)
+	var title:String=World.NAMES[upgrade] if not upgrade.is_empty() else base_name
+	if button.get_meta("tool_appearance",action)==appearance and button.get_meta("binding_title")==title:return
+	var art:=button.get_node_or_null("ToolArt") as TextureRect
+	if art:art.texture=FOREST_TOOLS[action] if use_forest else (Items.icon(upgrade) if not upgrade.is_empty() else icon(action))
+	button.set_meta("tool_appearance",appearance)
+	button.set_meta("binding_title",title)
+	button.tooltip_text="%s [%s]"%[title,app.binding_label(action)]
 
 ## Read-only: updates the badge's tomorrow line, hover tooltip and focus tip
 ## from the snapshot clock. Never writes snapshot/session state.
@@ -597,7 +873,8 @@ static func pause(app) -> void:
 	var shell:VBoxContainer=content.get_parent().get_parent()
 	shell.add_child(footer)
 	shell.move_child(footer,shell.get_child_count()-3)
-	var rescue:Button=app.button("迷路了？回到渡口",func():app.session.perform("rescue",Vector2i.ZERO);app._close_modal())
+	var rescue:Button=app.button(app._rescue_label(),func():app.session.perform("rescue",Vector2i.ZERO);app._close_modal())
+	rescue.name="PauseRescue"
 	rescue.flat=true
 	rescue.add_theme_font_size_override("font_size",15)
 	rescue.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -663,7 +940,7 @@ static func help(app) -> void:
 	var workshop_title:Label=app.label("做大一點的工坊",20)
 	workshop_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	workshop_heading.add_child(workshop_title)
-	var diagrams:Button=app.button("看接線圖",app._workshop_guide)
+	var diagrams:Button=app.button("看工坊圖解",app._workshop_guide)
 	diagrams.name="HelpWorkshopGuide"
 	workshop_heading.add_child(diagrams)
 	cards.append(help_card(app,content,"water","灌溉與水管","在工作台按 {interact} 做強化石鎬。採銅做銅接頭，就能製作灑水器套件。按 {build_menu} 選灑水器，靠近按 {interact} 補水。\n成熟樹提供樹脂，鋸木台做木板、炭窯做木炭。用工作台製作桶、泵與銅管，按 {build} 放置。將水泵放在離河水兩格內，用同一主人的管線接儲水桶，再接灑水器。銅管可走過，斷管後桶裡的水仍可用。"))
@@ -679,9 +956,18 @@ static func help(app) -> void:
 		card.focus_neighbor_bottom=card.get_path_to(cards[mini(index+1,cards.size()-1)])
 		card.focus_neighbor_left=card.get_path_to(cards[index-1]) if index<lessons.size() and index%2==1 else NodePath(".")
 		card.focus_neighbor_right=card.get_path_to(cards[index+1]) if index<lessons.size() and index%2==0 else NodePath(".")
+	var before_diagrams:=cards[lessons.size()-1]
+	var after_diagrams:=cards[lessons.size()]
+	before_diagrams.focus_neighbor_bottom=before_diagrams.get_path_to(diagrams)
+	after_diagrams.focus_neighbor_top=after_diagrams.get_path_to(diagrams)
+	diagrams.focus_neighbor_top=diagrams.get_path_to(before_diagrams)
+	diagrams.focus_neighbor_bottom=diagrams.get_path_to(after_diagrams)
+	diagrams.focus_neighbor_left=NodePath(".")
+	diagrams.focus_neighbor_right=NodePath(".")
+	diagrams.focus_entered.connect(func():scroll_to_help_card.call_deferred(scroll,diagrams))
 
 static func scroll_to_help_card(scroll:ScrollContainer,card:Control) -> void:
-	if not is_instance_valid(card) or not card.has_focus():return
+	if not is_instance_valid(scroll) or not is_instance_valid(card) or not card.has_focus():return
 	var bounds:=scroll.get_global_rect()
 	var target:=card.get_global_rect()
 	if target.position.y<bounds.position.y or target.end.y>bounds.end.y:
@@ -704,6 +990,7 @@ static func audio_settings(app,parent:Container) -> Dictionary:
 		column.add_child(heading)
 		var slider:=HSlider.new()
 		slider.name=entry[2]
+		slider.set_meta("comfort_volume",true)
 		slider.max_value=100
 		slider.step=5
 		slider.value=app.sound.get(key)*100.0
@@ -748,6 +1035,17 @@ static func text_scale_setting(app,content:VBoxContainer) -> OptionButton:
 	content.add_child(choice)
 	return choice
 
+static func display_setting(app,content:VBoxContainer) -> CheckBox:
+	var mode:=CheckBox.new()
+	mode.name="DisplayCompatibility"
+	mode.text="相容顯示模式（60 FPS）"
+	mode.tooltip_text="關閉垂直同步，畫面可能出現撕裂。"
+	mode.button_pressed=app.sound.display_compatibility
+	mode.custom_minimum_size.y=32
+	content.add_child(text(app,"相容模式會關閉垂直同步，畫面可能撕裂。",14))
+	content.add_child(mode)
+	return mode
+
 static func settings(app) -> void:
 	var content:VBoxContainer=app._open_modal("讓自己舒服一點")
 	app.modal.set_meta("life_modal_layout","settings")
@@ -755,8 +1053,9 @@ static func settings(app) -> void:
 	var audio:=audio_settings(app,content)
 	content.add_child(HSeparator.new())
 	var motion:=CheckBox.new()
+	motion.name="ReduceDecorativeMotion"
 	motion.text="減少裝飾動態"
-	motion.tooltip_text="開啟：保留靜態提示，減少釣魚、料理與共餐裝飾動態。關閉：顯示拋竿、浮標、熱湯蒸氣與共餐慶祝。兩種模式皆無鏡頭震動。"
+	motion.tooltip_text="開啟後小鳥會靜靜停在屋旁，也會減少釣魚、料理和共餐的裝飾動態。"
 	motion.custom_minimum_size.y=40
 	motion.button_pressed=app.sound.reduced_motion
 	content.add_child(motion)
@@ -780,6 +1079,7 @@ static func settings(app) -> void:
 		caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		card.add_child(caption)
 	var text_scale:=text_scale_setting(app,content)
+	var display_mode:=display_setting(app,content)
 	var skin:=CheckBox.new()
 	skin.text="森林工具外觀"
 	skin.disabled=World.gathering_level(app.session.snapshot.get("players",{}).get(app.session.own_id,{}))<10
@@ -794,12 +1094,13 @@ static func settings(app) -> void:
 	fishing.custom_minimum_size.y=40
 	content.add_child(fishing)
 	var save_button:Button=app.button("保存偏好 · 試聽",func():
-		if not app.sound.save_preferences(app.settings_path,audio.volume.value/100.0,motion.button_pressed,selected_zoom.value,null if skin.disabled else skin.button_pressed,fishing.selected==1,text_scale.get_selected_id(),audio.music_volume.value/100.0,audio_levels(audio),camera.selected==1):
+		if not app.sound.save_preferences(app.settings_path,audio.volume.value/100.0,motion.button_pressed,selected_zoom.value,null if skin.disabled else skin.button_pressed,fishing.selected==1,text_scale.get_selected_id(),audio.music_volume.value/100.0,audio_levels(audio),camera.selected==1,display_mode.button_pressed):
 			app._notice("設定保存失敗，原本設定仍保留。",false)
 			return
 		app.view.reduced_motion=app.sound.reduced_motion
 		app.view.zoom=float(app.sound.preferred_zoom)
 		app.view.fixed_area_camera=app.sound.fixed_area_camera
+		app._apply_display_preferences()
 		app._apply_font_scale_tree()
 		app._refresh_hud()
 		app._notice("設定已儲存，下次啟動會沿用。",true)
@@ -815,7 +1116,42 @@ static func settings(app) -> void:
 	content.add_theme_constant_override("separation",7)
 	motion.custom_minimum_size.y=32
 	app.modal_feedback.text="偏好保存在這台電腦 · %s 切換遠近"%app.binding_label("zoom")
+	# 手把／鍵盤上下：明確串過整個捲動區（滑桿左右鍵仍調音量，近景／遠景左右鍵照舊）。
+	var zoom_pair:Array=[]
+	for card in choices.get_children():zoom_pair.append(card.get_child(0))
+	link_vertical_focus([[camera],[audio.master_volume],[audio.music_volume],[audio.ambience_volume],
+		[audio.volume],[audio.interface_volume],[audio.activity_captions],[motion],zoom_pair,
+		[text_scale],[display_mode],[skin],[fishing],[save_button]])
+	group.pressed.connect(func(selected:BaseButton):
+		motion.focus_neighbor_bottom=motion.get_path_to(selected)
+		text_scale.focus_neighbor_top=text_scale.get_path_to(selected)
+	)
+	# 近景／遠景這一對：左右只在兩顆之間切換（全寬的勾選框不會搶走空間式的右鄰居）。
+	if zoom_pair.size()==2:
+		var near:Control=zoom_pair[0]
+		var far:Control=zoom_pair[1]
+		near.focus_neighbor_right=near.get_path_to(far)
+		far.focus_neighbor_left=far.get_path_to(near)
+		near.focus_neighbor_left=NodePath(".")
+		far.focus_neighbor_right=NodePath(".")
 	app._layout_preview()
+
+## 把每一組控制項依序以上下焦點相連；停用的控制項略過。同組（例如近景／遠景）共用上下鄰居，
+## 組內的左右移動不受影響。只用於舒適設定，不改共用的空間式焦點。
+static func link_vertical_focus(groups:Array) -> void:
+	var rows:Array=[]
+	for group:Array in groups:
+		var usable:Array=group.filter(func(c): return c is Control and not (c is BaseButton and c.disabled))
+		if not usable.is_empty():rows.append(usable)
+	for index in rows.size():
+		for control:Control in rows[index]:
+			if index>0:control.focus_neighbor_top=control.get_path_to(focus_target(rows[index-1]))
+			if index<rows.size()-1:control.focus_neighbor_bottom=control.get_path_to(focus_target(rows[index+1]))
+
+static func focus_target(group:Array) -> Control:
+	for control:Control in group:
+		if control is BaseButton and control.button_pressed:return control
+	return group[0]
 
 static func picnic_cooking_hint(snapshot:Dictionary,owner:String) -> String:
 	var person:Dictionary=snapshot.get("players",{}).get(owner,{})
@@ -827,7 +1163,7 @@ static func picnic_cooking_hint(snapshot:Dictionary,owner:String) -> String:
 	var now:=float(snapshot.get("time",0.0))
 	var cooking:=""
 	for device:Dictionary in snapshot.get("objects",{}).values():
-		if device.get("type","")!="stove":continue
+		if not preload("res://scripts/industry.gd").is_stove(str(device.get("type",""))) or preload("res://scripts/industry.gd").is_stove_extension(device):continue
 		var model:=preload("res://scripts/cooking_queue_ui.gd").model(device,now)
 		for dish:Dictionary in model.ready:
 			if dish.kind in needed:return "料理好了，到小石灶領取"

@@ -220,7 +220,7 @@ func check_quest(w:World,path:String)->void:
 	# Save -> reload in a fresh World keeps the repaired hoist.
 	var reload:=World.new()
 	expect(reload.load_world(path) and not reload.recovered_from_backup,"repaired save loads in a fresh World")
-	expect(reload.state.mine_depths.get("hoist")==true and int(reload.state.mine_depths.unlocked)==6 and int(reload.state.version)==26,"reload keeps hoist=true without a version bump")
+	expect(reload.state.mine_depths.get("hoist")==true and int(reload.state.mine_depths.unlocked)==6 and int(reload.state.version)==preload("res://scripts/save_schema.gd").VERSION,"reload keeps hoist=true without a version bump")
 
 	# Glass furnace: unlocked by the repair, exact cost.
 	relocate(w,OWNER,"home",World.SPAWN)
@@ -310,7 +310,7 @@ func check_legacy_and_validation()->void:
 		var loaded:=World.new()
 		expect(loaded.load_world(path) and not loaded.recovered_from_backup,"pre-Q07 save with unlocked %d loads"%unlocked)
 		var depths:Dictionary=loaded.state.mine_depths
-		expect(int(loaded.state.version)==26 and depths.size()==4 and int(depths.unlocked)==unlocked and depths.get("hoist")==(unlocked>=6),"unlocked %d loads as hoist=%s"%[unlocked,str(unlocked>=6)])
+		expect(int(loaded.state.version)==preload("res://scripts/save_schema.gd").VERSION and depths.size()==4 and int(depths.unlocked)==unlocked and depths.get("hoist")==(unlocked>=6),"unlocked %d loads as hoist=%s"%[unlocked,str(unlocked>=6)])
 	var base:=legacy_world(6)
 	base.state.mine_depths["hoist"]=true
 	expect(valid(base.state.duplicate(true)),"control: hoist true with unlocked 6 validates")

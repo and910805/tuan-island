@@ -79,7 +79,7 @@ func _initialize()->void:
 	legacy.regions.erase("beimen")
 	legacy.mine_freight.jobs={}
 	legacy.erase("mine_auto_freight")
-	check(valid(legacy) and legacy.version==26 and legacy.mine_auto_freight==Auto.fresh(),"Legacy migration preserves boxes and adds empty routes")
+	check(valid(legacy) and legacy.version==preload("res://scripts/save_schema.gd").VERSION and legacy.mine_auto_freight==Auto.fresh(),"Legacy migration preserves boxes and adds empty routes")
 
 	var before_delivery:=world.state.duplicate(true)
 	world.save_path=path.path_join("missing")

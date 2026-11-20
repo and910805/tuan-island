@@ -131,7 +131,7 @@ static func _compact_shell(shell:VBoxContainer)->void:
 	heading.move_child(mark,0)
 
 static func stove_icon()->Texture2D:
-	return Art.atlas_region(FURNITURE,STOVE_REGION)
+	return Query.stove_icon_for("stove")
 
 static func bench_icon()->Texture2D:
 	return Art.atlas_region(FURNITURE,BENCH_REGION)
@@ -162,6 +162,11 @@ class Query:
 	const NEEDS:={"soup":4,"bread":2,"salad":2}
 	const STOVE_RANGE:=8.0
 	const SEAT_RANGE:=3.0
+
+	static func stove_icon_for(kind:String)->Texture2D:
+		if kind==World.INDUSTRY.KITCHEN_STOVE:
+			return preload("res://assets/ui-life/public-kitchen-stove.png")
+		return Art.atlas_region(FURNITURE,STOVE_REGION)
 	const REACH:=3.2
 	const SEARCH:=16
 	const NO_CELL:=Vector2i(-1,-1)
@@ -246,10 +251,10 @@ class Query:
 	## Home-island passability approximation on public data (World decides).
 	static func blocked(s:Dictionary,p:Vector2i)->bool:
 		if not World.land(p):return true
-		if (p.x==55 or p.x==56) and not (bool(s.get("board",false)) and p.y>=29 and p.y<=31):return true
+		if (p.x==55 or p.x==56) and not (World.STONE_WORKSHOP.bridge_open(s) and p.y>=29 and p.y<=31):return true
 		if p==table(s) or p==World.COPPER_CELL:return true
 		if p in [Vector2i(40,29),Vector2i(43,29),Vector2i(38,29),Vector2i(44,31),Vector2i(54,25)]:return true
-		if p==World.SHIPPING.cell_for(s):return true
+		if p==World.SHIPPING.cell_for(s) or World.PUBLIC_TILLER.reserved(s,p):return true
 		var k:=World.key(p)
 		var planted=s.get("forest",{}).get(k)
 		if planted is Dictionary and not planted.is_empty():
@@ -258,7 +263,7 @@ class Query:
 		var obj=s.get("objects",{}).get(k)
 		if obj is Dictionary:
 			if str(obj.get("type",""))=="door":return not bool(obj.get("open",false))
-			return str(obj.get("type","")) in World.UNDO_SOLID
+			return str(obj.get("type","")) in World.UNDO_SOLID and not World.INDUSTRY.is_folded_passage(obj)
 		return false
 
 	## Passable cells reachable by cardinal steps from the shared table.
@@ -315,7 +320,7 @@ class Query:
 		var open:=reachable(s)
 		for k in s.get("objects",{}):
 			var obj=s.objects[k]
-			if not obj is Dictionary or str(obj.get("type",""))!="stove" or str(obj.get("owner",""))!=own or busy(obj):continue
+			if not obj is Dictionary or not World.INDUSTRY.is_stove(str(obj.get("type",""))) or World.INDUSTRY.is_stove_extension(obj) or str(obj.get("owner",""))!=own or busy(obj):continue
 			var cell=parse(str(k))
 			if cell==null:continue
 			if Vector2(cell).distance_to(Vector2(origin))>STOVE_RANGE or not accessible(open,cell):continue
@@ -357,7 +362,8 @@ class Query:
 			if cell==null:continue
 			match str(obj.get("type","")):
 				"long_bench":out.benches+=1
-				"stove":
+				"stove","kitchen_stove":
+					if World.INDUSTRY.is_stove_extension(obj):continue
 					out.stoves+=1
 					if busy(obj):out.busy+=1
 					elif origin==NO_CELL or Vector2(cell).distance_to(Vector2(origin))>STOVE_RANGE:out.far+=1
@@ -432,6 +438,22 @@ class Query:
 	static func meal_name(id:String)->String:
 		return str(World.NAMES.get(id,id))
 
+	## Stove anchor type at a snapshot cell ("stove" when unknown).
+	static func stove_type(s:Dictionary,cell)->String:
+		if not cell is Vector2i:return "stove"
+		var obj=s.get("objects",{}).get(World.key(cell),{})
+		return str(obj.get("type","stove")) if obj is Dictionary else "stove"
+
+	static func is_new_stove(kind:String)->bool:
+		return kind==World.INDUSTRY.KITCHEN_STOVE
+
+	static func stove_label(kind:String)->String:
+		return str(World.BUILD.get(kind,{}).get("name","公共廚房灶台")) if is_new_stove(kind) else "小石灶"
+
+	## Recipe table of that stove kind (16 canonical dishes for the new one).
+	static func table_of(kind:String)->Dictionary:
+		return World.stove_recipes(kind)
+
 
 ## Small read-only site diagram: table, stove range, seats, blocked tiles.
 class SiteMap extends Control:
@@ -480,18 +502,21 @@ class SiteMap extends Control:
 		for cell in hints:
 			if cell is Vector2i:draw_rect(Rect2(offset+Vector2(cell-origin)*px,Vector2(px,px)).grow(-1),Color("dd8f3e"),false,1.0)
 		_sprite(table,TABLE_REGION,origin,offset,px)
-		if stove is Vector2i:_sprite(stove,STOVE_REGION,origin,offset,px)
+		if stove is Vector2i:
+			var kind:=Query.stove_type(snapshot,stove)
+			_sprite(stove,STOVE_REGION,origin,offset,px,Query.stove_icon_for(kind) if Query.is_new_stove(kind) else null)
 		for cell in seats:
 			if cell is Vector2i:_sprite(cell,BENCH_REGION,origin,offset,px)
 
-	func _sprite(cell:Vector2i,region:Rect2,origin:Vector2i,offset:Vector2,px:float)->void:
+	func _sprite(cell:Vector2i,region:Rect2,origin:Vector2i,offset:Vector2,px:float,own_art:Texture2D=null)->void:
 		var local:=cell-origin
 		if local.x<0 or local.y<0 or local.x>=CELLS or local.y>=CELLS:return
 		var w:=px*1.4
 		var h:=w*1.5
 		var foot:=offset+Vector2(local)*px+Vector2(px*0.5,px)
 		var rect:=Rect2(foot-Vector2(w*0.5,h),Vector2(w,h))
-		if atlas:draw_texture_rect_region(atlas,rect,region)
+		if own_art:draw_texture_rect(own_art,rect,false)
+		elif atlas:draw_texture_rect_region(atlas,rect,region)
 		else:draw_rect(rect,Color("8a5a3a"))
 
 
@@ -776,7 +801,7 @@ class Controller extends Node:
 		if scroll:scroll.scroll_vertical=0
 		match mode:
 			"away":
-				_notice(body,Folio.life_icon("map"),"你現在不在家園島。回到渡口的共餐桌附近，才能捐出灶與長椅、放料理或使用公共小石灶。右頁的共餐記憶仍可隨時重看。")
+				_notice(body,Folio.life_icon("map"),"你現在不在家園島。回到渡口的共餐桌附近，才能捐出灶與長椅、放料理或使用公共灶台。右頁的共餐記憶仍可隨時重看。")
 			"locked":
 				_notice(body,Art.atlas_region(FURNITURE,TABLE_REGION),"先一起修好河灣橋、在渡口辦完野餐，共餐桌擺好之後，公共廚房才能開始募集。")
 			"register":_build_register(body,footer)
@@ -803,7 +828,7 @@ class Controller extends Node:
 		intro_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		intro_text.add_theme_constant_override("separation",0)
 		intro.add_child(intro_text)
-		_text(intro_text,"先完成阿榆的長椅委託，解鎖雙人長椅。到共餐桌附近蓋好自己的小石灶與兩張長椅，再選擇要捐出的設施。",13)
+		_text(intro_text,"先完成阿榆的長椅委託，解鎖雙人長椅。到共餐桌附近蓋好自己的灶台與兩張長椅，再選擇要捐出的設施。",13)
 		refs.survey=_text(intro_text,"",12,MUTED)
 		refs.survey.name="KitchenSurvey"
 		var row:=HBoxContainer.new()
@@ -856,13 +881,15 @@ class Controller extends Node:
 		var row:=HBoxContainer.new()
 		row.add_theme_constant_override("separation",6)
 		parent.add_child(row)
-		row.add_child(_picture(icon,32,""))
+		var pic:=_picture(icon,32,"")
+		row.add_child(pic)
 		var column:=VBoxContainer.new()
 		column.add_theme_constant_override("separation",0)
 		column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		row.add_child(column)
 		_text(column,caption,12,MUTED)
 		var option:=OptionButton.new()
+		option.set_meta("pic",pic)
 		option.name=id
 		option.focus_mode=Control.FOCUS_ALL
 		option.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -900,6 +927,7 @@ class Controller extends Node:
 		grid.add_theme_constant_override("v_separation",6)
 		body.add_child(grid)
 		var meals:={}
+		var dishes:=_dishes()
 		for meal in Query.MEALS:
 			var card:=PanelContainer.new()
 			card.name="KitchenMeal_"+meal
@@ -918,7 +946,7 @@ class Controller extends Node:
 			titles.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 			titles.add_theme_constant_override("separation",0)
 			top.add_child(titles)
-			_text(titles,Query.meal_name(meal),15)
+			_text(titles,_meal_title(meal,dishes),15)
 			var have:=_text(titles,"",13)
 			var meter:=ProgressBar.new()
 			meter.show_percentage=false
@@ -926,7 +954,7 @@ class Controller extends Node:
 			meter.mouse_filter=Control.MOUSE_FILTER_IGNORE
 			column.add_child(meter)
 			var bag:=_text(column,"",12,MUTED)
-			var recipe:Dictionary=World.RECIPES[meal]
+			var recipe:Dictionary=dishes.get(meal,World.RECIPES[meal])
 			var ingredients:=HFlowContainer.new()
 			ingredients.name="KitchenIngredients_"+meal
 			ingredients.add_theme_constant_override("h_separation",4)
@@ -958,8 +986,8 @@ class Controller extends Node:
 		var guide_head:=HBoxContainer.new()
 		guide_head.add_theme_constant_override("separation",6)
 		guide_column.add_child(guide_head)
-		guide_head.add_child(_picture(Items.icon("mill_kit"),24,"KitchenMillIcon"))
-		var line:=_text(guide_head,"下一步：工作台做磨坊 → {build_menu}「生活」放置 → 磨麥烤派",13,GOOD)
+		guide_head.add_child(_picture(preload("res://scripts/bakery_art.gd").village_mill_texture(0),24,"KitchenMillIcon"))
+		var line:=_text(guide_head,"下一步：{build_menu}「生活」建磨坊 → 磨麥烤派",13,GOOD)
 		line.name="KitchenMillText"
 		line.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 		var steps:=HBoxContainer.new()
@@ -975,9 +1003,19 @@ class Controller extends Node:
 		row.add_theme_constant_override("v_separation",4)
 		footer.add_child(row)
 		refs.contribute=_action(row,"KitchenContribute","把背包裡缺的料理放上桌",_submit_contribute)
-		refs.cook=_action(row,"KitchenCook","用公共小石灶做菜",_open_cooker)
+		refs.cook=_action(row,"KitchenCook","用公共灶台做菜",_open_cooker)
 		refs.reason=_text(footer,"",13,MUTED)
 		refs.reason.name="KitchenReason"
+
+	## Recipe table of the registered public stove (display only; World decides).
+	func _dishes()->Dictionary:
+		var s:Dictionary=app.session.snapshot
+		return Query.table_of(Query.stove_type(s,Query.parse(str(Query.kitchen(s).stove))))
+
+	func _meal_title(meal:String,dishes:Dictionary)->String:
+		var entry=dishes.get(meal)
+		if entry is Dictionary and not str(entry.get("name","")).is_empty():return str(entry.name)
+		return Query.meal_name(meal)
 
 	## Rebuild the guide rows only when the data-driven steps change.
 	func _fill_guide(steps:Array)->void:
@@ -1015,7 +1053,7 @@ class Controller extends Node:
 			stove_choice=""
 			seat_choices=["",""]
 			(refs.confirm as CheckBox).set_pressed_no_signal(false)
-			_status("先前選的小石灶已不符合條件，請重新選擇。",false)
+			_status("先前選的灶台已不符合條件，請重新選擇。",false)
 		var seats:Array[String]=[]
 		var stove_cell=Query.parse(stove_choice)
 		if stove_cell!=null:seats=Query.candidate_seats(s,own,stove_cell)
@@ -1032,7 +1070,7 @@ class Controller extends Node:
 			_fill_stoves(stoves,seat_counts)
 			_fill_seats(seats,stove_cell)
 		var survey:=Query.survey(s,own)
-		var notes:=PackedStringArray(["你有 %d 座小石灶、%d 張雙人長椅"%[survey.stoves,survey.benches]])
+		var notes:=PackedStringArray(["你有 %d 座灶台、%d 張雙人長椅"%[survey.stoves,survey.benches]])
 		if survey.busy>0:notes.append("%d 座正在料理或還有成品"%survey.busy)
 		if survey.far>0:notes.append("%d 座離共餐桌超過 8 格"%survey.far)
 		if survey.blocked>0:notes.append("%d 座從共餐桌走不到"%survey.blocked)
@@ -1061,8 +1099,8 @@ class Controller extends Node:
 
 	func _register_block(s:Dictionary,stoves:Array,seats:Array)->String:
 		if not pending.is_empty():return "上一個請求還在等待回應。"
-		if stoves.is_empty():return "目前沒有符合條件的小石灶：需要自己的、閒置、離共餐桌 8 格內且走得到。"
-		if stove_choice.is_empty():return "請先選一座小石灶。"
+		if stoves.is_empty():return "目前沒有符合條件的灶台：需要自己的、閒置、離共餐桌 8 格內且走得到。"
+		if stove_choice.is_empty():return "請先選一座灶台。"
 		if seats.size()<2:return "這座灶 3 格內沒有兩張你自己的、走得到的雙人長椅。"
 		var a:=str(seat_choices[0])
 		var b:=str(seat_choices[1])
@@ -1075,16 +1113,21 @@ class Controller extends Node:
 	func _fill_stoves(stoves:Array,seat_counts:Dictionary)->void:
 		var option:OptionButton=refs.stove
 		option.clear()
-		option.add_item("選擇自己的閒置小石灶…")
+		option.add_item("選擇自己的閒置灶台…")
 		option.set_item_metadata(0,"")
 		var table:=Query.table(app.session.snapshot)
 		for cell in stoves:
 			var at:Vector2i=Query.parse(cell)
-			var text:="小石灶 %s · 離桌 %.1f 格"%[_coords(at),Vector2(at).distance_to(Vector2(table))]
+			var kind:=Query.stove_type(app.session.snapshot,at)
+			var text:="%s %s · 離桌 %.1f 格"%[Query.stove_label(kind),_coords(at),Vector2(at).distance_to(Vector2(table))]
 			if int(seat_counts.get(cell,0))<2:text+=" · 附近長椅不足"
 			option.add_item(text)
 			option.set_item_metadata(option.item_count-1,cell)
 		option.select(maxi(0,_index_of(option,stove_choice)))
+		var pic=option.get_meta("pic",null)
+		if is_instance_valid(pic):
+			var chosen=Query.parse(stove_choice)
+			(pic as TextureRect).texture=Query.stove_icon_for(Query.stove_type(app.session.snapshot,chosen)) if chosen!=null else stove_icon_texture()
 
 	func _fill_seats(seats:Array,stove_cell)->void:
 		for i in 2:
@@ -1151,7 +1194,7 @@ class Controller extends Node:
 		(refs.map as SiteMap).show_site(s,Query.table(s),stove_cell,seats,[])
 		var seat_text:=PackedStringArray()
 		for cell in seats:seat_text.append(_coords(cell))
-		(refs.chosen as Label).text="公共小石灶 %s · 公共長椅 %s · 共餐桌 %s"%[_coords(stove_cell),"、".join(seat_text),_coords(Query.table(s))]
+		(refs.chosen as Label).text="%s %s · 公共長椅 %s · 共餐桌 %s"%["公共"+Query.stove_label(Query.stove_type(s,stove_cell)),_coords(stove_cell),"、".join(seat_text),_coords(Query.table(s))]
 		var bag:Dictionary=Query.person(s,own).get("inventory",{})
 		var give:={}
 		var outstanding:=0
@@ -1172,6 +1215,11 @@ class Controller extends Node:
 		(refs.banner as Label).text="公共廚房已開伙！" if opened else "還缺 %d 份料理就能開伙"%outstanding
 		(refs.banner as Label).add_theme_color_override("font_color",GOOD if opened else INK)
 		(refs.subtitle as Label).text="任何島民都能在這裡做菜、放料理"
+		var mark_art:=Query.stove_icon_for(Query.stove_type(s,stove_cell))
+		var modal:=get_parent()
+		for mark_name in ["KitchenHeaderStove","KitchenTitleMark"]:
+			var mark=modal.find_child(mark_name,true,false) if modal else null
+			if mark is TextureRect:(mark as TextureRect).texture=mark_art
 		var steps:Array=Query.mill_guide(s) if opened else []
 		var guide:Control=refs.get("mill")
 		if guide:
@@ -1182,15 +1230,16 @@ class Controller extends Node:
 			if app.has_method("binding_text"):tip=app.binding_text(tip)
 			guide.tooltip_text=tip
 			_fill_guide(steps)
+		var dishes:=_dishes()
 		var debit:=PackedStringArray()
 		for meal in Query.MEALS:
-			if int(give[meal])>0:debit.append("%s×%d"%[Query.meal_name(meal),int(give[meal])])
+			if int(give[meal])>0:debit.append("%s×%d"%[_meal_title(meal,dishes),int(give[meal])])
 		var near:bool=stove_cell!=null and Query.near(s,own,stove_cell)
-		var stove_present:bool=stove_cell!=null and str(s.get("objects",{}).get(World.key(stove_cell),{}).get("type",""))=="stove"
+		var stove_present:bool=stove_cell!=null and World.INDUSTRY.is_stove(str(s.get("objects",{}).get(World.key(stove_cell),{}).get("type","")))
 		var contribute_why:=""
 		if opened:contribute_why="已經開伙，不需要再放料理。"
 		elif debit.is_empty():contribute_why="背包裡沒有還缺的湯、麵包或沙拉。"
-		elif not near:contribute_why="走到公共小石灶身邊三格內才能放料理。"
+		elif not near:contribute_why="走到公共灶台身邊三格內才能放料理。"
 		elif not _online():contribute_why="與世界的連線已中斷。"
 		var contribute:Button=refs.contribute
 		contribute.visible=not opened
@@ -1198,11 +1247,11 @@ class Controller extends Node:
 		contribute.text="等待回應……" if not pending.is_empty() else ("把料理放上桌：" +"、".join(debit) if not debit.is_empty() else "放上開張餐點")
 		contribute.tooltip_text="只扣這些數量，不給獎勵。\n手把 X 選取 · A 確認" if contribute_why.is_empty() else contribute_why
 		var cook_why:=""
-		if not stove_present:cook_why="公共小石灶不在目前區域。"
-		elif not near:cook_why="走到公共小石灶身邊三格內才能做菜。"
+		if not stove_present:cook_why="公共灶台不在目前區域。"
+		elif not near:cook_why="走到公共灶台身邊三格內才能做菜。"
 		var cook:Button=refs.cook
 		cook.set_meta("allowed",cook_why.is_empty())
-		cook.tooltip_text="翻開小石灶食譜，準備下一道料理。" if cook_why.is_empty() else cook_why
+		cook.tooltip_text="翻開灶台食譜，準備下一道料理。" if cook_why.is_empty() else cook_why
 		var reasons:=PackedStringArray()
 		if not pending.is_empty():reasons.append("上一個請求還在等待回應。")
 		elif not contribute_why.is_empty() and not opened:reasons.append(contribute_why)

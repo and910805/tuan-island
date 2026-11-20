@@ -1,8 +1,10 @@
 extends RefCounted
 
 const CAST_DURATION := 0.42
+const REEL_DURATION := 0.54
 const LANDING_DURATION := 0.30
-const CATCH_DURATION := 0.85
+const CATCH_DURATION := 1.0
+const RELEASE_LEAP := 0.64
 const CANCEL_DURATION := 0.38
 const SPECIES := preload("res://scripts/collections.gd").FISH
 
@@ -47,8 +49,11 @@ func update(snapshot:Dictionary,player_id:String,elapsed:float) -> void:
 				if not fishing.is_empty():
 					event=make_event("cast",fishing,elapsed)
 				elif not old_fishing.is_empty():
-					event=make_event("catch" if caught>previous.caught else "cancel",old_fishing,elapsed)
-					if event.phase=="catch":event.fish=added_species(previous.fish_counts,fish_counts)
+					var reel:=reel_for(snapshot,actor_id,old_fishing)
+					event=make_event("catch" if not reel.is_empty() or caught>previous.caught else "cancel",old_fishing,elapsed)
+					if event.phase=="catch":
+						event.fish=reel.get("fish",added_species(previous.fish_counts,fish_counts))
+						event.released=reel.get("released",false)
 			else:
 				event=previous.event
 				bite_started=float(previous.bite_started)
@@ -63,11 +68,11 @@ func state_for(actor_id:String,world_time:float,elapsed:float) -> Dictionary:
 	if not event.is_empty():
 		var age:=maxf(0.0,elapsed-float(event.started))
 		var duration:float={"cast":CAST_DURATION,"catch":CATCH_DURATION,"cancel":CANCEL_DURATION}[event.phase]
-		if age<duration:return {"phase":event.phase,"target":event.target,"age":age,"fish":event.get("fish","")}
+		if age<duration:return {"phase":event.phase,"target":event.target,"age":age,"fish":event.get("fish",""),"rod":event.get("rod",""),"released":event.get("released",false)}
 	var fishing:Dictionary=actor.fishing
 	if fishing.is_empty():return {}
 	var phase:="ready" if world_time>=float(fishing.ready) else "wait"
-	var state:={"phase":phase,"target":target_of(fishing),"age":0.0}
+	var state:={"phase":phase,"target":target_of(fishing),"age":0.0,"rod":fishing.get("rod","")}
 	if phase=="ready":
 		state.age=maxf(0.0,elapsed-float(actor.bite_started)) if is_finite(float(actor.bite_started)) else 0.0
 	if phase=="wait" and event.get("phase")=="cast":
@@ -84,7 +89,14 @@ static func added_species(before:Dictionary,after:Dictionary) -> String:
 	return added
 
 static func make_event(phase:String,fishing:Dictionary,elapsed:float) -> Dictionary:
-	return {"phase":phase,"target":target_of(fishing),"started":elapsed}
+	return {"phase":phase,"target":target_of(fishing),"started":elapsed,"rod":fishing.get("rod","")}
+
+static func reel_for(snapshot:Dictionary,actor:String,cast:Dictionary) -> Dictionary:
+	for event:Dictionary in snapshot.get("tool_actions",{}).get("events",[]):
+		if event.get("tool")=="fish_reel" and event.get("actor")==actor and event.get("ready")==cast.get("ready"):
+			if event.get("x")==cast.get("x") and event.get("y")==cast.get("y") and SPECIES.has(event.get("fish","")):
+				return event
+	return {}
 
 static func target_of(fishing:Dictionary) -> Vector2:
 	return Vector2(float(fishing.x)+0.5,float(fishing.y)+0.5)

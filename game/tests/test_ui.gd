@@ -27,12 +27,25 @@ func run() -> void:
 	main.view.update_snapshot(first,id)
 	main.view._process(0.1)
 	var start:Vector2=main.view.display_positions[id]
+	var normal_step:=World.MOVE_TILES_PER_SECOND*0.1
+	first.players[id].x+=normal_step
+	main.view.update_snapshot(first,id)
+	main.view._process(0.05)
+	expect(absf(main.view.display_positions[id].x-start.x-normal_step*0.5)<0.01,"movement interpolates between normal server positions")
+	main.view.update_snapshot(first.duplicate(true),id)
+	main.view._process(0.05)
+	expect(absf(main.view.display_positions[id].x-start.x-normal_step)<0.01,"an unchanged position in another snapshot never restarts movement")
+	var caught_up:Vector2=main.view.display_positions[id]
 	first.players[id].x+=1.0
 	main.view.update_snapshot(first,id)
 	main.view._process(0.05)
-	expect(absf(main.view.display_positions[id].x-start.x-0.5)<0.01,"movement interpolates between snapshots")
-	main.view._process(0.05)
-	expect(absf(main.view.display_positions[id].x-start.x-1.0)<0.01,"movement finishes without endless trailing")
+	var correction:float=main.view.display_positions[id].x-caught_up.x
+	expect(correction>normal_step*0.5 and correction<=World.MOVE_TILES_PER_SECOND*1.75*0.05+0.001,
+		"delayed movement catches up without jumping an entire tile")
+	for i in range(4):
+		main.view.update_snapshot(first.duplicate(true),id)
+		main.view._process(0.05)
+	expect(absf(main.view.display_positions[id].x-float(first.players[id].x))<0.01,"a delayed move reaches the last position despite status snapshots")
 	main._select_tool("seed")
 	expect(main.selected_label.text.contains("奶白蘿蔔"),"selected seed visible")
 	main._build_menu()
@@ -56,7 +69,11 @@ func run() -> void:
 	var rack_world=main.session.world
 	var rack_owner:Dictionary=rack_world.state.players[main.session.profile.token]
 	var rack_cell:=Vector2i(38,34)
+	# Feature fixtures use the workshop plots after the actual spawn and UI entry checks.
+	rack_owner.x=World.SPAWN.x
+	rack_owner.y=World.SPAWN.y
 	rack_owner.inventory.rope=3
+	main.session._send_snapshot(1)
 	main.session.rates[1].clear()
 	main.session.perform("build",rack_cell,"rope_rack")
 	expect(main.session.snapshot.objects.get("38,34",{}).get("type")=="rope_rack","Rope rack is placed through Session")
@@ -79,13 +96,19 @@ func run() -> void:
 	expect(main.session.snapshot.ground.has("38,33"),"build becomes visible snapshot")
 	var w=main.session.world
 	w.add_player("private-test-neighbor","鄰居")
+	w.state.players["private-test-neighbor"].x=37.5
+	w.state.players["private-test-neighbor"].y=35.5
 	w.state.players["private-test-neighbor"].inventory.wood=30
-	w.act("private-test-neighbor","private-build","build",Vector2i(37,33),"private_chest")
-	w.act("private-test-neighbor","private-put","deposit",Vector2i(37,33),"wood")
+	var private_cell:=Vector2i(37,34)
+	var private_key:=World.key(private_cell)
+	var placed:Dictionary=w.act("private-test-neighbor","private-build","build",private_cell,"private_chest")
+	expect(placed.ok,"Fixture chest builds outside Aru's reserved lamp site: "+str(placed.message))
+	expect(w.act("private-test-neighbor","private-put","deposit",private_cell,"wood").ok,"Neighbor owns the contents of the fixture chest")
 	main.session._send_snapshot(1)
-	expect(main.session.snapshot.objects["37,33"].items.is_empty(),"private chest contents are absent from another player's snapshot")
-	expect(main.session.snapshot.objects["37,33"].locked,"private box is marked locked")
-	expect(w.state.objects["37,33"].items.wood==1,"privacy filtering does not erase stored items")
+	var box_view:Dictionary=main.session.snapshot.objects.get(private_key,{})
+	expect(box_view.get("items",{}).is_empty(),"private chest contents are absent from another player's snapshot")
+	expect(box_view.get("locked",false),"private box is marked locked")
+	expect(w.state.objects.get(private_key,{}).get("items",{}).get("wood",0)==1,"privacy filtering does not erase stored items")
 	w.act(main.session.profile.token,"plant-ui","plant_tree",Vector2i(40,34))
 	main.session._send_snapshot(1)
 	expect(main.session.snapshot.forest["40,34"].owner==id,"tree ownership uses public identifier")
@@ -347,20 +370,47 @@ func check_trade_book() -> void:
 	var place:Vector2i=World.bond_place(w.state,"xiaoli")[1]
 	player.x=place.x+0.5
 	player.y=place.y+0.5
-	expect(w.act(player_token,"book-unlock","resident_goal",place,"xiaoli:1::").ok,"Reporting to Xiaoli unlocks the book")
 	main.session._send_snapshot(1)
 	await process_frame
+	var saved_scale:int=main.sound.preferred_text_scale
+	var saved_size:=root.size
+	if "--trade-book-compact" in OS.get_cmdline_user_args():
+		root.size=Vector2i(1024,640)
+		main.sound.preferred_text_scale=3
+		main._apply_font_scale_tree()
+	var Tasks:=preload("res://scripts/life_ui_tasks.gd")
+	Tasks.bond_goal(main,"xiaoli",1)
+	await process_frame
+	var report:=main.modal.find_child("BondGoalDo",true,false) as Button
+	expect(report!=null and not report.disabled,"Qualified trade can be reported to Xiaoli")
+	if report!=null:report.pressed.emit()
+	await process_frame
+	var story_book:=main.modal.find_child("XiaoliStoryTradeBook",true,false) as Button if is_instance_valid(main.modal) else null
+	expect(story_book!=null,"Reporting to Xiaoli links directly to the trade book")
+	if story_book!=null:
+		story_book.pressed.emit()
+		await process_frame
+		expect(trade_book_contains("小栗幫你留的第一筆買賣"),"Story shortcut opens the personal receipts")
+		var back:=find_button(main.modal,"回到關係事件")
+		expect(back!=null,"Story shortcut keeps a route back to the completed event")
+		if back!=null:back.pressed.emit()
+		await process_frame
 	var history:Array=main.session.snapshot.get("own_shop_history",[])
 	expect(history.size()==2,"Only own sales and purchases appear in the book")
 	if history.size()==2:
 		expect(history[0].action=="buy" and int(history[0].coins)==-25 and history[0].items=={"potato_seed":1},"Recent purchase shows the exact price and seed")
 		expect(history[1].action=="sell" and int(history[1].coins)==24 and history[1].items=={"radish":-1},"Older sale shows the exact proceeds and crop")
+		var pinned:Dictionary=main.session.snapshot.get("own_first_shop_trade",{})
+		expect(pinned.get("sale",{})==history[1] and pinned.get("seed",{})==history[0],"Pinned receipts match the exact first sale and qualifying seed purchase")
 	main._shop()
 	await process_frame
 	var entry:=main.modal.find_child("ShopTradeBook",true,false) as Button
 	expect(entry!=null,"The stall exposes the unlocked trade book")
 	if entry==null:
 		main._close_modal()
+		root.size=saved_size
+		main.sound.preferred_text_scale=saved_scale
+		main._apply_font_scale_tree()
 		return
 	entry.pressed.emit()
 	await process_frame
@@ -371,14 +421,214 @@ func check_trade_book() -> void:
 	if history_tab!=null:history_tab.pressed.emit()
 	await process_frame
 	expect(trade_book_contains("+24 鈴幣") and trade_book_contains("-25 鈴幣"),"History shows positive and negative money deltas")
+	expect(trade_book_contains("首次賣作物") and trade_book_contains("接著買的當季種子"),"History identifies both pinned milestones")
+	var papers:=main.modal.find_child("ShopTradePinned",true,false) as PanelContainer
+	var inner:=main.modal.find_child("ShopTradeRows",true,false) as ScrollContainer
+	expect(papers!=null and inner!=null and inner.get_global_rect().encloses(papers.get_global_rect()),"Pinned receipts fit above the fold including the amounts")
 	expect(not trade_book_contains("南瓜"),"The neighbor's crop never appears")
 	await capture_trade_book("history")
 	check_bounds(main.modal)
+	var pinned:Dictionary=main.session.snapshot.get("own_first_shop_trade",{})
+	main.session.snapshot.erase("own_first_shop_trade")
+	main.life_panels.trade_book(main,true)
+	await process_frame
+	expect(trade_book_contains("舊存檔沒有標記當時的兩筆交易") and trade_book_contains("近期交易"),"Legacy snapshots disclose missing receipts and keep recent transactions")
+	await capture_trade_book("history-legacy")
+	main.session.snapshot.own_first_shop_trade=pinned
+	main._close_modal()
+	await check_cart_site()
+	await check_return_customer()
+	await check_shop_sign()
+	root.size=saved_size
+	main.sound.preferred_text_scale=saved_scale
+	main._apply_font_scale_tree()
+
+func check_cart_site() -> void:
+	var tasks:=preload("res://scripts/life_ui_tasks.gd")
+	var w:World=main.session.world
+	var token:String=main.session.profile.token
+	var player:Dictionary=w.state.players[token]
+	var site:Vector2i=World.bond_place(w.state,"xiaoli")[1]
+	player.x=site.x+0.5
+	player.y=site.y+0.5
+	player.bonds.xiaoli.points=6
+	player.inventory.wood=12
+	player.inventory.cotton_cloth=2
+	main.session.rates[1].clear()
+	main.session._send_snapshot(1)
+	tasks.bond_goal(main,"xiaoli",2)
+	await process_frame
+	var chart:=main.modal.find_child("XiaoliSiteChart",true,false) as Control
+	var submit:=main.modal.find_child("BondGoalDo",true,false) as Button
+	expect(chart!=null and submit!=null and submit.disabled,"The site chart asks for a choice before hand-in")
+	for id in ["tree","plaza","dock"]:
+		var option:=main.modal.find_child("BondGoalOption_"+id,true,false) as Button
+		expect(option!=null,"The site is available: "+id)
+		if option!=null:option.pressed.emit()
+		await process_frame
+		expect(chart!=null and chart.call("selected_site")==id and trade_book_contains(World.RESIDENT_GOALS.XIAOLI_CART_SITES[id].hint),"The chart and caption follow "+id)
+	await capture_trade_book("cart-site-choice")
+	expect(submit!=null and not submit.disabled,"The valid site and materials enable hand-in")
+	var body:=main.modal.find_child("ModalScroll",true,false) as ScrollContainer
+	expect(body!=null and submit!=null and body.get_global_rect().encloses(submit.get_global_rect()),"The site and hand-in fit in the same viewport")
+	if submit!=null:submit.pressed.emit()
+	await process_frame
+	await process_frame
+	expect(int(player.inventory.get("wood",0))==0 and int(player.inventory.get("cotton_cloth",0))==0,"The site design uses exactly the agreed materials")
+	var saved:=World.new()
+	expect(saved.load_world(w.save_path) and World.RESIDENT_GOALS.done(saved.state.players[token],"xiaoli").get(2)=="dock","The selection persists in the actual save")
+	var pattern:=main.modal.find_child("XiaoliCartPattern",true,false) as Button if is_instance_valid(main.modal) else null
+	var saved_chart:=main.modal.find_child("XiaoliSiteChart",true,false) as Control if is_instance_valid(main.modal) else null
+	expect(pattern!=null and saved_chart!=null and saved_chart.call("selected_site")=="dock","The completed event retains the marker and unlocks its workshop shortcut")
+	body=main.modal.find_child("ModalScroll",true,false) as ScrollContainer if is_instance_valid(main.modal) else null
+	expect(body!=null and pattern!=null and body.get_global_rect().encloses(pattern.get_global_rect()),"The completed map and workshop shortcut fit in the same viewport")
+	await capture_trade_book("cart-site-completed")
+	if pattern!=null:pattern.pressed.emit()
+	await process_frame
+	await process_frame
+	var title:=main.modal.find_child("BuildTitle",true,false) as Label if is_instance_valid(main.modal) else null
+	var notes:=main.modal.find_child("BuildDescription",true,false) as Label if is_instance_valid(main.modal) else null
+	expect(title!=null and title.text==World.BUILD[World.INDUSTRY.COAST_CART].name,"The workshop selects the real cart recipe")
+	expect(notes!=null and notes.text.contains("選址手記：渡口路邊"),"The recipe shows this player's chosen landmark")
+	await capture_trade_book("cart-site-workshop")
+	main._close_modal()
+
+func check_return_customer() -> void:
+	var tasks:=preload("res://scripts/life_ui_tasks.gd")
+	var w:World=main.session.world
+	var token:String=main.session.profile.token
+	var player:Dictionary=w.state.players[token]
+	player.bonds.xiaoli.points=14
+	w.state.picnic=true
+	var stall:=World.MARKET.cell_for(w.state)
+	player.x=stall.x+0.5
+	player.y=stall.y+0.5
+	var reward:=World.MARKET_DECOR.REWARD_STYLE
+	expect(not w.act(token,"early-chestnut","market_decor",stall,"cloth|"+str(reward.cloth)).ok,"The reward is locked before meeting the returning visitor")
+	w.state.time=(World.WEATHER.day_index(float(w.state.time))+1)*World.WEATHER.DAY_SECONDS-0.15
+	player.inventory.radish=5
+	expect(w.act(token,"return-stock","market_stock",stall,"radish:5").ok,"Trial run stocks five radishes")
+	expect(w.act(token,"return-market-open","market_open",stall).ok,"The ordinary market opens a trial run")
+	expect(w.step(0.30,true) and World.MARKET.record(player).report.get("visitors",0)>0,"Midnight settles the trial with visitors")
+	var npc:Vector2i=World.bond_place(w.state,"xiaoli")[1]
+	player.x=npc.x+0.5
+	player.y=npc.y+0.5
+	main.session.rates[1].clear()
+	main.session._send_snapshot(1)
+	tasks.bond_goal(main,"xiaoli",3)
+	await process_frame
+	var greet:=main.modal.find_child("BondGoalDo",true,false) as Button
+	expect(greet!=null and not greet.disabled and greet.text=="招呼米露","A guaranteed returning resident is ready after the trial")
+	if greet!=null:greet.pressed.emit()
+	await process_frame
+	await process_frame
+	var art:=main.modal.find_child("XiaoliReturnGuestArt",true,false) as Control
+	expect(art!=null and art.get("played")==true and World.RESIDENT_GOALS.done(player,"xiaoli").has(3),"The confirmed greeting plays the guest scene and records the story")
+	await capture_trade_book("return-visit")
+	var replay:=main.modal.find_child("XiaoliReplayVisit",true,false) as Button
+	var sent:int=main.session.counter
+	expect(replay!=null,"The guest scene can be replayed")
+	if replay!=null:replay.pressed.emit()
+	expect(main.session.counter==sent,"Replaying stays local and submits no second reward claim")
+	var preview:=main.modal.find_child("XiaoliMarketReward",true,false) as Button
+	expect(preview!=null,"The completed event shows the earned decor")
+	if preview!=null:preview.pressed.emit()
+	await process_frame
+	expect(trade_book_contains("栗棕攤布與栗果招牌"),"Reward preview identifies the two designs")
+	await capture_trade_book("return-reward")
+	main._close_modal()
+	player.x=stall.x+0.5
+	player.y=stall.y+0.5
+	main.session.rates[1].clear()
+	main.session._send_snapshot(1)
+	main._interact()
+	await process_frame
+	var decor:=main.modal.find_child("MarketDecorToggle",true,false) as Button if is_instance_valid(main.modal) else null
+	expect(decor!=null,"The plaza opens the normal decor picker")
+	if decor!=null:
+		decor.pressed.emit()
+		await process_frame
+		for kind:String in reward:
+			var choice:=main.modal.find_child("MarketDecor_%s_%s"%[kind,reward[kind]],true,false) as Button
+			expect(choice!=null and not choice.disabled,"Earned decor is available: "+kind)
+			if choice!=null:choice.pressed.emit()
+			await process_frame
+		expect(World.MARKET_DECOR.style(player)==reward,"Both earned designs can be applied")
+		await capture_trade_book("return-decor-applied")
+	var saved:=World.new()
+	expect(saved.load_world(w.save_path) and World.MARKET_DECOR.style(saved.state.players[token])==reward,"Reload preserves the applied designs")
+	expect(not w.market_view("private-test-neighbor").get("xiaoli_decor_reward",false),"The other islander cannot use the earned styles")
+	main._close_modal()
+
+func check_shop_sign() -> void:
+	var tasks:=preload("res://scripts/life_ui_tasks.gd")
+	var w:World=main.session.world
+	var token:String=main.session.profile.token
+	var player:Dictionary=w.state.players[token]
+	var at:Vector2i=World.bond_place(w.state,"xiaoli")[1]
+	player.x=at.x+0.5
+	player.y=at.y+1.5
+	player.bonds.xiaoli.points=24
+	player.inventory.plank=2
+	main.session.rates[1].clear()
+	main.session._send_snapshot(1)
+	tasks.bond_goal(main,"xiaoli",4)
+	await process_frame
+	var field:=main.modal.find_child("XiaoliShopNameInput",true,false) as LineEdit
+	expect(field!=null,"The final story offers a custom shop name")
+	if field!=null:
+		field.text="海風栗子舖"
+		field.text_changed.emit(field.text)
+	await capture_trade_book("shop-name")
+	var finish:=main.modal.find_child("BondGoalDo",true,false) as Button
+	expect(finish!=null and not finish.disabled,"A custom name can be submitted with two boards")
+	if finish!=null:finish.pressed.emit()
+	await process_frame
+	await process_frame
+	expect(trade_book_contains("店門招牌 · 海風栗子舖") and int(player.inventory.plank)==0,"Hand-in hangs the new sign and charges exactly two boards")
+	var claim:=main.modal.find_child("XiaoliCollectScale",true,false) as Button
+	expect(claim!=null and not claim.disabled,"The finished story offers the brass scale")
+	if claim!=null:claim.pressed.emit()
+	await process_frame
+	expect(claim!=null and claim.disabled and int(player.inventory.get(World.XIAOLI_SHOP.SCALE_ITEM,0))==1,"The scale is granted exactly once")
+	expect(not w.act(token,"scale-again",World.XIAOLI_SHOP.SCALE_ACTION,at).ok,"A repeated scale claim is refused by the authority")
+	var public:Dictionary=main.session.public_state("home","private-test-neighbor")
+	expect(not public.has("own_xiaoli_shop") and not JSON.stringify(public.players).contains(World.XIAOLI_SHOP.NAME_KEY),"Public view keeps the shop name private")
+	await capture_trade_book("shop-keepsake")
+	var photo_path:=tasks.xiaoli_photo_path(main)
+	if DisplayServer.get_name()!="headless":
+		var photo:=main.modal.find_child("XiaoliTakeShopPhoto",true,false) as Button
+		expect(photo!=null and not photo.disabled,"At the shop, the photo action is available")
+		if photo!=null:photo.pressed.emit()
+		await create_timer(0.4).timeout
+		expect(FileAccess.file_exists(photo_path) and main.modal.find_child("XiaoliShopPhoto",true,false)!=null,"The photo is written and can be opened")
+		var album_scroll:=main.modal.find_child("ModalScroll",true,false) as ScrollContainer
+		var album_back:=main.modal.find_child("XiaoliPhotoBack",true,false) as Button
+		expect(album_scroll!=null and album_back!=null and album_scroll.get_global_rect().encloses(album_back.get_global_rect()),"The photo and return action fit together")
+		await capture_trade_book("shop-photo")
+		if FileAccess.file_exists(photo_path):DirAccess.remove_absolute(photo_path)
+	var saved:=World.new()
+	expect(saved.load_world(w.save_path) and saved.state.players[token].get(World.XIAOLI_SHOP.NAME_KEY)=="海風栗子舖" and saved.state.players[token].get(World.XIAOLI_SHOP.SCALE_KEY)==true,"Reload preserves the name and the one-time keepsake claim")
+	tasks.bond_goal(main,"xiaoli",4)
+	await process_frame
+	var rename:=main.modal.find_child("XiaoliRenameShop",true,false) as Button
+	expect(rename!=null and not rename.disabled,"The owner can update the sign at the shop")
+	if rename!=null:
+		rename.pressed.emit()
+		await process_frame
+		var rename_input:=main.modal.find_child("XiaoliShopNameInput",true,false) as LineEdit
+		var confirm:=main.modal.find_child("XiaoliRenameConfirm",true,false) as Button
+		if rename_input!=null and confirm!=null:
+			rename_input.text=""
+			confirm.pressed.emit()
+			await process_frame
+			expect(trade_book_contains("店門招牌 · 渡口小店") and int(player.inventory.plank)==0,"An empty replacement restores the default sign without a second charge")
 	main._close_modal()
 
 func capture_trade_book(section:String) -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--trade-book-capture=") and DisplayServer.get_name()!="headless":
+			await create_timer(0.25).timeout
 			await RenderingServer.frame_post_draw
 			var path:=arg.trim_prefix("--trade-book-capture=").path_join(section+".png")
 			expect(root.get_texture().get_image().save_png(path)==OK,"Capture the trade book "+section)

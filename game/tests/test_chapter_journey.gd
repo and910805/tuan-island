@@ -161,6 +161,14 @@ func walk_to(target: Vector2i, reach: float = 2.0, actor:String=TOKEN) -> void:
 		expect(Vector2(walker.x,walker.y).distance_to(Vector2(path[index])+Vector2(0.5,0.5)) <= 0.001, "Movement did not follow passable route")
 		if failed:
 			return
+func collect_gathered(target: Vector2i) -> void:
+	if Vector2(person().x,person().y).distance_to(Vector2(target)+Vector2(0.5,0.5))>World.GATHER_PICKUP_RADIUS:
+		walk_to(target,1.0)
+	if failed:return
+	expect(world.step(ceilf(World.GATHER_DROP_DELAY),true),"Ground items land and can be picked up")
+	var drops:Dictionary=world.state.get("gather_drops",{}).get(world.player_region(TOKEN),{})
+	expect(not drops.has(World.key(target)),"Picked up the bundle at %s (position %s, active %s, time %.2f, drop %s)"%[target,Vector2(person().x,person().y),world.active_tokens.has(TOKEN),float(world.state.time),drops.get(World.key(target),{})])
+
 func act(action: String, target: Vector2i, extra: String = "") -> void:
 	walk_to(target)
 	if failed:return
@@ -168,4 +176,4 @@ func act(action: String, target: Vector2i, extra: String = "") -> void:
 	var result := world.act(TOKEN,"journey-%d"%actions,action,target,extra)
 	print("%d %s %s %s | %s | wood=%d stone=%d coins=%d" % [actions,action,target,extra,result.message,bag().wood,bag().stone,person().coins])
 	expect(result.ok, "World action failed: " + action)
-
+	if result.get("gather_dropped",false):collect_gathered(target)

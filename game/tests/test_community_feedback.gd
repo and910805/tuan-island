@@ -119,6 +119,17 @@ func test_shared_plates()->void:
 	rewind.time=90.0
 	fb.observe(served,rewind,30.2)
 	expect(fb.sample_shared(30.2,false)=={},"returning to an earlier save clears the cue")
+	fb.observe(empty,served,40.0)
+	var only_hotpot:=empty.duplicate(true)
+	only_hotpot.community.hotpot={"portions":4}
+	fb.observe(served,only_hotpot,40.3)
+	expect(fb.sample_shared(40.5,false).keys()==["trout_hotpot"],"Dishes removed from the table stop animating while a new dish arrives")
+	var hotpot_claimed:=only_hotpot.duplicate(true)
+	hotpot_claimed.community.hotpot.portions=3
+	fb.observe(only_hotpot,hotpot_claimed,40.6)
+	expect(fb.sample_claims(40.7,false).has("trout_hotpot"),"A dish still on the table shows its portion being taken")
+	fb.observe(hotpot_claimed,empty,40.8)
+	expect(fb.sample_claims(40.9,false).is_empty(),"A removed dish stops showing its previous claim cue")
 
 func test_partials_and_completion(contribute_time: float, opened_time: float) -> void:
 	var fb = fresh()

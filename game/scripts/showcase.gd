@@ -174,6 +174,7 @@ const MAX_PLACED:=100000
 const MAX_TICKETS:=999999
 const MAX_ROUNDS:=999999
 const MAX_ROUND:=1000000000
+const OCCUPIED_LAYERS:=["objects","ground","roofs","crops","forest"]
 const KEYS:=["active","ends","last","participants","pieces","ready","round","started","theme"]
 const ENTRY_KEYS:=["joined","placed"]
 const PIECE_KEYS:=["by","kind"]
@@ -208,8 +209,8 @@ static func unlocked(snapshot:Dictionary) -> bool:
 	return snapshot.get("picnic",false)==true
 
 static func cell_free(snapshot:Dictionary,cell:Vector2i) -> bool:
-	var tile:="%d,%d"%[cell.x,cell.y]
-	for field in ["objects","ground","roofs","crops","forest"]:
+	var tile:=cell_key(cell)
+	for field in OCCUPIED_LAYERS:
 		var layer:Variant=snapshot.get(field,{})
 		if layer is Dictionary and layer.has(tile):return false
 	return true
@@ -235,10 +236,29 @@ static func available(snapshot:Dictionary) -> bool:
 
 ## 告示牌與地塊中被 objects/ground/roofs/crops/forest 佔住的格子（列優先，告示牌在前）。
 static func blocked_cells(snapshot:Dictionary) -> Array:
+	var layers:Array[Dictionary]=[]
+	for field:String in OCCUPIED_LAYERS:
+		var layer:Variant=snapshot.get(field)
+		if layer is Dictionary and not layer.is_empty():layers.append(layer)
 	var out:=[]
-	for cell:Vector2i in cells():
-		if not cell_free(snapshot,cell):out.append(cell)
+	if layers.is_empty():return out
+	var tiles:=_site_keys()
+	for cell:Vector2i in tiles:
+		var key:String=tiles[cell]
+		for layer:Dictionary in layers:
+			if layer.has(key):
+				out.append(cell)
+				break
 	return out
+
+static var _cached_site_keys:Dictionary[Vector2i,String]={}
+
+static func _site_keys() -> Dictionary[Vector2i,String]:
+	if _cached_site_keys.is_empty():
+		var keys:Dictionary[Vector2i,String]={}
+		for cell:Vector2i in cells():keys[cell]=cell_key(cell)
+		_cached_site_keys=keys
+	return _cached_site_keys
 
 ## 解鎖後仍空著的告示牌或地塊格（World.protected：不能建造、耕作、種樹）。
 static func reserved(snapshot:Dictionary,p:Vector2i) -> bool:
@@ -385,10 +405,12 @@ static func view(state:Dictionary,token:String) -> Dictionary:
 	for kind:String in KIND_ORDER:kinds.append({"id":kind,"name":kind_name(kind),"category":category_of(kind),"category_name":str(CATEGORY_NAMES[category_of(kind)])})
 	var active:bool=show.active==true
 	var cooldown:=0.0 if active else maxf(0.0,float(show.ready)-now)
-	var open:=available(state)
+	var site_open:=unlocked(state)
+	var blocked:=blocked_cells(state)
+	var open:=site_open and blocked.is_empty()
 	var joined:bool=entry.get("joined",false)==true
 	var theme:=_theme_fields(show)
-	var out:={"unlocked":unlocked(state),"available":open,"blocked_cells":blocked_cells(state),
+	var out:={"unlocked":site_open,"available":open,"blocked_cells":blocked,
 		"sign":SIGN,"plot_rect":PLOT,"plot_cells":plot_cells(),"sign_reach":SIGN_REACH,"place_reach":PLACE_REACH,
 		"round":int(show.round),"active":active,
 		"seconds_left":maxf(0.0,float(show.ends)-now) if active else 0.0,

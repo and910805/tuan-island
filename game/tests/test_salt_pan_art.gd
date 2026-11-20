@@ -253,6 +253,8 @@ func run()->void:
 	expect(SaltWorldArt.view_state({"s":"salt","covered":true})=="covered","rain covers salt")
 	expect(SaltArt.panel_art("pan","brine_alt")==null and SaltArt.panel_art("pan","covered")==SaltArt.pan_texture("covered"),"panel art never hands out the drifting brine_alt frame")
 	expect(SaltArt.panel_art("portrait","salt_worker")==SaltArt.portrait_texture() and SaltArt.panel_art("portrait","xiaoli")==null and SaltArt.panel_art("heritage","x")==null,"panel art: portrait only for 阿曬, nothing invented")
+	var heritage:=SaltArt.panel_art("heritage","jingzaijiao")
+	expect(heritage!=null and Vector2i(heritage.get_size())==Vector2i(288,192) and heritage==SaltArt.heritage_texture("jingzaijiao") and heritage.resource_path=="res://assets/salt/salt-heritage-jingzaijiao.png","panel art: 井仔腳 heritage journal illustration is the delivered 288x192 PNG")
 
 	# ---------------------------------------------------- structures
 	var struct_src:=source("structures")

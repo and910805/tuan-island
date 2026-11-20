@@ -2,8 +2,8 @@ extends RefCounted
 ## Pure transaction planner for automatic roofs over CURRENT-REGION snapshots.
 ## Used by World.act and the client construction quote; persistence stays in World.
 ##
-## reconcile() compares a `before` and `after` snapshot ({ground, objects, roofs}
-## layers keyed by "x,y") around the `touched` tiles and returns the roof delta
+## reconcile() compares a `before` and `after` snapshot (ground, objects, roofs
+## and optional boundary edges) around the `touched` tiles and returns the roof delta
 ## that would keep auto roofs consistent with sealed rooms. It never writes to
 ## its inputs and never checks inventories; the server wrapper must validate the
 ## aggregate cost/refunds after the base action and apply everything atomically.
@@ -22,9 +22,11 @@ extends RefCounted
 ## future preview. No other player is ever charged.
 
 const Enclosure = preload("res://scripts/room_enclosure.gd")
+const Fixtures = preload("res://scripts/roof_fixtures.gd")
 const MIN_AREA := Enclosure.MIN_AREA
 const MAX_CELLS := Enclosure.MAX_CELLS
-const MAX_TOUCHED := 256
+# A 16×16 edge blueprint can also touch 64 cells immediately outside its perimeter.
+const MAX_TOUCHED := 320
 const MAX_AFFECTED := 4000
 const MAX_COORD := 1000000
 const MAX_UNIT_COST := 1000000
@@ -43,6 +45,7 @@ static func reconcile(before: Dictionary, after: Dictionary, touched: Array[Vect
 		if absi(t.x) > MAX_COORD or absi(t.y) > MAX_COORD:return _fail("施工位置超出範圍，屋頂沒有變更")
 	var grounds := [_layer(before, "ground"), _layer(after, "ground")]
 	var objects := [_layer(before, "objects"), _layer(after, "objects")]
+	var snapshots := [before, after]
 	var after_roofs := _layer(after, "roofs")
 	# Closure: every floor component (in BOTH snapshots) reachable from touched
 	# cells or their cardinal neighbours, re-expanded until each affected cell's
@@ -64,7 +67,7 @@ static func reconcile(before: Dictionary, after: Dictionary, touched: Array[Vect
 		head += 1
 		for s in 2:
 			if maps[s].has(c) or not _is_floor(grounds[s], objects[s], c):continue
-			var comp := _component(grounds[s], objects[s], c)
+			var comp := Enclosure.analyze(snapshots[s], c)
 			if comp.truncated:return _fail("房間範圍超過 %d 格，請先確認牆面是否圍好；屋頂沒有變更" % MAX_CELLS)
 			var idx: int = comps[s].size()
 			comps[s].append(comp)
@@ -100,6 +103,7 @@ static func reconcile(before: Dictionary, after: Dictionary, touched: Array[Vect
 			if not _is_auto_roof(roof) or interior:continue
 			var payer = roof.get("owner")
 			if typeof(payer) != TYPE_STRING or not _valid_actor(payer):return _fail("自動屋頂資料有誤，屋頂沒有變更")
+			if objects[1].get(k,{}).get("type")==Fixtures.HANGING_POT:return _fail(Fixtures.REMOVE_MESSAGE)
 			remove.append(k)
 			removed_by_owner[payer] = int(removed_by_owner.get(payer, 0)) + 1
 		elif may_create:
@@ -119,9 +123,6 @@ static func reconcile(before: Dictionary, after: Dictionary, touched: Array[Vect
 			if amount > 0:back[r] = amount
 		if not back.is_empty():refunds[o] = back
 	return {"ok": true, "message": _message(add.size(), remove.size()), "add": add, "remove": remove, "cost": cost, "refunds": refunds}
-
-static func _component(ground: Dictionary, objects: Dictionary, start: Vector2i) -> Dictionary:
-	return Enclosure.analyze({"ground":ground,"objects":objects},start)
 
 static func _is_auto_roof(roof) -> bool:
 	if not (roof is Dictionary):return false
@@ -177,8 +178,7 @@ static func _fail(message: String) -> Dictionary:
 static func _is_floor(ground: Dictionary, objects: Dictionary, p: Vector2i) -> bool:
 	var g = ground.get(_key(p))
 	if not (g is Dictionary):return false
-	var t = g.get("type")
-	if typeof(t) != TYPE_STRING or t != "floor":return false
+	if not Enclosure.is_floor_kind(g.get("type")):return false
 	return _type(objects, p) not in BOUNDARY
 
 static func _type(objects: Dictionary, p: Vector2i) -> String:

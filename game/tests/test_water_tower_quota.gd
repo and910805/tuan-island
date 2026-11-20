@@ -26,16 +26,16 @@ const Schema=preload("res://scripts/save_schema.gd")
 const Session=preload("res://scripts/session.gd")
 const OWNER:="quota-owner-token-8b2e"
 const OTHER:="quota-other-token-41fa"
-const S_A:=Vector2i(46,24)
-const TOWER:=Vector2i(47,24)
-const S_B:=Vector2i(48,24)
-const S_C:=Vector2i(49,24)
-const PIPE_B:=Vector2i(50,24)
-const TANK:=Vector2i(51,24)
-const PIPE_C:=Vector2i(52,24)
-const PUMP:=Vector2i(53,24)
+const S_A:=Vector2i(46,21)
+const TOWER:=Vector2i(47,21)
+const S_B:=Vector2i(48,21)
+const S_C:=Vector2i(49,21)
+const PIPE_B:=Vector2i(50,21)
+const TANK:=Vector2i(51,21)
+const PIPE_C:=Vector2i(52,21)
+const PUMP:=Vector2i(53,21)
 const SPRS:=[S_A,S_B,S_C]
-const MOVED:=Vector2i(48,26)
+const MOVED:=Vector2i(50,24)
 const DAY_DT:=96.0
 const SET:="tower_set"
 const BAD_EXTRAS:=["quota:04","quota:-4","reserve:12:1","water:5","","reserve","quota","reserve:","quota:",":12","reserve:abc","reserve:12.0","quota:8.0","reserve: 12","quota:8 ","Reserve:12","QUOTA:8","reserve:13","reserve:-12","reserve:60","reserve:-0","quota:5","quota:32","quota:+4","quota:-0","reserve:1e1","quota:0x8","reserve:012","enabled:1","reserve=12","reserve:12,quota:8"]
@@ -603,7 +603,8 @@ func check_quota_fixtures() -> void:
 func build_world(w:World,label:String) -> bool:
 	w.add_player(OWNER,"Owner")
 	w.add_player(OTHER,"Other")
-	for tile:Vector2i in [PIPE_C,PUMP]:
+	# Row y=21 stays clear of the reserved public-mill parcel (47..49,23..25 and 48,26).
+	for tile:Vector2i in [S_A,TOWER,S_B,S_C,PIPE_B,TANK,PIPE_C,PUMP,MOVED]:
 		if World.base_resource(tile)!="":w.state.removed[k(tile)]=true
 	write_revisit_fixture(w)
 	var inv:Dictionary=w.state.players[OWNER].inventory
@@ -869,8 +870,8 @@ func check_move_remove(w:World) -> void:
 	expect(before.has("reserve") and before.has("quota"),"tower has both settings before the move")
 	refuse(w,OTHER,"move_object",TOWER,k(MOVED),"","another player cannot move the tower")
 	var person:Dictionary=w.state.players[OWNER]
-	person.x=46.5
-	person.y=26.5
+	person.x=49.5
+	person.y=23.5
 	var moved:=act(w,OWNER,"move_object",TOWER,k(MOVED))
 	expect(bool(moved.get("ok",false)),"owner moves the tower (%s)"%str(moved.get("message","")))
 	expect(not w.state.objects.has(k(TOWER)) and same(obj(w,MOVED),before),"moved tower keeps water, enabled, reserve and quota record (%s)"%str(obj(w,MOVED)))

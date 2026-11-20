@@ -34,7 +34,7 @@ func run()->void:
 
 func test_constants() -> void:
 	var S=load("res://scripts/session.gd")
-	expect(int(S.PROTOCOL)==45,"protocol is 45 (got %d)"%int(S.PROTOCOL))
+	expect(int(S.PROTOCOL)>=45,"Session protocol includes salt-pan actions (got %d)"%int(S.PROTOCOL))
 	var correlated:=["salt_gate_give","salt_rake","salt_install","salt_uninstall","salt_auto_cfg","salt_order","salt_box_take"]
 	for action in correlated:
 		expect(action in S.CORRELATED_ACTIONS,"%s is correlated"%action)

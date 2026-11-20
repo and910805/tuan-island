@@ -353,6 +353,11 @@ static func apply(state:Dictionary,token:String,action:String,p:Vector2i,extra:S
 	state.fish_meet=meet
 	return {"ok":true,"message":message}
 
+static func uses_event_cast_rules(state:Dictionary,token:String,p:Vector2i)->bool:
+	if not in_waters(p) or not available(state):return false
+	var meet:=round_state(state)
+	return meet.get("active",false) and meet.get("participants",{}).get(token,{}).get("joined",false)
+
 ## World 在 fish_catch 通過既有檢查後、發魚之前呼叫。p＝拋竿格（== player.fishing）。
 ## 回傳 {}：不是釣魚會紀錄，照一般釣魚。回傳 ok：已記錄並收線，玩家其他欄位不變。
 ## 回傳 fail（ENDING）：state 不變。

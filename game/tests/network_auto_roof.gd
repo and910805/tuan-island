@@ -1,6 +1,5 @@
 extends SceneTree
-## Two real ENet clients + server restart validation for automatic roofs
-## (world save schema 17 / network protocol 35).
+## Two real ENet clients + server restart validation for automatic roofs.
 ##
 ## AUTHORIZED LOCAL FIXTURE: the `seed` step writes a legal home-region room and
 ## exact test materials straight into a temporary save. It proves the networked

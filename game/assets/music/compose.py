@@ -43,6 +43,7 @@ SCORES = {
     "maokong": (64, DORIAN, 83, "reed", "harp", (0, 3, 2, 4), (2, None, 4, 2, 1, 0, -2, 1)),
     "maokong_tea_house": (65, MAJOR, 69, "mallet", "guitar", (0, 2, 3, 0), (4, None, 2, 1, 0, 2, None, 4)),
     "yingge": (66, MAJOR, 94, "mallet", "piano", (0, 1, 3, 4), (2, 0, 2, 5, 4, None, 2, 0)),
+    "yingge_pottery_workshop": (63, MIXOLYDIAN, 86, "mallet", "harp", (0, 3, 6, 0), (1, 4, 2, None, 3, 5, 2, 0)),
     "tianwei": (69, MAJOR, 100, "guitar", "harp", (0, 3, 5, 1), (0, 1, 2, 4, 5, 4, 2, 5)),
     "beimen": (60, MIXOLYDIAN, 72, "reed", "mallet", (0, 6, 3, 0), (4, None, 3, 0, -1, None, 1, 0)),
     "beimen_salt_pans": (69, DORIAN, 84, "mallet", "harp", (0, 1, 6, 0), (0, 2, None, 4, 5, 4, 2, None)),

@@ -74,7 +74,7 @@ func check_shop_guidance(world, person: Dictionary) -> void:
 	expect(description.begins_with("持有 3 · 單價 24 鈴幣"), "plain sale details remain after guidance clears")
 	world.state.chapter_one.shipped = false
 	world.state.picnic = false
-	button_named("買種子", app.modal).pressed.emit()
+	button_named("買種子與材料", app.modal).pressed.emit()
 	description = shop_text()
 	expect(description.begins_with("持有 5 · 單價 12 鈴幣"), "returning to buying shows radish seed details")
 	expect(not description.contains(SHIP_HINT) and not description.contains(PICNIC_HINT), "buying tab stays free of selling guidance even before shipment and picnic")

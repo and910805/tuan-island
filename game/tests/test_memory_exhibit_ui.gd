@@ -254,10 +254,22 @@ func entry_fits(page:String)->void:
 		check(with_entry<=without+1.0,"The 地方記憶展 entry adds no outer scrolling (%s): %.0f vs %.0f"%[page,with_entry,without])
 		check(row_with<=(parent as Control).size.x+0.5,"The entry row does not overflow (%s): %.0f vs %.0f"%[page,row_with,(parent as Control).size.x])
 	if entry!=null:
+		# The 公告板 is an ordinary scrolling page: scroll to each target the way keyboard
+		# focus / the wheel does, then require the whole control (and its text, not
+		# trimmed) inside the actual scroll viewport and the page.
+		if outer!=null:
+			outer.ensure_control_visible(entry)
+			await settle()
+			check(outer.get_global_rect().grow(0.5).encloses(entry.get_global_rect()),"地方記憶展 entry reachable by scrolling inside the visible scroll area (%s) %s"%[page,rect_info(entry)])
 		check(modal.get_global_rect().grow(0.5).encloses(entry.get_global_rect()) and button_not_cut(entry),"地方記憶展 entry whole inside the page (%s)"%page)
 		for other in ["SouvenirEntry","HarvestRelayEntry","HarvestRelayBoardEntry","FishingMeetEntry","ShowcaseEntry"]:
 			var b:=button(other)
-			if b!=null:check(button_not_cut(b) and modal.get_global_rect().grow(0.5).encloses(b.get_global_rect()),"%s caption still whole (%s)"%[other,page])
+			if b!=null:
+				if outer!=null:
+					outer.ensure_control_visible(b)
+					await settle()
+					check(outer.get_global_rect().grow(0.5).encloses(b.get_global_rect()),"%s reachable by scrolling inside the visible scroll area (%s) %s"%[other,page,rect_info(b)])
+				check(button_not_cut(b) and modal.get_global_rect().grow(0.5).encloses(b.get_global_rect()),"%s caption still whole (%s)"%[other,page])
 
 func entry_opens(page:String,locked:bool)->void:
 	var entry:=button("MemoryExhibitEntry")

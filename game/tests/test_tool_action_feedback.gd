@@ -87,7 +87,7 @@ func server_events()->void:
 	session.sequences={1:0,2:0,3:0}
 	session.rates={1:[],2:[],3:[]}
 	expect(not session.tool_action_epoch.is_empty(),"server session has a random tool-action epoch")
-	expect(Session.PROTOCOL==48,"tool events use the current cow-care protocol")
+	expect(Session.PROTOCOL>=48,"tool events preserve the cow-care protocol feature")
 	me().inventory.wood=100
 	me().inventory.stone=50
 	var plot:=Vector2i(38,34)
@@ -397,6 +397,15 @@ func resource_finishes()->void:
 	stone_after.removed={World.key(rock):true}
 	fb.observe(stone_before,stone_after,actor,2.0)
 	expect(fb.resource_finish(rock,2.0,false).get("kind")=="rock","Only an actual natural-rock removal starts breaking")
+	expect(fb.pickups.get(World.key(rock),{}).get("items",[])==["stone"],"The confirmed removed rock supplies a visible stone pickup")
+	var floor_at:=Vector2(100,80)
+	var collector:=Vector2(160,40)
+	var drop:=Feedback.pickup_pose(0.46,floor_at,collector,false)
+	var resting:=Feedback.pickup_pose(0.72,floor_at,collector,false)
+	var flight:=Feedback.pickup_pose(1.02,floor_at,collector,false)
+	expect(drop.height>0.0 and resting.position==floor_at and resting.height==0.0,"Spoils land briefly before being collected")
+	expect(flight.position.distance_to(collector)<resting.position.distance_to(collector),"Pickup moves toward the right collector")
+	expect(Feedback.pickup_pose(1.02,floor_at,collector,true).position==floor_at and Feedback.pickup_pose(1.2,floor_at,collector,false).is_empty(),"Low motion leaves the icon fixed and the effect expires")
 	fb.reset()
 	expect(fb.finishes.is_empty(),"Disconnect clears final-hit art")
 
@@ -428,6 +437,21 @@ func watered_plant_response()->void:
 		expect(Feedback.hand_grip(foot,pose)==(foot+pose.hand+pose.lunge).round()+Vector2(shoulder.x,absf(shoulder.y)),"Water trail follows the same hand as the PNG: "+str(facing))
 
 func tool_plans()->void:
+	var soil:=Vector2(100,100)
+	for facing in [Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT]:
+		var foot:=soil+Vector2(16,16)-Vector2(facing)*32
+		var start:=Feedback.plan("harvest",0.0,false,facing)
+		start.facing=facing
+		var peak:=Feedback.plan("harvest",0.4,false,facing)
+		peak.facing=facing
+		var landed:=Feedback.plan("harvest",0.8,false,facing)
+		landed.facing=facing
+		var calm:=Feedback.plan("harvest",0.8,true,facing)
+		expect(Feedback.harvest_center(soil,foot,start,0.0)==soil+Vector2(16,17),"Harvest starts in its soil: "+str(facing))
+		expect(Feedback.harvest_center(soil,foot,peak,0.4).y<soil.y,"Harvest clears the soil: "+str(facing))
+		var mouth:=(Feedback.hand_grip(foot,landed)+Vector2(0,-10).rotated(float(landed.angle))).round()
+		expect(Feedback.harvest_center(soil,foot,landed,0.8)==mouth and landed.alpha>0.0,"Crop reaches the visible basket opening: "+str(facing))
+		expect(Feedback.harvest_center(soil,foot,calm,0.8)==soil+Vector2(16,17) and calm.alpha==1.0,"Quiet harvest stays readable in place: "+str(facing))
 	expect(Feedback.seed_contacts(0.67,false).is_empty(),"No soil response before the first seed lands")
 	var first_contact:=Feedback.seed_contacts(0.69,false)
 	var all_contacts:=Feedback.seed_contacts(0.80,false)
@@ -486,7 +510,7 @@ func tool_plans()->void:
 			expect(body_poses.size()>=3,"%s has readable torso anticipation and recovery"%tool)
 			expect(Feedback.plan(tool,0.0,false).body_lean==0 and Feedback.plan(tool,1.0,false).body_lean==0,"%s starts and ends at the standing pose"%tool)
 	expect(Feedback.held_icon("seed","carrot_seed")!=null,"seed icon follows the sown crop")
-	expect(Feedback.held_icon("fish")==null,"fishing keeps its own art (no hand-tool icon)")
+	expect(Feedback.held_icon("fish")!=null,"fishing uses its own rod art during casting and reeling")
 	expect(Feedback.facing_toward(Vector2(39.5,33.5),Vector2i(41,33),Vector2i.DOWN)==Vector2i.RIGHT,"actor turns toward the target cell")
 	expect(Feedback.facing_toward(Vector2(39.5,33.5),Vector2i(39,33),Vector2i.LEFT)==Vector2i.LEFT,"own cell keeps the previous facing")
 

@@ -181,7 +181,7 @@ const RESIDENTS:={
 			{"id":"aru_c1_board_frame","chapter":1,"region":"home",
 			"prerequisites":[{"kind":"world_flag","key":"board"}],
 			"local_work":"採木採石，捐入公告板公共工程（木材30、石材10）。",
-			"materials":[{"item":"wood","source":"斧頭採木","script":"res://scripts/chapter_one.gd","symbol":"用斧頭採木"},{"item":"stone","source":"十字鎬採石","script":"res://scripts/chapter_one.gd","symbol":"十字鎬採石"}],
+			"materials":[{"item":"wood","source":"斧頭採木","script":"res://scripts/chapter_one.gd","symbol":"用斧頭砍樹"},{"item":"stone","source":"十字鎬採石","script":"res://scripts/chapter_one.gd","symbol":"十字鎬敲岩石"}],
 			"line":"公告板的木框是師父留下的，我只換掉爛掉的兩根。舊的那幾根，紋路還是對得上。",
 			"line_status":"fictional","history":"","flag":"",
 			"absence":{"rule":"shared_once_personal_replay","catch_up_line":"你不在那天，板子是大家一起釘好的。上頭還留著空位，寫你下回想交什麼貨。"},

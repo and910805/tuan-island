@@ -374,14 +374,16 @@ func check_pocket_guide(app) -> void:
 		app._close_modal()
 		return
 	var scroll := app.modal.find_child("ModalScroll",true,false) as ScrollContainer
-	for index in 10:
+	var order:=["GuideCard0","GuideCard1","GuideCard2","GuideCard3","GuideCard4","GuideCard5",
+		"HelpWorkshopGuide","GuideCard6","GuideCard7","GuideCard8","GuideCard9"]
+	for index in order.size():
 		var owner := focus_owner()
-		expect(owner != null and owner.name == "GuideCard%d"%index,"D-pad Down reaches guide card %d"%index)
+		expect(owner != null and owner.name == order[index],"D-pad Down reaches %s"%order[index])
 		if owner != null:
 			var window:=scroll.get_global_rect()
 			var card:=owner.get_global_rect()
-			expect(window.grow(1.0).encloses(card),"Focused guide card %d scrolls into view (%s vs %s)"%[index,card,window])
-		if index<9:await tap(JOY_BUTTON_DPAD_DOWN)
+			expect(window.grow(1.0).encloses(card),"Focused %s scrolls into view (%s vs %s)"%[order[index],card,window])
+		if index<order.size()-1:await tap(JOY_BUTTON_DPAD_DOWN)
 	await tap(JOY_BUTTON_DPAD_UP)
 	expect(focus_owner() != null and focus_owner().name == "GuideCard8","D-pad Up reads the previous topic")
 	await tap(JOY_BUTTON_B)

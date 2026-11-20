@@ -13,8 +13,10 @@ extends "res://tests/test_memory_exhibit_journey.gd"
 ## kitchen, the shared meal, two lamps, the real 風鈴節 opening, the Lanyang revisit
 ## and the 分水木牌 exhibit. It never repairs the hoist and never sorts with Bobo.
 ## The B5 commission, the Q07 hoist repair, the Bobo sort and the strikes are
-## RE-DERIVED here from test_mine_deep_journey.gd / test_bobo_journey.gd (different
-## chains, so they cannot be inherited).
+## RE-DERIVED here from test_bobo_journey.gd (different chain, so it cannot be
+## inherited). UPDATE: the parent (festival earned) now also earns the B5 commission
+## and the Q07 hoist repair, so this file only mines the ore it needs, rides the
+## repaired hoist, sorts with Bobo and does the revisit.
 ##
 ## Hook: chapter_one() (fresh world, BEFORE the picnic): the three jg_revisit actions
 ## are refused (A cannot even be in Jinguashi yet: WRONG_REGION; the pure blocks say
@@ -107,23 +109,12 @@ func run() -> void:
 ## Home: earn the planks and copper joints for the B5 commission and the Q07 hoist.
 func jg_prepare_parts() -> void:
 	var s:=world.state
-	jg_check(world.player_region(tok)=="home" and int(s.mine_depths.unlocked)==5 and s.mine_depths.get("hoist")!=true,"start: A at home, mine open to B5, hoist not repaired")
-	jg_check(not JG.unlocked(s) and not s.has(JG.STATE_KEY) and not JG.player_ready(s,tok) and not (s.bobo_workshop.done as Dictionary).has(tok),"start: revisit locked, no record, A never sorted with Bobo")
-	jg_check(not ME.available(s,"jinguashi") and ME.on_display_ids(s)==["lanyang"] and ME.personal_hint_for(s,"jinguashi",tok)==ME.HINT_JG_LOCKED,"start: no lantern on the exhibit, hint LOCKED")
-	var b5:Dictionary=World.MINES.COSTS[4]
-	var hoist:Dictionary=World.MINES.HOIST_COST
-	jg_check(b5=={"plank":8,"copper_joint":4} and hoist=={"copper_joint":12,"plank":4},"B5 commission %s and Q07 hoist %s costs"%[JSON.stringify(b5),JSON.stringify(hoist)])
-	var want_plank:=int(b5.plank)+int(hoist.plank)
-	var want_joint:=int(b5.copper_joint)+int(hoist.copper_joint)
-	var before:=jg_held(["plank","copper_joint","copper_ore","wood"])
-	var t0:=now()
-	var a0:=actions
-	produce({"plank":want_plank,"copper_joint":want_joint,"resin":0,"stone":0,"fiber":0,"wood_extra":0})
-	if failed:return
-	var after:=jg_held(["plank","copper_joint","copper_ore","wood"])
-	jg_check(int(after.plank)>=want_plank and int(after.copper_joint)>=want_joint,"holding plank %d >= %d and copper_joint %d >= %d"%[int(after.plank),want_plank,int(after.copper_joint),want_joint])
-	jg_info.parts={"before":before,"after":after,"actions":actions-a0,"world_seconds":now()-t0}
-	print("JG_REVISIT_JOURNEY parts at home before=%s after=%s actions=%d world_seconds=%.1f"%[JSON.stringify(before),JSON.stringify(after),actions-a0,now()-t0])
+	# The parent chain (festival earned) now earns the B5 commission AND the Q07 hoist
+	# repair for A through real actions. Only the Bobo sort and the revisit remain.
+	jg_check(world.player_region(tok)=="home" and int(s.mine_depths.unlocked)==6 and World.MINES.hoist_ready(s.mine_depths),"start: A at home, B5 commission done (B6 open), hoist repaired by the parent chain")
+	jg_check(JG.unlocked(s) and not s.has(JG.STATE_KEY) and not JG.player_ready(s,tok) and not (s.bobo_workshop.done as Dictionary).has(tok),"start: revisit unlocked, no record, A never sorted with Bobo")
+	jg_check(not ME.available(s,"jinguashi") and ME.on_display_ids(s)==["lanyang"] and ME.personal_hint_for(s,"jinguashi",tok)==ME.HINT_JG_NOT_DONE_NOT_READY,"start: no lantern on the exhibit, hint NOT_DONE_NOT_READY")
+	jg_info.parts={"held":jg_held(["plank","copper_joint","copper_ore","gold_ore","stone"])}
 
 func jg_ride() -> void:
 	travel(FERRY,"toucheng")
@@ -131,7 +122,8 @@ func jg_ride() -> void:
 	travel(World.TRANSIT.points("ruifang").bus.cell,"jiufen")
 	travel(World.TRANSIT.points("jiufen").shuttle.cell,"jinguashi")
 
-## In Jinguashi after the picnic, hoist still stuck: LOCKED at every point.
+## In Jinguashi with the hoist already repaired by the parent: unlocked, but A has not
+## sorted with Bobo, so every revisit action is NOT_READY at every point.
 func jg_locked_in_jinguashi() -> void:
 	jg_ride()
 	if failed:return
@@ -139,14 +131,15 @@ func jg_locked_in_jinguashi() -> void:
 	var table:=JG.sort_cell(s)
 	jg_check(table==World.BOBO_WORKSHOP.sites(s).table and table==Vector2i(23,20),"Bobo's table %s is the sort/claim cell"%str(table))
 	jg_check(JG.dest_cell(s,"bobo")==table and JG.dest_cell(s,"ferry")==JG.SHUTTLE and JG.dest_cell(s,"depot")==JG.HOIST and JG.HOIST==World.MINES.ENTRY,"three ship points: table, shuttle %s, hoist %s"%[str(JG.SHUTTLE),str(JG.HOIST)])
-	jg_deny(JG.SORT_ACTION,table,JG.sort_extra("bobo","copper_ore"),JG.LOCKED,"sort before the hoist repair")
-	jg_deny(JG.SHIP_ACTION,table,"",JG.LOCKED,"ship bobo crate before the hoist repair",false)
-	jg_deny(JG.CLAIM_ACTION,table,"",JG.LOCKED,"claim before the hoist repair",false)
-	jg_deny(JG.SHIP_ACTION,JG.SHUTTLE,"",JG.LOCKED,"ship ferry crate before the hoist repair")
-	jg_deny(JG.SHIP_ACTION,JG.HOIST,"",JG.LOCKED,"ship depot crate before the hoist repair")
-	jg_deny(World.HOIST_ACTION,World.MINES.ENTRY,"",World.HOIST_LOCKED_MSG,"Q07 hoist repair before B6 is open")
+	jg_deny(JG.SORT_ACTION,table,JG.sort_extra("bobo","copper_ore"),JG.NOT_READY,"sort before A's Bobo sort")
+	jg_deny(JG.SHIP_ACTION,table,"",JG.NOT_READY,"ship bobo crate before A's Bobo sort",false)
+	jg_deny(JG.CLAIM_ACTION,table,"",JG.NOT_READY,"claim before A's Bobo sort",false)
+	jg_deny(JG.SHIP_ACTION,JG.SHUTTLE,"",JG.NOT_READY,"ship ferry crate before A's Bobo sort")
+	jg_deny(JG.SHIP_ACTION,JG.HOIST,"",JG.NOT_READY,"ship depot crate before A's Bobo sort")
+	jg_deny(World.HOIST_ACTION,World.MINES.ENTRY,"",World.HOIST_DONE_MSG,"hoist already repaired by the parent chain")
 
-## B1 -> B5 by the stairs; B3 stone strikes, B5 gold strikes, B5 commission, B6, lift up.
+## B1 -> B5 by the stairs: B3 stone strikes and B5 gold strikes (the earned ore for
+## Bobo's sort and the order), then B6 (already open) and the hoist cage back up.
 func jg_open_b6() -> void:
 	act("mine_travel",World.MINES.ENTRY,"mine_1")
 	for d in range(1,6):
@@ -158,15 +151,7 @@ func jg_open_b6() -> void:
 			for node:Vector2i in World.MINES.NODES:jg_strike(d,node)
 		if d<5:act("mine_travel",World.MINES.DOWN,"mine_%d"%(d+1))
 	if failed:return
-	jg_deny("mine_travel",World.MINES.DOWN,"mine_6","此礦道尚未開放，或你離入口太遠。","B5 stairs down before the B5 commission")
-	var cost:Dictionary=World.MINES.COSTS[4]
-	var before:=bag().duplicate(true)
-	act("mine_commission",World.MINES.SERVICE)
-	if failed:return
-	var expected:=before.duplicate(true)
-	for item in cost:expected[item]=int(before.get(item,0))-int(cost[item])
-	expect_same(bag(),expected,"JG_REVISIT_JOURNEY: B5 commission debits exactly %s"%JSON.stringify(cost))
-	jg_check(int(world.state.mine_depths.unlocked)==6,"B5 commission opens B6")
+	jg_check(int(world.state.mine_depths.unlocked)==6,"B6 already open from the parent's B5 commission")
 	act("mine_travel",World.MINES.DOWN,"mine_6")
 	jg_check(world.player_region(tok)=="mine_6","reached B6 by the stairs")
 	act("mine_travel",World.MINES.LIFT,"jinguashi")
@@ -194,18 +179,12 @@ func jg_strike(d:int,node:Vector2i) -> void:
 	jg_strikes["B%d"%d]=int(jg_strikes.get("B%d"%d,0))+1
 	jg_mined[ore]=int(jg_mined.get(ore,0))+amount
 
+## The surface hoist (repaired by the parent chain) really carries A to B6 and back.
 func jg_repair_hoist() -> void:
-	jg_deny("mine_travel",World.MINES.ENTRY,"mine_6",World.HOIST_STUCK_MSG,"surface hoist to B6 while stuck")
-	var cost:Dictionary=World.MINES.HOIST_COST
-	var before:=bag().duplicate(true)
-	var result:=act(World.HOIST_ACTION,World.MINES.ENTRY)
-	if failed:return
-	jg_check(str(result.message)==World.HOIST_OK_MSG,"hoist repair message")
-	var expected:=before.duplicate(true)
-	for item in cost:expected[item]=int(before.get(item,0))-int(cost[item])
-	expect_same(bag(),expected,"JG_REVISIT_JOURNEY: hoist repair debits exactly %s"%JSON.stringify(cost))
-	jg_check(World.MINES.hoist_ready(world.state.mine_depths) and JG.unlocked(world.state),"hoist repaired: revisit unlocked")
-	jg_deny(World.HOIST_ACTION,World.MINES.ENTRY,"",World.HOIST_DONE_MSG,"second hoist repair")
+	act("mine_travel",World.MINES.ENTRY,"mine_6")
+	jg_check(world.player_region(tok)=="mine_6","repaired surface hoist lands on B6")
+	act("mine_travel",World.MINES.LIFT,"jinguashi")
+	jg_check(world.player_region(tok)=="jinguashi" and World.MINES.hoist_ready(world.state.mine_depths) and JG.unlocked(world.state),"back on the surface; hoist ready, revisit unlocked")
 
 ## Hoist repaired, A has not sorted with Bobo: NOT_READY.
 func jg_not_ready() -> void:

@@ -55,7 +55,317 @@ func _initialize() -> void:
 	test_multiple_animals(day)
 	test_world_and_atomic_save(day)
 	test_ranch_income()
+	test_pen_collector()
+	test_pen_collector_rejoin()
+	test_pen_collector_chicken()
+	test_pen_collector_schema()
 	finish()
+
+# ---- T069 C24: pen-bound collector -------------------------------------------------
+const C := World.AnimalCollector
+const PEN_WEST := Vector2i(48, 36)  # below the cow
+const PEN_EAST := Vector2i(50, 36)  # below the sheep
+const PEN_DIVIDER: Array[Vector2i] = [Vector2i(49, 35), Vector2i(49, 36)]
+
+## One 3x2 enclosure holding the cow (48,35) and the sheep (50,35), with a gate above each
+## animal. `divided` adds a wall column that splits it into two valid 1x2 pens.
+static func seed_pen(world, token: String, divided: bool) -> void:
+	var walls: Array[Vector2i] = [Vector2i(47, 35), Vector2i(47, 36), Vector2i(51, 35), Vector2i(51, 36), Vector2i(49, 34),
+		Vector2i(48, 37), Vector2i(49, 37), Vector2i(50, 37)]
+	if divided:walls.append_array(PEN_DIVIDER)
+	for tile: Vector2i in walls:world.state.objects[World.key(tile)] = {"type":"wall", "owner":token, "items":{}}
+	for tile: Vector2i in [Vector2i(48, 34), Vector2i(50, 34)]:
+		world.state.objects[World.key(tile)] = {"type":"door", "owner":token, "items":{}, "open":false}
+
+static func machine(owner_token: String) -> Dictionary:
+	return {"type":"animal_collector", "owner":owner_token, "items":{}}
+
+static func basket(world, tile: Vector2i) -> Dictionary:
+	return world.state.objects.get(World.key(tile), {})
+
+static func held(world, tile: Vector2i, item: String) -> int:
+	return int(basket(world, tile).get("collector_items", {}).get(item, 0))
+
+## Everything a pen product can be in: both animals' `ready` plus every basket total.
+static func pen_total(world) -> int:
+	var total := 0
+	for id: String in ["cow", "sheep"]:total += int(world.state.livestock.get(id, {}).get("ready", 0))
+	for obj: Dictionary in world.state.objects.values():total += int(obj.get("collector_count", 0))
+	return total
+
+## Order- and type-insensitive picture of the pen for live/reloaded comparisons.
+static func pen_signature(world) -> String:
+	var parts: PackedStringArray = []
+	for tile: Vector2i in [PEN_WEST, PEN_EAST]:
+		var obj := basket(world, tile)
+		parts.append("%s=%s/%d%s" % [World.key(tile), str(obj.get("collector_animal", "")), int(obj.get("collector_count", 0)), JSON.stringify(obj.get("collector_items",{}))])
+	for id: String in ["cow", "sheep"]:
+		var animal: Dictionary = world.state.livestock.get(id, {})
+		parts.append("%s=%d/%d" % [id, int(animal.get("ready", 0)), int(animal.get("ready_quality", 0))])
+	return ";".join(parts)
+
+func pen_world(tag: String, token: String, divided: bool) -> World:
+	var world := World.new()
+	world.add_player(token, "圈舍")
+	world.state.picnic = true
+	var path := temp_path(tag)
+	_cleanup.append(path)
+	world.save_path = path
+	var actor: Dictionary = world.state.players[token]
+	actor.x = 49.5
+	actor.y = 36.5
+	actor.inventory.egg_basket = 2
+	world.state.objects[World.key(PEN_WEST)] = machine(token)
+	world.state.objects[World.key(PEN_EAST)] = machine(token)
+	seed_pen(world, token, divided)
+	return world
+
+func test_pen_collector() -> void:
+	var token := "pen-owner"
+	var world := pen_world("pen-collector", token, false)
+	var actor: Dictionary = world.state.players[token]
+	var west := World.key(PEN_WEST)
+	var gap := World.key(Vector2i(47, 35))
+	var gap_wall: Dictionary = world.state.objects[gap]
+	# Enclosure helper agrees with the registration rule, open or closed.
+	world.state.objects.erase(gap)
+	expect(L.pen_cells(world.state.objects, L.ANIMALS.cow.cell).is_empty() and not L.pen_status(world.state.objects, "cow"), "An open enclosure has no pen cells")
+	expect(C.pen_species(world.state.objects, PEN_WEST).is_empty(), "A collector in an open enclosure serves nobody")
+	var before := world.state.duplicate(true)
+	expect(not world.act(token, "pen-open-bind", "collector_bind", PEN_WEST, C.PEN).ok and world.state == before, "An open enclosure cannot be bound and keeps the basket")
+	world.state.objects[gap] = gap_wall
+	var cells := L.pen_cells(world.state.objects, L.ANIMALS.cow.cell)
+	expect(cells.size() == 6 and cells.has(PEN_WEST) and cells.has(L.ANIMALS.sheep.cell) and L.pen_status(world.state.objects, "cow") and L.pen_status(world.state.objects, "sheep"),
+		"The closed enclosure lists its six interior cells and matches pen_status")
+	expect(C.pen_species(world.state.objects, PEN_WEST) == ["cow", "sheep"] and C.pen_species(world.state.objects, Vector2i(46, 35)).is_empty(),
+		"Only a collector inside the walls sees the penned species")
+	# Binding: one basket, per-item storage, shared capacity of six.
+	expect(world.act(token, "pen-bind", "collector_bind", PEN_WEST, C.PEN).ok and int(actor.inventory.egg_basket) == 1
+		and basket(world, PEN_WEST).get("collector_animal") == C.PEN, "Binding the enclosure installs exactly one basket")
+	expect(not world.act(token, "pen-bind-again", "collector_bind", PEN_WEST, C.PEN).ok and int(actor.inventory.egg_basket) == 1, "Binding the same enclosure twice is refused")
+	expect(not world.act(token, "pen-second", "collector_bind", PEN_EAST, C.PEN).ok and not world.act(token, "pen-second-single", "collector_bind", PEN_EAST, "cow").ok
+		and int(actor.inventory.egg_basket) == 1 and not basket(world, PEN_EAST).has("collector_animal"), "A served enclosure accepts no second pen or single binding")
+	world.state.livestock.cow = rec(0, 4, -1.0)
+	world.state.livestock.cow.ready_quality = 1
+	world.state.livestock.sheep = rec(0, 3, -1.0)
+	world.state.livestock.sheep.ready_quality = 1
+	var total := pen_total(world)
+	expect(C.step(world) == [west] and held(world, PEN_WEST, "milk") == 3 and held(world, PEN_WEST, "quality_milk") == 1
+		and held(world, PEN_WEST, "wool") == 1 and held(world, PEN_WEST, "quality_wool") == 1, "Both species and both grades are stored under their own item IDs")
+	expect(int(basket(world, PEN_WEST).collector_count) == C.CAPACITY and int(world.state.livestock.sheep.ready) == 1
+		and int(world.state.livestock.sheep.ready_quality) == 0 and pen_total(world) == total, "The basket stops at six and the seventh product waits with the sheep")
+	expect(C.step(world).is_empty() and world.step(1.0, true) and int(basket(world, PEN_WEST).collector_count) == C.CAPACITY
+		and int(world.state.livestock.sheep.ready) == 1 and pen_total(world) == total, "A full basket takes nothing on later ticks")
+	var reloaded := World.new()
+	expect(world.save() and reloaded.load_world(world.save_path) and pen_signature(reloaded) == pen_signature(world)
+		and typeof(basket(reloaded, PEN_WEST).collector_items.milk) == TYPE_INT, "The mixed basket survives save and reload as whole numbers")
+	# Authority and loaded-basket guards.
+	world.add_player("pen-guest", "訪客")
+	var guest: Dictionary = world.state.players["pen-guest"]
+	guest.x = actor.x
+	guest.y = actor.y
+	guest.inventory.egg_basket = 1
+	before = world.state.duplicate(true)
+	expect(not world.act("pen-guest", "guest-take", "collector_collect", PEN_WEST).ok and not world.act("pen-guest", "guest-bind", "collector_bind", PEN_EAST, C.PEN).ok
+		and not world.act("pen-guest", "guest-unbind", "collector_unbind", PEN_WEST).ok and world.state == before, "A guest cannot take, bind or unbind the owner's collectors")
+	expect(not world.act(token, "pen-unbind-full", "collector_unbind", PEN_WEST).ok and not world.act(token, "pen-remove-full", "remove", PEN_WEST).ok
+		and not world.act(token, "pen-rebind-full", "collector_bind", PEN_WEST, "cow").ok and world.state == before, "A loaded basket cannot be taken back, dismantled or rebound")
+	# Per-item backpack limit: only what fits moves, the rest stays for later.
+	for item: String in ["milk", "quality_milk", "wool", "quality_wool"]:actor.inventory[item] = CAP
+	before = world.state.duplicate(true)
+	expect(not world.act(token, "pen-take-none", "collector_collect", PEN_WEST).ok and world.state == before, "A backpack full of every product takes nothing and loses nothing")
+	actor.inventory.milk = CAP - 1
+	actor.inventory.quality_milk = 0
+	actor.inventory.wool = 0
+	actor.inventory.quality_wool = 0
+	expect(world.act(token, "pen-take-part", "collector_collect", PEN_WEST).ok and int(actor.inventory.milk) == CAP and int(actor.inventory.quality_milk) == 1
+		and int(actor.inventory.wool) == 1 and int(actor.inventory.quality_wool) == 1, "A partial pickup gives each item up to its own limit")
+	expect(int(basket(world, PEN_WEST).collector_count) == 2 and held(world, PEN_WEST, "milk") == 2 and basket(world, PEN_WEST).collector_items.size() == 1,
+		"Milk that did not fit stays in the basket")
+	expect(C.step(world) == [west] and held(world, PEN_WEST, "wool") == 1 and int(world.state.livestock.sheep.ready) == 0, "Freed room collects the waiting wool exactly once")
+	actor.inventory.milk = 0
+	expect(world.act(token, "pen-take-rest", "collector_collect", PEN_WEST).ok and int(actor.inventory.milk) == 2 and int(actor.inventory.wool) == 2
+		and int(basket(world, PEN_WEST).collector_count) == 0 and basket(world, PEN_WEST).collector_items.is_empty(), "The retained products are handed over once")
+	expect(not world.act(token, "pen-take-empty", "collector_collect", PEN_WEST).ok, "An empty basket has nothing to take")
+	# Broken wall: collection pauses without loss; repair resumes it.
+	world.state.livestock.cow = rec(0, 2, -1.0)
+	world.state.objects.erase(gap)
+	total = pen_total(world)
+	expect(C.step(world).is_empty() and world.step(1.0, true) and int(world.state.livestock.cow.ready) == 2 and int(basket(world, PEN_WEST).collector_count) == 0,
+		"A gap in the wall stops collection and leaves the milk with the cow")
+	world.state.objects[gap] = gap_wall
+	expect(C.step(world) == [west] and held(world, PEN_WEST, "milk") == 2 and int(world.state.livestock.cow.ready) == 0 and pen_total(world) == total,
+		"Repairing the wall resumes collection of the same two products")
+	expect(C.step(world).is_empty() and pen_total(world) == total, "Nothing is collected twice after the repair")
+	expect(world.act(token, "pen-take-repair", "collector_collect", PEN_WEST).ok and int(actor.inventory.milk) == 4, "The repaired pen's milk reaches the owner")
+	# Mode changes reuse the same basket and never leave stale fields behind.
+	expect(world.act(token, "pen-to-single", "collector_bind", PEN_WEST, "cow").ok and int(actor.inventory.egg_basket) == 1
+		and not basket(world, PEN_WEST).has("collector_items"), "Switching an empty pen basket to one animal is free and drops the item table")
+	expect(not world.act(token, "pen-vs-single", "collector_bind", PEN_EAST, C.PEN).ok and int(actor.inventory.egg_basket) == 1,
+		"A species already bound to another machine blocks binding its enclosure")
+	# Forced coexistence (as after remodelling): the single machine keeps sole service.
+	world.state.objects[World.key(PEN_EAST)] = machine(token).merged({"collector_animal":C.PEN, "collector_count":0, "collector_items":{}})
+	world.state.livestock.cow = rec(0, 3, -1.0)
+	world.state.livestock.sheep = rec(0, 2, -1.0)
+	total = pen_total(world)
+	var changed := C.step(world)
+	changed.sort()
+	expect(changed == [west, World.key(PEN_EAST)] and int(basket(world, PEN_WEST).collector_count) == 3 and held(world, PEN_EAST, "wool") == 2
+		and held(world, PEN_EAST, "milk") == 0 and pen_total(world) == total, "Legacy single binding collects its animal; the pen basket takes only the other species")
+	basket(world, PEN_WEST).collector_count = C.CAPACITY
+	world.state.livestock.cow = rec(0, 2, -1.0)
+	expect(C.step(world).is_empty() and int(world.state.livestock.cow.ready) == 2 and held(world, PEN_EAST, "milk") == 0,
+		"A full single machine keeps its animal's products pending instead of leaking them to the pen basket")
+	expect(world.save() and reloaded.load_world(world.save_path) and pen_signature(reloaded) == pen_signature(world), "Single and pen machines reload side by side")
+	basket(world, PEN_WEST).collector_count = 0
+	world.state.livestock.cow = rec(0, 0, -1.0)
+	expect(world.act(token, "single-back-to-pen", "collector_unbind", PEN_WEST).ok and int(actor.inventory.egg_basket) == 2, "Unbinding returns the basket")
+
+## Two legitimately bound pens that are later joined: exactly one basket serves each
+## species, chosen by cell order, identically before and after a JSON reload.
+func test_pen_collector_rejoin() -> void:
+	var token := "pen-joiner"
+	var world := pen_world("pen-rejoin", token, true)
+	var actor: Dictionary = world.state.players[token]
+	var west := World.key(PEN_WEST)
+	var east := World.key(PEN_EAST)
+	expect(C.pen_species(world.state.objects, PEN_WEST) == ["cow"] and C.pen_species(world.state.objects, PEN_EAST) == ["sheep"], "A dividing wall makes two separate pens")
+	expect(world.act(token, "join-bind-west", "collector_bind", PEN_WEST, C.PEN).ok and world.act(token, "join-bind-east", "collector_bind", PEN_EAST, C.PEN).ok
+		and int(actor.inventory.egg_basket) == 0, "Separate pens each take their own basket")
+	world.state.livestock.cow = rec(0, 2, -1.0)
+	world.state.livestock.sheep = rec(0, 2, -1.0)
+	var changed := C.step(world)
+	changed.sort()
+	expect(changed == [west, east] and held(world, PEN_WEST, "milk") == 2 and held(world, PEN_EAST, "wool") == 2 and held(world, PEN_WEST, "wool") == 0,
+		"Each pen basket collects only its own enclosure")
+	# Break the west pen, then rejoin both pens into one by removing the divider.
+	var gap := World.key(Vector2i(47, 35))
+	var gap_wall: Dictionary = world.state.objects[gap]
+	world.state.objects.erase(gap)
+	world.state.livestock.cow = rec(0, 3, -1.0)
+	world.state.livestock.sheep = rec(0, 3, -1.0)
+	var total := pen_total(world)
+	expect(C.step(world) == [east] and int(world.state.livestock.cow.ready) == 3 and held(world, PEN_EAST, "wool") == 5 and held(world, PEN_EAST, "milk") == 0,
+		"A broken pen pauses alone while its neighbour keeps collecting")
+	world.state.livestock.sheep = rec(0, 3, -1.0)
+	world.state.objects[gap] = gap_wall
+	for tile: Vector2i in PEN_DIVIDER:world.state.objects.erase(World.key(tile))
+	total = pen_total(world)
+	expect(C.pen_species(world.state.objects, PEN_WEST) == ["cow", "sheep"] and C.pen_species(world.state.objects, PEN_EAST) == ["cow", "sheep"], "Without the divider both baskets stand in one pen")
+	expect(world.save(), "Save the joined pen before the deciding tick")
+	var snapshot: Dictionary = world.state.duplicate(true)
+	var reloaded := World.new()
+	expect(reloaded.load_world(world.save_path), "Reload the joined pen")
+	# Same state with the two machines inserted in the opposite dictionary order.
+	var flipped := World.new()
+	var objects: Dictionary = {}
+	var keys: Array = snapshot.objects.keys()
+	keys.reverse()
+	for key in keys:objects[key] = snapshot.objects[key]
+	snapshot.objects = objects
+	flipped.state = snapshot
+	expect(flipped.state.objects.keys().find(east) < flipped.state.objects.keys().find(west), "Control: the flipped world really iterates the east machine first")
+	expect(C.step(world) == [west] and C.step(reloaded) == [west] and C.step(flipped) == [west], "The west machine (lowest cell) serves the joined pen in every ordering")
+	# West had 2 milk: room for 4 -> 3 milk + 1 wool. East keeps its 5 wool and gains nothing.
+	expect(held(world, PEN_WEST, "milk") == 5 and held(world, PEN_WEST, "wool") == 1 and int(basket(world, PEN_EAST).collector_count) == 5
+		and int(world.state.livestock.sheep.ready) == 2 and int(world.state.livestock.cow.ready) == 0 and pen_total(world) == total,
+		"Joined pens split nothing: one basket fills, the rest waits with the sheep")
+	expect(pen_signature(reloaded) == pen_signature(world) and pen_signature(flipped) == pen_signature(world), "Live, reloaded and reordered worlds agree exactly")
+	expect(C.step(world).is_empty() and C.step(reloaded).is_empty() and int(world.state.livestock.sheep.ready) == 2 and int(basket(world, PEN_EAST).collector_count) == 5
+		and pen_total(world) == total, "With the serving basket full the second basket does not take the pending wool")
+	expect(world.act(token, "join-take", "collector_collect", PEN_WEST).ok and C.step(world) == [west] and held(world, PEN_WEST, "wool") == 2
+		and int(world.state.livestock.sheep.ready) == 0 and int(basket(world, PEN_EAST).collector_count) == 5, "Emptying the serving basket collects the pending wool once")
+	expect(int(actor.inventory.milk) == 5 and int(actor.inventory.wool) == 1 and pen_total(world) + 6 == total, "Every product is accounted for after the join")
+
+## The hen's single cycle and her deferred quality egg behave as in single mode.
+func test_pen_collector_chicken() -> void:
+	var token := "pen-hen"
+	var world := World.new()
+	world.add_player(token, "雞舍")
+	world.state.picnic = true
+	var hen: Vector2i = C.CHICKEN_CELL
+	var site := hen + Vector2i.DOWN
+	var key := World.key(site)
+	for tile: Vector2i in [hen + Vector2i.LEFT, hen + Vector2i.RIGHT, site + Vector2i.LEFT, site + Vector2i.RIGHT, site + Vector2i.DOWN]:
+		world.state.objects[World.key(tile)] = {"type":"wall", "owner":token, "items":{}}
+	world.state.objects[World.key(hen + Vector2i.UP)] = {"type":"door", "owner":token, "items":{}, "open":false}
+	world.state.objects[key] = machine(token)
+	var actor: Dictionary = world.state.players[token]
+	actor.x = site.x + 0.5
+	actor.y = site.y + 0.5
+	actor.inventory.egg_basket = 1
+	expect(C.pen_species(world.state.objects, site) == ["chicken"] and world.act(token, "hen-bind", "collector_bind", site, C.PEN).ok, "The hen's enclosure can be bound")
+	var animal: Dictionary = world.state.animal
+	var now := float(world.state.time)
+	animal.bond = L.BONUS_BOND
+	animal.bonus_progress = L.BONUS_INTERVAL - 1
+	animal.egg_ready = now
+	var obj: Dictionary = world.state.objects[key]
+	obj.collector_items = {"egg":5}
+	obj.collector_count = 5
+	expect(C.step(world) == [key] and held(world, site, "egg") == 6 and held(world, site, "quality_egg") == 0 and float(animal.egg_ready) < 0.0
+		and int(animal.bonus_progress) == L.BONUS_INTERVAL, "The last free slot takes the egg and defers the earned quality egg")
+	animal.egg_ready = now
+	expect(C.step(world).is_empty() and L.chicken_egg_due(animal, now) and int(obj.collector_count) == C.CAPACITY, "A full basket leaves the due egg with the hen")
+	var eggs_before := int(actor.inventory.get("egg", 0))
+	expect(world.act(token, "hen-take", "collector_collect", site).ok and int(actor.inventory.egg) == eggs_before + 6, "Take the six eggs")
+	expect(C.step(world) == [key] and held(world, site, "egg") == 1 and held(world, site, "quality_egg") == 1 and int(animal.bonus_progress) == 0
+		and float(animal.egg_ready) < 0.0, "The waiting egg and its deferred quality egg arrive exactly once")
+	expect(C.step(world).is_empty() and int(obj.collector_count) == 2, "One cycle is never collected twice")
+
+func loads(state: Dictionary, path: String) -> bool:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:return false
+	file.store_string(JSON.stringify(state))
+	file.close()
+	return World.new().load_world(path)
+
+func test_pen_collector_schema() -> void:
+	var token := "pen-schema"
+	var world := pen_world("pen-schema", token, false)
+	var west := World.key(PEN_WEST)
+	var probe := temp_path("pen-schema-probe")
+	_cleanup.append(probe)
+	world.state.objects[west] = machine(token).merged({"collector_animal":C.PEN, "collector_count":3, "collector_items":{"milk":2, "quality_wool":1}})
+	expect(world.save(), "Save a pen basket fixture")
+	var good: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(world.save_path))
+	expect(loads(good, probe), "Control: the pen basket fixture loads")
+	# A pen basket stays loadable after its walls are gone: topology is not part of the save.
+	var bare: Dictionary = good.duplicate(true)
+	for tile: String in bare.objects.keys():
+		if bare.objects[tile].type in ["wall", "door"]:bare.objects.erase(tile)
+	expect(loads(bare, probe), "A pen basket whose walls were removed still loads")
+	var cases := {
+		"a total that differs from the item sum":{"collector_count":4},
+		"an unknown item ID":{"collector_items":{"milk":2, "feed":1}},
+		"a zero item count":{"collector_items":{"milk":3, "wool":0}},
+		"a fractional item count":{"collector_items":{"milk":2.5, "wool":0.5}},
+		"more than six products":{"collector_count":7, "collector_items":{"milk":7}},
+		"a single-mode quality field":{"collector_count_quality":1},
+		"a missing item table":{"collector_items":null},
+		"single mode carrying an item table":{"collector_animal":"cow"},
+	}
+	for label: String in cases:
+		var bad: Dictionary = good.duplicate(true)
+		for field: String in cases[label]:
+			if cases[label][field] == null:bad.objects[west].erase(field)
+			else:bad.objects[west][field] = cases[label][field]
+		expect(not loads(bad, probe), "Load rejects a pen basket with " + label)
+	# Existing single-species saves are untouched by the new mode.
+	var legacy: Dictionary = good.duplicate(true)
+	legacy.objects[west] = {"type":"animal_collector", "owner":token, "items":{}, "collector_animal":"cow", "collector_count":2, "collector_count_quality":1}
+	var old := World.new()
+	file_write(probe, legacy)
+	expect(old.load_world(probe) and old.state.objects[west].collector_animal == "cow" and int(old.state.objects[west].collector_count) == 2
+		and int(old.state.objects[west].collector_count_quality) == 1 and not old.state.objects[west].has("collector_items"), "A legacy single-species collector loads unchanged")
+	old.state.livestock.cow = rec(0, 3, -1.0)
+	expect(C.step(old) == [west] and int(old.state.objects[west].collector_count) == 5 and not old.state.objects[west].has("collector_items"),
+		"A legacy collector keeps collecting in its original fields")
+
+static func file_write(path: String, state: Dictionary) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(state))
+	file.close()
 
 func test_bond_bonus(day:float)->void:
 	var cow:=rec(5,3,day)
@@ -150,7 +460,7 @@ func test_timer_boundaries(day: float) -> void:
 	expect(not L.step(r, 2.0 * day - 0.001), "Sheep waits its full two-day interval")
 	expect(L.step(r, 4.0 * day - 0.001) and r.sheep == rec(1, 1, 4.0 * day), "Sheep uses a two-day interval for catch-up")
 	expect(L.step(r, 4.0 * day) and r.sheep == rec(0, 2, -1.0), "Sheep stops after its last feed")
-	var recs := {}
+	var recs := {"cow": L.fresh()}
 	var inv := {"feed":3}
 	expect(L.perform(recs, inv, "cow", "livestock_feed", 100.0).ok and recs.get("cow", {}) == rec(1, 0, 100.0 + day) and inv.feed == 2, "First feed starts the timer at now + interval")
 	expect(L.perform(recs, inv, "cow", "livestock_feed", 500.0).ok and recs.cow == rec(2, 0, 100.0 + day), "Feeding a running animal does not reset its timer")
@@ -159,7 +469,7 @@ func test_timer_boundaries(day: float) -> void:
 	expect(not L.perform(recs, inv, "cow", "livestock_collect", 200.0).ok and inv == inv_before and recs.cow == rec(2, 0, 100.0 + day), "Collecting before production fails without changes")
 
 func test_seven_slot_capacity(day: float) -> void:
-	var recs := {}
+	var recs := {"cow": L.fresh()}
 	var inv := {"feed":10}
 	for i in range(L.LIMIT):
 		expect(L.perform(recs, inv, "cow", "livestock_feed", 0.0).ok, "Feed slot %d accepts feed" % (i + 1))
@@ -225,6 +535,7 @@ func test_pen_construction()->void:
 	builder.inventory.wood=80
 	builder.inventory.fiber=8
 	builder.inventory.feed=1
+	expect(world.act(token,"pen-adopt","livestock_adopt",cow,"cow").ok,"D07: adopt the cow before registering its pen")
 	expect(not L.pen_status(world.state.objects,"cow"),"Open pasture is not a player-built enclosure")
 	expect(not world.act(token,"pen-premature","livestock_pen",cow,"cow").ok,"An open pasture cannot be registered")
 	for offset:Vector2i in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i(0,2),Vector2i.UP,Vector2i(-1,1),Vector2i(1,1)]:
@@ -314,6 +625,7 @@ func test_world_and_atomic_save(day: float) -> void:
 	p.x = 49.5
 	p.y = 36.5
 	p.inventory["feed"] = 6
+	expect(world.act(token,"adopt-cow","livestock_adopt",cow_cell,"cow").ok,"The cow can join the ranch after the picnic")
 	expect(world.act(token,"pet-cow","livestock_pet",cow_cell,"cow").ok,"Cow can be petted at the station")
 	expect(not world.act(token,"pet-cooldown","livestock_pet",cow_cell,"cow").ok,"A repeat pet respects the world clock cooldown")
 	expect(world.act(token,"pet-sheep","livestock_pet",sheep_cell,"sheep").ok,"Sheep has an independent cooldown")
@@ -390,6 +702,7 @@ func test_ranch_income() -> void:
 		actor.y=site.y+0.5
 		actor.inventory.wheat=1
 		actor.inventory.fiber=2
+		if animal=="cow":expect(world.act(token,"adopt-cow","livestock_adopt",site,"cow").ok,"D07: the cow is adopted before the income run")
 		var stove:=site+Vector2i.UP
 		world.state.objects[World.key(stove)]={"owner":token,"type":"stove","items":{}}
 		expect(world.act(token,"feed-cook","cook",stove,"feed").ok,item+" begins with one feed recipe")

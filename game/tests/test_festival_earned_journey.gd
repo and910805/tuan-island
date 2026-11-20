@@ -21,7 +21,7 @@ extends "res://tests/test_salt_pan_journey.gd"
 ##  * two own wooden lamps built within the 7x7 window around the table;
 ##  * festival_story_open at the dock board (40,29).
 ##
-## All six public projects are earned in this journey.
+## All six public projects and both Chapter III repairs are earned in this journey.
 ## The save is read back with a plain World twice after opening.
 ##
 ## Negative gates exercised (exact messages, state unchanged): boat not ready,
@@ -70,6 +70,8 @@ var fest_walk_start:=0
 var time_start:=0.0
 var restarts:=0
 var moved_residents:=[]
+var late_tilled:Array=[]
+var late_field:=Vector2i(-1,-1)
 
 func _initialize() -> void:
 	for argument in OS.get_cmdline_user_args():
@@ -102,7 +104,7 @@ func run() -> void:
 	if failed:return
 	repair_lanyang()
 	if failed:return
-	commission_deep_mine()
+	commission_mine(true)
 	if failed:return
 	fork_fixture()
 	if failed:return
@@ -110,6 +112,8 @@ func run() -> void:
 	dock_gates()
 	if failed:return
 	dock_repairs()
+	if failed:return
+	bridge_q05()
 	if failed:return
 	deliver_festival_commissions()
 	if failed:return
@@ -151,15 +155,17 @@ func repair_lanyang() -> void:
 	expect(world.state.lanyang_life.repaired,"Lanyang repair is saved by the real public action")
 	act("travel",World.REGIONS.exit_cell("lanyang"),"home")
 
-func commission_deep_mine() -> void:
+func commission_mine(repair_surface_hoist:bool) -> void:
 	var mine:=World.MINES
 	var costs:={"wood":0,"stone":0,"resin":0,"plank":0,"copper_joint":0}
 	for recipe:String in ["kiln_kit","pump_kit","pipe_kit","tank_kit"]:
 		for item:String in World.CRAFT[recipe].ingredients:
 			if costs.has(item):costs[item]+=int(World.CRAFT[recipe].ingredients[item])
-	# The fifth-floor festival project needs B1–B4 only (T067 deep commissions follow).
-	for stage:Dictionary in mine.COSTS.slice(0,mine.SHALLOW_DEPTH-1):
+	var commissioned_floors:int=mine.HOIST_DEPTH-1 if repair_surface_hoist else mine.SHALLOW_DEPTH-1
+	for stage:Dictionary in mine.COSTS.slice(0,commissioned_floors):
 		for item:String in stage:costs[item]+=int(stage[item])
+	if repair_surface_hoist:
+		for item:String in mine.HOIST_COST:costs[item]+=int(mine.HOIST_COST[item])
 	costs.wood+=int(World.INDUSTRY.PROCESS.charcoal.ingredients.wood)
 	costs.wood_extra=costs.wood
 	costs.fiber=0
@@ -177,6 +183,7 @@ func commission_deep_mine() -> void:
 	travel(World.TRANSIT.points("toucheng").rail.cell,"ruifang")
 	travel(World.TRANSIT.points("ruifang").bus.cell,"jiufen")
 	travel(World.TRANSIT.points("jiufen").shuttle.cell,"jinguashi")
+	frefuse(World.HOIST_ACTION,mine.ENTRY,"",World.HOIST_LOCKED_MSG)
 	act("mine_travel",mine.ENTRY,mine.IDS[0])
 	for depth in range(4):
 		if failed:return
@@ -192,8 +199,24 @@ func commission_deep_mine() -> void:
 	expect(world.player_region(tok)==mine.IDS[4] and int(world.state.mine_depths.unlocked)==5,"Real commissions and drainage open the fifth level")
 	act("pick",mine.NODES[0])
 	expect(int(bag().get("gold_ore",0))>0,"The deepest work face is accessible")
-	for depth in range(4,0,-1):act("mine_travel",mine.UP,mine.IDS[depth-1])
-	act("mine_travel",mine.UP,"jinguashi")
+	if not repair_surface_hoist:
+		for level in range(mine.SHALLOW_DEPTH,1,-1):act("mine_travel",mine.UP,mine.IDS[level-2])
+		act("mine_travel",mine.UP,"jinguashi")
+		travel(World.TRANSIT.STATIONS.jinguashi.cell,"home")
+		return
+	act("mine_commission",mine.SERVICE)
+	act("mine_travel",mine.DOWN,mine.IDS[5])
+	expect(world.player_region(tok)==mine.IDS[5],"The fifth-floor commission opens the sixth level")
+	act("mine_travel",mine.LIFT,"jinguashi")
+	frefuse("mine_travel",mine.ENTRY,mine.IDS[5],World.HOIST_STUCK_MSG)
+	var before:=bag().duplicate()
+	act(World.HOIST_ACTION,mine.ENTRY)
+	for item:String in mine.HOIST_COST:
+		expect(int(bag().get(item,0))==int(before.get(item,0))-int(mine.HOIST_COST[item]),"The hoist repair only consumes its required "+item)
+	expect(mine.hoist_ready(world.state.mine_depths),"The Chapter III hoist repair is earned")
+	act("mine_travel",mine.ENTRY,mine.IDS[5])
+	expect(world.player_region(tok)==mine.IDS[5],"The repaired surface hoist lands on the sixth level")
+	act("mine_travel",mine.LIFT,"jinguashi")
 	travel(World.TRANSIT.STATIONS.jinguashi.cell,"home")
 
 func fork_fixture() -> void:
@@ -254,6 +277,44 @@ func dock_repairs() -> void:
 	frefuse("dock_repair",BOARD,"2",MSG_DOCK_DONE)
 	frefuse("festival_story_open",BOARD,"",MSG_GATE)
 	frefuse("festival_story_open",BOARD+Vector2i(0,1),"",MSG_WHERE)
+
+## Q05 河灣橋 earned with real gathering, hand-woven rope, a normal stone workbench and
+## two crafted foundations. The first island project bit follows the bridge, not the board.
+func bridge_q05() -> void:
+	var stone_shop=World.STONE_WORKSHOP
+	var ledger_before:bool=ledger_on.get(tok,false)
+	ledger_on[tok]=false
+	expect(bool(world.state.board) and stone_shop.project_pending(world.state) and not stone_shop.bridge_open(world.state),"Q05 is pending after the earned board repair")
+	expect(world.island_project_mask()&1==0,"the first project bit stays clear while the bridge is closed")
+	frefuse("festival_story_open",BOARD,"",MSG_GATE)
+	var build_cost:Dictionary=World.BUILD[stone_shop.KIND]
+	var wood_goal:int=stone_shop.WOOD_NEEDED+int(build_cost.get("wood",0))
+	var stone_goal:int=stone_shop.FOUNDATIONS_NEEDED*int(stone_shop.FOUNDATION_COST.stone)+int(build_cost.get("stone",0))
+	var fiber_goal:int=World.ROPE_FIBER_COST*stone_shop.ROPE_NEEDED
+	gather_for_dock("wood","tree","axe",wood_goal,3)
+	gather_for_dock("stone","rock","pick",stone_goal,2)
+	gather_for_dock("fiber","grass","axe",fiber_goal,1)
+	if failed:return
+	for piece in stone_shop.ROPE_NEEDED:act("handcraft_rope",BOARD)
+	if failed:return
+	expect(int(bag().get("rope",0))>=stone_shop.ROPE_NEEDED,"four hand-woven rope pieces are held")
+	var station:=open_cell(true)
+	if not expect(station!=Vector2i(-1,-1),"open two-tile spot for the stone workbench"):return
+	act("build",station,stone_shop.KIND)
+	if failed:return
+	var wood:=int(bag().get("wood",0))
+	var rope:=int(bag().get("rope",0))
+	var stone:=int(bag().get("stone",0))
+	act(stone_shop.DONATE_ACTION,BOARD)
+	if failed:return
+	expect(int(bag().get("wood",0))==wood-stone_shop.WOOD_NEEDED and int(bag().get("rope",0))==rope-stone_shop.ROPE_NEEDED and int(bag().get("stone",0))==stone,"board takes exactly the wood and rope")
+	expect(not stone_shop.bridge_open(world.state) and world.island_project_mask()&1==0,"wood and rope alone leave the bridge and project bit closed")
+	for piece in stone_shop.FOUNDATIONS_NEEDED:act(stone_shop.ACTION,station,stone_shop.FOUNDATION)
+	if failed:return
+	expect(int(bag().get("stone",0))==stone-stone_shop.FOUNDATIONS_NEEDED*int(stone_shop.FOUNDATION_COST.stone),"two foundations pay the full stone cost")
+	expect(stone_shop.bridge_open(world.state) and world.island_project_mask()&1==1,"the final foundation opens the bridge and sets the first project bit")
+	spent.wood=int(spent.get("wood",0))+stone_shop.WOOD_NEEDED
+	ledger_on[tok]=ledger_before
 
 func deliver_festival_commissions() -> void:
 	var commissions:Dictionary=World.OUTLYING_COMMISSIONS.DEFS
@@ -340,6 +401,7 @@ func lamps_and_open() -> void:
 	expect(int(world.festival_story_view().lights)>=2,"two lamps counted around the table")
 	frefuse("festival_story_open",BOARD,"",MSG_GATE)
 	open_festival_kitchen()
+	restore_festival_mill()
 	if failed:return
 	var plan:=world.festival_story_view()
 	expect(plan.boat_ready and plan.meal and int(plan.lights)>=2 and int(plan.projects)==World.ISLAND_NOTES.project_mask() and not plan.opened,"festival plan complete before opening: "+JSON.stringify(plan))
@@ -406,6 +468,48 @@ func open_festival_kitchen() -> void:
 	real_mask=world.island_project_mask()
 	expect(real_mask==World.ISLAND_NOTES.project_mask(),"All six projects are earned in the same save")
 
+func restore_festival_mill() -> void:
+	if failed:return
+	var mill:=World.MILL_RESTORATION
+	var parts:Dictionary=World.CRAFT.woodwork_parts.ingredients
+	expect(not mill.repaired(world.state),"An open kitchen does not grant the mill repair")
+	if not expect(mill.site_clear(world.state),"The earned island has the mill's physical doorway"):return
+	var door:Vector2i=mill.DOOR
+	frefuse(mill.SERVICE,door,"flour","先修好渡口舊磨坊。")
+	produce({"plank":mill.COST.plank+int(parts.plank),"stone":mill.COST.stone,"resin":0,"copper_joint":0,"fiber":0,"wood_extra":0})
+	if failed:return
+	if int(bag().get("hardwood",0))<int(parts.hardwood):
+		if int(bag().get("sapling",0))==0:hit_resource("tree")
+		var tree:=open_cell()
+		if not expect(tree.x>=0 and world.tree_planting_problem(tok,tree).is_empty(),"Find an open spot for an earned sapling"):return
+		act("plant_tree",tree)
+		wait(World.TREE_TIME+0.1)
+		for hit in range(3):act("axe",tree)
+		expect(int(bag().get("hardwood",0))>=int(parts.hardwood),"Harvest hardwood from the planted tree")
+	if failed:return
+	craft("woodwork_parts")
+	var before:=bag().duplicate()
+	act(mill.ACTION,door)
+	expect(mill.repaired(world.state),"The crafted parts and planks restore the public mill")
+	for item:String in mill.COST:
+		expect(int(bag().get(item,0))==int(before.get(item,0))-int(mill.COST[item]),"The mill repair consumes only its required "+item)
+	var recipe:Dictionary=World.INDUSTRY.PROCESS.flour
+	while int(bag().get("wheat",0))<int(recipe.ingredients.wheat) and not failed:
+		var plot:=open_cell()
+		if not expect(plot.x>=0,"Find an open plot for the mill's first wheat crop"):return
+		wait_for_kitchen_crop("wheat",plot)
+		act("buy",RECEIVER,"wheat")
+		act("hoe",plot)
+		act("seed",plot,"wheat")
+		grow([plot])
+		act("harvest",plot)
+	var flour:=int(bag().get("flour",0))
+	act(mill.SERVICE,door,"flour")
+	frefuse(mill.SERVICE,door,"claim","現在沒有可領的磨坊成品。")
+	wait(float(recipe.time))
+	act(mill.SERVICE,door,"claim")
+	expect(int(bag().get("flour",0))==flour+int(recipe.yield),"The restored mill produces the first flour from earned wheat")
+
 func wait_for_kitchen_crop(crop:String,plot:Vector2i) -> void:
 	var duration:=float(World.CROPS[crop].time)
 	var day:=WEATHER.day_index(now())
@@ -452,6 +556,9 @@ func reopen(label:String) -> World:
 	return reopened
 
 func restart_and_replay() -> void:
+	# The final refused action can require a walk from the deer to the board.
+	# Capture that position with the save performed on a normal shutdown.
+	if not expect(world.save(),"restart: persist the final walking position before closing"):return
 	var expected_a:Dictionary=person().duplicate(true)
 	var reopened:=reopen("restart")
 	if reopened==null:return
@@ -519,6 +626,70 @@ func late_member_uses_public_facilities() -> void:
 	actions+=1
 	var sale:=world.act(tok,"late-loan-sale","sell",RECEIVER,"reinforced_pick")
 	expect(not sale.ok and int(person().coins)==coins,"Selling a public loan cannot credit coins")
+	late_member_borrows_tiller()
+
+## T064: the newcomer (no tiller, no granted stock, no teleport) walks to the real
+## public rack, registers, receives earned charcoal from the original resident's
+## kiln through a shared chest, and tills one legal pass spending exactly one charcoal.
+func late_member_borrows_tiller() -> void:
+	if failed:return
+	var PT:=World.PUBLIC_TILLER
+	var late:=LATE
+	expect(int(bag().get("tiller",0))==0 and int(bag().get("charcoal",0))==0 and not PT.borrowed(person()) and not PT.can_till(person()),
+		"T064: the newcomer starts with no tiller, no charcoal and no loan")
+	var loan:=PT.loan_cell(world.state)
+	if not expect(loan!=PT.NO_SITE,"T064: the public tiller loan cell exists after the picnic"):return
+	frefuse("till_area",open_cell(),"",PT.NEED_MACHINE)
+	var before_bag:=bag().duplicate(true)
+	walk_to(loan)
+	if failed:return
+	act(PT.ACTION,loan)
+	expect(PT.borrowed(person()) and bool(person().get(PT.FIELD,false)),"T064: registering at the real loan cell sets the borrowed flag")
+	expect_same(bag(),before_bag,"T064: registering grants no inventory")
+	frefuse(PT.ACTION,loan,"",PT.ALREADY)
+	var field:=open_cell()
+	if not expect(field!=Vector2i(-1,-1),"T064: find a legal field centre for the newcomer"):return
+	frefuse("till_area",field,"","耕田機需要木炭，這次沒有施工")
+	# The original resident really produces the charcoal at their own kiln, then shares it in a chest.
+	tok=TOKEN_A
+	var kiln:=Vector2i(-1,-1)
+	for k:String in world.state.objects:
+		var obj:Dictionary=world.state.objects[k]
+		if obj.get("type","")=="charcoal_kiln" and obj.get("owner","")==TOKEN_A:
+			var parts:=k.split(",")
+			kiln=Vector2i(int(parts[0]),int(parts[1]))
+	if not expect(kiln!=Vector2i(-1,-1),"T064: the original resident's charcoal kiln exists"):return
+	var proc:Dictionary=World.INDUSTRY.PROCESS.charcoal
+	gather({"wood":20+int(proc.ingredients.wood)})
+	if failed:return
+	var chest:=open_cell()
+	if not expect(chest!=Vector2i(-1,-1),"T064: find a spot for a shared chest"):return
+	act("build",chest,"chest")
+	var made_before:=int(bag().get("charcoal",0))
+	act("start_processing",kiln,"charcoal")
+	wait(float(proc.time))
+	act("claim_processing",kiln)
+	expect(int(bag().get("charcoal",0))==made_before+int(proc.yield),"T064: the original resident really produced charcoal")
+	act("deposit",chest,"charcoal")
+	expect(int(world.state.objects[World.key(chest)].items.get("charcoal",0))==1,"T064: one charcoal is shared in the chest")
+	tok=late
+	walk_to(chest)
+	if failed:return
+	act("withdraw",chest,"charcoal")
+	expect(int(bag().get("charcoal",0))==1 and int(world.state.objects[World.key(chest)].items.get("charcoal",0))==0,"T064: the newcomer took the shared charcoal")
+	walk_to(field)
+	if failed:return
+	var plan:Dictionary=preload("res://scripts/tiller.gd").plan(world,late,field)
+	if not expect(plan.cells.size()>=1,"T064: the tiller pass has legal cells"):return
+	var tilled:Array=plan.cells.duplicate()
+	for key:String in tilled:expect(not world.state.crops.has(key),"T064: %s is untilled before the pass"%key)
+	act("till_area",field)
+	expect(int(bag().get("charcoal",0))==0,"T064: tilling spent exactly one charcoal")
+	for key:String in tilled:
+		expect(world.state.crops.has(key) and str(world.state.crops[key].get("owner",""))==late,"T064: %s is a tilled field owned by the newcomer"%key)
+	expect(not bag().has("tiller") or int(bag().tiller)==0,"T064: no tradeable tiller entered the bag")
+	late_tilled=tilled
+	late_field=field
 
 func second_restart() -> void:
 	expect(world.save(),"explicit save before the second restart")
@@ -528,10 +699,16 @@ func second_restart() -> void:
 	reopened.add_player(LATE,"Late Member")
 	world=reopened
 	expect(world.festival_story_view().opened,"second restart: still opened")
+	expect(World.MILL_RESTORATION.repaired(world.state) and World.MINES.hoist_ready(world.state.mine_depths),"second restart: both Chapter III repairs persist")
 	expect(world.state.community.watermelon.claimed.has(LATE),"second restart: late member's claim persisted")
 	tok=LATE
 	expect(person().get("borrowed_mine_pick",false) and int(bag().get("soup",0))==int(World.RECIPES.soup.yield)
 		and int(bag().get("copper_ore",0))==2,"second restart: the newcomer retains the loan and their earned output")
+	expect(World.PUBLIC_TILLER.borrowed(person()) and int(bag().get("tiller",0))==0 and int(bag().get("charcoal",0))==0,
+		"second restart: borrowed tiller status persists with no tiller item and no charcoal left")
+	expect(not late_tilled.is_empty(),"second restart: the newcomer's tilled cells were recorded")
+	for key:String in late_tilled:
+		expect(world.state.crops.has(key) and str(world.state.crops[key].get("owner",""))==LATE,"second restart: %s is still the newcomer's tilled field"%key)
 	frefuse("claim_watermelon",World.COMMUNITY.table_cell(world.state),"",MSG_CLAIMED)
 	frefuse("festival_story_open",BOARD,"",MSG_OPENED)
 	tok=TOKEN_A
@@ -562,7 +739,7 @@ func keep_evidence() -> void:
 	expect(DirAccess.copy_absolute(fest_path,save_out)==OK,"kept the festival completion save")
 	var report:={"journey":"test_festival_earned_journey.gd","source":"test_salt_pan_journey.gd (fresh temp world, earned)",
 		"label":SALT_LABEL,"earned_projects":mask_names(real_mask),
-		"earned":["dock_repair x2","watermelon seed->harvest->watermelon_platter->serve_watermelon","2 lamps","festival_story_open"],
+		"earned":["mine_hoist_repair","restore_mill","public mill flour","dock_repair x2","watermelon seed->harvest->watermelon_platter->serve_watermelon","2 lamps","festival_story_open"],
 		"lamps":lamp_cells.map(func(c):return [c.x,c.y]),"spent":spent,"refusals":refusals,"restarts":restarts,
 		"moved_residents":moved_residents,"save_sha256":FileAccess.get_sha256(save_out),
 		"world_seconds":now(),"festival_world_seconds":now()-time_start}

@@ -105,11 +105,12 @@ func run()->void:
 	quit(int(failures>0))
 
 func constants_section()->void:
-	check(Session.PROTOCOL==45,"Session.PROTOCOL is 40 for material sourcing")
+	check(Session.PROTOCOL>=40,"Session protocol includes material sourcing")
 	var contract=JSON.parse_string(FileAccess.get_file_as_string(CONTRACT_PATH))
 	check(contract is Dictionary,"contract file parses")
 	if contract is Dictionary:
-		check(int(contract.get("protocol",0))==Session.PROTOCOL,"protocol matches contract")
+		var minimum:=int(contract.get("protocol",0))
+		check(minimum>=40 and Session.PROTOCOL>=minimum,"Session supports the documented material-source protocol")
 		check(contract.get("source_actions")==Session.SOURCE_ACTIONS,"Session.SOURCE_ACTIONS equals contract source_actions")
 	check(Session.SOURCE_ACTIONS==SOURCE_ACTIONS,"source actions are exactly the five contract actions")
 	for action in OLD_CORRELATED:check(Session.CORRELATED_ACTIONS.has(action),"%s stays correlated"%action)

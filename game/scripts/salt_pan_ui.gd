@@ -1264,8 +1264,18 @@ static func route_page(ctx:Dictionary,left:VBoxContainer)->void:
 	if picture:
 		var view:=Shell.picture(picture,96)
 		view.name="SaltHeritageArt"
-		view.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
-		left.add_child(view)
+		# 3:2 插畫（288×192）以整數半倍 144×96 放進左頁（高度同原本 96 的圖位；240×160 在故事完成、
+		# 鹽籃與手作兩行都出現時會把手帳撐出捲軸）。Shell.picture 已設 EXPAND_IGNORE_SIZE＋KEEP_ASPECT_CENTERED。
+		# 圖說放在圖右側，不另佔一行高度（最大字級、左頁最滿時才不會壓到頁角葉飾）。
+		if picture.get_width()>picture.get_height():view.custom_minimum_size=Vector2(144,96)
+		view.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+		var figure:=row(left,"SaltHeritageFigure",6)
+		figure.add_child(view)
+		# 標明這是遊戲插畫，不是歷史照片。
+		var caption:=label(app,figure,"阿曬在鹽田收鹽\n遊戲插畫",12,BROWN)
+		caption.name="SaltHeritageCaption"
+		caption.autowrap_mode=TextServer.AUTOWRAP_OFF
+		caption.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	var current:=phase(ctx.snapshot)
 	var at:=PHASES.find(current)
 	var route:=GridContainer.new()

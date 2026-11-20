@@ -38,7 +38,7 @@ const BP_PENDING := preload("res://scripts/blueprint_pending.gd")
 const BP_CONTROLLER := preload("res://scripts/blueprint_controller.gd")
 const BP_NAME := "親手蓋的小屋"
 const BP_PIECES := 26
-const BP_BASE_COST := {"wood":87, "fiber":12, "stone":1}
+const BP_BASE_COST := {"wood":84, "fiber":12}
 # Cell the builder stands on for placement: west of the footprint, within BLUEPRINT_RANGE.
 const BP_STAND := Vector2i(-1,2)
 const BP_SITE_RING := 26
@@ -257,11 +257,11 @@ func capture_and_save() -> void:
 	if failed:return
 	var design: Dictionary = controller.captured
 	expect(direct.get("ok") == true and same_json(design, direct.blueprint), "Controller capture equals Design.capture of the public snapshot")
-	expect((design.pieces as Array).size() == BP_PIECES and int(design.width) == 5 and int(design.height) == 5, "Captured 9 floors + 14 walls + window + door + bed in 5x5")
+	expect((design.pieces as Array).size() == BP_PIECES and int(design.width) == 5 and int(design.height) == 5, "Captured 9 floors + 15 walls + door + bed in 5x5 (no glass-costing window in the starter house)")
 	expect(int(controller.auto_roofs_omitted) == INTERIOR.size(), "Nine automatic roofs omitted from the design")
 	var kinds := {}
 	for piece in design.pieces:kinds[str(piece.kind)] = int(kinds.get(str(piece.kind),0)) + 1
-	expect(same_json(kinds, {"floor":9,"wall":14,"window":1,"door":1,"bed":1}), "Captured piece kinds %s" % JSON.stringify(kinds))
+	expect(same_json(kinds, {"floor":9,"wall":15,"door":1,"bed":1}), "Captured piece kinds %s" % JSON.stringify(kinds))
 	var base: Dictionary = BP_DESIGN.base_cost(design, World.BUILD, World.NAMES)
 	expect(base.get("ok") == true and ints(base.cost) == BP_BASE_COST, "Design base cost %s excludes automatic roofs" % JSON.stringify(base.get("cost",{})))
 	var encoded := JSON.stringify(design)
@@ -422,7 +422,7 @@ func verify_layouts(target, label: String) -> void:
 	expect(at_site(original_site, func(): return layout_owned(world)), label + ": original house still owned and auto-roofed")
 	at_site(original_site, func(): assert_complete(inspect_home(spot(CENTER), label + " original"), label + ": original home"))
 	var owned := owned_tally(world)
-	expect(int(owned.get("floor",0)) == 18 and int(owned.get("wall",0)) == 28 and int(owned.get("window",0)) == 2 and int(owned.get("door",0)) == 2 and int(owned.get("bed",0)) == 2 and int(owned.get("auto_roof",0)) == 18 and not owned.has("roof"), label + ": exactly two houses exist, no duplicate (%s)" % JSON.stringify(owned))
+	expect(int(owned.get("floor",0)) == 18 and int(owned.get("wall",0)) == 30 and int(owned.get("window",0)) == 0 and int(owned.get("door",0)) == 2 and int(owned.get("bed",0)) == 2 and int(owned.get("auto_roof",0)) == 18 and not owned.has("roof"), label + ": exactly two houses exist, no duplicate (%s)" % JSON.stringify(owned))
 	world = keep
 
 func verify_persistence() -> void:

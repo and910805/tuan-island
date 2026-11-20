@@ -45,6 +45,12 @@ static func stage_for(crop: Dictionary) -> int:
 		return 1
 	return 0
 
+## An elapsed value with the same visible stage and harvest readiness.
+static func stage_growth(crop:Dictionary) -> float:
+	var stage:=stage_for(crop)
+	if stage<0:return float(crop.get("growth",0.0))
+	return float(World.CROPS[crop.kind].time)*[0.0,0.45,0.8,1.0][stage]
+
 ## 休眠中的作物（World.plot_dormant）：整株染成偏冷的灰藍，右上角加兩個小「z」。
 ## 只是呈現，成長階段仍照 growth 畫（休眠保留成長進度）。
 const DORMANT_TINT := Color(0.70, 0.76, 0.88)

@@ -7,6 +7,11 @@ const HouseUI:=preload("res://scripts/house_ui.gd")
 const Folio:=preload("res://scripts/build_folio.gd")
 const ORIGIN:=Vector2i(24,34)
 const ROOM_SIGN:="keepsake_nuannuan_room"
+const CAPTURE_DELAY:=0.45
+# Themed furniture beyond the generic bed/lamp/chair ids.
+const THEME_BED:="cedar_bed"
+const THEME_LAMP:="paper_tea_lamp"
+const THEME_SEAT:="indigo_cushion"
 
 var app
 var world:World
@@ -43,6 +48,8 @@ func capture(file_name:String) -> void:
 	if DisplayServer.get_name()=="headless":return
 	for arg in OS.get_cmdline_user_args():
 		if not arg.begins_with("--capture-dir="):continue
+		# Let any modal/ribbon fade finish before grabbing the frame.
+		await create_timer(CAPTURE_DELAY).timeout
 		await RenderingServer.frame_post_draw
 		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
 
@@ -52,11 +59,12 @@ func piece(kind:String) -> Dictionary:
 	return result
 
 func shell() -> void:
-	for y in 4:
+	# Interior is 3x3 so a two-cell bed, wardrobe and cushion still leave a path from the door.
+	for y in 5:
 		for x in 5:
 			var tile:=World.key(ORIGIN+Vector2i(x,y))
 			world.state.removed[tile]=true
-			if x in [1,2,3] and y in [1,2]:
+			if x in [1,2,3] and y in [1,2,3]:
 				world.state.ground[tile]=piece("floor")
 				world.state.roofs[tile]=piece("roof")
 			else:
@@ -67,7 +75,7 @@ func run() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--inn-seat="):rest_choice=arg.trim_prefix("--inn-seat=")
 	var rest_suffix:="" if rest_choice=="porch" else "-"+rest_choice
-	root.size=Vector2i(1024,640)
+	root.size=Vector2i(1280,800) if "--wide" in OS.get_cmdline_user_args() else Vector2i(1024,640)
 	app=load("res://main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
@@ -80,31 +88,45 @@ func run() -> void:
 	world=app.session.world
 	token=app.session.profile.token
 	person=world.state.players[token]
-	person.inventory.merge({"wood":80,"fiber":40,"stone":30,"plank":4},true)
+	person.inventory.merge({"wood":80,"fiber":40,"stone":30,"plank":4,
+		"bamboo":10,"cotton_cloth":5,"copper_ingot":2,"blue_dye":2},true)
 	person.bonds={"nuannuan":{"points":14,"talk_day":-1,"gift_day":-1}}
 	shell()
 	var interior:=ORIGIN+Vector2i(1,1)
-	var bed:=ORIGIN+Vector2i(2,2)
+	var bed:=ORIGIN+Vector2i(3,2)
 	var lamp:=ORIGIN+Vector2i(3,1)
-	var chair:=ORIGIN+Vector2i(3,2)
+	var chair:=ORIGIN+Vector2i(1,3)
 	stand(interior)
-	expect(world.act(token,"add-bed","build",bed,"bed").ok,"Built a real bed")
-	expect(world.act(token,"add-lamp","build",lamp,"lamp").ok,"Built a real lamp")
+	var bed_result:=world.act(token,"add-bed","build",bed,THEME_BED)
+	expect(bed_result.ok,"Built a themed cedar bed: "+str(bed_result.get("message","")))
+	expect(world.state.objects.get(World.key(bed),{}).get("type")==THEME_BED and world.state.objects.get(World.key(bed+Vector2i.DOWN),{}).get("type")==THEME_BED,
+		"The cedar bed occupies its full two-cell footprint inside the room")
+	expect(world.act(token,"add-lamp","build",lamp,THEME_LAMP).ok,"Built a themed paper tea lamp")
 	stand(interior)
 	HouseUI.open(app)
 	await process_frame
 	var register_room:=button("GuestRoomRegister")
-	expect(register_room!=null and register_room.disabled,"A chair is required even in a complete house")
+	expect(register_room!=null and register_room.disabled,"A seat is required even in a complete house")
 	expect(not world.act(token,"no-chair",Goals.GUEST_ROOM_ACTION,interior).ok,"Server rejects incomplete furnishings")
 	app._close_modal()
-	expect(world.act(token,"add-chair","build",chair,"chair@tea_house").ok,"Built a real styled chair")
+	expect(world.act(token,"add-chair","build",chair,THEME_SEAT).ok,"Built a themed indigo cushion seat")
 	stand(ORIGIN+Vector2i(1,-1))
 	expect(not world.act(token,"outside",Goals.GUEST_ROOM_ACTION,ORIGIN+Vector2i(1,-1)).ok,"No registration from outside")
 	stand(interior)
-	HouseUI.open(app)
+	# Ready stage: open the checker from the story page's own button.
+	Tasks.bond_goal(app,"nuannuan",3)
 	await process_frame
+	await press("NuannuanCheckGuestRoom")
+	var check_modal:Control=app.modal
+	expect(is_instance_valid(check_modal) and check_modal.has_meta("house_check"),"The story page opens the house checker")
 	await capture("01-guest-room-check.png")
 	await press("GuestRoomRegister")
+	expect(is_instance_valid(app.modal) and app.modal==check_modal,"Registration stays on the same modal")
+	var status:=app.modal.find_child("GuestRoomStatus",true,false) as Label if is_instance_valid(app.modal) else null
+	expect(status!=null and status.text.begins_with("✓"),"The status label confirms registration")
+	var gone:=button("GuestRoomRegister")
+	expect(gone==null or not gone.visible,"The register button hides after success")
+	await capture("01b-guest-room-registered.png")
 	expect(app.session.snapshot.own_guest_room and not app.session.snapshot.players[app.session.own_id].has(Goals.GUEST_ROOM_KEY),"Saved personal room progress without publishing it")
 	expect(not world.act(token,"repeat-room",Goals.GUEST_ROOM_ACTION,interior).ok,"Room is registered only once")
 	var host:Vector2i=World.bond_place(world.state,"nuannuan")[1]
@@ -185,14 +207,12 @@ func run() -> void:
 	await process_frame
 	await press("BondGoalDo")
 	expect(app.session.snapshot.resident_goals.nuannuan["3"].state=="done","Warm Springs report completes the event")
-	Tasks.bond_goal(app,"nuannuan",3)
-	await process_frame
+	expect(button("NuannuanGuestCloth")!=null and button("NuannuanGuestWardrobePattern")!=null,"The N12-3 report immediately leaves the cloth reward and pattern on screen")
 	await capture("03-guest-room-rewards.png")
 	await press("NuannuanGuestCloth")
 	expect(int(person.inventory.get("cotton_cloth",0))==2 and app.session.snapshot.own_guest_cloth,"Received the two pieces of lodge cloth")
 	expect(not world.act(token,"repeat-cloth",Goals.GUEST_CLOTH_ACTION,host).ok,"Cloth cannot be claimed twice")
-	Tasks.bond_goal(app,"nuannuan",3)
-	await process_frame
+	expect(is_instance_valid(app.modal) and button("NuannuanGuestWardrobePattern")!=null,"Claiming keeps the reward page open without a manual reopen")
 	expect(button("NuannuanGuestCloth")==null,"The completed page reflects a claimed reward")
 	person.region=World.REGIONS.HOME
 	stand(interior)
@@ -209,7 +229,10 @@ func run() -> void:
 	# The original co-dining unlock is outside this feature's fixture; simulate it after checking its gate.
 	person.bonds.milu={"points":24,"talk_day":-1,"gift_day":-1}
 	person.bond_goals.milu={"4":""}
-	stand(lamp)
+	# The paper lamp is interactive too: stand beside the wardrobe so it is the nearest target.
+	stand(interior)
+	world.move_player(token,Vector2.RIGHT,0.075)
+	app.session._send_snapshot(1)
 	app._interact()
 	await process_frame
 	await capture("02-guest-wardrobe.png")
@@ -229,6 +252,50 @@ func run() -> void:
 	if arrival:arrival.hide()
 	app.toast.hide()
 	await capture("06-inn-rest-together"+rest_suffix+".png")
+	# Solo seat is shown above; now a visiting player joins the same selected seat.
+	var seat_cell:Vector2i=springs.REST_SEATS[rest_choice]
+	var friend_anchor:=Vector2(seat_cell)+Vector2(1.42,0.66)
+	guest.erase(springs.REST_SEAT_KEY)
+	guest.region=springs.REGION
+	guest.x=seat_cell.x+0.5
+	guest.y=seat_cell.y+1.5
+	var join:=world.act(guest_id,"join-rest",springs.REST_JOIN,seat_cell,rest_choice)
+	expect(springs.REST_JOIN=="nuannuan_rest_join" and join.ok,"A visitor can join the selected rest seat: "+str(join.get("message","")))
+	expect(person.get(springs.REST_SEAT_KEY)==rest_choice and guest.get(springs.REST_SEAT_KEY)=="friend:"+rest_choice,
+		"The primary keeps the seat while the visitor is recorded as its friend")
+	expect(Vector2(guest.x,guest.y).distance_to(friend_anchor)<0.01,"The friend is anchored beside the primary seat")
+	app.session.peers[2]=guest_id
+	app.session.rates[1].clear()
+	app.session._send_snapshot(1)
+	await create_timer(0.3).timeout
+	var seated_names:Array=[]
+	var own_seated:=false
+	var friend_seated:=false
+	for actor_id in app.session.snapshot.players:
+		var actor:Dictionary=app.session.snapshot.players[actor_id]
+		var actor_seat=actor.get(springs.REST_SEAT_KEY,"")
+		if actor_id==app.session.own_id:own_seated=actor_seat==rest_choice
+		elif str(actor.get("name",""))=="旅舍訪客":friend_seated=actor_seat=="friend:"+rest_choice
+	expect(own_seated and friend_seated,"The snapshot shows both the primary and the friend seated")
+	var arrival_friend:Control=app.hud.get_node_or_null("TravelArrival")
+	if arrival_friend:arrival_friend.hide()
+	app.toast.hide()
+	await capture("06b-inn-rest-friend"+rest_suffix+".png")
+	if DisplayServer.get_name()!="headless":
+		Tasks.bond_goal(app,"nuannuan",4)
+		await process_frame
+		await press("NuannuanTakePhoto")
+		var friend_photo:=Tasks.inn_photo_path(app)
+		expect(FileAccess.file_exists(friend_photo),"The primary's real photo button saves a multiplayer rest image")
+		Tasks.bond_goal(app,"nuannuan",4)
+		await process_frame
+		await press("NuannuanViewPhoto")
+		expect(is_instance_valid(app.modal) and app.modal.find_child("NuannuanInnPhoto",true,false)!=null,"The album shows the multiplayer rest photo")
+		await capture("07b-inn-photo-album-friend"+rest_suffix+".png")
+		if FileAccess.file_exists(friend_photo):DirAccess.remove_absolute(friend_photo)
+		app._close_modal()
+	app.session.peers.erase(2)
+	guest.erase(springs.REST_SEAT_KEY)
 	world.move_player(token,Vector2.LEFT,0.1)
 	expect(not person.has(springs.REST_SEAT_KEY),"Moving ends the seated pose")
 	stand(host)

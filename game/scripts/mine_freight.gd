@@ -1,5 +1,9 @@
 extends RefCounted
 const Mines=preload("res://scripts/mine_depths.gd")
+const BoxCapacity=preload("res://scripts/box_capacity.gd")
+const ChestHistory=preload("res://scripts/chest_history.gd")
+## Actor label written to wooden chest history for freight deliveries and auto-freight pickups.
+const HISTORY_LABEL:="礦務貨運"
 const LOAD_CELL := Mines.SERVICE
 const CLAIM_CELL := Vector2i(40,29)
 const CAPACITY := 32
@@ -60,8 +64,20 @@ static func can_fit(destination: Dictionary, items: Dictionary) -> bool:
 		if int(destination.get(item,0)) > LIMIT-int(items[item]):return false
 	return true
 
+## Same as can_fit for a private chest destination: also honours the 16-slot rule
+## (a job may carry several ore kinds, each new kind needs a free slot).
+static func can_fit_chest(destination: Dictionary, items: Dictionary) -> bool:
+	return can_fit(destination, items) and BoxCapacity.slot_ok(destination, items)
+
 static func transfer(destination: Dictionary, items: Dictionary) -> void:
 	for item in items:destination[item]=int(destination.get(item,0))+int(items[item])
+
+## One history row per item of a committed chest transfer (sorted item order).
+static func record_history(chest: Dictionary, items: Dictionary, depositing: bool, now: float) -> void:
+	var names: Array = items.keys()
+	names.sort()
+	for item in names:
+		if int(items[item])>0:ChestHistory.record(chest,HISTORY_LABEL,str(item),int(items[item]),depositing,now)
 
 static func step(state: Dictionary) -> bool:
 	var changed := false
@@ -69,8 +85,9 @@ static func step(state: Dictionary) -> bool:
 		var job: Dictionary = state.mine_freight.jobs[actor]
 		if job.status!="transit" or float(job.ready)>float(state.time):continue
 		var chest: Dictionary = state.objects.get(job.target.cell,{})
-		if chest.get("type")=="private_chest" and chest.get("owner")==actor and chest.get("freight_id")==job.target.id and can_fit(chest.items,job.items):
+		if chest.get("type")=="private_chest" and chest.get("owner")==actor and chest.get("freight_id")==job.target.id and can_fit_chest(chest.items,job.items):
 			transfer(chest.items,job.items)
+			record_history(chest,job.items,true,float(state.time))
 			job.status="delivered"
 		else:job.status="held"
 		changed=true

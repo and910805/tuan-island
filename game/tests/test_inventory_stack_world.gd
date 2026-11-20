@@ -137,7 +137,8 @@ func moved(w, label: String, token: String, action: String, cell: Vector2i, item
 	var box_before := stored(w, cell, item)
 	var other_bag := without(bag(w, token), item)
 	var other_box := without(items(w, cell), item)
-	var result := act(w, token, action, cell, item, id)
+	var payload := "%s:%d" % [item, n] if action in World.CHEST_EXACT_MOVES else item
+	var result := act(w, token, action, cell, payload, id)
 	var message := str(result.get("message", ""))
 	expect(bool(result.get("ok", false)), label + ": accepted (got '" + message + "')")
 	expect(message == moved_message(action, item, n), label + ": message '" + message + "' == '" + moved_message(action, item, n) + "'")
@@ -496,7 +497,30 @@ func test_save_reload() -> void:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 
+func check_exact_moves() -> void:
+	var w = fresh()
+	set_held(w, "alice", "wood", 13)
+	moved(w, "deposit specified stack", "alice", "deposit_exact", CELL, "wood", 5, "exact-once")
+	var replay := act(w, "alice", "deposit_exact", CELL, "wood:5", "exact-once")
+	expect(replay.ok and held(w,"alice","wood")==8 and stored(w,CELL,"wood")==5, "repeated request does not deposit twice")
+	moved(w, "take specified stack", "bob", "withdraw_exact", CELL, "wood", 3)
+	refused(w, "stale amount cannot take the remainder", "alice", "withdraw_exact", CELL, "wood:3", "箱子裡的數量不足")
+	for invalid in ["wood:", "wood:0", "wood:-2", "wood:+2", "wood:2.0", "wood:2:3", "wood:1000000001"]:
+		refused(w, "invalid exact payload", "alice", "deposit_exact", CELL, invalid, "請輸入有效的存取件數")
+	set_held(w, "bob", "wood", LIMIT-1)
+	refused(w, "exact move cannot overflow the destination", "bob", "withdraw_exact", CELL, "wood:2", "背包中的物品已達上限")
+	moved(w, "exact cap is reachable", "bob", "withdraw_exact", CELL, "wood", 1)
+	set_held(w, "bob", "wood", 5)
+	place(w, PRIVATE_CELL, "private_chest", "alice", {"wood":4})
+	refused(w, "exact withdrawal checks private permission", "bob", "withdraw_exact", PRIVATE_CELL, "wood:3", Perm.MSG_FOREIGN_BOX)
+	w.state.objects[World.key(PRIVATE_CELL)].guest_deposit = true
+	moved(w, "guest can deposit a specific amount", "bob", "deposit_exact", PRIVATE_CELL, "wood", 2)
+	refused(w, "deposit permission does not grant an exact withdrawal", "bob", "withdraw_exact", PRIVATE_CELL, "wood:3", Perm.MSG_FOREIGN_BOX)
+	w.state.objects[World.key(PRIVATE_CELL)].withdraw_guest = "bob"
+	moved(w, "selected guest can take an exact amount", "bob", "withdraw_exact", PRIVATE_CELL, "wood", 3)
+
 func run() -> void:
+	check_exact_moves()
 	test_half_and_all()
 	test_legacy()
 	test_refusals()

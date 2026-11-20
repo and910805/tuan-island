@@ -139,6 +139,8 @@ func _initialize() -> void:
 	# T055 gating: summer never dispatches radish unless the requesting player
 	# owns a greenhouse roof standing on a plot they own.
 	var glass:=World.key(plot)
+	# Carried radish counts as pantry supply for dispatch, so empty the stock first.
+	person.inventory.radish=0
 	expect(order_status("alice","radish")=="unavailable","out-of-season radish is not dispatched")
 	expect(order_status("alice","fish")=="open","year-round fish order stays on the board")
 	near(board)

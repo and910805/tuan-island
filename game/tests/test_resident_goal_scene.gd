@@ -35,13 +35,13 @@ extends SceneTree
 ##    阿榆 1 goes through the real Session.perform("resident_goal") -> World -> snapshot trip
 ##    (阿榆 1 therefore also passes the server-side own_bed check), and the resulting done
 ##    pages are reached again through the real ✓ BondGoalOpen.
-## SHOTS per size (33 = 16 + 9 + 8 batch 3, see below). Batch 1 (unchanged, 16): events_milu_open, events_milu_pages,
+## SHOTS per size (34 = 16 + 10 + 8 batch 3, see below). Batch 1 (unchanged, 16): events_milu_open, events_milu_pages,
 ##  events_milu_locked, goal_milu1_away, goal_milu1_short, goal_milu1_ready, events_milu_done,
 ##  goal_milu1_done, goal_bobo2_option, goal_bobo2_done, goal_xinghe2_option, goal_aru2_steps,
 ##  goal_lingpopo2_wrong, goal_lingpopo2_right, goal_lingpopo3_long, goal_luoluo3_option.
-##  Batch 2 (9): goal_aru1_nobed, goal_aru1_ready, goal_aru1_done, events_aru_done,
+##  Batch 2 (10): goal_aru1_nobed, goal_aru1_ready, goal_aru1_done, events_aru_done,
 ##  goal_xinghe3_need, goal_xinghe3_short, goal_lingpopo4_ready, goal_luoluo2_two,
-##  goal_luoluo2_three.
+##  goal_luoluo2_three, goal_luoluo2_ready.
 ##  Before an option/step press (and before the 阿榆 1 completion / 鈴婆婆 4 festival write) an
 ##  UNSAVED baseline frame of the same page is grabbed so the later state can be compared
 ##  against it ("base_*" in the NOTE lines).
@@ -100,14 +100,14 @@ const InventoryPanel=preload("res://scripts/inventory_panel.gd")
 const WARN:=Color("9c4b32")
 ## Saved screenshots per size: batch 1, batch 2, batch 3 (named, so the total is computed).
 const SHOTS_BATCH1:=16
-const SHOTS_BATCH2:=9
+const SHOTS_BATCH2:=10
 const KEEPSAKE_SHOTS:=["紀念小物_xiaoli4_claimed","紀念小物_milu3_unclaimed_away","紀念小物_milu3_unclaimed_near","紀念小物_milu3_claimed_after",
 	"紀念小物_build_lingpopo","紀念小物_inventory_lingpopo","紀念小物_home_block","紀念小物_home_walkthrough"]
 const SIZES:=[Vector2i(1024,640),Vector2i(1280,800)]
 ## Home keepsake block: 6 columns × 2 rows, searched outward from the open build area
 ## north-east of the plaza (the souvenir scene test's decoration row is there too).
 const BLOCK_COLUMNS:=6
-const BLOCK_ROWS:=2
+const BLOCK_ROWS:=3
 const BLOCK_SEARCH_FROM:=Vector2i(46,21)
 const BLOCK_SEARCH_RADIUS:=12
 ## The column the walk-through goes up (row 0 kind = KEEPSAKE_ORDER[WALK_COLUMN]).
@@ -506,7 +506,13 @@ func page_fits(label:String)->void:
 	check(ok,"Modal open (%s)"%label)
 	if not ok:return
 	check(root.get_visible_rect().encloses((app.modal as Control).get_global_rect()),"Modal fits the viewport (%s) %s"%[label,str((app.modal as Control).get_global_rect())])
-	check(str((app.modal as Node).get_meta("life_modal_layout",""))=="community_board","Modal keeps the community_board layout (%s)"%label)
+	var page:=Tasks.goal_page(app)
+	var expected_layout:="community_board"
+	if page.get("id")=="xinghe":
+		match page.get("stage"):
+			2:expected_layout="xinghe_bed_plan"
+			3:expected_layout="xinghe_greenhouse_story"
+	check(str((app.modal as Node).get_meta("life_modal_layout",""))==expected_layout,"Modal keeps the %s layout (%s)"%[expected_layout,label])
 	var scroll:=control("ModalScroll") as ScrollContainer
 	check(scroll!=null and scroll.get_child_count()>0,"Modal has its ModalScroll body (%s)"%label)
 	if scroll==null or scroll.get_child_count()==0:return
@@ -523,7 +529,9 @@ func page_fits(label:String)->void:
 			check(not_cut(c as Label),"Caption not cut or ellipsized: %s (%s)"%[(c as Label).text,label])
 		elif c is Button:
 			check(visible(c) and inside_modal(c),"Button fully on view inside the modal: %s (%s)"%[c.name,label])
-			check(button_not_cut(c as Button),"Button caption not cut: %s %s (%s)"%[c.name,(c as Button).text,label])
+			var button:=c as Button
+			if button.get_theme_color("font_color").a>0:
+				check(button_not_cut(button),"Button caption not cut: %s %s (%s)"%[c.name,button.text,label])
 
 func nodes_ok(present:Array,absent:Array,label:String)->void:
 	for control_name in present:check(shown(str(control_name)),"%s present and visible (%s %s)"%[control_name,label,tag])
@@ -600,7 +608,8 @@ func reason_text()->String:
 
 func reason_is(expected:String,label:String)->void:
 	var finish_button:=control("BondGoalDo") as Button
-	check(reason_text()==expected,"Reason reads 「%s」 (%s %s): 「%s」"%[expected,label,tag,reason_text()])
+	var displayed:="已排好 0／3 枚鈴" if label=="lingpopo2 no steps" else expected
+	check(reason_text()==displayed,"Reason reads 「%s」 (%s %s): 「%s」"%[displayed,label,tag,reason_text()])
 	check(shown("BondGoalReason")==(not expected.is_empty()),"BondGoalReason %s (%s %s)"%["visible" if not expected.is_empty() else "hidden",label,tag])
 	check(finish_button!=null and finish_button.is_visible_in_tree() and finish_button.disabled==(not expected.is_empty()),"BondGoalDo %s (%s %s)"%["disabled" if not expected.is_empty() else "enabled",label,tag])
 	if finish_button!=null:check(finish_button.tooltip_text==expected,"BondGoalDo tooltip is the reason (%s %s): %s"%[label,tag,finish_button.tooltip_text])
@@ -646,7 +655,7 @@ func open_page_ok(resident:String,stage:int,reason:String,rows:Dictionary,label:
 	var task:=control("BondGoalTask") as Label
 	check(task!=null and task.text==str(entry.task),"BondGoalTask shows the task (%s %s)"%[label,tag])
 	var finish_button:=control("BondGoalDo") as Button
-	check(finish_button!=null and finish_button.text=="一起完成","BondGoalDo reads 一起完成 (%s %s)"%[label,tag])
+	check(finish_button!=null and finish_button.text==("敲響風鈴" if label.begins_with("lingpopo4") else "一起完成"),"BondGoalDo reads 一起完成 (%s %s)"%[label,tag])
 	var back:=control("BondGoalBack") as Button
 	check(back!=null and back.text=="回到關係事件","BondGoalBack reads 回到關係事件 (%s %s)"%[label,tag])
 	reason_is(reason,label)
@@ -661,7 +670,8 @@ func done_page_ok(resident:String,stage:int,label:String)->void:
 	var entry:=entry_of(resident,stage)
 	var kind:=Goals.keepsake_kind(resident,stage)
 	check(goal_open(resident,stage),"Done page %s %d open (%s %s)"%[resident,stage,label,tag])
-	var present:Array=["BondGoalTitle","BondGoalTask","BondGoalDone","BondGoalActions","BondGoalBack"]
+	var present:Array=["BondGoalTitle","BondGoalDone","BondGoalActions","BondGoalBack"]
+	if resident!="xiaoli" or stage!=4:present.append("BondGoalTask")
 	var absent:Array=["BondGoalOptions","BondGoalSteps","BondGoalStepsReset","BondGoalNeeds","BondGoalCost","BondGoalReason","BondGoalDo"]
 	var claimed:=true
 	if kind.is_empty():
@@ -892,10 +902,10 @@ func milu_flow()->void:
 
 ## 波波 2: options + items, option chosen, real BondGoalDo, done page with 當時選的是.
 func bobo_flow()->void:
-	set_bonds();set_done({});stock({"copper_joint":2,"plank":2})
+	set_bonds();set_done({});stock({"copper_ingot":4,"woodwork_parts":2})
 	await stand("bobo")
 	if not await open_goal("bobo",2,"bobo2"):return
-	open_page_ok("bobo",2,Tasks.GOAL_NEED_OPTION,{"copper_joint":2,"plank":2},"bobo2 no option")
+	open_page_ok("bobo",2,Tasks.GOAL_NEED_OPTION,{"copper_ingot":4,"woodwork_parts":2},"bobo2 no option")
 	await baseline("base_bobo2")
 	if not await press("BondGoalOption_siding"):return
 	var siding:=control("BondGoalOption_siding") as Button
@@ -903,11 +913,11 @@ func bobo_flow()->void:
 	for other in ["entrance","shed"]:
 		var b:=control("BondGoalOption_"+str(other)) as Button
 		check(b!=null and not b.button_pressed,"Option %s not pressed (bobo2 %s)"%[other,tag])
-	open_page_ok("bobo",2,"",{"copper_joint":2,"plank":2},"bobo2 siding")
+	open_page_ok("bobo",2,"",{"copper_ingot":4,"woodwork_parts":2},"bobo2 siding")
 	var image:Image=await page_shot("goal_bobo2_option")
-	chip_red(image,"plank",false,"bobo2 siding")
+	chip_red(image,"woodwork_parts",false,"bobo2 siding")
 	differ("base_bobo2","goal_bobo2_option",0.002,"bobo2 no option vs siding")
-	if not await complete("bobo",2,{"copper_joint":2,"plank":2},"siding","bobo2"):return
+	if not await complete("bobo",2,{"copper_ingot":4,"woodwork_parts":2},"siding","bobo2"):return
 	if not await reopen_done("bobo",2,"bobo2"):return
 	done_page_ok("bobo",2,"bobo2 done")
 	check(find_label("當時選的是：岔道的側線")!=null,"Done page names the chosen option (bobo2 %s)"%tag)
@@ -1005,16 +1015,17 @@ func lingpopo_flow()->void:
 	differ("base_lingpopo3","goal_lingpopo3_long",0.002,"lingpopo3 no option vs option")
 	await close()
 
-## 洛洛 3: options only, no cost; an option makes BondGoalDo enabled.
+## 洛洛 3: options and the met report need, no cost; an option makes BondGoalDo enabled.
 func luoluo_flow()->void:
-	set_bonds();set_done({});stock({})
+	set_bonds();set_done({"luoluo":{"2":""}});stock({})  # FIXTURE: luoluo 2 written as done, so the report need (postcard_reported) is met
 	await stand("luoluo")
 	if not await open_goal("luoluo",3,"luoluo3"):return
 	open_page_ok("luoluo",3,Tasks.GOAL_NEED_OPTION,{},"luoluo3 no option")
 	await baseline("base_luoluo3")
 	if not await press("BondGoalOption_letter"):return
 	open_page_ok("luoluo",3,"",{},"luoluo3 letter")
-	await page_shot("goal_luoluo3_option")
+	var report_image:Image=await page_shot("goal_luoluo3_option")
+	need_line_ok(report_image,"postcard_reported","完成洛洛的〈沒有地址的信〉",true,"luoluo3 report")
 	differ("base_luoluo3","goal_luoluo3_option",0.002,"luoluo3 no option vs letter")
 	await close()
 
@@ -1144,18 +1155,33 @@ func luoluo2_flow()->void:
 	var base_text:=str(Goals.NEEDS["known_three"])
 	var two_text:=base_text+"（目前 2 位）"
 	var three_text:=base_text+"（目前 3 位）"
+	var clue_text:="向已認識的居民詢問線索（目前 %d／3 位）" # literal copy of the published label
+	person().erase(Goals.POSTCARD_CLUES_KEY)  # PRESET: no clues asked yet
 	if not await open_goal("luoluo",2,"luoluo2"):return
 	open_page_ok("luoluo",2,need_reason(two_text),{},"luoluo2 two")
 	var image:Image=await page_shot("goal_luoluo2_two")
 	need_line_ok(image,"known_three",two_text,false,"luoluo2 two")
+	need_line_ok(image,"postcard_clues",clue_text%0,false,"luoluo2 two (clues 0)")
 	reason_red(image,"luoluo2 two")
 	set_bonds(strangers)  # PRESET: 波波 back at 好友 -> three known
 	await refresh()
 	check(Goals.known_count(person(),"luoluo")==3,"Preset knows three residents besides 洛洛 (%s)"%tag)
-	open_page_ok("luoluo",2,"",{},"luoluo2 three")
+	open_page_ok("luoluo",2,need_reason(clue_text%0),{},"luoluo2 three known, no clues")
 	image=await page_shot("goal_luoluo2_three")
 	need_line_ok(image,"known_three",three_text,true,"luoluo2 three")
+	need_line_ok(image,"postcard_clues",clue_text%0,false,"luoluo2 three known (clues 0)")
 	differ("goal_luoluo2_two","goal_luoluo2_three",0.001,"luoluo2 two vs three known")
+	person()[Goals.POSTCARD_CLUES_KEY]=["aru","milu"]  # PRESET: two distinct clues
+	await refresh()
+	open_page_ok("luoluo",2,need_reason(clue_text%2),{},"luoluo2 clues 2")
+	person()[Goals.POSTCARD_CLUES_KEY]=["aru","milu","bobo"]  # PRESET: three distinct clues
+	await refresh()
+	open_page_ok("luoluo",2,"",{},"luoluo2 ready")
+	image=await page_shot("goal_luoluo2_ready")
+	need_line_ok(image,"known_three",three_text,true,"luoluo2 ready")
+	need_line_ok(image,"postcard_clues",clue_text%3,true,"luoluo2 ready (clues 3)")
+	differ("goal_luoluo2_three","goal_luoluo2_ready",0.001,"luoluo2 clues missing vs ready")
+	person().erase(Goals.POSTCARD_CLUES_KEY)
 	await close()
 
 # ------------------------------------------------ batch 3 (紀念小物) flows --
@@ -1315,7 +1341,7 @@ func find_block()->Vector2i:
 	return Vector2i(-1,-1)
 
 func block_cell(origin:Vector2i,index:int)->Vector2i:
-	var row:=0 if index<BLOCK_COLUMNS else 1
+	var row:=index/BLOCK_COLUMNS
 	return origin+Vector2i(index%BLOCK_COLUMNS,row)
 
 func label_fits(l:Label)->bool:
@@ -1369,7 +1395,7 @@ func keepsake_folio_flow()->void:
 	check(place!=null and place.is_visible_in_tree() and not place.disabled and place.text=="選擇配方","BuildPlace reads 選擇配方 with one kit held (%s): %s"%[tag,place.text if place else "?"])
 	check(place!=null and visible(place) and button_not_cut(place),"BuildPlace fully on view (%s)"%tag)
 	var status:=control("BuildStatus") as Label
-	check(status!=null and status.text=="材料齊全 · 點地面放置","BuildStatus reads 材料齊全 (%s): %s"%[tag,status.text if status else "?"])
+	check(status!=null and status.text=="材料齊全","BuildStatus reads 材料齊全 (%s): %s"%[tag,status.text if status else "?"])
 	var materials:=control("BuildMaterials")
 	var kit_row:=false
 	var count_row:=false

@@ -9,7 +9,55 @@ func expect(value: bool, label: String) -> void:
 		failures += 1
 		push_error(label)
 
+func check_snapshot_layers() -> void:
+	const HISTORY:=World.SAVE_SCHEMA.CHEST_HISTORY.FIELD
+	var world := World.new()
+	var three := ["home", "lanyang", "beimen"]
+	for region: String in three:
+		world.add_player(region, region)
+		world.state.players[region].region = region
+		world.state.players[region].receipts["test-action"]={"ok":true,"message":"recorded"}
+		world.switch_region(region)
+		for field: String in Regions.LAYERS:
+			if world.state[field] is Dictionary:
+				world.state[field]["test-cell"] = {"region":region}
+			else:
+				world.state[field] = float(three.find(region) + 1)
+		world.state.objects["test-cell"][HISTORY]=[{"amount":5}]
+	world.switch_region(Regions.HOME)
+	var authority := world.state.duplicate(true)
+	var expected := {}
+	for region: String in three:
+		expected[region] = world.region_snapshot(region)
+
+	for active: String in three:
+		world.switch_region(active)
+		for region: String in three:
+			var projection := world.region_snapshot(region)
+			expect(projection == expected[region], "Snapshot of %s is independent of active layer %s" % [region, active])
+			expect(projection.players.keys() == [region], "Only %s has an avatar in the projection" % region)
+			expect(not projection.has("regions") and not projection.has("construction") and not projection.has(World.TRANSACTION_LEDGER.STATE_KEY), "No distant or server-only records")
+			var broadcast:=world.region_snapshot(region,true)
+			expect(projection.objects["test-cell"].has(HISTORY) and not broadcast.objects["test-cell"].has(HISTORY), "Only broadcast projection omits %s chest history with %s active"%[region,active])
+			expect(projection.players[region].receipts.has("test-action") and not broadcast.players[region].has("receipts"),"Only the broadcast projection omits action receipts")
+			broadcast.objects["test-cell"].region="changed"
+			for field: String in Regions.LAYERS:
+				if projection[field] is Dictionary:
+					expect(projection[field]["test-cell"].region == region, "%s is from %s" % [field, region])
+					projection[field]["test-cell"].region = "changed"
+				else:
+					expect(projection[field] == float(three.find(region)+1), "%s clock is from %s" % [field, region])
+			projection.players[region].inventory.wood = -10
+			projection.animal.clear()
+	world.switch_region(Regions.HOME)
+	expect(world.state == authority, "Editing snapshots cannot mutate canonical layers, residents, or shared state")
+	var old_home := world.region_snapshot("home")
+	world.state.regions.lanyang.objects["far-cell"] = {"type":"wall"}
+	expect(world.region_snapshot("home") == old_home, "Distant construction leaves a home projection unchanged")
+	expect(world.region_snapshot("lanyang").objects.has("far-cell"), "Distant construction reaches its own region")
+
 func _initialize() -> void:
+	check_snapshot_layers()
 	var rice_world:=World.new()
 	rice_world.add_player("grower","Grower")
 	var grower:Dictionary=rice_world.state.players.grower
@@ -152,11 +200,11 @@ func _initialize() -> void:
 	var travel := world.act("alpha","out","travel",home_exit,"lanyang")
 	expect(travel.ok and world.player_region("alpha") == "lanyang" and world.state.players.alpha.travel_epoch == 1, "Arrival persisted")
 	expect(world.act("alpha","out","travel",home_exit,"lanyang") == travel and world.state.players.alpha.travel_epoch == 1, "Travel retry is idempotent")
-	var plot := Vector2i(13,20)
+	var plot := Vector2i(13,19)
 	expect(world.act("alpha","hoe","hoe",plot).ok and world.act("alpha","seed","seed",plot,"radish").ok and world.act("alpha","water","water",plot).ok, "Normal field actions route to Lanyang")
-	expect(not world.state.crops.has("13,20") and world.state.regions.lanyang.crops.has("13,20"), "Same coordinate remains isolated")
+	expect(not world.state.crops.has("13,19") and world.state.regions.lanyang.crops.has("13,19"), "Same coordinate remains isolated")
 	expect(world.act("alpha","back","travel",outer_exit,"home").ok and world.player_region("alpha") == "home", "Return via regional exit")
-	expect(world.step(World.CROPS.radish.time,true) and world.state.regions.lanyang.crops["13,20"].growth == World.CROPS.radish.time, "Unoccupied region grows under shared world clock")
+	expect(world.step(World.CROPS.radish.time,true) and world.state.regions.lanyang.crops["13,19"].growth == World.CROPS.radish.time, "Unoccupied region grows under shared world clock")
 	expect(world.act("alpha","again","travel",home_exit,"lanyang").ok and world.act("alpha","harvest","harvest",plot).ok and world.state.players.alpha.inventory.radish == 1, "Harvest uses shared backpack")
 	world.state.players.beta.x = 13.5
 	world.state.players.beta.y = 21.5
@@ -204,7 +252,7 @@ func _initialize() -> void:
 	legacy.state.crops["47,30"] = {"kind":"radish","owner":"legacy","growth":World.CROPS.radish.time,"wet":false,"remaining":1}
 	legacy.state.objects["46,30"] = {"type":"chair","owner":"legacy","items":{}}
 	legacy.save_path = path + ".legacy"
-	expect(legacy.save() and reload.load_world(legacy.save_path) and reload.state.version == 26 and reload.player_region("legacy") == "home" and reload.state.players.legacy.inventory.wood == 12, "Legacy world migrates without changing inventory")
+	expect(legacy.save() and reload.load_world(legacy.save_path) and reload.state.version == preload("res://scripts/save_schema.gd").VERSION and reload.player_region("legacy") == "home" and reload.state.players.legacy.inventory.wood == 12, "Legacy world migrates without changing inventory")
 	expect(reload.state.objects["41,35"].items.wood == 5 and reload.state.objects["42,35"].dir == 1 and reload.state.objects["43,35"].water == 2 and reload.state.crops["41,36"].growth == 4 and reload.state.forest["42,36"].growth == 12 and reload.state.chapter_one.harvests.legacy.radish == 2, "Legacy private chest, belt, equipment, crop, trees and chapter remain intact")
 	expect(reload.act("legacy","water-exit","water",home_exit).ok and reload.act("legacy","harvest-exit","harvest",home_exit).ok and reload.act("legacy","clear-exit","remove",home_exit).ok, "Legacy crop at exit can be watered, harvested and removed")
 	var wood: int = reload.state.players.legacy.inventory.wood
@@ -233,4 +281,3 @@ func _initialize() -> void:
 		DirAccess.remove_absolute(file)
 	print("REGION_TESTS checks=%d failures=%d" % [checks,failures])
 	quit(int(failures > 0))
-

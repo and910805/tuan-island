@@ -88,4 +88,3 @@ func run() -> void:
 	await process_frame
 	print("IDENTITY_UI_NETWORK_PASS")
 	quit()
-

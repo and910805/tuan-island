@@ -23,4 +23,3 @@ func _initialize() -> void:
 	world.state.removed["52,24"]=true
 	world.save_path=args[0]
 	quit(0 if world.save() else 1)
-

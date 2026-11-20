@@ -127,7 +127,7 @@ func gather_for_dock(item:String,resource:String,action:String,needed:int,hits:i
 func complete_outlying_commissions() -> void:
 	# Both local catches and the tea leaves already came from normal gameplay.
 	ledger_on[tok]=false
-	var bench:=Vector2i(40,35)
+	var bench:=Vector2i(36,35)
 	var sawmill:=Vector2i(40,36)
 	var board:=Vector2i(40,29)
 	var plank_recipe:Dictionary=World.INDUSTRY.PROCESS.plank
@@ -221,6 +221,11 @@ func check_managed_dock(board:Vector2i) -> void:
 
 func verify_ranch_collector() -> void:
 	var cow:Vector2i=World.LIVESTOCK.ANIMALS.cow.cell
+	var coins_before_adoption:=int(person().coins)
+	act("livestock_adopt",cow,"cow")
+	if failed:return
+	coins_ledger[tok]-=int(World.LIVESTOCK.ADOPTION_COST.cow)
+	expect(int(person().coins)==coins_before_adoption-int(World.LIVESTOCK.ADOPTION_COST.cow),"D07: earned coins pay the cow adoption fee")
 	act("livestock_install",cow,"cow")
 	if failed:return
 	expect(int(bag().get("plank",0))==0 and int(bag().get("copper_joint",0))==0,"The dedicated collector uses the earned planks and joints")
@@ -735,8 +740,13 @@ func act(action:String,target:Vector2i,extra:String="") -> Dictionary:
 	actions+=1
 	var result:=world.act(tok,"flower-journey-%d"%actions,action,target,extra)
 	expect(result.ok,"%s %s %s at %s: %s"%[tok,action,extra,str(target),str(result.message)])
+	if result.get("gather_dropped",false):
+		walk_to(target,1.0)
+		expect(world.step(ceilf(World.GATHER_DROP_DELAY),true),"Ground items land and can be picked up")
+		var drops:Dictionary=world.state.get("gather_drops",{}).get(world.player_region(tok),{})
+		expect(not drops.has(World.key(target)),"Picked up the bundle at %s"%target)
 	note_phases()
-	if ledger_on.get(tok,false) and action not in ["seed","harvest","flower_buy","flower_ship","flower_give","flower_save","flower_save_take","flower_dye","flower_dye_take","flower_intro","flower_report","buy","fish_catch"]:
+	if ledger_on.get(tok,false) and action not in ["seed","harvest","flower_buy","flower_ship","flower_give","flower_save","flower_save_take","flower_dye","flower_dye_take","flower_intro","flower_report","buy","fish_catch","livestock_adopt"]:
 		expect_bag("after "+action)
 	return result
 
@@ -799,7 +809,8 @@ func route(target:Vector2i,reach:float=2.0,allow_tile:=Callable()) -> Array:
 
 func walk_to(target:Vector2i,reach:float=2.0) -> void:
 	if failed:return
-	if Vector2(person().x,person().y).distance_to(Vector2(target)+Vector2(0.5,0.5))<=2.5:return
+	var nearby:=World.GATHER_PICKUP_RADIUS if reach==1.0 else 2.5
+	if Vector2(person().x,person().y).distance_to(Vector2(target)+Vector2(0.5,0.5))<=nearby:return
 	var path:=route(target,reach)
 	if path.is_empty():
 		expect(false,"%s: no path to %s in %s"%[tok,str(target),world.player_region(tok)])

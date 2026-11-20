@@ -98,9 +98,9 @@ func check_integrations(person:Dictionary,objects:Dictionary)->void:
 		if label.is_visible_in_tree():check(visible(label),"Logistics label fits at 1024: "+str(label.name))
 	for item in World.LOGISTICS.FILTERS:
 		check(visible(control("Filter_"+item)),"Filter visible at smallest resolution: "+item)
-	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("燃料已滿")),"Full drill fuel destination feedback")
+	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("前方燃料槽已滿")),"Full drill fuel destination feedback")
 	await press("Filter_stone")
-	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("只接收木炭")),"Wrong material destination feedback")
+	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("前方只收木炭")),"Wrong material destination feedback")
 	app._close_modal()
 	objects.erase("28,25")
 

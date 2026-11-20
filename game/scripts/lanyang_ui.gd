@@ -49,7 +49,7 @@ static func refresh(app)->void:
 	var bag:Dictionary=person.inventory
 	var ready_to_report:bool=person.get("greenhouse_glass_crafted",false) and World.CROPS.has(person.get("greenhouse_cross_season_crop",""))
 	var reported:bool=person.get("greenhouse_reported",false)
-	var fingerprint:=JSON.stringify([ready_to_report,reported,person.get("greenhouse_cross_season_crop",""),mode,life.get("cleared",{}),life.get("donations",{}),life.get("repaired",false),job,remaining==0,near,bag,s.get("resident_memories",[]),s.get("resident_participation",{}),World.LANYANG_REVISIT.unlocked(s)])
+	var fingerprint:=JSON.stringify([ready_to_report,reported,person.get("greenhouse_cross_season_crop",""),mode,life.get("cleared",{}),life.get("donations",{}),life.get("repaired",false),job,remaining==0,near,bag,s.get("resident_memories",[]),s.get("resident_participation",{}),World.LANYANG_REVISIT.unlocked(s),s.has("lanyang_order_board")])
 	if app.modal.get_meta("garden_fingerprint","")==fingerprint:return
 	app.modal.set_meta("garden_fingerprint",fingerprint)
 	var body:VBoxContainer=app.modal.get_meta("garden_body")
@@ -122,6 +122,12 @@ static func refresh(app)->void:
 		if life.get("repaired",false):
 			note.add_child(words(app,"水圳修好了！蘭陽河水泵每輪可抽水 12，原本為 8。",18))
 			note.add_child(words(app,"既有水管和灑水器可繼續使用。下一步把樹苗種進人工林，長成後送鋸木台做木板。",14))
+			if s.has("lanyang_order_board"):
+				var orders:Button=app.button("查看蘭陽稻米訂單",app._lanyang_orders)
+				orders.name="LanyangOrders"
+				orders.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+				orders.disabled=not near
+				note.add_child(orders)
 			# 第 40 章：配水紀念牌設好之後，星禾邀大家在放晴的日子回來調整分流。
 			if World.LANYANG_REVISIT.unlocked(s):
 				var revisit:Button=app.button("回訪・旱日分流",func():preload("res://scripts/lanyang_revisit_ui.gd").open(app,World.LANYANG_REVISIT.SERVICE))

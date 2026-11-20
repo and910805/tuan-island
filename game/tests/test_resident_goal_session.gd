@@ -150,6 +150,7 @@ func _watchdog()->void:
 
 func run()->void:
 	var started:=Time.get_ticks_msec()
+	verify_bed_snapshot()
 	var completed:=await scenario()
 	expect(completed,"scenario ran to completion without an aborted wait")
 	await teardown()
@@ -162,6 +163,36 @@ func run()->void:
 	print("RESIDENT_GOAL_SESSION duration_ms=%d"%(Time.get_ticks_msec()-started))
 	print("RESIDENT_GOAL_SESSION_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0 or checks==0))
+
+func verify_bed_snapshot()->void:
+	var session:=Session.new()
+	var world:=World.new()
+	session.world=world
+	world.add_player(ALPHA,"甲")
+	world.add_player(BETA,"乙")
+	session.peers={1:ALPHA,2:BETA}
+	var cell:="8,8"
+	var home:=Regions.HOME
+	var plan:=session._view_plan(1)
+	for row:Dictionary in [{"type":"bed","owner":BETA},{"type":"wall","owner":ALPHA},{"type":"bed","owner":ALPHA}]:
+		world.state.objects[cell]=row
+		var expected:bool=row.type=="bed" and row.owner==ALPHA
+		var data:=session._snapshot_data(1,plan)
+		expect(data.resident_goals.aru["1"].needs[0].met==expected,"unprojected snapshot reports only the recipient's bed")
+	var view:={"rect":Rect2i(30,30,4,4),"own":ALPHA,"layers":["objects"]}
+	var facts:={"own_bed":null}
+	var projected:=session.public_state(home,ALPHA,view,facts)
+	expect(not projected.objects.has(cell) and facts.own_bed==null,"filtered object rows leave bed requirement to the canonical world query")
+	session.public_state(Regions.LANYANG,ALPHA,{},facts)
+	expect(facts.own_bed==null,"other region leaves bed requirement to the canonical world query")
+	world.state.players[ALPHA].region=Regions.LANYANG
+	var away:=session._snapshot_data(1,session._view_plan(1))
+	expect(away.resident_goals.aru["1"].needs[0].met,"visiting another region still recognizes the bed in the active world layer")
+	world.state.players[ALPHA].region=home
+	world.state.objects.erase(cell)
+	var removed:=session._snapshot_data(1,plan)
+	expect(not removed.resident_goals.aru["1"].needs[0].met,"bed removal appears in the next snapshot")
+	session.free()
 
 # ---------------------------------------------------------------- fixture --
 
@@ -394,6 +425,7 @@ static func success_msg(resident:String,stage:int)->String:
 	var e:Dictionary=Goals.goal(resident,stage)
 	var quote:Array=e.quote
 	var message:="%s：「%s」你們一起完成了〈%s〉，手帳記下紀念「%s」。"%[Bond.name_of(resident),str(quote[0]),str(e.title),str(e.keepsake)]
+	if resident=="lingpopo" and stage==3:message+="風鈴節紀念鐘圖樣已加入家園工坊的「家具」頁。"
 	if not Goals.keepsake_kind(resident,stage).is_empty():message+=KEEPSAKE_SUFFIX
 	return message
 

@@ -9,12 +9,18 @@ const ProcessingUI=preload("res://scripts/processing_queue_ui.gd")
 ## Player-facing "what is this for" guidance for every World.CRAFT recipe.
 ## kind: place (standard 1:1 kit), alternate_place (fallback kit), collection (consumed by
 ## World.BUILD[build] as decoration), part (ingredient of other CRAFT recipes),
-## key_tool (enables a world action), tool (portable equipment, see PORTABLE_TOOLS).
+## key_tool (enables or upgrades a world action), tool (portable equipment, see PORTABLE_TOOLS).
 ## tab is the BuildFolio tab that lists `build`. Tool text takes binding labels for
 ## `keys` so rebinding stays accurate. test_workbench_guidance.gd checks every
 ## field against the real recipe, build and device data.
+const SHELL_BOTTLE_USE:="在工作台挑選排列。做好後，走近自己的木桌或貝殼圓桌互動，就能把成品擺上桌。"
 const GUIDE := {
-	"woodwork_parts":{"kind":"part","used_in_build":["loom","assembly_table","seed_maker","large_sprinkler"],"feeds":[],"text":"用木板與硬木組裝的接榫，可組裝織布機、裝配桌、種子機及大型灑水器。"},
+	World.INDUSTRY.TABLE_VASE:{"kind":"table_display","text":"做好後擺在自己的木桌或貝殼圓桌上。換一枝新花，原來的花會放回背包。"},
+	World.INDUSTRY.TEA_SET:{"kind":"table_display","text":"擺上木桌、圓角木桌或低腳竹茶桌。靠近茶具即可選擇斟茶或奉茶表情。"},
+	"shell_bottle_scallop":{"kind":"table_display","text":SHELL_BOTTLE_USE},
+	"shell_bottle_conch":{"kind":"table_display","text":SHELL_BOTTLE_USE},
+	"shell_bottle_tide":{"kind":"table_display","text":SHELL_BOTTLE_USE},
+	"woodwork_parts":{"kind":"part","used_in_build":["loom","assembly_table","seed_maker","large_sprinkler","mill"],"feeds":[],"text":"用木板與硬木組裝的接榫，可組裝織布機、裝配桌、種子機、大型灑水器及麵粉磨坊。"},
 	"egg_basket":{"kind":"animal_facility","text":"帶著收集籃到渡口找糯米雞，在照料面板裝設。籃子可放六顆雞蛋，裝滿後先領取再餵食。"},
 	"supply_box_kit":{"kind":"place","build":"supply_box","tab":"生活","text":"探索六級或完成波波的休息站事件解鎖。到建造目錄「生活」放置，清空後可拆回背包。"},
 	"glass":{"kind":"collection","build":"greenhouse_roof","tab":"基礎",
@@ -27,14 +33,38 @@ const GUIDE := {
 		"text": "完成波波三段故事後，到建造目錄「家具」用木材 4＋樣本 1 放礦樣展示架。"},
 	"reinforced_pick": {"kind": "key_tool", "action": "mine_copper",
 		"text": "放在背包即可。到渡口運入礦料點互動採銅礦，每次 2 個；每人只能製作一把。"},
+	"copper_pick": {"kind": "key_tool", "action": "mine_copper",
+		"text": "用原本的強化石鎬升級。放進背包即可使用，一下敲開地表岩石，礦道同一礦點提前 3 秒可再採。"},
+	"iron_pick": {"kind": "key_tool", "action": "mine_copper",
+		"text": "用銅鎬升級。帶在身上即可使用。地表岩石一擊敲開，礦道等 8 秒，每鎬約省兩成體力。"},
+	"precision_pick": {"kind": "key_tool", "action": "mine_copper",
+		"text": "用鐵鎬和脈石英升級。帶在身上即可使用。地表岩石一擊敲開，礦道等 7 秒，每鎬約省三成半體力。"},
+	"copper_axe": {"kind": "key_tool", "action": "axe", "text": "放在背包就會用銅斧。一般樹木砍兩下就倒，材料掉在地上，走近便能撿取。"},
+	"iron_axe": {"kind": "key_tool", "action": "axe", "text": "用銅斧加鐵錠、硬木升級。帶在身上即可使用，砍一下就能伐倒樹木。"},
+	"precision_axe": {"kind": "key_tool", "action": "axe", "text": "一擊伐木。砍島民種下的成熟樹木時多掉一塊硬木。帶在身上即可使用。"},
+	"copper_hoe": {"kind": "key_tool", "action": "hoe", "text": "放在背包即可使用。在家園可橫耕一排 3 格，直接點擊仍只耕一格。"},
+	"iron_hoe": {"kind": "key_tool", "action": "hoe", "text": "用銅鋤升級。在家園可一次耕十字形 5 格，直接點擊仍只耕一格。"},
+	"precision_hoe": {"kind": "key_tool", "action": "hoe", "text": "用鐵鋤與脈石英升級。在家園可耕 3×3 格，直接點擊仍只耕一格。"},
+	"copper_can": {"kind": "key_tool", "action": "water", "text": "放在背包即可使用。在家園可一次澆一排 3 格作物，直接點擊維持單格。"},
+	"iron_can": {"kind": "key_tool", "action": "water", "text": "用銅澆水壺升級。在家園可一次澆十字形 5 格作物，直接點擊維持單格。"},
+	"precision_can": {"kind": "key_tool", "action": "water", "text": "用鐵澆水壺與脈石英升級。在家園可一次澆 3×3 格作物，直接點擊維持單格。"},
+	"copper_rod": {"kind": "key_tool", "action": "fish_start", "text": "帶在身上即可使用。平常等 2.6 秒咬鉤，標準釣法的亮帶也變寬。"},
+	"iron_rod": {"kind": "key_tool", "action": "fish_start", "text": "由銅釣竿升級。平常等 2.2 秒咬鉤，標準釣法的亮帶再加寬。"},
+	"precision_rod": {"kind": "key_tool", "action": "fish_start", "text": "以鐵釣竿與脈石英升級。平常等 1.8 秒咬鉤，標準釣法的亮帶最寬。"},
+	"copper_seed_pouch": {"kind": "key_tool", "action": "seed", "text": "帶著就能在家園播橫排 3 格自己的空田。每格一粒種子，普通點擊只播單格。"},
+	"iron_seed_pouch": {"kind": "key_tool", "action": "seed", "text": "用銅扣撒種袋升級。在家園可播十字形 5 格，每格一粒種子。"},
+	"precision_seed_pouch": {"kind": "key_tool", "action": "seed", "text": "用鐵扣撒種袋與脈石英升級。在家園可播 3×3 格，種子不足時先播中央附近。"},
+	"copper_sickle": {"kind": "key_tool", "action": "harvest", "text": "帶在身上即可使用。在家園可一次採收橫排 3 格，普通點擊只收一格。"},
+	"iron_sickle": {"kind": "key_tool", "action": "harvest", "text": "由銅採收鐮升級。在家園可收十字形 5 格，跳過未成熟或無權採收的田。"},
+	"precision_sickle": {"kind": "key_tool", "action": "harvest", "text": "用鐵採收鐮與脈石英升級。家園可採收 3×3 格，保留作物原有再收成次數。"},
 	"mine_drill_kit": {"kind": "place", "build": "mine_drill", "tab": "生活",
 		"text": "開通第五層後可製作。建造目錄「生活」放在礦層指定礦點旁，裝木炭自動採礦。"},
 	"waterworks_kit": {"kind": "place", "build": "waterworks", "tab": "生活",
 		"text": "第三層抽水工程完成後可製作。建造目錄「生活」放置並接水管，把銅礦與木材加工成銅接頭。"},
-	"copper_joint": {"kind": "part", "used_in_build": ["greenhouse_roof", "festival_memorial_bell"], "feeds": ["mine_drill_kit", "waterworks_kit", "sprinkler_kit", "pipe_kit", "pump_kit", "forester_kit", "conveyor_kit", "tiller", "seeder", "harvester", "mill_kit", "salt_wheel_kit", "salt_rake_kit", "diversion_gate_kit", "water_tower_kit"],
+	"copper_joint": {"kind": "part", "used_in_build": ["greenhouse_roof", "festival_memorial_bell"], "feeds": ["mine_drill_kit", "waterworks_kit", "sprinkler_kit", "pipe_kit", "pump_kit", "forester_kit", "conveyor_kit", "tiller", "seeder", "harvester", "salt_wheel_kit", "salt_rake_kit", "diversion_gate_kit", "water_tower_kit"],
 		"text": "玻璃棚、灑水器與鹽田機具的零件。"},
 	"sprinkler_kit": {"kind": "alternate_place", "build": "sprinkler", "tab": "生活",
-		"text": "建造目錄「生活」可用這組零件放置小型灑水器，替上下左右自家作物澆水；手動補水或接水管。"},
+		"text": "在家園工坊「生活」放置。每天澆一次上下左右的自家作物，牆與關閉的門會擋水。可手動補水或接水管。"},
 	"pipe_kit": {"kind": "place", "build": "water_pipe", "tab": "生活",
 		"text": "建造目錄「生活」鋪設，連接自己的河水泵、儲水桶、灑水器與水力加工台。"},
 	"tank_kit": {"kind": "place", "build": "water_tank", "tab": "生活",
@@ -55,8 +85,6 @@ const GUIDE := {
 	# 第 40 章：和分流閘同一個解鎖（INDUSTRY.TOWER_LOCKED）。
 	"water_tower_kit": {"kind": "place", "build": "water_tower", "tab": "生活",
 		"text": "建造目錄「生活」接上自己的水管，存 96 份水；桶有剩水自動補入，閘門後缺水時由它供水。"},
-	"mill_kit": {"kind": "place", "build": "mill", "tab": "生活",
-		"text": "公共廚房開張後製作。「生活」放置，小麥 2 磨麵粉 1，配南瓜和蛋烤派。"},
 	"tiller": {"kind": "tool", "keys": ["till_area"],
 		"text": "%s 裝備 · 一次最多耕 9 格 · 每次 1 木炭"},
 	"seeder": {"kind": "tool", "keys": ["seed_area", "seeds"],
@@ -94,7 +122,11 @@ func open(app, title: String) -> VBoxContainer:
 	return body
 
 func workbench(app, cell: Vector2i,initial_recipe:String="",return_trail:Array[String]=[]) -> void:
-	var body := open(app, "工作台")
+	# C08: either end of a wide workbench opens the same station; every later action (craft, sourced
+	# craft, workshop upgrade, ProcessingUI return) uses the anchor. Legacy 1x1 benches resolve to themselves.
+	cell = World.station_anchor(app.session.snapshot.get("objects", {}), cell)
+	var station:Dictionary=app.session.snapshot.get("objects",{}).get(World.key(cell),{})
+	var body := open(app, World.BUILD.bench.name if World.INDUSTRY.is_wide_bench(station) else "工作台")
 	modal.set_meta("life_modal_layout", "automation_workbench")
 	if is_instance_valid(app.modal_feedback):
 		app.modal_feedback.text="手把 X 前往製作 · B 返回"
@@ -125,9 +157,13 @@ func workbench(app, cell: Vector2i,initial_recipe:String="",return_trail:Array[S
 		refresh(app)
 		reveal_recipe(scroll,entries[recipe_id])
 	for id in ids:
-		var button: Button = app.button(World.CRAFT[id].name, func():
+		var recipe_name:String=World.CRAFT[id].name
+		var caption:=recipe_name.get_slice("・",1) if id in World.INDUSTRY.SHELL_BOTTLES else recipe_name
+		var button: Button = app.button(caption, func():
 			choose_recipe.call(id,true)
 		)
+		button.name="WorkbenchRecipe_"+id
+		button.tooltip_text=recipe_name
 		button.icon = ItemArt.icon(id)
 		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
@@ -391,10 +427,25 @@ func animal_collector(app,cell:Vector2i) -> void:
 	gauge.show_percentage=false
 	gauge.custom_minimum_size.y=18
 	card.add_child(gauge)
+	var products:=HFlowContainer.new()
+	products.add_theme_constant_override("h_separation",14)
+	products.add_theme_constant_override("v_separation",6)
+	card.add_child(products)
+	var product_rows:Dictionary={}
+	for item:String in World.AnimalCollector.PEN_ITEMS:
+		var row:=HBoxContainer.new()
+		row.add_theme_constant_override("separation",5)
+		Tasks.add_icon(row,ItemArt.icon(item),32)
+		var item_label:Label=app.label("",15)
+		item_label.autowrap_mode=TextServer.AUTOWRAP_OFF
+		row.add_child(item_label)
+		products.add_child(row)
+		product_rows[item]={"row":row,"label":item_label}
 	var hint:Label=app.label("",15)
 	card.add_child(hint)
-	var bind_row:=HBoxContainer.new()
-	bind_row.add_theme_constant_override("separation",8)
+	var bind_row:=HFlowContainer.new()
+	bind_row.add_theme_constant_override("h_separation",8)
+	bind_row.add_theme_constant_override("v_separation",8)
 	card.add_child(bind_row)
 	var binds:Dictionary={}
 	for id:String in World.AnimalCollector.SPECIES:
@@ -403,6 +454,11 @@ func animal_collector(app,cell:Vector2i) -> void:
 		bind.name="CollectorBind_"+id
 		bind_row.add_child(bind)
 		binds[id]=bind
+	# C24: whole-enclosure binding. Shown only while this cell is inside a valid pen.
+	var pen_bind:Button=app.button(World.AnimalCollector.name_for(World.AnimalCollector.PEN),func():app.session.perform("collector_bind",cell,World.AnimalCollector.PEN))
+	pen_bind.name="CollectorBind_pen"
+	pen_bind.visible=false
+	bind_row.add_child(pen_bind)
 	var actions:=HBoxContainer.new()
 	actions.add_theme_constant_override("separation",8)
 	card.add_child(actions)
@@ -420,16 +476,37 @@ func animal_collector(app,cell:Vector2i) -> void:
 		var species:String=obj.get("collector_animal","")
 		var count:=int(obj.get("collector_count",0))
 		var basket:=int(person.get("inventory",{}).get("egg_basket",0))
-		summary.text="尚未安裝收集籃" if species.is_empty() else "%s · %s %d／%d"%[World.AnimalCollector.name_for(species),World.NAMES[World.AnimalCollector.item_for(species)],count,World.AnimalCollector.CAPACITY]
+		var pen_mode:bool=species==World.AnimalCollector.PEN
+		var penned:Array[String]=World.AnimalCollector.pen_species(objects,cell)
+		if species.is_empty():summary.text="尚未安裝收集籃"
+		elif pen_mode:summary.text="%s · %d／%d"%[World.AnimalCollector.name_for(species),count,World.AnimalCollector.CAPACITY]
+		else:summary.text="%s · %s %d／%d"%[World.AnimalCollector.name_for(species),World.NAMES[World.AnimalCollector.item_for(species)],count,World.AnimalCollector.CAPACITY]
 		if int(obj.get("collector_count_quality",0))>0:summary.text+=" · 其中優良 %d"%int(obj.collector_count_quality)
 		gauge.value=count
-		if species.is_empty():hint.text="在工作台製作收集籃，再從附近的動物選一隻綁定。"
+		var stored:Dictionary=obj.get("collector_items",{})
+		products.visible=pen_mode and not stored.is_empty()
+		for item:String in product_rows:
+			var amount:=int(stored.get(item,0))
+			var entry:Dictionary=product_rows[item]
+			entry.row.visible=amount>0
+			entry.label.text="%s ×%d"%[World.NAMES[item],amount] if amount>0 else ""
+		if species.is_empty():hint.text="在工作台製作收集籃，再選附近的一隻動物，或放進圍好的圈舍綁定整座圈舍。"
 		elif count>=World.AnimalCollector.CAPACITY:hint.text="收集籃已滿，領取後會繼續收集。"
+		elif pen_mode and penned.is_empty():hint.text="圈舍有缺口或沒有木門，補好前產物會留在動物身邊。"
+		elif pen_mode:
+			var served:PackedStringArray=[]
+			for id:String in penned:served.append(World.AnimalCollector.name_for(id))
+			hint.text="自動接取圈舍內的%s。動物仍需要餵食。"%"、".join(served)
 		else:hint.text="會自動接取動物已產出的物品。動物仍需要餵食。"
 		if not own:hint.text="只有收集器的擁有者可以操作。"
-		elif binds.is_empty():hint.text="請搬到對應動物四格內。"
+		elif binds.is_empty() and penned.is_empty() and not pen_mode:hint.text="請搬到對應動物四格內，或放進圍好的圈舍。"
 		for id in binds:
-			binds[id].disabled=not own or id==species or count>0 or (species.is_empty() and basket==0) or World.AnimalCollector.bound_elsewhere(objects,id,key)
+			binds[id].disabled=not own or id==species or count>0 or (species.is_empty() and basket==0) or World.AnimalCollector.bound_elsewhere(objects,id,key) or World.AnimalCollector.pen_served(objects,id,key)
+		pen_bind.visible=not penned.is_empty() or pen_mode
+		var pen_taken:=false
+		for id:String in penned:
+			if World.AnimalCollector.bound_elsewhere(objects,id,key) or World.AnimalCollector.pen_served(objects,id,key):pen_taken=true
+		pen_bind.disabled=not own or pen_mode or penned.is_empty() or count>0 or (species.is_empty() and basket==0) or pen_taken
 		take.disabled=not own or count==0
 		unbind.disabled=not own or species.is_empty() or count>0
 	refresh(app)
@@ -466,6 +543,7 @@ func sprinkler(app, cell: Vector2i) -> void:
 	details.add_child(gauge)
 	details.add_child(state)
 	var supply: Label = app.label("", 15)
+	supply.name="SprinklerSupply"
 	supply.custom_minimum_size.x = 280
 	details.add_child(supply)
 	if device.get("sprinkler_daily",false):
@@ -492,8 +570,6 @@ func sprinkler(app, cell: Vector2i) -> void:
 		state.text = ("運作中" if active else "已停止") if present else "灑水器已移除"
 		if present and active and obj.get("sprinkler_daily",false) and float(obj.get("next_water",0))>float(snapshot.get("time",0)):
 			state.text = "今天已澆水，明天再灑"
-		if present and amount == 0:
-			state.text += " · 無水，補水後才能灑水"
 		if present and not owner:
 			state.text += " · 由擁有者操作"
 		var network: Dictionary = World.INDUSTRY.network_info(snapshot, World.key(cell))
@@ -503,14 +579,31 @@ func sprinkler(app, cell: Vector2i) -> void:
 		# 第 40 章水塔：同一條水管上有水塔時多一行座數與存水。
 		var towers: int = int(network.get("towers", 0))
 		if towers > 0:
-			if tanks == 0:supply.text = "未接通儲水桶"
-			supply.text += "\n水塔 %d 座 · 存水 %d／%d" % [towers, int(network.get("tower_water", 0)), int(network.get("tower_capacity", 0))]
+			var tower_text:="水塔 %d 座 · 存水 %d／%d" % [towers, int(network.get("tower_water", 0)), int(network.get("tower_capacity", 0))]
+			supply.text=tower_text if tanks==0 else supply.text+"\n"+tower_text
 		var note:=World.INDUSTRY.supply_note(network)
 		if not note.is_empty():supply.text+="\n"+note
+		if owner and World.CHAPTER_ONE.phase(snapshot)=="water" and str(snapshot.get("region_id","home"))=="home":
+			supply.text+="\n"+starter_supply_hint(obj,network)
+		elif present and amount==0:
+			state.text+=" · 暫無存水"
 		refill.disabled = not owner or amount >= capacity
 		toggle.disabled = not owner
 		toggle.text = "停止" if active else "啟用"
 	refresh(app)
+
+static func starter_supply_hint(device:Dictionary,network:Dictionary)->String:
+	var water:=int(device.get("water",0))
+	if water>int(device.get("network_water",0)):
+		return "目前有手動補的水。先用完，或拆除重放，再讓管網供水。"
+	if int(network.get("connected_tanks",0))+int(network.get("towers",0))==0:
+		return "第一章需要管網水。用自己的水管接上儲水桶。"
+	if network.get("supply_zone","")==World.INDUSTRY.ZONE_CUT:
+		return "先開啟分流閘，讓管網水到達灑水器。"
+	if water==0 and int(network.get("water",0))+int(network.get("tower_water",0))==0:
+		return "先給管網補水，再啟用灑水器。"
+	if not device.get("enabled",false):return "水源已接通。啟用後，等它澆濕範圍內自己的乾田。"
+	return "等待管網供水澆到自己的乾田。"
 
 func copper(app) -> void:
 	var body := open(app, "渡口・運入礦料")
@@ -642,7 +735,7 @@ class WorkbenchController extends Node:
 
 
 static func owns_pick(person: Dictionary) -> bool:
-	return int(person.get("inventory", {}).get("reinforced_pick", 0)) > 0
+	return not World.active_mining_pick(person.get("inventory", {})).is_empty()
 
 ## Concise use guidance for a craft recipe. `app` supplies live key labels for
 ## portable tools (any object with binding_label(action)); without it the key
@@ -685,6 +778,9 @@ static func material_hint(item:String)->String:
 		"sapling":"採集樹木取得，再種在自己的空地。",
 		"resin":"採集樹木取得；林務工作站也會產出。",
 		"copper_ore":"渡口運入礦料點／金瓜石；用強化石鎬或公用鎬。",
+		"copper_ingot":"用小熔爐或玻璃爐熔煉兩份銅礦和一份木炭，取得兩份銅錠。",
+		"iron_ingot":"在金瓜石礦道 B4 或 B6 收集鐵礦，用小熔爐或玻璃爐煉成鐵錠。",
+		"vein_quartz":"在金瓜石礦道 B9 或 B10 採礦時取得。",
 		"hardwood":"用斧頭採伐自種成樹取得；林務站不產硬木。"}
 	if hints.has(item):return hints[item]
 	if World.CRAFT.has(item):return "在工作台查看「%s」配方與解鎖條件。"%World.CRAFT[item].name

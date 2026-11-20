@@ -57,12 +57,19 @@ const MSG_STEPS:="三個步驟都要做過一次。"
 const PERMS:=["012","021","102","120","201","210"]
 const BAD_STEPS:=["","0","01","0123","001","011","000","013","300","0a1","a01","-01","01 "]
 const TWELVE:=["achao","aru","bobo","chacha","diandian","lingpopo","luoluo","mianmian","milu","nuannuan","xiaoli","xinghe"]
-const ALLOWED_FIELDS:=["title","task","items","options","steps","order","needs","quote","keepsake"]
+const ALLOWED_FIELDS:=["title","task","items","options","steps","order","needs","quote","keepsake","layout"]
 const ALL_GOALS:=["achao 1","achao 2","achao 3","achao 4","aru 1","aru 2","aru 3","aru 4","bobo 1","bobo 2","bobo 3","bobo 4","chacha 1","chacha 2","chacha 3","chacha 4","diandian 1","diandian 2","diandian 3","diandian 4","lingpopo 1","lingpopo 2","lingpopo 3","lingpopo 4",
 	"luoluo 1","luoluo 2","luoluo 3","luoluo 4","mianmian 1","mianmian 2","mianmian 3","mianmian 4","milu 1","milu 2","milu 3","milu 4","nuannuan 1","nuannuan 2","nuannuan 3","nuannuan 4",
 	"xiaoli 1","xiaoli 2","xiaoli 3","xiaoli 4","xinghe 1","xinghe 2","xinghe 3","xinghe 4"]
-const WANT_NEEDS:={"xinghe 4":["shared_garden"],"achao 4":["achao_photo"],"achao 3":["achao_voyage"],"aru 4":["aru_park_photo"],"aru 3":["aru_rest"],"mianmian 2":["sheep_comfort"],"chacha 4":["tea_chair"],"chacha 1":["tea_setup"],"diandian 4":["public_mural"],"diandian 3":["painting_invites"],"xinghe 1":["growth_record"],"luoluo 1":["address_delivered"],"nuannuan 1":["inn_entrance"],"nuannuan 3":["guest_room"],"lingpopo 1":["bell_inspected"],"bobo 3":["rest_kit"],"achao 2":["route_marks"],"diandian 1":["crop_sketches"],"milu 2":["recipe_pages"],"milu 4":["shared_meal"],"xiaoli 1":["crop_sold","seed_after_sale"],"mianmian 1":["chicken_fed"],"aru 1":["own_bed"],"mianmian 4":["fair_weather"],"xinghe 3":["glass_crafted"],"lingpopo 4":["festival_done"],
-	"xiaoli 3":["market_round"],"luoluo 2":["known_three"]}
+const WANT_NEEDS:={"xinghe 4":["shared_garden"],"achao 4":["achao_photo"],"achao 3":["achao_voyage"],"aru 4":["aru_park_photo"],"aru 3":["aru_rest"],"mianmian 2":["sheep_comfort"],"chacha 4":["tea_chair"],"chacha 1":["tea_setup"],"diandian 4":["public_mural"],"diandian 2":["diandian_seated"],"diandian 3":["painting_invites"],"xinghe 1":["growth_record"],"luoluo 1":["address_delivered"],"nuannuan 1":["inn_entrance"],"nuannuan 2":["inn_cracks"],"nuannuan 3":["guest_room"],"lingpopo 1":["bell_inspected"],"bobo 3":["rest_kit"],"achao 2":["route_marks"],"diandian 1":["crop_sketches"],"milu 2":["recipe_pages"],"milu 4":["shared_meal"],"xiaoli 1":["crop_sold","seed_after_sale"],"mianmian 1":["chicken_fed"],"aru 1":["own_bed"],"mianmian 4":["sheep_step"],"xinghe 3":["glass_crafted"],"lingpopo 4":["festival_done"],
+	"xiaoli 2":["xiaoli_first_trade"],"xiaoli 3":["xiaoli_cart_plan","market_round"],"xiaoli 4":["xiaoli_return_guest"],"luoluo 2":["known_three","postcard_clues"],"luoluo 3":["postcard_reported"],"luoluo 4":["memory_shared"],"bobo 4":["bobo_cart_arrived"]}
+## N03-4 (protocol 53): bobo 4 needs the story cart to have arrived (literal label copy).
+const CART_NEED:="bobo_cart_arrived"
+const CART_NEED_TEXT:="在金瓜石把祖父的空礦車推到展覽位"
+const CART_FIELD:="bobo_empty_cart_stage"
+const CART_KIND:="keepsake_bobo_cart"
+const CART_ITEM:="keepsake_bobo_cart_kit"
+const CART_NAME:="祖父的礦車"
 ## Literal copies of resident_goals.gd NEEDS (labels the player reads).
 const NEED_TEXT:={
 	"tea_chair":"替貓空茶亭放一張其他風格的椅子",
@@ -71,6 +78,7 @@ const NEED_TEXT:={
 	"achao_voyage":"修好碼頭燈並完成一趟小船試航",
 	"aru_park_photo":"在公共長椅地塊拍下長椅與木燈",
 	"aru_rest":"坐下陪阿榆歇一會兒",
+	"diandian_seated":"在映星池邊和點點一起坐下",
 	"sheep_comfort":"為雲朵羊搭遮雨棚與鋪纖維墊",
 	"tea_setup":"在貓空排好茶桌與兩只茶杯",
 	"public_mural":"在渡口展出合畫，或在展出中的合畫留下落款",
@@ -78,6 +86,7 @@ const NEED_TEXT:={
 	"growth_record":"記下同一株作物的幼苗與成熟",
 	"address_delivered":"把洛洛的信交給正確的收件人",
 	"inn_entrance":"清理旅舍門口",
+	"inn_cracks":"到公共泡腳池標記三處裂縫",
 	"guest_room":"在家園登記有床、燈和椅子的客房",
 	"bell_inspected":"查看風鈴樹與裂開的小鈴",
 	"rest_kit":"在第一層休息站做好路標與補給箱",
@@ -91,20 +100,31 @@ const NEED_TEXT:={
 	"own_bed":"家園裡有一張你放的小床",
 	"glass_crafted":"自己燒過一次溫室玻璃",
 	"market_round":"你的市集攤位結算過一輪",
+	"xiaoli_first_trade":"和小栗完成〈今天先賣一點點〉",
+	"xiaoli_cart_plan":"和小栗完成〈輪子停在哪裡〉",
+	"xiaoli_return_guest":"和小栗完成〈第一位回頭客〉",
 	"festival_done":"島上完成過一次風鈴接力",
 	"known_three":"認識洛洛以外的三位居民",
+	"postcard_clues":"向已認識的居民詢問線索",
+	"postcard_reported":"完成洛洛的〈沒有地址的信〉",
+	"memory_shared":"完成洛洛的〈想說卻沒送出的話〉",
 	"fair_weather":"今天渡口沒有下雨",
+	"sheep_step":"安靜看小羊自己跨出屋簷",
 }
 ## Literal copy of the batch-3 keepsake goals ("resident stage" -> kind).
 const KEEPSAKE_GOALS:={"lingpopo 4":"keepsake_lingpopo_memorial","xinghe 4":"keepsake_xinghe_sign","achao 4":"keepsake_achao_oar","aru 4":"keepsake_aru_bird","aru 1":"keepsake_aru","milu 3":"keepsake_milu","bobo 1":"keepsake_bobo","chacha 2":"keepsake_chacha",
 	"achao 1":"keepsake_achao","mianmian 3":"keepsake_mianmian","xinghe 2":"keepsake_xinghe","lingpopo 3":"keepsake_lingpopo",
-	"xiaoli 4":"keepsake_xiaoli","luoluo 4":"keepsake_luoluo","diandian 2":"keepsake_diandian","nuannuan 1":"keepsake_nuannuan","nuannuan 4":"keepsake_nuannuan_room"}
+	"xiaoli 4":"keepsake_xiaoli","luoluo 4":"keepsake_luoluo","diandian 2":"keepsake_diandian","nuannuan 1":"keepsake_nuannuan","nuannuan 4":"keepsake_nuannuan_room","bobo 4":CART_KIND}
 ## resident_goals.gd batch-3 literals.
 const MSG_KEEPSAKE_TAIL:="紀念小物也放進背包了，在家園工坊的「生活」頁可以擺到家園。"
 const MSG_RECORD_BAD:="關係紀錄有誤。"
 const MSG_NO_KEEPSAKE:="這件事的紀念收在手帳裡，沒有可以領的小物。"
 ## Residents used to satisfy known_three (none of them has a needs goal).
 const KNOWN_OTHERS:=["achao","chacha","diandian"]
+## Luoluo stage 2 second need: three distinct clue residents in the player's own string array (literal copies).
+const CLUES_KEY:="luoluo_postcard_clues"
+const CLUES_NEED:="postcard_clues"
+const CLUES_TEXT:="向已認識的居民詢問線索（目前 %d／3 位）"
 const WATCHER:="goal-watcher-token-5c1a"
 const PRIVATE_A:="goal-private-alpha-token-77e2"
 const PRIVATE_B:="goal-private-beta-token-0f93"
@@ -280,6 +300,10 @@ static func success_msg(resident:String,e:Dictionary)->String:
 	var message:="%s：「%s」你們一起完成了〈%s〉，手帳記下紀念「%s」。"%[Bond.name_of(resident),str(quote[0]),str(e.get("title","")),str(e.get("keepsake",""))]
 	if resident=="nuannuan" and e.get("title")=="一直沒亮的門牌":message+="旅舍迎賓牌圖樣已加入家園工坊的「暖泉旅舍」頁。"
 	if resident=="nuannuan" and e.get("title")=="池邊的裂縫":message+="暖石泡腳池圖樣已加入家園工坊的「暖泉旅舍」頁。"
+	if resident=="chacha" and e.get("title")=="一場沒有流程的茶會":message+="不完美的茶亭圖樣已加入家園工坊的「茶屋」頁。"
+	if resident=="xiaoli" and e.get("title")=="輪子停在哪裡":message+="小栗把選址和招牌攤車圖樣一起留在關係事件裡。"
+	if resident=="xiaoli" and e.get("title")=="第一位回頭客":message+="栗棕攤布與栗果招牌已加入市集攤位的布置選單。"
+	if resident=="lingpopo" and e.get("title")=="最後一枚鈴":message+="風鈴節紀念鐘圖樣已加入家園工坊的「家具」頁。"
 	return message
 
 ## Batch 3: success message of `resident stage`, with the keepsake sentence
@@ -291,7 +315,10 @@ static func goal_msg(resident:String,stage:int)->String:
 static func ks_kind(resident:String,stage:int)->String:
 	return str(KEEPSAKE_GOALS.get("%s %d"%[resident,stage],""))
 
+## Catalog name of the keepsake (Goals.KEEPSAKES name): the goal's own text, except
+## the story cart whose item is named 祖父的礦車.
 static func ks_name(resident:String,stage:int)->String:
+	if resident=="bobo" and stage==4:return CART_NAME
 	return str(Goals.goal(resident,stage).get("keepsake",""))
 
 ## Expected view entry "keepsake" of a keepsake goal.
@@ -374,9 +401,19 @@ static func items_ok(items:Variant)->bool:
 
 ## True when `text` names no need id (quoted) and no need label.
 static func no_need_rows(text:String)->bool:
-	for id:String in NEED_TEXT:
-		if text.contains("\"%s\""%id) or text.contains(str(NEED_TEXT[id])):return false
+	for id:String in all_needs():
+		if text.contains("\"%s\""%id) or text.contains(need_text(id)):return false
 	return true
+
+## Every need id: the literal table plus the story-cart need.
+static func all_needs()->Array:
+	var ids:Array=NEED_TEXT.keys()
+	ids.append(CART_NEED)
+	return ids
+
+static func need_text(id:String)->String:
+	if id==CART_NEED:return CART_NEED_TEXT
+	return str(NEED_TEXT.get(id,id))
 
 static func need_msg(label:String)->String:
 	return "還不能一起做這件事：要先「%s」。"%label
@@ -389,15 +426,33 @@ static func want_label(need:String,person:Dictionary)->String:
 		for other:String in Bond.RESIDENTS:
 			if other!="luoluo" and Bond.stage(person,other)>=1:count+=1
 		return "%s（目前 %d 位）"%[str(NEED_TEXT["known_three"]),mini(3,count)]
-	return str(NEED_TEXT.get(need,need))
+	if need==CLUES_NEED:return CLUES_TEXT%clue_count(person)
+	return need_text(need)
+
+## Independent expectation of the clue progress: distinct strings of the field, capped at 3.
+static func clue_count(person:Dictionary)->int:
+	var seen:Dictionary={}
+	var field:Variant=person.get(CLUES_KEY,[])
+	if field is Array:
+		for entry:Variant in field:
+			if entry is String:seen[entry]=true
+	return mini(3,seen.size())
 
 ## Expected needs rows of `e`; every need met unless `met` says otherwise.
 static func want_rows(e:Dictionary,person:Dictionary,met:Dictionary)->Array:
 	var rows:Array=[]
 	var needs:Array=e.get("needs",[])
 	for need:String in needs:
-		rows.append({"id":need,"label":want_label(need,person),"met":bool(met.get(need,true))})
+		rows.append({"id":need,"label":want_label(need,person),"met":bool(met.get(need,seat_default(need,person)))})
 	return rows
+
+## Default met value of a need row: true, except diandian_seated which also needs
+## the flag, a done stage 1 and bond stage >= 2 on the viewed player.
+static func seat_default(need:String,person:Dictionary)->bool:
+	if need!="diandian_seated":return true
+	var record:Variant=person.get(Goals.RECORD_KEY)
+	var own:Variant=record.get("diandian") if record is Dictionary else null
+	return person.get(Goals.DIANDIAN_SEAT_KEY)==true and own is Dictionary and own.has("1") and Bond.stage(person,"diandian")>=2
 
 ## Expected open/locked view row: needs rows only on goals that have needs.
 static func want_row(e:Dictionary,person:Dictionary,state_name:String,met:Dictionary)->Dictionary:
@@ -496,6 +551,18 @@ func set_need(w,token:String,need:String,met:bool)->void:
 		"aru_rest":
 			if met:p[Goals.ARU_REST_KEY]=float(w.state.time)
 			else:p.erase(Goals.ARU_REST_KEY)
+		"diandian_seated":
+			# PRESET: the private seated flag. met also seeds the stage-1 record and a stage-2 bond (need_met requires both);
+			# unmet only removes the flag, so the bare stage-1 record stays seeded for the other rules.
+			if met:
+				p[Goals.DIANDIAN_SEAT_KEY]=true
+				var seat_prior:Dictionary=p.get(Goals.RECORD_KEY,{})
+				var seat_own:Dictionary=seat_prior.get("diandian",{})
+				seat_own["1"]=""
+				seat_prior["diandian"]=seat_own
+				p[Goals.RECORD_KEY]=seat_prior
+				if Bond.stage(p,"diandian")<2:set_points(w,token,"diandian",int(Bond.THRESHOLDS[1]))
+			else:p.erase(Goals.DIANDIAN_SEAT_KEY)
 		"sheep_comfort":
 			if met:p[Goals.SHEEP_SHELTER_KEY]=Goals.SHEEP_COMFORT_MASK
 			else:p.erase(Goals.SHEEP_SHELTER_KEY)
@@ -520,6 +587,9 @@ func set_need(w,token:String,need:String,met:bool)->void:
 		"address_delivered":
 			if met:p[Goals.ADDRESS_KEY]=Goals.ADDRESS_DELIVERED
 			else:p.erase(Goals.ADDRESS_KEY)
+		"inn_cracks":
+			if met:p[World.WARM_SPRINGS.CRACK_KEY]=World.WARM_SPRINGS.CRACK_MASK
+			else:p.erase(World.WARM_SPRINGS.CRACK_KEY)
 		"inn_entrance":
 			if met:p[Goals.INN_CLEAR_KEY]=true
 			else:p.erase(Goals.INN_CLEAR_KEY)
@@ -532,6 +602,10 @@ func set_need(w,token:String,need:String,met:bool)->void:
 		"rest_kit":
 			if met:p[Goals.REST_KIT_KEY]=Goals.REST_KIT_MASK
 			else:p.erase(Goals.REST_KIT_KEY)
+		"bobo_cart_arrived":
+			# PRESET: the private arrived stage (the real pushes are in test_bobo_empty_cart.gd).
+			if met:p[CART_FIELD]=7
+			else:p.erase(CART_FIELD)
 		"recipe_pages":
 			if met:p[Goals.RECIPE_PAGE_KEY]=Goals.RECIPE_PAGE_MASK
 			else:p.erase(Goals.RECIPE_PAGE_KEY)
@@ -548,6 +622,9 @@ func set_need(w,token:String,need:String,met:bool)->void:
 			if met:p[Goals.CROP_TRADE_KEY]=Goals.SEED_BOUGHT
 			elif need=="seed_after_sale":p[Goals.CROP_TRADE_KEY]=Goals.CROP_SOLD
 			else:p.erase(Goals.CROP_TRADE_KEY)
+		"sheep_step":
+			if met:p[Goals.SHEEP_STEP_KEY]=float(w.state.time)-Goals.SHEEP_STEP_SECONDS
+			else:p.erase(Goals.SHEEP_STEP_KEY)
 		"chicken_fed":
 			if met:p[Goals.CHICKEN_FED_KEY]=float(w.state.time)-Goals.CHICKEN_APPROACH_SECONDS
 			else:p.erase(Goals.CHICKEN_FED_KEY)
@@ -559,6 +636,16 @@ func set_need(w,token:String,need:String,met:bool)->void:
 		"market_round":
 			if met:p["market"]=market_with_report()
 			else:p.erase("market")
+		"xiaoli_first_trade","xiaoli_cart_plan","xiaoli_return_guest":
+			var prior:Dictionary=p.get(Goals.RECORD_KEY,{})
+			var xiaoli:Dictionary=prior.get("xiaoli",{})
+			var step:String={"xiaoli_first_trade":"1","xiaoli_cart_plan":"2","xiaoli_return_guest":"3"}[need]
+			if met:xiaoli[step]="tree" if step=="2" else ""
+			else:xiaoli.erase(step)
+			if xiaoli.is_empty():prior.erase("xiaoli")
+			else:prior["xiaoli"]=xiaoli
+			if prior.is_empty():p.erase(Goals.RECORD_KEY)
+			else:p[Goals.RECORD_KEY]=prior
 		"festival_done":
 			w.state["festival"]=festival_at(1 if met else 0,false)
 		"known_three":
@@ -568,6 +655,29 @@ func set_need(w,token:String,need:String,met:bool)->void:
 				elif p.get("bonds") is Dictionary:
 					var bonds:Dictionary=p["bonds"]
 					bonds.erase(other)
+		"postcard_clues":
+			if met:p[CLUES_KEY]=KNOWN_OTHERS.duplicate()
+			else:p.erase(CLUES_KEY)
+		"postcard_reported":
+			# FIXTURE: luoluo 2 written as done directly (the real completion is in test_needs_through_world).
+			var luoluo_prior:Dictionary=p.get(Goals.RECORD_KEY,{})
+			var luoluo_own:Dictionary=luoluo_prior.get("luoluo",{})
+			if met:luoluo_own["2"]=""
+			else:luoluo_own.erase("2")
+			if luoluo_own.is_empty():luoluo_prior.erase("luoluo")
+			else:luoluo_prior["luoluo"]=luoluo_own
+			if luoluo_prior.is_empty():p.erase(Goals.RECORD_KEY)
+			else:p[Goals.RECORD_KEY]=luoluo_prior
+		"memory_shared":
+			# FIXTURE: luoluo 3 written as done directly (stage 3 only; the real completion is in test_needs_once_and_save).
+			var memory_prior:Dictionary=p.get(Goals.RECORD_KEY,{})
+			var memory_own:Dictionary=memory_prior.get("luoluo",{})
+			if met:memory_own["3"]="aloud"
+			else:memory_own.erase("3")
+			if memory_own.is_empty():memory_prior.erase("luoluo")
+			else:memory_prior["luoluo"]=memory_own
+			if memory_prior.is_empty():p.erase(Goals.RECORD_KEY)
+			else:p[Goals.RECORD_KEY]=memory_prior
 		"fair_weather":
 			move_weather(w,not met)
 		_:
@@ -669,8 +779,12 @@ func test_catalog()->void:
 	expect(count==48 and Goals.total()==48,"48 goals in total (counted %d, total() %d)"%[count,Goals.total()])
 	tags.sort()
 	expect(tags==ALL_GOALS,"the 48 goals match the published list (%s)"%str(tags))
-	expect(same(with_needs,WANT_NEEDS),"exactly aru 1, mianmian 4, xinghe 3, lingpopo 4, xiaoli 3, luoluo 2 carry needs (%s)"%str(with_needs))
-	expect(Goals.NEEDS==NEED_TEXT,"NEEDS has exactly the six ids with their labels (%s)"%str(Goals.NEEDS))
+	expect(same(with_needs,WANT_NEEDS),"exactly the published goals carry needs, bobo 4 needs only bobo_cart_arrived (%s)"%str(with_needs))
+	var needs_wo_cart:Dictionary=Goals.NEEDS.duplicate()
+	var cart_label:Variant=needs_wo_cart.get(CART_NEED)
+	needs_wo_cart.erase(CART_NEED)
+	expect(needs_wo_cart==NEED_TEXT,"NEEDS has exactly the published ids with their labels, plus the cart need (%s)"%str(Goals.NEEDS))
+	expect(cart_label==CART_NEED_TEXT and Goals.NEEDS.size()==NEED_TEXT.size()+1,"NEEDS[bobo_cart_arrived] is the published label (%s)"%str(cart_label))
 	expect(Goals.KNOWN_NEEDED==3,"KNOWN_NEEDED is 3")
 	ordered.sort()
 	expect(ordered==["achao 1","lingpopo 2"],"only achao 1 and lingpopo 2 have a fixed order (%s)"%str(ordered))
@@ -681,7 +795,7 @@ func test_catalog()->void:
 	expect(Goals.cost(Goals.goal("xinghe",3),"")=={"glass":2,"copper_joint":2},"cost xinghe 3 = 2 glass + 2 copper joints")
 	for option_id:String in ["none","chestnut","tomorrow"]:
 		expect(Goals.cost(Goals.goal("xiaoli",4),option_id)=={"plank":2},"cost xiaoli 4 %s = 2 planks"%option_id)
-	for costless:Array in [["bobo",4,"home"],["mianmian",4,""],["lingpopo",4,""],["xiaoli",3,""],["luoluo",2,""],["luoluo",4,"blank"],["nuannuan",4,"pool"]]:
+	for costless:Array in [["bobo",4,"home"],["mianmian",4,""],["lingpopo",4,""],["xiaoli",3,""],["luoluo",2,""],["luoluo",4,"blank"],["luoluo",4,"write"],["nuannuan",4,"pool"]]:
 		expect(Goals.cost(Goals.goal(str(costless[0]),int(costless[1])),str(costless[2])).is_empty(),"%s %d costs nothing"%[str(costless[0]),int(costless[1])])
 	for bad:Array in [["tom",1],["aru",0],["aru",5],["xinghe",5],["",1]]:
 		expect(not Goals.has_goal(str(bad[0]),int(bad[1])) and Goals.goal(str(bad[0]),int(bad[1])).is_empty(),"no goal for %s %d"%[str(bad[0]),int(bad[1])])
@@ -690,7 +804,7 @@ func test_catalog()->void:
 	for bad:String in BAD_STEPS:
 		expect(Goals.sequence(bad).is_empty(),"sequence('%s') is rejected"%bad)
 	# cost()
-	expect(Goals.cost(Goals.goal("bobo",2),"siding")=={"copper_joint":2,"plank":2},"cost bobo 2 siding = shared items only")
+	expect(Goals.cost(Goals.goal("bobo",2),"siding")=={"copper_ingot":4,"woodwork_parts":2},"cost bobo 2 siding = 4 copper ingots + 2 woodwork parts")
 	expect(Goals.cost(Goals.goal("lingpopo",3),"salad")=={"copper_ingot":4,"glass":2,"salad":1},"cost lingpopo 3 salad = shared items + the dish")
 	expect(Goals.cost(Goals.goal("milu",3),"carrot_soup")=={"carrot_soup":2},"cost milu 3 carrot_soup = per-option items only")
 	expect(Goals.cost(Goals.goal("xinghe",2),"bluebell_chime")=={"bluebell":2,"chime_herb":2},"cost xinghe 2 bluebell_chime")
@@ -719,7 +833,7 @@ func test_catalog()->void:
 			if not own[key] is Dictionary or not locked_row_ok(resident,str(key),own[key]):all_locked=false
 	expect(all_locked,"fresh view: every goal stage listed and locked; needs rows exactly on goals with needs")
 	var stateless:Dictionary=fresh.get("luoluo",{})
-	expect(stateless.get("2",{})=={"state":"locked","choice":"","needs":[{"id":"known_three","label":str(NEED_TEXT["known_three"])+"（目前 0 位）","met":false}]},
+	expect(stateless.get("2",{})=={"state":"locked","choice":"","needs":[{"id":"known_three","label":str(NEED_TEXT["known_three"])+"（目前 0 位）","met":false},{"id":CLUES_NEED,"label":CLUES_TEXT%0,"met":false}]},
 		"view(person) without state: needs rows present with met=false, no crash (%s)"%str(stateless.get("2")))
 	var no_state_rows:=true
 	for resident:String in fresh:
@@ -756,6 +870,9 @@ func goal_flow(resident:String,stage:int)->void:
 	var first:String=str(opts[0])
 	var steps:=right_steps(e)
 	var good:=extra_of(resident,stage,first,steps)
+	var shop_name_action:=resident=="xiaoli" and stage==4
+	var stray_action_extra:="店\n名" if shop_name_action else "012"
+	var stray_action_message:=World.XIAOLI_SHOP.BAD_NAME if shop_name_action else MSG_REOPEN
 	var cost:Dictionary=Goals.cost(e,first)
 	# Batch 3: "" for the 16 goals without a keepsake.
 	var kind:=ks_kind(resident,stage)
@@ -768,6 +885,7 @@ func goal_flow(resident:String,stage:int)->void:
 		set_need(w,token,need,true)
 		set_need(w,WATCHER,need,true)
 		expect(Goals.need_met(need,w.state,token) and Goals.need_met(need,w.state,WATCHER),"%s: preset makes %s hold for both players"%[tag,need])
+	var initial:Dictionary=pl(w,token).get(Goals.RECORD_KEY,{}).duplicate(true)
 	# 1. One stage short.
 	set_points(w,token,resident,threshold-1)
 	fill(w,token,cost,1)
@@ -802,8 +920,8 @@ func goal_flow(resident:String,stage:int)->void:
 			for perm:String in PERMS:
 				if perm!=steps:refuse(w,token,cell,extra_of(resident,stage,first,perm),order_msg(resident),"%s: wrong order %s"%[tag,perm])
 	else:
-		refuse(w,token,cell,extra_of(resident,stage,first,"012"),MSG_REOPEN,tag+": steps on a step-less goal")
-		refuse(w,token,cell,extra_of(resident,stage,first,"0"),MSG_REOPEN,tag+": one step on a step-less goal")
+		refuse(w,token,cell,extra_of(resident,stage,first,stray_action_extra),stray_action_message,tag+": invalid trailing input")
+		if not shop_name_action:refuse(w,token,cell,extra_of(resident,stage,first,"0"),MSG_REOPEN,tag+": one step on a step-less goal")
 	# 3b. Each prerequisite unmet (everything else satisfied), and check order.
 	for need:String in needs:
 		var ntag:="%s %s"%[tag,need]
@@ -835,7 +953,7 @@ func goal_flow(resident:String,stage:int)->void:
 						refuse(w,token,cell,extra_of(resident,stage,first,perm),order_msg(resident),"%s: wrong order %s and need unmet -> order message"%[ntag,perm])
 						break
 		else:
-			refuse(w,token,cell,extra_of(resident,stage,first,"012"),MSG_REOPEN,ntag+": stray steps and need unmet -> reopen message")
+			refuse(w,token,cell,extra_of(resident,stage,first,stray_action_extra),stray_action_message,ntag+": invalid trailing input and need unmet")
 		# Needs come before items.
 		for item:String in cost:
 			fill(w,token,cost,1)
@@ -860,7 +978,7 @@ func goal_flow(resident:String,stage:int)->void:
 		var inv:Dictionary=pl(w,token).inventory
 		inv.erase(item)
 		refuse(w,token,cell,good,short_msg(item,0,needed),"%s: %s absent"%[tag,item])
-	expect(not pl(w,token).has(Goals.RECORD_KEY),tag+": no refusal wrote a bond_goals key")
+	expect(pl(w,token).get(Goals.RECORD_KEY,{})==initial,tag+": no refusal changes existing goals")
 	expect(not pl(w,token).has(Goals.KEEPSAKE_KEY) and kit_counts(pl(w,token)).is_empty(),tag+": no refusal wrote bond_keepsakes or a keepsake kit")
 	# 5. Success: only the cost items change, by exactly the cost (plus one kit on the 12 keepsake goals).
 	fill(w,token,cost,1)
@@ -899,16 +1017,23 @@ func goal_flow(resident:String,stage:int)->void:
 	else:
 		expect(p.get(Goals.KEEPSAKE_KEY)=={kind:true},"%s: bond_keepsakes is exactly {%s:true} (got %s)"%[tag,kind,str(p.get(Goals.KEEPSAKE_KEY))])
 		expect(Goals.valid_keepsakes(p.get(Goals.KEEPSAKE_KEY),p),tag+": the granted record passes valid_keepsakes")
-	var want_record:Dictionary={resident:{str(stage):first}}
+	if "diandian_seated" in needs:expect(not p.has(Goals.DIANDIAN_SEAT_KEY),tag+": completion removes the diandian_seated field")
+	if "diandian_seated" in needs:expect(pl(w,WATCHER).has(Goals.DIANDIAN_SEAT_KEY),tag+": the other player's seated flag is untouched")
+	var want_record:=initial.duplicate(true)
+	var expected_resident:Dictionary=want_record.get(resident,{})
+	expected_resident[str(stage)]=first
+	want_record[resident]=expected_resident
 	expect(p.get(Goals.RECORD_KEY)==want_record,"%s: bond_goals is exactly %s (got %s)"%[tag,str(want_record),str(p.get(Goals.RECORD_KEY))])
-	expect(Goals.done(p,resident)=={stage:first} and Goals.completed(p)==1,tag+": done()/completed() see one goal")
+	expect(Goals.done(p,resident).get(stage)==first and Goals.completed(p)==expected_resident.size(),tag+": done()/completed() see the new goal")
 	expect(p.bonds==bonds_before and Bond.view(p,float(w.state.time))==bond_view,tag+": bond points, stage and daily flags unchanged")
 	expect(p.get("stories",{})==stories_before and int(p.get("coins",0))==coins_before,tag+": stories and coins unchanged")
 	expect(var_to_bytes(canon(pl(w,WATCHER)))==watcher_before,tag+": the other player's whole record is byte-identical")
 	var row:=view_row(w,token,resident,stage)
 	expect(str(row.get("state",""))=="done" and str(row.get("choice","?"))==first,"%s: view shows done with choice '%s' (%s)"%[tag,first,str(row)])
 	full=view_at(w,token,resident,stage)
-	expect(full==with_keepsake({"state":"done","choice":first},resident,stage,true),"%s: done view row with state carries no needs key (keepsake claimed=true iff it has one) (%s)"%[tag,str(full)])
+	var expected_view:Dictionary={"state":"done","choice":first}
+	if resident=="chacha" and stage==3:expected_view["topics"]=steps
+	expect(full==with_keepsake(expected_view,resident,stage,true),"%s: done view carries the completed event's fields and no needs key (%s)"%[tag,str(full)])
 	if not kind.is_empty():
 		var done_ks:Dictionary=full.get("keepsake",{})
 		expect(done_ks.get("claimed")==true,"%s: keepsake claimed flipped to true"%tag)
@@ -935,6 +1060,7 @@ func goal_flow(resident:String,stage:int)->void:
 		for perm:String in PERMS:
 			if perm!=steps:solo(w,e,resident,stage,region,cell,first,perm,"%s free order %s"%[tag,perm])
 	# 9. The watcher completes the same goal on their own.
+	if resident=="nuannuan" and stage==4:w.move_player(token,Vector2.DOWN,0.1)
 	fill(w,WATCHER,cost,0)
 	var main_before:=var_to_bytes(canon(pl(w,token)))
 	r=do_goal(w,WATCHER,cell,good)
@@ -954,7 +1080,7 @@ func goal_flow(resident:String,stage:int)->void:
 		for who:String in [token,WATCHER]:
 			full=view_at(w,who,resident,stage)
 			expect(full==with_keepsake({"state":"done","choice":first},resident,stage,true),"%s: still done without a needs key after the prerequisite is undone (%s)"%[tag,str(full)])
-			expect(Goals.valid(goals_of(w,who),pl(w,who)),tag+": the record still passes Goals.valid after the prerequisite is undone")
+			expect(Goals.valid(goals_of(w,who),pl(w,who)),"%s: the record still passes Goals.valid after undo (%s)"%[tag,str(goals_of(w,who))])
 		fill(w,token,cost,1)
 		refuse(w,token,cell,good,done_msg(e),tag+": repeat with the prerequisite undone -> already-done message")
 
@@ -971,7 +1097,10 @@ func solo(w,e:Dictionary,resident:String,stage:int,region:String,cell:Vector2i,o
 	fill(w,token,cost,0)
 	set_item(w,token,"radish",1)
 	var before:Dictionary=pl(w,token).inventory.duplicate(true)
-	var r:=do_goal(w,token,cell,extra_of(resident,stage,option,steps))
+	# N10-4: only luoluo 4 "write" takes a message (4th field); every other option/step keeps the caller's text.
+	var tail:=steps
+	if resident=="luoluo" and stage==4 and option=="write":tail="洛洛，謝謝你一直在。"
+	var r:=do_goal(w,token,cell,extra_of(resident,stage,option,tail))
 	expect(bool(r.get("ok",false)),"%s: accepted (got '%s')"%[label,msg(r)])
 	var expected:Dictionary=before.duplicate(true)
 	for item:String in cost:expected[item]=int(before[item])-int(cost[item])
@@ -979,6 +1108,12 @@ func solo(w,e:Dictionary,resident:String,stage:int,region:String,cell:Vector2i,o
 	if not kind.is_empty():expected[kind+"_kit"]=1  # batch 3: one kit granted
 	expect(pl(w,token).inventory==expected,"%s: charged exactly %s%s"%[label,str(cost),"" if kind.is_empty() else " (+1 kit)"])
 	var want:Dictionary={resident:{str(stage):option}}
+	if "xiaoli_first_trade" in needs:want.xiaoli["1"]=""
+	if "xiaoli_return_guest" in needs:want.xiaoli["3"]=""
+	if "postcard_reported" in needs:want.luoluo["2"]=""
+	if "memory_shared" in needs:want.luoluo["3"]="aloud"  # FIXTURE seeded by set_need
+	if "diandian_seated" in needs:want.diandian["1"]=""  # FIXTURE: bare stage-1 record seeded by set_need
+	if "diandian_seated" in needs:expect(not pl(w,token).has(Goals.DIANDIAN_SEAT_KEY),label+": completion removes the diandian_seated field")
 	expect(pl(w,token).get(Goals.RECORD_KEY)==want,"%s: record %s (got %s)"%[label,str(want),str(pl(w,token).get(Goals.RECORD_KEY))])
 	if kind.is_empty():expect(not pl(w,token).has(Goals.KEEPSAKE_KEY),label+": no bond_keepsakes key")
 	else:expect(pl(w,token).get(Goals.KEEPSAKE_KEY)=={kind:true},label+": bond_keepsakes {%s:true}"%kind)
@@ -1072,8 +1207,13 @@ func test_gates()->void:
 		else:w.state["dock_stage"]=1
 		cell=cell_of(w,resident)
 		go(w,t,region,cell)
+		# PRESET: luoluo 3 waits for 〈沒有地址的信〉 (postcard_reported); the gate test is about presence only.
+		var gate_needs:Array=e.get("needs",[])
+		for need:String in gate_needs:set_need(w,t,need,true)
+		var want_gate:Dictionary={resident:{str(stage):option}}
+		if "postcard_reported" in gate_needs:want_gate["luoluo"]["2"]=""
 		var r:=do_goal(w,t,cell,good)
-		expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={resident:{str(stage):option}},"%s: once present the same request succeeds (got '%s')"%[tag,msg(r)])
+		expect(bool(r.get("ok",false)) and same(pl(w,t).get(Goals.RECORD_KEY),want_gate),"%s: once present the same request succeeds (got '%s')"%[tag,msg(r)])
 
 # ------------------------------------------- needs: need_met / need_label --
 
@@ -1136,6 +1276,25 @@ func test_need_rules()->void:
 	expect(Goals.need_label("known_three",ks,me)==known_label+"（目前 3 位）","known_three label is capped at 3 (%s)"%Goals.need_label("known_three",ks,me))
 	expect(Goals.need_label("known_three",{},me)==known_label+"（目前 0 位）","known_three label without state: 0")
 	expect(not Goals.need_met("known_three",{"players":{other:person}},me),"known_three: another player's bonds do not count")
+	# postcard_clues: only the own string array counts (0..3, distinct), independent of the bonds above.
+	expect(Goals.POSTCARD_CLUES_KEY==CLUES_KEY,"POSTCARD_CLUES_KEY is luoluo_postcard_clues")
+	expect(not Goals.need_met(CLUES_NEED,ks,me) and Goals.need_label(CLUES_NEED,ks,me)==CLUES_TEXT%0,"postcard_clues: no field -> 0 (%s)"%Goals.need_label(CLUES_NEED,ks,me))
+	var clue_sets:Array=[[[],0],[["aru"],1],[["aru","aru"],1],[["aru","milu"],2],[["aru","milu","bobo"],3],[["aru","milu","bobo","chacha"],3]]
+	for sample:Array in clue_sets:
+		var cs:Dictionary={"players":{me:{CLUES_KEY:sample[0],"bonds":{}}}}
+		var n:int=int(sample[1])
+		expect(Goals.need_label(CLUES_NEED,cs,me)==CLUES_TEXT%n and Goals.need_met(CLUES_NEED,cs,me)==(n>=3),"postcard_clues: %s -> %d (%s)"%[str(sample[0]),n,Goals.need_label(CLUES_NEED,cs,me)])
+	expect(not Goals.need_met(CLUES_NEED,{"players":{me:{CLUES_KEY:"aru"}}},me) and not Goals.need_met(CLUES_NEED,{"players":{other:{CLUES_KEY:["aru","milu","bobo"]}}},me),"postcard_clues: wrong type / another player's field -> false")
+	expect(not Goals.need_met(CLUES_NEED,{},me) and Goals.need_label(CLUES_NEED,{},me)==CLUES_TEXT%0,"postcard_clues: no state -> 0")
+	# postcard_reported: only the own record of luoluo stage 2 counts; false without an own player.
+	var report_need:="postcard_reported"
+	expect(Goals.NEEDS.get(report_need)==NEED_TEXT[report_need] and Goals.need_label(report_need,{},me)==need_text(report_need),"postcard_reported: the published label")
+	expect(not Goals.need_met(report_need,{"players":{me:{"bond_goals":{"luoluo":{"1":""}}}}},me),"postcard_reported: luoluo stage 1 only -> false")
+	expect(not Goals.need_met(report_need,{"players":{me:{"bond_goals":{"luoluo":{"3":"aloud"}}}}},me),"postcard_reported: stage 3 alone -> false")
+	expect(not Goals.need_met(report_need,{"players":{me:{"bond_goals":{"aru":{"2":""}}}}},me),"postcard_reported: another resident's stage 2 -> false")
+	expect(Goals.need_met(report_need,{"players":{me:{"bond_goals":{"luoluo":{"2":""}}}}},me),"postcard_reported: own luoluo stage 2 done -> true")
+	expect(not Goals.need_met(report_need,{"players":{other:{"bond_goals":{"luoluo":{"2":""}}}}},me),"postcard_reported: another player's stage 2 does not count")
+	expect(not Goals.need_met(report_need,{"players":{}},me) and not Goals.need_met(report_need,{},me),"postcard_reported: no own player -> false")
 	# fair_weather: only state.time and the home region's weather matter.
 	var rainy_day:=-1
 	var dry_day:=-1
@@ -1155,9 +1314,37 @@ func test_need_rules()->void:
 		expect(not Goals.need_met("fair_weather",{"players":{me:{"region":"mine_1"}},"time":rainy_time},me),"fair_weather: a player indoors still sees the home rain -> false")
 		expect(Goals.need_met("fair_weather",{"players":{me:{"region":"mine_1"}},"time":dry_time},me),"fair_weather: player region does not matter on a dry day -> true")
 	# Labels, unknown ids, needs_view.
-	for id:String in NEED_TEXT:
-		if id!="known_three":
-			expect(Goals.need_label(id,{},me)==str(NEED_TEXT[id]),"need_label(%s) is the literal label"%id)
+	# bobo_cart_arrived: only the private integer 7 counts; own record only.
+	var cart_state:Dictionary={"players":{me:{CART_FIELD:7},other:{CART_FIELD:0}}}
+	expect(Goals.need_met(CART_NEED,cart_state,me),"bobo_cart_arrived: own stage 7 -> true")
+	expect(not Goals.need_met(CART_NEED,cart_state,other),"bobo_cart_arrived: another player's arrival does not count")
+	for stage_value:Variant in [0,1,3,6,8,-1,"7",true,null,[7]]:
+		expect(not Goals.need_met(CART_NEED,{"players":{me:{CART_FIELD:stage_value}}},me),"bobo_cart_arrived: stage %s -> false"%str(stage_value))
+	expect(not Goals.need_met(CART_NEED,{"players":{me:{}}},me) and not Goals.need_met(CART_NEED,{},me),"bobo_cart_arrived: absent stage / no players -> false")
+	# diandian_seated: own bool true + own stage-1 record + bond stage >= 2; every piece is required.
+	var seat_bonds:Dictionary={"diandian":rec(int(Bond.THRESHOLDS[1]),-1,-1)}
+	var seat_ok:Dictionary={Goals.DIANDIAN_SEAT_KEY:true,"bonds":seat_bonds,"bond_goals":{"diandian":{"1":""}}}
+	expect(Goals.DIANDIAN_SEAT_KEY=="diandian_seated","diandian_seated: the player field name")
+	expect(Goals.need_met("diandian_seated",{"players":{me:seat_ok}},me),"diandian_seated: flag + stage 1 record + stage 2 -> true")
+	expect(not Goals.need_met("diandian_seated",{"players":{me:seat_ok,other:{}}},other),"diandian_seated: another player's flag does not count")
+	for seat_flag:Variant in [false,1,"true",null,[true]]:
+		var odd_flag:Dictionary=seat_ok.duplicate(true)
+		odd_flag[Goals.DIANDIAN_SEAT_KEY]=seat_flag
+		expect(not Goals.need_met("diandian_seated",{"players":{me:odd_flag}},me),"diandian_seated: flag %s -> false"%str(seat_flag))
+	var seat_no_record:Dictionary=seat_ok.duplicate(true)
+	seat_no_record.erase("bond_goals")
+	expect(not Goals.need_met("diandian_seated",{"players":{me:seat_no_record}},me),"diandian_seated: no stage 1 record -> false")
+	var seat_short:Dictionary=seat_ok.duplicate(true)
+	seat_short["bonds"]={"diandian":rec(int(Bond.THRESHOLDS[0]),-1,-1)}
+	expect(not Goals.need_met("diandian_seated",{"players":{me:seat_short}},me),"diandian_seated: bond stage 1 only -> false")
+	var seat_flagless:Dictionary=seat_ok.duplicate(true)
+	seat_flagless.erase(Goals.DIANDIAN_SEAT_KEY)
+	expect(not Goals.need_met("diandian_seated",{"players":{me:seat_flagless}},me),"diandian_seated: no flag -> false")
+	# Existing saved diandian 2 (done, no flag) stays valid.
+	expect(Goals.valid({"diandian":{"1":"","2":"knees"}},{"bonds":{"diandian":rec(24,-1,-1)},"bond_goals":{"diandian":{"1":"","2":"knees"}}}),"diandian_seated: an existing saved diandian 2 without the flag stays valid")
+	for id:String in all_needs():
+		if id!="known_three" and id!=CLUES_NEED:
+			expect(Goals.need_label(id,{},me)==need_text(id),"need_label(%s) is the label"%id)
 		expect(not Goals.need_met(id,{},me),"need_met(%s) with an empty state -> false"%id)
 	expect(Goals.need_label("nope",{},me)=="nope" and not Goals.need_met("nope",s,me),"unknown need id: label is the id, never met")
 	expect(Goals.needs_view(Goals.goal("aru",1),s,me)==[{"id":"own_bed","label":str(NEED_TEXT["own_bed"]),"met":true}],"needs_view aru 1 with an own bed")
@@ -1168,11 +1355,11 @@ func test_need_rules()->void:
 	var vs:Dictionary={"players":{me:viewer},"objects":{"9,9":{"type":"bed","owner":me,"items":{}}},"festival":festival_at(1,false),"time":dry_day*Weather.DAY_SECONDS+1.0}
 	var v:Dictionary=Goals.view(viewer,vs,me)
 	expect(v["aru"]["1"]==with_keepsake({"state":"open","choice":"","needs":[{"id":"own_bed","label":str(NEED_TEXT["own_bed"]),"met":true}]},"aru",1,false),"view: aru 1 open, own_bed met, keepsake unclaimed (%s)"%str(v["aru"]["1"]))
-	expect(v["luoluo"]["2"]=={"state":"open","choice":"","needs":[{"id":"known_three","label":known_label+"（目前 2 位）","met":false}]},"view: luoluo 2 open, known_three unmet with count 2 (%s)"%str(v["luoluo"]["2"]))
+	expect(v["luoluo"]["2"]=={"state":"open","choice":"","needs":[{"id":"known_three","label":known_label+"（目前 2 位）","met":false},{"id":CLUES_NEED,"label":CLUES_TEXT%0,"met":false}]},"view: luoluo 2 open, known_three unmet with count 2, clues 0 (%s)"%str(v["luoluo"]["2"]))
 	expect(v["lingpopo"]["4"]=={"state":"locked","choice":"","needs":[{"id":"festival_done","label":str(NEED_TEXT["festival_done"]),"met":true}],"keepsake":Goals.keepsake_view({},Goals.FESTIVAL_BELL_REWARD)},"view: lingpopo 4 locked, festival_done met (%s)"%str(v["lingpopo"]["4"]))
-	expect(v["mianmian"]["4"]=={"state":"locked","choice":"","needs":[{"id":"fair_weather","label":str(NEED_TEXT["fair_weather"]),"met":true}]},"view: mianmian 4 locked, fair_weather met")
+	expect(v["mianmian"]["4"]=={"state":"locked","choice":"","needs":[{"id":"sheep_step","label":str(NEED_TEXT["sheep_step"]),"met":false}]},"view: mianmian 4 locked, sheep_step unmet")
 	expect(v["xinghe"]["3"]=={"state":"locked","choice":"","needs":[{"id":"glass_crafted","label":str(NEED_TEXT["glass_crafted"]),"met":false}]},"view: xinghe 3 locked, glass_crafted unmet")
-	expect(v["xiaoli"]["3"]=={"state":"locked","choice":"","needs":[{"id":"market_round","label":str(NEED_TEXT["market_round"]),"met":false}]},"view: xiaoli 3 locked, market_round unmet")
+	expect(v["xiaoli"]["3"]=={"state":"locked","choice":"","needs":[{"id":"xiaoli_cart_plan","label":str(NEED_TEXT["xiaoli_cart_plan"]),"met":false},{"id":"market_round","label":str(NEED_TEXT["market_round"]),"met":false}]},"view: xiaoli 3 locked, cart plan and market_round unmet")
 	expect(v["milu"]["1"]=={"state":"done","choice":""} and v["milu"]["3"]==with_keepsake({"state":"open","choice":""},"milu",3,false) and v["aru"]["2"]=={"state":"locked","choice":""},"view: goals without needs carry no needs key")
 	# FIXTURE: aru 1 written as done directly (no bond_keepsakes) -> keepsake unclaimed.
 	viewer["bond_goals"]={"aru":{"1":""},"milu":{"1":""}}
@@ -1209,6 +1396,9 @@ func test_animal_sketches()->void:
 	w.state.community={"table":World.COMMUNITY.choose_table(w.state)}
 	expect(not w.act(KIM,"wrong-tile",Goals.SKETCH_ACTION,cow,"chicken").ok,"An animal sketch must target the right animal")
 	expect(not w.act(KIM,"unknown-animal",Goals.SKETCH_ACTION,cow,"dog").ok,"Unknown animals cannot enter the journal")
+	expect(not w.act(KIM,"empty-cow",Goals.SKETCH_ACTION,cow,"cow").ok,"An unadopted cow cannot be observed")
+	expect(w.act(KIM,"adopt-cow", "livestock_adopt", cow,"cow").ok,"Adoption brings the cow to the shared station")
+	var animal_records:Dictionary=w.state.livestock.duplicate(true)
 	for id:String in ["chicken","cow","sheep"]:
 		var at:Vector2i=World.CHICKEN_CELL if id=="chicken" else World.LIVESTOCK.ANIMALS[id].cell
 		go(w,KIM,"home",at)
@@ -1228,7 +1418,7 @@ func test_animal_sketches()->void:
 		and pl(alternate,KIM).get(Goals.SKETCH_KEY,{})=={"duck":true},"The river duck can count as one of the three subjects")
 	expect(w.save() and w.load_world(w.save_path),"The animal-only record reloads")
 	expect(Goals.need_met("crop_sketches",w.state,KIM),"Three animals meet the same goal")
-	expect(int(w.state.animal.bond)==0 and w.state.livestock.is_empty(),"Observation preserves animal care state")
+	expect(int(w.state.animal.bond)==0 and same(w.state.livestock,animal_records),"Observation preserves animal care state across reload")
 
 func test_crop_sketches()->void:
 	var w:=World.new()
@@ -1373,6 +1563,7 @@ func test_needs_through_world()->void:
 	# market_round (xiaoli 3)
 	t="goal-act-market"
 	cell=ready_player(w,t,"xiaoli",3,"")
+	set_need(w,t,"xiaoli_cart_plan",true)
 	var market_msg:=need_msg(str(NEED_TEXT["market_round"]))
 	p=pl(w,t)
 	p.erase("market")
@@ -1383,7 +1574,7 @@ func test_needs_through_world()->void:
 	refuse(w,t,cell,"xiaoli:3::",market_msg,"act market_round: market not a dictionary")
 	p["market"]=market_with_report()
 	r=do_goal(w,t,cell,"xiaoli:3::")
-	expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={"xiaoli":{"3":""}},"act market_round: non-empty report -> accepted (got '%s')"%msg(r))
+	expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={"xiaoli":{"2":"tree","3":""}},"act market_round: non-empty report -> accepted (got '%s')"%msg(r))
 	# festival_done (lingpopo 4)
 	t="goal-act-festival"
 	cell=ready_player(w,t,"lingpopo",4,"")
@@ -1410,22 +1601,53 @@ func test_needs_through_world()->void:
 	set_points(w,t,"achao",0)
 	refuse(w,t,cell,"luoluo:2::",need_msg(known_label+"（目前 2 位）"),"act known_three: two others known")
 	set_points(w,t,"bobo",1)
+	var clue_msg:=need_msg(CLUES_TEXT%0)
+	refuse(w,t,cell,"luoluo:2::",clue_msg,"act postcard_clues: three known but no clues")
+	pl(w,t)[CLUES_KEY]=["aru","aru"]
+	refuse(w,t,cell,"luoluo:2::",need_msg(CLUES_TEXT%1),"act postcard_clues: duplicate clue counts once")
+	pl(w,t)[CLUES_KEY]=["aru","milu"]
+	refuse(w,t,cell,"luoluo:2::",need_msg(CLUES_TEXT%2),"act postcard_clues: two clues")
+	pl(w,t)[CLUES_KEY]=["aru","milu","bobo"]
 	r=do_goal(w,t,cell,"luoluo:2::")
-	expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={"luoluo":{"2":""}},"act known_three: three others -> accepted (got '%s')"%msg(r))
-	# fair_weather (mianmian 4)
-	t="goal-act-weather"
+	expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={"luoluo":{"2":""}},"act postcard_clues: three known + three clues -> accepted (got '%s')"%msg(r))
+	# postcard_reported (luoluo 3): option/steps syntax first, then the need, then the (free) completion.
+	t="goal-act-report"
+	cell=ready_player(w,t,"luoluo",3,"aloud")
+	var report_msg:=need_msg(need_text("postcard_reported"))
+	refuse(w,t,cell,"luoluo:3:nope:",MSG_PICK,"act postcard_reported: bad option and need unmet -> option message")
+	refuse(w,t,cell,"luoluo:3:aloud:012",MSG_REOPEN,"act postcard_reported: stray steps and need unmet -> reopen message")
+	refuse(w,t,cell,"luoluo:3:aloud:",report_msg,"act postcard_reported: valid option before luoluo 2 is done -> need message")
+	refuse(w,t,cell,"luoluo:3:letter:",report_msg,"act postcard_reported: the other valid option before luoluo 2 is done -> need message")
+	set_need(w,t,"postcard_reported",true)
+	r=do_goal(w,t,cell,"luoluo:3:aloud:")
+	expect(bool(r.get("ok",false)) and same(pl(w,t).get(Goals.RECORD_KEY),{"luoluo":{"2":"","3":"aloud"}}),"act postcard_reported: luoluo 2 done -> accepted at no cost (got '%s')"%msg(r))
+	# sheep_step (mianmian 4): needs the player's own watch, six world seconds old.
+	t="goal-act-sheep"
 	cell=ready_player(w,t,"mianmian",4,"")
-	var weather_msg:=need_msg(str(NEED_TEXT["fair_weather"]))
-	move_weather(w,true)
-	expect(Weather.rains(Weather.day_index(float(w.state.time)),"home"),"preset: today is rainy at home")
-	refuse(w,t,cell,"mianmian:4::",weather_msg,"act fair_weather: rainy day")
-	move_weather(w,false)
-	expect(not Weather.rains(Weather.day_index(float(w.state.time)),"home"),"preset: today is not rainy at home")
+	var sheep_msg:=need_msg(str(NEED_TEXT["sheep_step"]))
+	refuse(w,t,cell,"mianmian:4::",sheep_msg,"act sheep_step: not watched")
+	pl(w,t)[Goals.SHEEP_STEP_KEY]=float(w.state.time)
+	refuse(w,t,cell,"mianmian:4::",sheep_msg,"act sheep_step: watched just now")
+	pl(w,t)[Goals.SHEEP_STEP_KEY]=float(w.state.time)-Goals.SHEEP_STEP_SECONDS
 	cell=cell_of(w,"mianmian")
 	go(w,t,"home",cell)
 	r=do_goal(w,t,cell,"mianmian:4::")
-	expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={"mianmian":{"4":""}},"act fair_weather: non-rainy day -> accepted (got '%s')"%msg(r))
-
+	expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={"mianmian":{"4":""}},"act sheep_step: watched six seconds ago -> accepted (got '%s')"%msg(r))
+	# bobo_cart_arrived (bobo 4): only the arrived stage 7 opens it; the option and cost rules are unchanged (PRESET stage).
+	t="goal-act-cart"
+	cell=ready_player(w,t,"bobo",4,"home")
+	var cart_msg:=need_msg(need_text(CART_NEED))
+	refuse(w,t,cell,"bobo:4:home:",cart_msg,"act bobo_cart_arrived: no stage")
+	for stage_value:int in [1,4,6]:
+		pl(w,t)[CART_FIELD]=stage_value
+		refuse(w,t,cell,"bobo:4:home:",cart_msg,"act bobo_cart_arrived: still pushing at stage %d"%stage_value)
+	pl(w,t)[CART_FIELD]=7
+	refuse(w,t,cell,"bobo:4::",MSG_PICK,"act bobo_cart_arrived: arrived but no inscription chosen")
+	refuse(w,t,cell,"bobo:4:nope:",MSG_PICK,"act bobo_cart_arrived: arrived but an unknown inscription")
+	var cart_coins:=int(pl(w,t).get("coins",0))
+	r=do_goal(w,t,cell,"bobo:4:name:")
+	expect(bool(r.get("ok",false)) and pl(w,t).get(Goals.RECORD_KEY)=={"bobo":{"4":"name"}},"act bobo_cart_arrived: arrived + inscription 'name' -> accepted (got '%s')"%msg(r))
+	expect(kit_counts(pl(w,t))=={CART_ITEM:1} and pl(w,t).get(Goals.KEEPSAKE_KEY)=={CART_KIND:true} and int(pl(w,t).get("coins",0))==cart_coins,"act bobo_cart_arrived: one cart kit, no coins")
 # ------------------------------ needs checked once, batch-2 save round trip --
 
 func test_needs_once_and_save()->void:
@@ -1443,12 +1665,14 @@ func test_needs_once_and_save()->void:
 		set_points(w,KIM,str(pair[0]),int(pair[1]))
 	for pair:Array in [["wood",10],["glass",2],["copper_joint",2],["plank",2],["feed",1]]:
 		set_item(w,KIM,str(pair[0]),int(pair[1]))
-	for need:String in NEED_TEXT:
+	for need:String in all_needs():
+		if need=="diandian_seated":continue # No diandian goal is done in this save fixture; its bare stage-1 seed would alter the expected records.
+		if need in ["xiaoli_return_guest","postcard_reported","memory_shared"]:continue # The story events below earn these prerequisites (luoluo 3 is a real spec before luoluo 4).
 		set_need(w,KIM,need,true)
 		expect(Goals.need_met(need,w.state,KIM),"save preset: %s holds"%need)
 	var specs:Array=[["aru",1,""],["mianmian",4,""],["mianmian",1,""],["xinghe",3,""],["xiaoli",3,""],["xiaoli",4,"chestnut"],
-		["lingpopo",4,""],["luoluo",2,""],["luoluo",4,"stay"],["bobo",4,"rest"],["nuannuan",4,"porch"]]
-	var want:Dictionary={}
+		["lingpopo",4,""],["luoluo",2,""],["luoluo",3,"aloud"],["luoluo",4,"stay"],["bobo",4,"rest"],["nuannuan",4,"porch"]]
+	var want:Dictionary={"xiaoli":{"1":"","2":"tree"}}
 	for spec:Array in specs:
 		var resident:=str(spec[0])
 		var stage:=int(spec[1])
@@ -1468,24 +1692,28 @@ func test_needs_once_and_save()->void:
 	var held:Dictionary=p.inventory
 	expect(int(held.get("wood",-1))==0 and int(held.get("glass",-1))==0 and int(held.get("copper_joint",-1))==0 and int(held.get("plank",-1))==0 and int(held.get("feed",-1))==1,"batch-2 costs paid exactly; no extra charge for feed")
 	# Batch 3 (granted through World.act above): aru 1, xiaoli 4 and luoluo 4 carry keepsakes.
-	var want_kits:Dictionary={"keepsake_aru_kit":1,"keepsake_xiaoli_kit":1,"keepsake_luoluo_kit":1,"keepsake_lingpopo_memorial_kit":1,"keepsake_nuannuan_room_kit":1}
-	var want_keepsakes:Dictionary={"keepsake_aru":true,"keepsake_xiaoli":true,"keepsake_luoluo":true,"keepsake_lingpopo_memorial":true,"keepsake_nuannuan_room":true}
-	expect(kit_counts(p)==want_kits,"exactly the five earned kits granted (%s)"%str(kit_counts(p)))
-	expect(same(p.get(Goals.KEEPSAKE_KEY),want_keepsakes),"bond_keepsakes holds exactly those five kinds (%s)"%str(p.get(Goals.KEEPSAKE_KEY)))
+	var want_kits:Dictionary={"keepsake_aru_kit":1,"keepsake_xiaoli_kit":1,"keepsake_luoluo_kit":1,"keepsake_lingpopo_memorial_kit":1,"keepsake_nuannuan_room_kit":1,CART_ITEM:1}
+	var want_keepsakes:Dictionary={"keepsake_aru":true,"keepsake_xiaoli":true,"keepsake_luoluo":true,"keepsake_lingpopo_memorial":true,"keepsake_nuannuan_room":true,CART_KIND:true}
+	expect(kit_counts(p)==want_kits,"exactly the six earned kits granted, bobo 4 gives the cart kit (%s)"%str(kit_counts(p)))
+	expect(same(p.get(Goals.KEEPSAKE_KEY),want_keepsakes),"bond_keepsakes holds exactly those six kinds (%s)"%str(p.get(Goals.KEEPSAKE_KEY)))
 	# Undo every prerequisite: remove the bed, start a new festival round, rainy day, etc.
 	clear_beds(w,KIM)
 	p["greenhouse_glass_crafted"]=false
 	p.erase("market")
 	p.erase(Goals.CHICKEN_FED_KEY)
+	p.erase(Goals.SHEEP_STEP_KEY)
 	p.erase(Goals.CROP_TRADE_KEY)
 	p.erase("resident_participation")
 	p.erase(Goals.SKETCH_KEY)
 	p.erase(Goals.ROUTE_KEY)
 	p.erase(Goals.RECIPE_PAGE_KEY)
 	p.erase(Goals.REST_KIT_KEY)
+	p.erase(CART_FIELD)
+	p.erase(CLUES_KEY)
 	p.erase(Goals.BELL_INSPECT_KEY)
 	p.erase(Goals.GUEST_ROOM_KEY)
 	p.erase(Goals.INN_CLEAR_KEY)
+	p.erase(World.WARM_SPRINGS.CRACK_KEY)
 	p.erase(Goals.ADDRESS_KEY)
 	p.erase(Goals.GROWTH_LOG_KEY)
 	p.erase(Goals.PAINT_INVITES_KEY)
@@ -1502,10 +1730,11 @@ func test_needs_once_and_save()->void:
 	var bonds:Dictionary=p.bonds
 	for other:String in KNOWN_OTHERS:bonds.erase(other)
 	move_weather(w,true)
-	for need:String in NEED_TEXT:
+	for need:String in all_needs():
 		# known_three cannot be undone here: the completed goals themselves require bonds
 		# with seven residents other than 洛洛 (removing them would invalidate the save).
-		if need in ["festival_done","known_three"]:continue
+		# postcard_reported reads the done luoluo 2 record itself, which stays.
+		if need in ["festival_done","known_three","postcard_reported","memory_shared","xiaoli_first_trade","xiaoli_cart_plan","xiaoli_return_guest"]:continue
 		expect(not Goals.need_met(need,w.state,KIM),"after undo: %s no longer holds"%need)
 	expect(Goals.need_met("known_three",w.state,KIM),"after undo: known_three still holds through the bonds the done goals need")
 	# A new active round keeps festival_done true (round 1 was finished before).
@@ -1513,7 +1742,7 @@ func test_needs_once_and_save()->void:
 	for spec:Array in specs:
 		var row:=view_at(w,KIM,str(spec[0]),int(spec[1]))
 		expect(row==with_keepsake({"state":"done","choice":str(spec[2])},str(spec[0]),int(spec[1]),true),"after undo: %s %d still done, no needs key (%s)"%[str(spec[0]),int(spec[1]),str(row)])
-	expect(Goals.valid(goals_of(w,KIM),pl(w,KIM)),"after undo: Goals.valid still accepts the record")
+	expect(Goals.valid(goals_of(w,KIM),pl(w,KIM)),"after undo: Goals.valid still accepts %s"%str(goals_of(w,KIM)))
 	for spec:Array in specs:
 		if not Goals.goal(str(spec[0]),int(spec[1])).has("needs"):continue
 		var cell:=cell_of(w,str(spec[0]))
@@ -1590,8 +1819,9 @@ func test_keepsake_catalog()->void:
 	ordered.sort()
 	var want_kinds:Array=KEEPSAKE_GOALS.values()
 	want_kinds.sort()
-	expect(want_kinds.size()==17 and kinds==want_kinds and ordered==want_kinds and Goals.KEEPSAKE_ORDER.size()==17,
-		"KEEPSAKES and KEEPSAKE_ORDER hold exactly the thirteen kinds once each (%s)"%str(Goals.KEEPSAKE_ORDER))
+	expect(want_kinds.size()==18 and kinds==want_kinds and ordered==want_kinds and Goals.KEEPSAKE_ORDER.size()==18,
+		"KEEPSAKES and KEEPSAKE_ORDER hold exactly the eighteen kinds once each (%s)"%str(Goals.KEEPSAKE_ORDER))
+	expect(Goals.KEEPSAKE_ORDER.back()==CART_KIND and Goals.KEEPSAKES.get(CART_KIND,{}).get("name")==CART_NAME,"the cart keepsake is appended last and named 祖父的礦車")
 	var want_items:Array=[]
 	for kind:String in Goals.KEEPSAKE_ORDER:want_items.append(kind+"_kit")
 	expect(Goals.keepsake_items()==want_items,"keepsake_items() lists kind+_kit in KEEPSAKE_ORDER order (%s)"%str(Goals.keepsake_items()))
@@ -1608,9 +1838,10 @@ func test_keepsake_catalog()->void:
 		expect(fields==["blurb","name","resident","stage"],"%s: fields are resident, stage, name, blurb (%s)"%[kind,str(fields)])
 		expect(entry.get("stage") is int and str(KEEPSAKE_GOALS.get(tag,""))==kind,"%s: points at %s, one of the thirteen keepsake goals"%[kind,tag])
 		expect(Goals.has_goal(resident,stage),"%s: its goal %s exists"%[kind,tag])
-		expect(kind=="keepsake_"+resident or (kind=="keepsake_aru_bird" and tag=="aru 4") or (kind=="keepsake_achao_oar" and tag=="achao 4") or (kind=="keepsake_xinghe_sign" and tag=="xinghe 4") or (kind=="keepsake_lingpopo_memorial" and tag=="lingpopo 4") or (kind=="keepsake_nuannuan_room" and tag=="nuannuan 4"),"%s: stable keepsake id for its resident and stage"%kind)
+		expect(kind=="keepsake_"+resident or (kind=="keepsake_aru_bird" and tag=="aru 4") or (kind=="keepsake_achao_oar" and tag=="achao 4") or (kind=="keepsake_xinghe_sign" and tag=="xinghe 4") or (kind=="keepsake_lingpopo_memorial" and tag=="lingpopo 4") or (kind=="keepsake_nuannuan_room" and tag=="nuannuan 4") or (kind==CART_KIND and tag=="bobo 4"),"%s: stable keepsake id for its resident and stage"%kind)
 		residents_seen.append(resident)
-		expect(str(entry.get("name",""))==str(Goals.goal(resident,stage).get("keepsake","?")),"%s: name equals the goal's keepsake text"%kind)
+		if kind==CART_KIND:expect(str(entry.get("name",""))==CART_NAME,"%s: the cart keepsake is named 祖父的礦車 (the goal text may differ)"%kind)
+		else:expect(str(entry.get("name",""))==str(Goals.goal(resident,stage).get("keepsake","?")),"%s: name equals the goal's keepsake text"%kind)
 		expect(entry.get("blurb") is String and not str(entry.get("blurb")).strip_edges().is_empty(),"%s: non-empty blurb"%kind)
 		expect(Goals.keepsake_kind(resident,stage)==kind,"%s: keepsake_kind(%s) finds it"%[kind,tag])
 		expect(Goals.keepsake_item(kind)==item and Goals.is_keepsake_item(item) and Goals.is_keepsake_kind(kind),"%s: keepsake_item / is_keepsake_item / is_keepsake_kind agree"%kind)
@@ -1627,7 +1858,7 @@ func test_keepsake_catalog()->void:
 		var found:=Goals.keepsake_kind(str(parts[0]),int(parts[1]))
 		expect(found==str(KEEPSAKE_GOALS.get(tag,"")),"%s: keepsake_kind is '%s' (got '%s')"%[tag,str(KEEPSAKE_GOALS.get(tag,"")),found])
 		if not found.is_empty():with_kind.append(tag)
-	expect(with_kind.size()==17 and ALL_GOALS.size()-with_kind.size()==31,"17 goals carry a keepsake, 31 do not (%s)"%str(with_kind))
+	expect(with_kind.size()==18 and ALL_GOALS.size()-with_kind.size()==30,"18 goals carry a keepsake, 30 do not (%s)"%str(with_kind))
 	for bad:Array in [["aru",2],["tom",1],["",1],["aru",0],["milu",1],["xiaoli",3]]:
 		expect(Goals.keepsake_kind(str(bad[0]),int(bad[1])).is_empty(),"no keepsake for %s %d"%[str(bad[0]),int(bad[1])])
 	for bad:String in ["","keepsake_tom","keepsake_aru_kit","trio_keepsake","Keepsake_aru"]:
@@ -1797,7 +2028,7 @@ func test_save_reload_and_schema()->void:
 	set_points(w,SAM,"bobo",6)
 	set_points(w,SAM,"xinghe",6)
 	set_points(w,SAM,"aru",6)
-	for pair:Array in [["soup",1],["carrot_soup",2],["copper_joint",2],["plank",2],["orange_blossom",2],["chime_herb",2],["radish",1]]:
+	for pair:Array in [["soup",1],["carrot_soup",2],["copper_ingot",4],["woodwork_parts",2],["orange_blossom",2],["chime_herb",2],["radish",1]]:
 		set_item(w,SAM,str(pair[0]),int(pair[1]))
 	var milu:=cell_of(w,"milu")
 	go(w,SAM,"home",milu)
@@ -2078,20 +2309,21 @@ func test_session_snapshot()->void:
 	# Batch-2 needs rows: alpha reaches luoluo 2 and knows three other residents.
 	set_points(w,PRIVATE_A,"luoluo",6)
 	for other:String in KNOWN_OTHERS:set_points(w,PRIVATE_A,other,1)
+	pl(w,PRIVATE_A)[CLUES_KEY]=["achao","chacha"] # FIXTURE: two clues, so the need row is partial
 	session._send_snapshot(1)
 	snap=session.snapshot
 	own=snap.get("resident_goals",{})
 	var alpha_label:=str(NEED_TEXT["known_three"])+"（目前 3 位）"
 	expect(own==Goals.view(pl(w,PRIVATE_A),ws,PRIVATE_A),"needs: alpha's resident_goals equals alpha's view with state")
 	var luoluo_rows:Dictionary=own.get("luoluo",{})
-	expect(luoluo_rows.get("2",{})=={"state":"open","choice":"","needs":[{"id":"known_three","label":alpha_label,"met":true}]},"needs: alpha's luoluo 2 open with known_three met (%s)"%str(luoluo_rows.get("2")))
+	expect(luoluo_rows.get("2",{})=={"state":"open","choice":"","needs":[{"id":"known_three","label":alpha_label,"met":true},{"id":CLUES_NEED,"label":CLUES_TEXT%2,"met":false}]},"needs: alpha's luoluo 2 open with known_three met, clues 2/3 (%s)"%str(luoluo_rows.get("2")))
 	var aru_rows:Dictionary=own.get("aru",{})
 	expect(aru_rows.get("1",{})==with_keepsake({"state":"locked","choice":"","needs":[{"id":"own_bed","label":str(NEED_TEXT["own_bed"]),"met":false}]},"aru",1,false),"needs: alpha's aru 1 locked with own_bed unmet (%s)"%str(aru_rows.get("1")))
 	players=snap.get("players",{})
 	dump=JSON.stringify(players)
 	# Need ids and labels occur only in resident_goals.gd, so their absence means
 	# no needs row leaked ("needs" itself is also a salt-pan public key).
-	expect(no_need_rows(dump) and not dump.contains(alpha_label),"needs: snapshot players entries carry no needs rows (ids or labels)")
+	expect(no_need_rows(dump) and not dump.contains(alpha_label) and not dump.contains(CLUES_KEY),"needs: snapshot players entries carry no needs rows (ids or labels)")
 	for region in World.REGIONS.ALL:
 		var public:Dictionary=session.public_state(region)
 		if public.is_empty():continue
@@ -2105,7 +2337,7 @@ func test_session_snapshot()->void:
 	expect(own==Goals.view(pl(w,PRIVATE_B),ws,PRIVATE_B) and own.get("milu",{})=={"1":{"state":"locked","choice":""},"2":{"state":"locked","choice":"","needs":[{"id":"recipe_pages","label":"找齊三片食譜紙角","met":false}]},"3":milu3_locked,"4":{"state":"locked","choice":"","needs":[{"id":"shared_meal","label":"親手上一輪共享料理","met":false}]}},"beta's resident_goals is beta's own (milu locked)")
 	expect(own!=Goals.view(pl(w,PRIVATE_A),ws,PRIVATE_A),"beta's resident_goals is not alpha's")
 	var beta_luoluo:Dictionary=own.get("luoluo",{})
-	expect(beta_luoluo.get("2",{})=={"state":"locked","choice":"","needs":[{"id":"known_three","label":str(NEED_TEXT["known_three"])+"（目前 0 位）","met":false}]},"beta's luoluo 2 row shows beta's own count, not alpha's (%s)"%str(beta_luoluo.get("2")))
+	expect(beta_luoluo.get("2",{})=={"state":"locked","choice":"","needs":[{"id":"known_three","label":str(NEED_TEXT["known_three"])+"（目前 0 位）","met":false},{"id":CLUES_NEED,"label":CLUES_TEXT%0,"met":false}]},"beta's luoluo 2 row shows beta's own count, not alpha's (%s)"%str(beta_luoluo.get("2")))
 	expect(not JSON.stringify(snap).contains(alpha_label),"beta's whole snapshot never contains alpha's needs label")
 	expect(not JSON.stringify(snap).contains("\"bond_goals\""),"beta's whole snapshot never names bond_goals")
 	players=snap.get("players",{})

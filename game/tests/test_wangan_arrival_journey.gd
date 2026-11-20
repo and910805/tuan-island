@@ -286,6 +286,9 @@ func walk(path_cells:Array,from:int,to:int,label:String)->bool:
 		if not check(pos().distance_to(want)<=0.001,"%s: cell %d is %s (at %s)"%[label,index,str(path_cells[index]),str(pos())]):
 			release()
 			return false
+		# The final synthetic step may land between broadcasts. Publish that state
+		# without advancing one more movement step past the cell centre.
+		if snap_pos().distance_to(want)>0.001:app.session._send_snapshot(1)
 		if not check(snap_pos().distance_to(want)<=0.001,"%s: client snapshot follows to %s (snapshot %s)"%[label,str(path_cells[index]),str(snap_pos())]):
 			release()
 			return false
@@ -503,10 +506,9 @@ func dock_orders()->void:
 	if not check(accept!=null and not accept.disabled,"The dock order is available after the repair"):return
 	accept.pressed.emit()
 	await frames(3)
-	await key(bound("interact"))
 	card=app.modal.find_child("DockOrder_dock_shrimp",true,false) if is_instance_valid(app.modal) else null
 	var deliver:=card.find_child("OrderDeliver",true,false) as Button if card else null
-	if not check(deliver!=null and not deliver.disabled,"The gathered seafood enables delivery"):return
+	if not check(deliver!=null and not deliver.disabled,"Accept stays on the dock board and stocked seafood enables delivery"):return
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--dock-orders-shot="):
 			await RenderingServer.frame_post_draw
@@ -729,6 +731,9 @@ func lanyang_forestry()->void:
 	var hardwood_before:=int(snap_bag().get("hardwood",0))
 	for strike in 3:
 		if not await tool_click("axe",tree):return
+	if not await walk_to([tree],"走到樹旁撿起掉落木料"):return
+	tick(World.GATHER_DROP_DELAY+0.1)
+	await frames(3)
 	check(not snap().forest.has(World.key(tree)) and int(snap_bag().get("wood",0))==wood_before+6
 		and int(snap_bag().get("resin",0))==resin_before+1 and int(snap_bag().get("hardwood",0))==hardwood_before+World.HARDWOOD_YIELD,
 		"Harvesting the tree yields wood, resin and hardwood")
@@ -1033,7 +1038,7 @@ func arrival()->bool:
 	var title:=app.hud.find_child("RegionTitle",true,false) as Label
 	check(title!=null and title.is_visible_in_tree() and title.text=="風鈴渡口","HUD region title 風鈴渡口: 「%s」"%(title.text if title else "<none>"))
 	expect_step("find","fresh save")
-	await expect_tracker("%s\n去找小栗：種子攤東北邊的田\n%s 移動"%[HEADING,app.movement_hint()],"find")
+	await expect_tracker("%s\n%s"%[HEADING,World.CHAPTER_ONE.FIND_FROM_DOCK],"find")
 	var landing:=World.WANGAN_COAST.FERRY_LANDING
 	check(pos()==landing and snap_pos()==landing,"Player arrives at the ferry dock in both the server and client")
 	# Expected start values from World.add_player's behaviour on a second fresh World.
@@ -1237,13 +1242,15 @@ func ship_radish()->bool:
 	check(same(bag(),plus(bag_before,{"radish":-1})) and same(snap_bag(),bag()),"Bag: radish −1 only")
 	var diff:=diff_paths(state_before,w.state)
 	note("ship changed=%s"%str(diff))
-	check(diff==["chapter_one","committed","ledger","players.coins","players.first_crop_trade","players.inventory","players.receipts","players.resident_participation","players.wangan_personal_start"],"Ship changed only the shipping and story fields: %s"%str(diff))
+	check(diff==["chapter_one","committed","ledger","players.coins","players.first_crop_trade","players.inventory","players.receipts","players.resident_participation","players.wangan_personal_start","players.xiaoli_first_trade"],"Ship changed only the shipping and story fields: %s"%str(diff))
+	var first_sale:Dictionary=person().get(World.TRANSACTION_LEDGER.FIRST_SHOP_KEY,{}).get("sale",{})
+	check(int(first_sale.get("coins",0))==price and same(first_sale.get("items",{}),{"radish":-1}),"Xiaoli's first-sale receipt keeps the price and the shipped radish")
 	check(person().get(World.RESIDENT_GOALS.CROP_TRADE_KEY)==World.RESIDENT_GOALS.CROP_SOLD,"First shipment records the sale for Xiaoli")
 	check(bool(w.state.chapter_one.shipped) and Chapter.phase(w.state)=="works" and Chapter.phase(snap())=="works","Chapter phase ship -> works")
 	check(Chapter.first_crop_step(w.state,tok).is_empty() and Chapter.first_crop_step(snap(),me).is_empty(),"first_crop_step is {} on server and client")
 	check(not Opening.marker_shown(snap(),me) and not Opening.marker_shown(w.state,tok),"Plot marker off")
 	await close_modal_with_esc("bin after shipping")
-	await expect_tracker("一起修河灣橋\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[app.binding_label("interact"),int(w.state.donations.wood),int(w.state.donations.stone)],"next chapter step (works)")
+	await expect_tracker("修好渡口公告板\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[app.binding_label("interact"),int(w.state.donations.wood),int(w.state.donations.stone)],"next chapter step (works)")
 	return true
 
 ## 6: save, reload in a plain World and in a fresh app; returning player.
@@ -1268,7 +1275,7 @@ func reload()->bool:
 		check(same(person().get(field),expected.get(field)),"App reload keeps %s on the server"%field)
 	check(snap_pos()==Vector2(float(expected.x),float(expected.y)) and same(snap_bag(),nonzero(expected.inventory)) and int(snap_person().coins)==int(expected.coins),"App reload: client position, bag and coins")
 	check(same(w.state.chapter_one,chapter) and Chapter.phase(snap())=="works","App reload keeps the chapter state")
-	await expect_tracker("一起修河灣橋\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[app.binding_label("interact"),int(w.state.donations.wood),int(w.state.donations.stone)],"after reload")
+	await expect_tracker("修好渡口公告板\n到公告板按 %s 捐材料\n木材 %d/30 · 石材 %d/10"%[app.binding_label("interact"),int(w.state.donations.wood),int(w.state.donations.stone)],"after reload")
 	return true
 
 ## 7: retained routes, read-only, on the same journey state.
@@ -1278,7 +1285,8 @@ func retained_routes()->void:
 	if await walk_to([Vector2i(40,30),Vector2i(41,30),Vector2i(39,30)],"to the notice board"):
 		await key(bound("interact"))
 		var texts:=modal_texts()
-		check(texts.has("渡口的共同工程") and texts.has("渡口修繕") and texts.has("捐入背包裡需要的材料"),"Interact key opens the works board: %s"%str(texts))
+		var donate:Button=app.modal.find_child("BoardDonateBridge",true,false) if is_instance_valid(app.modal) else null
+		check(texts.has("渡口的共同工程") and texts.has("渡口修繕") and donate!=null,"Interact key opens the works board: %s"%str(texts))
 		# 群島的來信 (碼頭 / 合作小船) is only offered on the board after the 渡口野餐
 		# (life_ui_tasks.board: `if s.get("picnic")`); before it the board has no dock entry.
 		check(not texts.has("群島的來信"),"No 群島的來信 entry on the board before the picnic")

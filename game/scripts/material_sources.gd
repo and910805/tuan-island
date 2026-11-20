@@ -13,13 +13,15 @@ extends RefCounted
 const Industry := preload("res://scripts/industry.gd")
 const MATERIAL_SUPPLY := preload("res://scripts/material_supply.gd")
 const CONSTRUCTION_HISTORY := preload("res://scripts/construction_history.gd")
+const CHEST_HISTORY := preload("res://scripts/chest_history.gd")
+const PLOT_PERMISSIONS := preload("res://scripts/plot_permissions.gd")
 
 const PREPARE_ACTION := "prepare_material_box"
 const ACTIONS := ["craft", "cook", "queue_cook", "start_processing", "queue_processing"]
 const CANONICAL := {"craft":"craft", "cook":"queue_cook", "queue_cook":"queue_cook",
 	"start_processing":"queue_processing", "queue_processing":"queue_processing"}
-const STATION_FOR := {"craft":["bench"], "queue_cook":["stove"], "queue_processing":["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]}
-const STATIONS := ["bench", "stove", "sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]
+const STATION_FOR := {"craft":["bench"], "queue_cook":["stove", "kitchen_stove"], "queue_processing":["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]}
+const STATIONS := ["bench", "stove", "kitchen_stove", "sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]
 ## Processing stations are owner-only; bench and stove are shared by members.
 const OWNER_ONLY := ["sawmill", "charcoal_kiln", "mill", "seed_maker", "loom", "glass_furnace", "small_smelter", "jam_pot", "clay_kiln", "dye_table"]
 const BOXES := ["chest", "private_chest"]
@@ -49,8 +51,8 @@ const MSG_ID := "無法建立箱子編號，請稍後再試"
 # ------------------------------------------------------------- shared (UI)
 
 ## Eligible adjacent boxes for `actor` at `station_cell` in `objects` (one
-## region layer). Shared chests for everyone, private chests only for their
-## owner. Empty when the station itself is not usable by `actor`.
+## region layer). Shared boxes use the snapshot's lock flag, private boxes
+## are for their owner. Empty when the station is not usable by `actor`.
 ## Returns [{cell, type, id}] in y/x order; id "" when not yet prepared.
 static func candidates(objects: Dictionary, actor: String, station_cell: Vector2i) -> Array:
 	var out: Array = []
@@ -95,7 +97,7 @@ static func encode(recipe_id: String, chest_key: String, chest_id: String, quote
 static func prepare(world, token: String, p: Vector2i, box_key: String) -> Dictionary:
 	var objects: Dictionary = world.state.objects
 	var station: Variant = objects.get(_key(p))
-	var access := _access(objects, token, p, station, box_key)
+	var access := _access(objects, world.state.ground, token, p, station, box_key)
 	if not access.ok:return access
 	var box: Dictionary = access.box
 	var existing: Variant = box.get("box_id")
@@ -127,7 +129,7 @@ static func perform(world, token: String, action: String, p: Vector2i, extra: St
 	if not station is Dictionary or str(station.get("type", "")) not in STATION_FOR[canonical]:
 		return _fail(MSG_STATION)
 	var box_key: String = wire.box_cell
-	var access := _access(objects, token, p, station, box_key)
+	var access := _access(objects, world.state.ground, token, p, station, box_key)
 	if not access.ok:return access
 	var box: Dictionary = access.box
 	# Identity is examined only after permission: never reveals foreign IDs.
@@ -172,6 +174,13 @@ static func perform(world, token: String, action: String, p: Vector2i, extra: St
 	_replace(items, plan.chest_after)
 	var from_backpack: Dictionary = (plan.from_backpack as Dictionary).duplicate()
 	var from_chest: Dictionary = (plan.from_chest as Dictionary).duplicate()
+	# Chest history: only the exact committed chest share, one row per item, by the
+	# crafting player's display name (never the account token).
+	var chest_items: Array = from_chest.keys()
+	chest_items.sort()
+	for item: Variant in chest_items:
+		if int(from_chest[item]) > 0:
+			CHEST_HISTORY.record(box, str(world.state.players[token].get("name", "")), str(item), int(from_chest[item]), false, float(world.state.time))
 	result.source_cell = box_key
 	result.source_id = wire.box_id
 	result.from_backpack = from_backpack
@@ -221,7 +230,24 @@ static func _is_lower_hex(value: Variant, length: int) -> bool:
 	return true
 
 
+## C08: the 6 cardinal-adjacent cells of a wide workbench (y-then-x). Legacy 1x1 benches keep NEIGHBOURS.
+const WIDE_BENCH_NEIGHBOURS := [Vector2i(0,-1),Vector2i(1,-1),Vector2i(-1,0),Vector2i(2,0),Vector2i(0,1),Vector2i(1,1)]
+const TALL_BENCH_NEIGHBOURS := [Vector2i(0,-1),Vector2i(-1,0),Vector2i(1,0),Vector2i(-1,1),Vector2i(1,1),Vector2i(0,2)]
+
+## C13: the 12 cardinal-adjacent cells around a new 3x3 mill (y-then-x). The one in front of the entrance is
+## dropped per facing: it has to stay walkable, so a chest can never be the source there.
+const MILL_NEIGHBOURS := [Vector2i(0,-1),Vector2i(1,-1),Vector2i(2,-1),Vector2i(-1,0),Vector2i(3,0),Vector2i(-1,1),Vector2i(3,1),Vector2i(-1,2),Vector2i(3,2),Vector2i(0,3),Vector2i(1,3),Vector2i(2,3)]
+
 static func _source_offsets(station:Dictionary) -> Array:
+	if station.get("type")==Industry.MILL:
+		if Industry.square_part(station)<0:return NEIGHBOURS
+		if Industry.square_part(station)>0:return []
+		var mill_offsets:Array=MILL_NEIGHBOURS.duplicate()
+		mill_offsets.erase(Industry.mill_front_offset(Industry.mill_facing(station)))
+		return mill_offsets
+	if station.get("type")==Industry.WORKBENCH:
+		if Industry.square_part(station)!=0:return NEIGHBOURS if Industry.square_part(station)<0 else []
+		return TALL_BENCH_NEIGHBOURS if Industry.is_vertical(station) else WIDE_BENCH_NEIGHBOURS
 	if station.get("type")==Industry.DYE_TABLE:
 		if Industry.is_vertical(station):
 			return [Vector2i.UP,Vector2i.LEFT,Vector2i.RIGHT,Vector2i(-1,1),Vector2i.ONE,Vector2i(0,2)]
@@ -232,6 +258,7 @@ static func _station_usable(station: Variant, actor: String) -> bool:
 	if not station is Dictionary:return false
 	var kind := str(station.get("type", ""))
 	if kind not in STATIONS:return false
+	if Industry.is_bench_extension(station) or Industry.is_stove_extension(station) or Industry.is_mill_extension(station):return false
 	return kind not in OWNER_ONLY or station.get("owner") == actor
 
 
@@ -239,13 +266,15 @@ static func _box_usable(box: Variant, actor: String) -> bool:
 	if not box is Dictionary:return false
 	var kind := str(box.get("type", ""))
 	if kind not in BOXES:return false
-	return kind == "chest" or box.get("owner") == actor
+	return (kind=="chest" and not box.get("locked",false)) or box.get("owner")==actor
 
 
 ## Station / owner / adjacency / box access checks shared by prepare and
 ## perform. Never inspects box_id. {ok, box} or a failure.
-static func _access(objects: Dictionary, token: String, p: Vector2i, station: Variant, box_key: String) -> Dictionary:
+static func _access(objects: Dictionary, ground:Dictionary, token: String, p: Vector2i, station: Variant, box_key: String) -> Dictionary:
 	if not station is Dictionary or str(station.get("type", "")) not in STATIONS:return _fail(MSG_STATION)
+	# C08: the far end of a wide workbench is part of its anchor, never a second station.
+	if Industry.is_bench_extension(station) or Industry.is_stove_extension(station) or Industry.is_mill_extension(station):return _fail(MSG_STATION)
 	if str(station.type) in OWNER_ONLY and station.get("owner") != token:return _fail(MSG_PROCESSOR)
 	var parsed: Dictionary = CONSTRUCTION_HISTORY.parse_tile(box_key)
 	if not parsed.ok:return _fail(MSG_WIRE)
@@ -254,6 +283,8 @@ static func _access(objects: Dictionary, token: String, p: Vector2i, station: Va
 	var box: Variant = objects.get(box_key)
 	if not box is Dictionary or str(box.get("type", "")) not in BOXES:return _fail(MSG_NO_BOX)
 	if box.type == "private_chest" and box.get("owner") != token:return _fail(MSG_PRIVATE)
+	var permission:=PLOT_PERMISSIONS.can_take(token,box,ground.get(box_key,{}))
+	if not permission.ok:return permission
 	return {"ok":true, "box":box}
 
 
@@ -262,7 +293,7 @@ static func _recipe(world, canonical: String, station_kind: String, recipe_id: S
 	var catalog: Dictionary
 	match canonical:
 		"craft":catalog = world.CRAFT
-		"queue_cook":catalog = world.RECIPES
+		"queue_cook":catalog = world.stove_recipes(station_kind)
 		"queue_processing":catalog = world.processing_recipes(station_kind)
 		_:return {}
 	var recipe: Variant = catalog.get(recipe_id)

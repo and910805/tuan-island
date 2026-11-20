@@ -12,6 +12,10 @@ extends RefCounted
 
 const FlowerNursery=preload("res://scripts/flower_nursery.gd")
 const WEATHER=preload("res://scripts/weather.gd")
+const BoxCapacity=preload("res://scripts/box_capacity.gd")
+const ChestHistory=preload("res://scripts/chest_history.gd")
+## Actor label written to wooden chest history for automatic rake collections.
+const HISTORY_LABEL:="收鹽台"
 
 const SAVE_VERSION:=26
 const REGION:="beimen"
@@ -533,6 +537,10 @@ static func chest_check(lot:Dictionary,objects:Variant) -> Dictionary:
 static func _full(amount:int,cap:int) -> bool:
 	return amount+YIELD>cap or amount+YIELD>LIMIT
 
+## True when the collector chest can take sea_salt under the shared 16-slot rule.
+static func _has_slot(items:Dictionary) -> bool:
+	return BoxCapacity.slot_ok(items,{"sea_salt":YIELD})
+
 # ---------------------------------------------------------------- status
 
 static func status(state:Dictionary,token:String,objects:Variant,now:float) -> Dictionary:
@@ -558,6 +566,7 @@ static func unit_status(state:Dictionary,unit:int,objects:Variant,now:float) -> 
 		var check:=chest_check(cfg,objects)
 		if check.id!="ok":return _status(check.id)
 		amount=int(check.chest.items.get("sea_salt",0))
+		if not _has_slot(check.chest.items):return _status("full")
 	if _full(amount,int(cfg.get("cap",CAP_DEFAULT))):return _status("full")
 	if raining(now):return _status("rain")
 	var all_brine:=true
@@ -990,15 +999,19 @@ static func step(state:Dictionary,t0:Variant,t1:Variant,objects:Variant) -> Dict
 	var work:Dictionary=data.duplicate(true)
 	var deposits:={}
 	var pending:={}
+	var events:Array=[]
 	var changed:=false
 	for unit in LOT_ORIGINS.size():
-		var r:=_simulate(work,unit,a,b,objs,state.players,deposits,pending)
+		var r:=_simulate(work,unit,a,b,objs,state.players,deposits,pending,events)
 		if not r.ok:return no
 		if r.changed:changed=true
 	if not changed:return {"ok":true,"changed":false}
 	for cell:String in deposits:
 		var items:Dictionary=objs[cell].items
 		items.sea_salt=int(items.get("sea_salt",0))+int(deposits[cell])
+	# Committed only now (the whole simulation succeeded): one row per rake, at its event time.
+	for event:Dictionary in events:
+		ChestHistory.record(objs[event.cell],HISTORY_LABEL,"sea_salt",int(event.amount),true,float(event.time))
 	for tenant in pending:
 		var inv:Dictionary=state.players[tenant].inventory
 		for kit:String in pending[tenant]:inv[kit]=int(inv.get(kit,0))+int(pending[tenant][kit])
@@ -1047,7 +1060,7 @@ static func _step_shape(data:Dictionary) -> bool:
 		if not entry is Dictionary or not entry.get("token") is String or not _number(entry.get("missed")):return false
 	return true
 
-static func _simulate(work:Dictionary,unit:int,a:float,b:float,objects:Dictionary,players:Dictionary,deposits:Dictionary,pending:Dictionary) -> Dictionary:
+static func _simulate(work:Dictionary,unit:int,a:float,b:float,objects:Dictionary,players:Dictionary,deposits:Dictionary,pending:Dictionary,transfers:Array=[]) -> Dictionary:
 	var pans:Array=work.pans
 	var ids:=[unit*2,unit*2+1]
 	var events:=0
@@ -1096,7 +1109,8 @@ static func _simulate(work:Dictionary,unit:int,a:float,b:float,objects:Dictionar
 				if check.id=="ok":
 					cell=str(cfg.chest)
 					amount=int(check.chest.items.get("sea_salt",0))+int(deposits.get(cell,0))
-					collector=true
+					# C06/C07: a chest with no free slot cannot take a brand-new sea_salt entry.
+					collector=_has_slot(check.chest.items)
 			if collector and _full(amount,int(cfg.cap)):collector=false
 		var wheel:=seawater and occupant!="" and yes(cfg.wheel) and (yes(cfg.on) or not yes(cfg.rake))
 		for i:int in ids:
@@ -1151,7 +1165,9 @@ static func _simulate(work:Dictionary,unit:int,a:float,b:float,objects:Dictionar
 				pan.t=best_time
 				pan.f=""
 				if is_app:work.coop_box[occupant]=amount+YIELD
-				else:deposits[cell]=int(deposits.get(cell,0))+YIELD
+				else:
+					deposits[cell]=int(deposits.get(cell,0))+YIELD
+					transfers.append({"cell":cell,"amount":YIELD,"time":best_time})
 				var record:Dictionary=work.players[occupant]
 				record.auto_raked=mini(LIMIT,int(record.auto_raked)+1)
 				if is_app:_end_shift(work,players,pending,true,best_time)

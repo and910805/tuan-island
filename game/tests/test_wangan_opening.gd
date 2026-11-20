@@ -322,6 +322,33 @@ func old_saves()->void:
 		"Soil but no seeds points to Xiaoli's shop")
 	check(base==world.state,"Old-save probes never touched the world state")
 
+func seasonal_start() -> void:
+	var island:=World.new()
+	var owner:="winter-test"
+	var target:=Vector2i(46,27)
+	var alternative:=Vector2i(47,27)
+	var season_length:=World.WEATHER.DAYS_PER_SEASON*World.WEATHER.DAY_SECONDS
+	island.state.time=season_length*3+600.0
+	island.add_player(owner,"新島民",World.WANGAN_COAST.FERRY_LANDING)
+	var player:Dictionary=island.state.players[owner]
+	check(Opening.line_for(island.state).contains("馬鈴薯") and not Opening.line_for(island.state).contains("蘿蔔"),"Winter arrival names a winter crop")
+	player.x=46.5;player.y=28.5
+	check(act(island,owner,"hoe",target).ok,"Winter grower opens a real plot")
+	check(step_of(island.state,owner).get("id")=="buy_seed" and step_of(island.state,owner).get("seed")=="potato","Starting spring seed mix in winter leads to Xiaoli for potato")
+	check(act(island,owner,"seed",target,"radish").ok,"A player can still intentionally plant a dormant crop")
+	check(step_of(island.state,owner).get("id")=="till" and step_of(island.state,owner).get("text","").contains("休眠"),"Dormancy teaches opening a second tile instead of waiting for spring")
+	check(act(island,owner,"hoe",alternative).ok,"The dormant crop stays while the islander opens another plot")
+	player.x=44.5;player.y=29.5
+	check(act(island,owner,"buy",Vector2i(43,29),"potato").ok,"Buying from Xiaoli supplies the winter seed")
+	var sow:=step_of(island.state,owner)
+	check(sow.get("id")=="sow" and sow.get("seed")=="potato" and sow.get("cell")==alternative,"Potato replaces the out-of-season default in the guide")
+	player.x=46.5;player.y=28.5
+	check(act(island,owner,"seed",alternative,"potato").ok and step_of(island.state,owner).get("cell")==alternative,"The active watering step targets the potato, leaving the radish dormant")
+	check(act(island,owner,"water",alternative).ok and island.step(World.CROPS.potato.time,true),"Water and grow the winter crop")
+	check(act(island,owner,"harvest",alternative).ok and step_of(island.state,owner).get("id")=="ship","Harvest gives a shipment objective in winter")
+	island.state.time=season_length+600.0
+	check(Opening.line_for(island.state).contains("萵苣"),"Summer arrival recommends lettuce from the starter bag")
+
 func run()->void:
 	var watchdog:=create_timer(110.0)
 	watchdog.timeout.connect(func():
@@ -356,4 +383,5 @@ func run()->void:
 	elsewhere()
 	occupied()
 	old_saves()
+	seasonal_start()
 	finish()

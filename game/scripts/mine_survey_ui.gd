@@ -29,13 +29,13 @@ static func guidance(snapshot:Dictionary)->String:
 	var seen:Dictionary=record.seen
 	var shallow:=shallow_count(seen)
 	if depth>World.MINES.SHALLOW_DEPTH:
-		if not seen.get(str(depth),false):return "深層 %d／%d · 往%s找觀察點"%[deep_count(seen),deep_total(),DIRECTIONS[depth-1]]
-		if record.claimed or not World.MINE_SURVEY.reward_ready(record):return "深層 %d／%d · {journal} 翻手帳"%[deep_count(seen),deep_total()]
+		if not seen.get(str(depth),false):return "深層 %d／%d\n往%s找觀察點"%[deep_count(seen),deep_total(),DIRECTIONS[depth-1]]
+		if record.claimed or not World.MINE_SURVEY.reward_ready(record):return "深層 %d／%d\n{journal} 翻手帳"%[deep_count(seen),deep_total()]
 	if record.claimed:return ""
-	if World.MINE_SURVEY.reward_ready(record):return "側洞 5／5 · 回波波整理桌領獎"
+	if World.MINE_SURVEY.reward_ready(record):return "側洞 5／5\n回波波整理桌領獎"
 	if depth==0:return ""
-	if seen.get(str(depth),false):return "側洞 %d／5 · {journal} 翻手帳"%shallow
-	return "側洞 %d／5 · 往%s找觀察點"%[shallow,DIRECTIONS[depth-1]]
+	if seen.get(str(depth),false):return "側洞 %d／5\n{journal} 翻手帳"%shallow
+	return "側洞 %d／5\n往%s找觀察點"%[shallow,DIRECTIONS[depth-1]]
 
 static func open(app,page:int=1,observe:bool=false,return_site:String="")->void:
 	var body:VBoxContainer=app._open_modal("側洞觀察" if observe else "礦場探索手帳")

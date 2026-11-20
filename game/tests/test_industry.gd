@@ -48,8 +48,12 @@ func _initialize() -> void:
 	w.state.players.a.x=41.5
 	w.state.players.a.y=34.5
 	var trees_before:=int(inv.sapling)
+	var wood_before_pickup:=int(inv.wood)
 	for hit in range(3):
 		w.act("a","resin-hit-%d"%hit,"axe",harvest_tile)
+	var tree_drop:Dictionary=w.state.gather_drops.get("home",{}).get(World.key(harvest_tile),{})
+	check(inv.get("resin",0)==0 and inv.sapling==trees_before and inv.wood==wood_before_pickup and tree_drop.get("reserved_for","")=="a" and int(tree_drop.get("items",{}).get("resin",0))==1,"mature tree drops resin and existing items on the ground reserved for the chopper")
+	check(w.step(1.0,true),"chopper picks up tree drops")
 	check(inv.get("resin",0)==1 and inv.sapling==trees_before+1 and inv.wood==14,"mature trees add resin and retain existing drops")
 	inv.wood=8
 	check(act("start_processing",Vector2i(42,34),"charcoal"),"kiln starts")

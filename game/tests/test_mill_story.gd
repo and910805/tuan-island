@@ -85,15 +85,19 @@ func _init()->void:
 	check(JSON.stringify(PK.mill_guide(all.open,tables()))==first_guide,"returned guide is fresh each call")
 	# --- guide data comes from World tables ---------------------------------------
 	var guide:=PK.mill_guide(all.open,tables())
-	check(ids(guide)==["mill_kit","mill","flour","pumpkin_pie"],"guide order kit -> build -> flour -> pie: %s"%str(ids(guide)))
-	if guide.size()==4:
+	# C13: the mill is built straight from materials, so the old workbench-kit step is gone.
+	check(ids(guide)==["mill","flour","pumpkin_pie"],"guide order build -> flour -> pie: %s"%str(ids(guide)))
+	check(not World.CRAFT.has("mill_kit"),"mill_kit can no longer be crafted")
+	if guide.size()==3:
+		var build_cost:Dictionary=World.BUILD.mill.duplicate()
+		build_cost.erase("name")
 		var expected:=[
-			[World.CRAFT.mill_kit.ingredients,int(World.CRAFT.mill_kit.get("yield",1)),0],
-			[{"mill_kit":int(World.BUILD.mill.mill_kit)},1,0],
+			[build_cost,1,0],
 			[World.INDUSTRY.PROCESS.flour.ingredients,int(World.INDUSTRY.PROCESS.flour["yield"]),int(World.INDUSTRY.PROCESS.flour.time)],
 			[World.RECIPES.pumpkin_pie.ingredients,int(World.RECIPES.pumpkin_pie["yield"]),int(World.RECIPES.pumpkin_pie.time)],
 		]
-		for i in 4:
+		check(JSON.stringify(build_cost)==JSON.stringify({"wood":25,"stone":15,"woodwork_parts":4}),"C13 mill costs 25 wood, 15 stone, 4 woodwork parts")
+		for i in 3:
 			var step:Dictionary=guide[i]
 			var want:Dictionary={}
 			for item in expected[i][0]:want[item]=int(expected[i][0][item])
@@ -102,16 +106,16 @@ func _init()->void:
 			for item in want:
 				check(str(step.text).contains("%s×%d"%[World.NAMES.get(item,item),want[item]]),"%s text cites %s×%d"%[step.id,item,want[item]])
 		check(World.INDUSTRY.PROCESS.flour.station=="mill","flour is processed at the mill")
-		check(str(guide[1].text).contains("麵粉磨坊") and not str(guide[1].text).contains("mill"),"building step uses player-facing station name")
+		check(str(guide[0].text).contains("麵粉磨坊") and not str(guide[0].text).contains("mill"),"building step uses player-facing station name")
 	check(JSON.stringify(UI.Query.mill_guide(all.open))==JSON.stringify(guide),"UI Query wires World tables into core")
 	# --- not hard-coded: altered tables change the text; missing tables -> [] -----
 	var altered:=tables().duplicate()
-	var craft:Dictionary=World.CRAFT.duplicate(true)
-	craft.mill_kit.ingredients={"plank":3}
-	altered.craft=craft
+	var build:Dictionary=World.BUILD.duplicate(true)
+	build.mill={"name":"麵粉磨坊","plank":3}
+	altered.build=build
 	var alt:=PK.mill_guide(all.open,altered)
-	check(alt.size()==4 and str(alt[0].text).contains("×3") and JSON.stringify(alt[0].inputs)==JSON.stringify({"plank":3}),"guide follows supplied data")
-	for missing in ["craft","build","process","recipes"]:
+	check(alt.size()==3 and str(alt[0].text).contains("×3") and JSON.stringify(alt[0].inputs)==JSON.stringify({"plank":3}),"guide follows supplied data")
+	for missing in ["build","process","recipes"]:
 		var partial:=tables().duplicate()
 		partial.erase(missing)
 		check(PK.mill_guide(all.open,partial).is_empty(),"missing '%s' table -> no stale guidance"%missing)

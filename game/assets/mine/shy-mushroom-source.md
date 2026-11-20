@@ -1,0 +1,9 @@
+# 害羞菇像素圖集
+
+《糰糰島》原創礦洞生物素材，使用 Codex 內建圖像生成工具製作。用莓紅帽子和奶油色斑點襯出礦洞的深褐背景。害羞時把臉藏在大帽子下面，靠近安靜等待會探頭，澆水時有水滴提示，最後露出完整笑臉。
+
+圖集為 64×80 透明 PNG。四格由左至右、由上至下依序是藏臉、探頭、澆水反應、展開。每格 32×40，腳點為 (16,38)。同一套 Godot 裁切流程以共同縮放比例對齊腳點。原圖保存在 work/shy-mushroom-art，裁切流程與石像共用。
+
+生成提示如下。
+
+Create exactly one transparent 2×2 animation sprite sheet for an original cozy Taiwanese pixel-art island game. Subject is the cave character 'Shy Mushroom' (害羞菇), a squat tiny living mushroom that hides under its oversized umbrella-shaped plum-and-raspberry cap and unfolds when gently watered. Original character, a clean rounded cap with a few large cream markings, ivory stem with two dark pinpoint eyes and small blush, two tiny folded leafy tan hands. Deep purplish-brown pixel outline, large mauve/cranberry/salmon highlight clusters to be readable over a brown cave floor, no excessive noise. Near top-down 3/4 camera from south, head facing bottom of image. Top-left: huddled, wide low cap conceals the eyes, stem tucked, cap covers the face. Top-right: cap lifts a little, two small dark peeking eyes visible under rim. Bottom-left: shy cap half lifts and stem reaches up to look at a soft water drop next to the cap, drop still inside the same cell. Bottom-right: cap opened, stem same width and feet same place, awake delighted little face, no water drop. Keep exact character identity, same lens, same seam shape, same foot level, and important marks registered across all four cells. Four full separate figures, each fully inside its equal-area quadrant, transparent gutters both horizontally and vertically; 32×40 pixels effective per cell. Readable native pixel sprite with solid square clusters, crisp linear edges, no gradients, no photorealism. No text, no rulers, no scene backgrounds, no cast shadow, no borders or UI, only genuine alpha around each sprite.

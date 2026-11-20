@@ -36,7 +36,9 @@ extends SceneTree
 ##  page_idle, page_loaded, page_away, page_daily_done.
 ## ASSERTS: every TRACK cell fully in view is clear of HUD (both aims, idle); sampled track cells
 ##  differ from the bare ground cell REF (24,22) (same terrain tile as (24,23)) and carry RAIL / TIE
-##  colours, REF (almost) none; the empty cart cell carries WOOD colours; focused label text ==
+##  colours in excess of REF (REF's terrain speckles match ~128 px of RAIL colours by area, so the
+##  check is differential: area excess, and a geometry probe at every pixel the art paints as rail / tie
+##  compared with the same offsets of REF, plus rail-vs-ballast luminance contrast); the empty cart cell carries WOOD colours; focused label text ==
 ##  Route.cart_label (near) and gone far away; loaded cart differs from the empty cart, ore-heap
 ##  colours appear; reduced motion: cart box identical for any elapsed (written and played); motion:
 ##  the glint changes the cart box (written and played); each stage: cart drawn at cart_cell(stage),
@@ -281,6 +283,48 @@ func count_colours(image:Image,box:Rect2i,targets:Array,tol:float)->int:
 				if absf(c.r-t.r)+absf(c.g-t.g)+absf(c.b-t.b)<tol:n+=1;break
 	return n
 
+## Geometry-derived differential probe. The art script itself says which local pixel (x,y) of a track
+## cell is painted with which colour (Art.track_pixel). For every such pixel whose colour is one of
+## `targets` (and lies inside the INSET interior) the rendered screen pixel of `cell` is compared with
+## that exact colour, and so is the pixel at the SAME local offset of the bare reference cell `ref`.
+## Result: points (expected positions), hits (track matches), ref_hits (ground happens to match),
+## luma (mean brightness of the rendered track pixels at those positions) and ref_luma.
+## Bare terrain contains dark / grey speckles that are "rail coloured" by area counting (128 px in
+## REF), so absolute near-zero reference counts are wrong; what must hold is the excess at the
+## expected positions, which terrain cannot reproduce in a regular rail / tie layout.
+func probe(image:Image,cell:Vector2i,ref:Vector2i,targets:Array)->Dictionary:
+	var shape:=Art.track_shape(cell)
+	var zoom:float=float(app.view.view_zoom())
+	var origin:=cell_box(cell).position
+	var ref_origin:=cell_box(ref).position
+	var lo:=int(INSET)
+	var hi:=int(Art.CELL)-int(INSET)
+	var points:=0
+	var hits:=0
+	var ref_hits:=0
+	var luma:=0.0
+	var ref_luma:=0.0
+	for y in range(lo,hi):
+		for x in range(lo,hi):
+			var want:Color=Art.track_pixel(shape,x,y)
+			var wanted:=false
+			for t:Color in targets:
+				if want==t:wanted=true;break
+			if not wanted:continue
+			var dx:=int((float(x)+0.5)*zoom)
+			var dy:=int((float(y)+0.5)*zoom)
+			var px:Vector2i=origin+Vector2i(dx,dy)
+			var rx:Vector2i=ref_origin+Vector2i(dx,dy)
+			if not Rect2i(Vector2i.ZERO,image.get_size()).has_point(px) or not Rect2i(Vector2i.ZERO,image.get_size()).has_point(rx):continue
+			points+=1
+			var c:=image.get_pixel(px.x,px.y)
+			var r:=image.get_pixel(rx.x,rx.y)
+			if absf(c.r-want.r)+absf(c.g-want.g)+absf(c.b-want.b)<TOL:hits+=1
+			if absf(r.r-want.r)+absf(r.g-want.g)+absf(r.b-want.b)<TOL:ref_hits+=1
+			luma+=c.get_luminance();ref_luma+=r.get_luminance()
+	var n:=float(maxi(points,1))
+	return {"points":points,"hits":hits,"ref_hits":ref_hits,"frac":float(hits)/n,"ref_frac":float(ref_hits)/n,"luma":luma/n,"ref_luma":ref_luma/n}
+
 ## Distinct colours on a 20×14 grid inside `box` (clipped to the image).
 func region_variety(image:Image,box:Rect2i)->int:
 	if image==null:return 0
@@ -456,7 +500,25 @@ func idle_checks(image:Image,required:Array,label:String)->void:
 			check(unlike>=0.1,"Track cell %s differs from the bare ground %s (%.1f%%) %s %s"%[str(cell),str(REF),unlike*100.0,label,tag])
 			check(rail>=16,"RAIL colours in track cell %s (%d) %s %s"%[str(cell),rail,label,tag])
 			check(tie>=16,"TIE colours in track cell %s (%d) %s %s"%[str(cell),tie,label,tag])
-			check(ref_rail*4<rail,"Bare ground has (almost) no rail colour (%d vs %d) %s %s"%[ref_rail,rail,label,tag])
+			# The bare terrain tile itself holds dark / grey speckles (ref rail 128 px, tie 0), so the
+			# absolute reference count is not near zero; the track must EXCEED it.
+			check(rail-ref_rail>=16,"Track has more rail colour than the bare ground (%d vs %d, excess %d) %s %s %s"%[rail,ref_rail,rail-ref_rail,str(cell),label,tag])
+			check(tie-ref_tie>=16,"Track has more tie colour than the bare ground (%d vs %d, excess %d) %s %s %s"%[tie,ref_tie,tie-ref_tie,str(cell),label,tag])
+			# Differential at the expected geometry: rendered pixels at every position where the art
+			# paints rail / tie must have that colour, the same offsets of the bare tile must not.
+			var rails:=probe(image,cell,REF,[Art.RAIL,Art.RAIL_LIGHT])
+			var ties:=probe(image,cell,REF,[Art.TIE])
+			var rail_dark:=probe(image,cell,REF,[Art.RAIL])
+			var bed:=probe(image,cell,REF,[Art.BALLAST])
+			var contrast:float=float(bed.luma)-float(rail_dark.luma)
+			var ref_contrast:float=float(bed.ref_luma)-float(rail_dark.ref_luma)
+			print("NOTE %s %s: %s geometry rail %d/%d (ref %d) tie %d/%d (ref %d) rail-vs-ballast contrast %.2f (ref %.2f)"%[label,tag,str(cell),rails.hits,rails.points,rails.ref_hits,ties.hits,ties.points,ties.ref_hits,contrast,ref_contrast])
+			check(int(rails.points)>=40 and int(ties.points)>=40,"Expected rail / tie positions found for %s (%d / %d) %s %s"%[str(cell),rails.points,ties.points,label,tag])
+			check(float(rails.frac)>=0.9,"Rail pixels at the expected rail positions of %s (%.0f%% of %d) %s %s"%[str(cell),float(rails.frac)*100.0,rails.points,label,tag])
+			check(float(ties.frac)>=0.9,"Tie pixels at the expected tie positions of %s (%.0f%% of %d) %s %s"%[str(cell),float(ties.frac)*100.0,ties.points,label,tag])
+			check(float(rails.frac)-float(rails.ref_frac)>=0.5,"Rail positions of %s match far more than the same offsets of bare ground (%.0f%% vs %.0f%%) %s %s"%[str(cell),float(rails.frac)*100.0,float(rails.ref_frac)*100.0,label,tag])
+			check(float(ties.frac)-float(ties.ref_frac)>=0.5,"Tie positions of %s match far more than the same offsets of bare ground (%.0f%% vs %.0f%%) %s %s"%[str(cell),float(ties.frac)*100.0,float(ties.ref_frac)*100.0,label,tag])
+			check(contrast>=0.2 and contrast-ref_contrast>=0.1,"Rails are darker than the ballast between them, beyond the ground (%.2f vs ground %.2f) %s %s %s"%[contrast,ref_contrast,str(cell),label,tag])
 		var same:=cross_difference(image,inner_box(REF_TRACK),image,ref)
 		check(same>=0.1,"Track painted over the same terrain tile: %s vs %s differ (%.1f%%) %s"%[str(REF_TRACK),str(REF),same*100.0,tag])
 	else:
@@ -476,6 +538,9 @@ func world_idle()->void:
 	idle_checks(idle_east,east_required,"world_idle")
 	var cart:=cart_box(Route.STOPS[0])
 	box_on_screen(cart,"Empty cart box")
+	var loading_frame:=Art.PLATFORM_BOUNDS
+	loading_frame.position+=Vector2(Route.STOPS[0])*Art.CELL
+	box_on_screen(pixel_box(view_rect(loading_frame)),"Loading frame")
 	var wood:=count_colours(idle_east,inner_box(Route.STOPS[0]),group("WOOD"),TOL)
 	print("NOTE %s: empty cart cell wood %d px"%[tag,wood])
 	check(wood>=40,"WOOD colours in the empty cart cell (%d) %s"%[wood,tag])
@@ -620,8 +685,8 @@ func route_map_shot(step:String,stage:int,delivered:int)->void:
 	await shot(step)
 	if delivered>0:
 		await press("JinguashiMapHistory")
-		var mining_note:=control("MineHistoryHauling") as Label
-		check(mining_note!=null and "1933 年" in mining_note.text,"Unloading a cart unlocks the mining transport entry (%s)"%tag)
+		var railway_date:=control("MineHistoryHaulingDate1933") as Label
+		check(railway_date!=null and railway_date.is_visible_in_tree(),"Unloading a cart unlocks the mining transport entry (%s)"%tag)
 		await shot("map_history_unlocked")
 		await press("JinguashiHistoryBack")
 		check(is_instance_valid(app.map_view),"The history entry returns to the local map (%s)"%tag)

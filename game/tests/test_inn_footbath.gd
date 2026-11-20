@@ -17,19 +17,31 @@ func expect(ok:bool,message:String) -> void:
 	failures+=1
 	push_error(message)
 
+func travel(world:World,token:String,station:String,destination:String) -> bool:
+	var origin:=world.player_region(token)
+	var cell:Vector2i=World.TRANSIT.points(origin)[station].cell
+	var person:Dictionary=world.state.players[token]
+	person.x=cell.x+0.5
+	person.y=cell.y+0.5
+	var result:=world.act(token,"bath-trip-"+origin+"-"+destination,"transit",cell,destination)
+	var arrived:bool=result.ok and world.player_region(token)==destination
+	expect(arrived,"Travel %s to %s: %s"%[origin,destination,result.message])
+	return arrived
+
 func capture(app,file_name:String) -> void:
 	if DisplayServer.get_name()=="headless":return
 	for arg in OS.get_cmdline_user_args():
 		if not arg.begins_with("--capture-dir="):continue
 		var arrival:Control=app.hud.get_node_or_null("TravelArrival")
 		if arrival:arrival.hide()
+		await create_timer(0.4).timeout
 		await RenderingServer.frame_post_draw
 		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join(file_name))==OK,"Capture "+file_name)
 
 func run() -> void:
 	var app=Main.instantiate()
 	root.add_child(app)
-	root.size=Vector2i(1024,640)
+	root.size=Vector2i(1280,800) if "--wide" in OS.get_cmdline_user_args() else Vector2i(1024,640)
 	await process_frame
 	var path:="user://footbath-%d.json"%OS.get_process_id()
 	if app.session.host(0,"旅舍工匠",path)!=OK:
@@ -54,7 +66,12 @@ func run() -> void:
 	person=world.state.players[token]
 	var resident:=World.RESIDENT_BOND.SPRING_CELL
 	var springs:=World.WARM_SPRINGS
-	person.region=World.RESIDENT_BOND.SPRING_REGION
+	# Begin after the opening picnic. Gift and building materials are supplied by the fixture.
+	world.state.picnic=true
+	if not travel(world,token,"ferry","toucheng") or not travel(world,token,"rail",springs.REGION):
+		quit(1)
+		return
+	person=world.state.players[token]
 	person.x=springs.BATH_ENTRANCE.x+0.5
 	person.y=springs.BATH_ENTRANCE.y+0.5
 	expect(not world.act(token,"closed-public-bath",springs.BATH_ACTION,springs.BATH_ENTRANCE).ok,"The cracked public bath cannot be used")
@@ -64,22 +81,54 @@ func run() -> void:
 	await capture(app,"inn-public-bath-closed.png")
 	person.x=resident.x+0.5
 	person.y=resident.y+1.5
-	person.bonds={"nuannuan":{"points":6,"talk_day":-1,"gift_day":-1}}
+	person.inventory.ginger=3
 	person.inventory.stone=36
 	person.inventory.clay=16
+	expect(not person.get("bonds",{}).has("nuannuan"),"The trip starts with no relationship record")
+	var greeting:=world.act(token,"bath-greeting","resident_talk",resident,"nuannuan")
+	expect(greeting.ok,"Greet Nuannuan in Jiaoxi: "+str(greeting.message))
+	var first_gift:=world.act(token,"bath-gift-first","resident_gift",resident,"nuannuan:ginger")
+	person=world.state.players[token]
+	expect(first_gift.ok and person.get("bonds",{}).get("nuannuan",{}).get("points",0)==4,"The greeting and a favorite gift earn four points")
+	var repeat_gift:=world.act(token,"bath-gift-same-day","resident_gift",resident,"nuannuan:ginger")
+	person=world.state.players[token]
+	expect(repeat_gift.ok and person.inventory.get("ginger",0)==1 and person.bonds.nuannuan.points==4,"A repeated gift is accepted but earns no additional points on the same day")
+	expect(world.step(World.WEATHER.DAY_SECONDS,true),"Advance the world to the next day")
+	var next_gift:=world.act(token,"bath-gift-next-day","resident_gift",resident,"nuannuan:ginger")
+	person=world.state.players[token]
+	expect(next_gift.ok and person.get("bonds",{}).get("nuannuan",{}).get("points",0)==7 and person.inventory.get("ginger",0)==0,"The next day's gift crosses the six-point threshold")
 	app.session._send_snapshot(1)
 	Tasks.bond_goal(app,"nuannuan",2)
 	await process_frame
 	var finish:=app.modal.find_child("BondGoalDo",true,false) as Button
 	expect(finish!=null and finish.disabled,"The story cannot be turned in before all three marks")
-	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--capture-dir=") and DisplayServer.get_name()!="headless":
-			await RenderingServer.frame_post_draw
-			expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join("inn-crack-repair.png"))==OK,"Capture the crack repair panel")
+	var early:=world.act(token,"early-cracks",World.RESIDENT_GOALS.ACTION,resident,"nuannuan:2::201")
+	expect(not early.ok,"A supplied permutation does not replace field observation")
+	app._close_modal()
+	person=world.state.players[token]
+	var expected_mask:=0
 	for index in [2,0,1]:
-		var mark:=app.modal.find_child("BondGoalStep_%d"%index,true,false) as Button
-		expect(mark!=null and not mark.disabled,"Each crack can be marked in an arbitrary order")
-		if mark:mark.pressed.emit()
+		var site:Vector2i=springs.CRACK_SITES[index]
+		person.x=site.x+0.5
+		person.y=site.y+0.5
+		app.session._send_snapshot(1)
+		await process_frame
+		if index==2:await capture(app,"01-crack-field-marker.png")
+		app._interact()
+		expected_mask|=1<<index
+		expect(int(app.session.snapshot.own_inn_cracks)==expected_mask,"This real interaction records only crack %d"%index)
+		if index==2:
+			var partial:=World.new()
+			expect(partial.load_world(path) and int(partial.state.players[token].get(springs.CRACK_KEY,0))==expected_mask,"Partial survey survives a save reload")
+			expect(not world.act(token,"repeat-crack",springs.CRACK_ACTION,site).ok,"Already marked crack cannot count twice")
+			person=world.state.players[token]
+	person.x=resident.x+0.5
+	person.y=resident.y+1.5
+	app.session._send_snapshot(1)
+	Tasks.bond_goal(app,"nuannuan",2)
+	await process_frame
+	await capture(app,"02-ready-to-repair.png")
+	finish=app.modal.find_child("BondGoalDo",true,false) as Button
 	expect(finish!=null and not finish.disabled,"All three marked cracks allow submission")
 	if finish:finish.pressed.emit()
 	person=world.state.players[token]
@@ -117,7 +166,10 @@ func run() -> void:
 	await capture(app,"inn-public-bath.png")
 	for id in [2,3,4]:app.session.peers.erase(id)
 	world.move_player(token,Vector2.DOWN,0.1)
-	person.region=World.REGIONS.HOME
+	if not travel(world,token,"rail","toucheng") or not travel(world,token,"street",World.REGIONS.HOME):
+		quit(1)
+		return
+	person=world.state.players[token]
 	person.x=41.5
 	person.y=38.5
 	app.session._send_snapshot(1)
@@ -143,10 +195,7 @@ func run() -> void:
 	app.session._send_snapshot(1)
 	app.WanganUI.dismiss(app)
 	app._refresh_hud()
-	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--capture-dir=") and DisplayServer.get_name()!="headless":
-			await RenderingServer.frame_post_draw
-			expect(root.get_texture().get_image().save_png(arg.trim_prefix("--capture-dir=").path_join("inn-footbath.png"))==OK,"Capture all four bath seats")
+	await capture(app,"inn-footbath.png")
 	for i in [2,3,4]:app.session.peers.erase(i)
 	var loaded:=World.new()
 	expect(loaded.load_world(path) and not loaded.recovered_from_backup and loaded.state.players["bath-guest-3"].get(SEAT,{}).get("side")==3,
@@ -156,6 +205,7 @@ func run() -> void:
 	var old_path:=path+".before-public-bath"
 	var old_save:=FileAccess.open(old_path,FileAccess.WRITE)
 	loaded.state.erase(springs.BATH_KEY)
+	loaded.state.players[token].erase(springs.CRACK_KEY)
 	old_save.store_string(JSON.stringify(loaded.state))
 	old_save.close()
 	var migrated:=World.new()

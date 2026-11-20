@@ -97,9 +97,9 @@ func check_integrations(person:Dictionary,objects:Dictionary)->void:
 	check(World.LOGISTICS.FILTERS==["wood","fiber","resin","plank","charcoal","copper_ore","copper_joint","stone","gold_ore","wheat","flour"],"All eleven filters exist")
 	for item in World.LOGISTICS.FILTERS:
 		check(visible(control("Filter_"+item)),"Filter visible at smallest resolution: "+item)
-	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("銅礦料槽已滿")),"Live endpoints explain capacity")
+	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("前方進料槽已滿")),"Live endpoints explain capacity")
 	await press("Filter_copper_joint")
-	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("只接收銅礦與木材")),"Live endpoints reject wrong material")
+	check(app.modal.find_children("*","Label",true,false).any(func(label):return label.text.contains("前方不收這種材料")),"Live endpoints reject wrong material")
 	app._close_modal()
 	machine.items.copper_joint=1
 	objects["32,24"]={"type":"conveyor","owner":token,"items":{},"enabled":false,"dir":1,"filter":"copper_joint"}

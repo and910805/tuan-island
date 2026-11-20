@@ -3,6 +3,8 @@ extends "res://tests/test_corn_chowder_session.gd"
 
 const Flower=World.FLOWER_NURSERY
 const Tea=World.TEA_CERAMICS
+const Goals=World.RESIDENT_GOALS
+const BOOTH:=Vector2i(40,34)
 const View=preload("res://scripts/world_view.gd")
 var observer_view
 
@@ -70,4 +72,26 @@ func scenario()->bool:
 	expect((await act(alpha,"flower_outfit",Flower.DYE_TABLE,"original")).ok,"dyer changes back")
 	expect(await wait_until(func():return not sees_blue(beta,alpha),3.0),"observer receives original colour")
 	expect(alpha.bag().get("blue_dye")==1,"restoring original consumes no dye")
+	await check_coastal_booth()
 	return true
+
+func check_coastal_booth()->void:
+	var world:World=server.world
+	for token in [ALPHA,BETA]:
+		var person:Dictionary=world.state.players[token]
+		preset(person,"region",World.REGIONS.HOME)
+		preset(person,"x",40.5 if token==ALPHA else 41.5)
+		preset(person,"y",33.5)
+	var dyer:Dictionary=world.state.players[ALPHA]
+	preset(dyer.inventory,"wood",15)
+	preset(dyer.inventory,"cotton_cloth",6)
+	preset(dyer,"bonds",{"milu":{"points":24,"talk_day":-1,"gift_day":-1}})
+	preset(dyer,"bond_goals",{"milu":{"4":""}})
+	if not expect(await wait_until(func():return alpha.session.snapshot.get("region_id","")==World.REGIONS.HOME and beta.session.snapshot.get("region_id","")==World.REGIONS.HOME,4.0),"Both clients now stand by the coastal booth site"):return
+	if not expect((await act(alpha,"build",BOOTH,Goals.COAST_WARDROBE)).ok,"New changing booth builds through the network"):return
+	var alpha_id:String=alpha.session.own_id
+	var old_bag:Dictionary=alpha.bag().duplicate(true)
+	expect(not (await act(beta,"inn_outfit",BOOTH,"blue")).ok and not sees_blue(alpha,beta),"Visitor cannot borrow the owner's workwear unlock")
+	expect((await act(alpha,"inn_outfit",BOOTH,"blue")).ok and await wait_until(func():return sees_blue(beta,alpha),3.0),"Visitor sees the owner's blue workwear")
+	expect((await act(alpha,Goals.APRON_ACTION,BOOTH)).ok and await wait_until(func():return beta.session.snapshot.get("players",{}).get(alpha_id,{}).get(Goals.APRON_KEY,false),3.0),"Visitor sees the apron layered over the workwear")
+	expect(alpha.session.own_id==alpha_id and alpha.bag()==old_bag and not sees_blue(alpha,beta),"Changing clothes leaves identities, inventory and the guest's outfit intact")

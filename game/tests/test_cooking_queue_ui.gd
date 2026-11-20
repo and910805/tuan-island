@@ -544,7 +544,7 @@ func check_layout(label:String,claim_expected:bool) -> void:
 			for other in rects:
 				expect(not g.grow(-1.0).intersects(other[1].grow(-1.0)),"%s: %s does not overlap %s"%[label,node_name,other[0]])
 			rects.append([node_name,g])
-	for id in World.RECIPES:
+	for id in World.stove_recipes("stove"):# C12: the early stove's own table (D05 / D14 exist only on the 2x2 stove)
 		var b:=ctl(RECIPE_PREFIX+id)
 		expect(b!=null,"%s: recipe %s listed"%[label,id])
 		if b!=null:await reachable(b,"%s: recipe %s"%[label,id])
@@ -639,8 +639,8 @@ func flow_open() -> bool:
 	return true
 
 func flow_empty_error() -> void:
-	var ids:Array=World.RECIPES.keys()
-	var expected_recipes:=World.RECIPES.keys()
+	var ids:Array=World.stove_recipes("stove").keys()
+	var expected_recipes:=World.stove_recipes("stove").keys()
 	expect(ids.size()==expected_recipes.size() and expected_recipes.all(func(id):return ids.has(id)),"all recipes in the catalog (got %d)"%ids.size())
 	var counter0:=int(app.session.counter)
 	var state0:=var_to_str(w.state)
@@ -848,7 +848,7 @@ func flow_ready_claim() -> void:
 	expect(shown(c2) and not c2.disabled,"claim still offered for the remaining ready salad")
 
 func flow_full() -> void:
-	var ids:Array=World.RECIPES.keys()
+	var ids:Array=World.stove_recipes("stove").keys()
 	var q:=queue_of(S)
 	var need:=Queue.CAPACITY-total(q)
 	expect(need==8,"full flow precondition: 2 jobs before filling (got %d)"%total(q))

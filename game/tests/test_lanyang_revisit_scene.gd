@@ -40,23 +40,24 @@ const MID_SPOT:=Vector2(32.5,29.5)
 const TAIL_SPOT:=Vector2(32.5,32.5)
 ## One row south of the plaza, the three gates side by side (sprinklers join the
 ## network, so the row continues through S_B):
-##   y=36:  G_A  P_A  TANK  P_B  G_B  S_B  G_C
-##   y=37:  S_A                           S_C
+##   y=42:  G_A  P_A  TANK  P_B  G_B  S_B  G_C
+##   y=43:  S_A                           S_C
 ## Zones from the tank: S_A full (A open), S_B low (B 餘水), S_C cut (C 關閉).
-const S_A:=Vector2i(41,37)
-const G_A:=Vector2i(41,36)
-const P_A:=Vector2i(42,36)
-const TANK:=Vector2i(43,36)
-const P_B:=Vector2i(44,36)
-const G_B:=Vector2i(45,36)
-const S_B:=Vector2i(46,36)
-const G_C:=Vector2i(47,36)
-const S_C:=Vector2i(47,37)
+# Keep the fixture south of the restored courtyard and its hedgehog interaction.
+const S_A:=Vector2i(41,43)
+const G_A:=Vector2i(41,42)
+const P_A:=Vector2i(42,42)
+const TANK:=Vector2i(43,42)
+const P_B:=Vector2i(44,42)
+const G_B:=Vector2i(45,42)
+const S_B:=Vector2i(46,42)
+const G_C:=Vector2i(47,42)
+const S_C:=Vector2i(47,43)
 const OTHER_GATE:=Vector2i(46,28)
-const GATE_A_SPOT:=Vector2(40.3,35.2)
+const GATE_A_SPOT:=Vector2(40.3,41.2)
 ## South of the row: nothing within interaction reach (no focus label over the gates),
 ## the player and name tag below the network, the row clear of the tracker and badge.
-const VIEW_SPOT:=Vector2(44.5,39.6)
+const VIEW_SPOT:=Vector2(44.5,45.6)
 const OTHER_SPOT:=Vector2(46.5,29.4)
 const PLAQUE_CELL:=Vector2i(43,34)
 ## West of the plaque on the same row: the player never covers it.

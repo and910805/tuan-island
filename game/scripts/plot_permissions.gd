@@ -1,7 +1,7 @@
 extends RefCounted
 ## T057 plot permissions: one read-only check per operation
 ##   place     -> can_place(world, token, p, kind, blueprint=false)
-##   take      -> can_take(token, box)              (deposit/withdraw/box config)
+##   take      -> can_take(token, box, floor)       (deposit/withdraw/box config)
 ##   harvest   -> can_harvest(world, token, plot, machine=false)
 ##   dismantle -> can_dismantle(world, token, p, move=false)
 ## Each returns {"ok":bool,"message":String}. Messages are byte-identical to the
@@ -82,6 +82,7 @@ extends RefCounted
 ## ---------------------------------------------------------------------------
 
 const BLUEPRINT_DESIGN = preload("res://scripts/blueprint_design.gd")
+const ENCLOSURE = preload("res://scripts/room_enclosure.gd")
 const FLOWER_NURSERY = preload("res://scripts/flower_nursery.gd")
 const PUBLIC_KITCHEN = preload("res://scripts/public_kitchen.gd")
 const REGIONS = preload("res://scripts/regions.gd")
@@ -100,6 +101,7 @@ const LEGACY_DEFAULTS := {
 	"private_box_owner_missing":"deny",
 }
 ## Mirrors of World constants (test_plot_permissions asserts they stay equal).
+const Industry := preload("res://scripts/industry.gd")
 const PRIVATE_BOXES := ["private_chest","supply_box"]
 const SALT_BOXES := ["chest","private_chest"]
 const MSG_PUBLIC := "這裡是水域或公共通道，請換個位置"
@@ -107,6 +109,7 @@ const MSG_SALT_SOCKET := "只有這塊鹽田區的認領人，可以在收鹽箱
 const MSG_FOREIGN_BOX := "這是另一位島民的私人箱"
 const MSG_ROOF_FLOOR := "只能在自己的地板上蓋屋頂"
 const MSG_GREENHOUSE := "請在自己的農田上蓋溫室玻璃棚"
+const XINGHE_ROOF=preload("res://scripts/greenhouse_glass.gd").XINGHE_ROOF
 const MSG_BLUEPRINT_FLOOR := "物件不能放在他人的地板上"
 const MSG_PRIVATE_FLOOR := "這格地板只開放地板主人放置物件。"
 const FLOOR_ACCESS := ["legacy","owner","island"]
@@ -162,7 +165,10 @@ static func can_place(world, token: String, p: Vector2i, kind: String, blueprint
 		var lots = st.get("salt_pan", {}).get("lots", [])
 		if not lots is Array or lot >= lots.size() or str(lots[lot].get("owner", "")) != token:return deny(MSG_SALT_SOCKET)
 	if kind == "greenhouse_roof" and str(st.crops.get(k, {}).get("owner", "")) != token:return deny(MSG_GREENHOUSE)
-	if kind == "roof" and st.ground.has(k) and not _owned_by(st.ground[k], token):return deny(MSG_ROOF_FLOOR)
+	if kind==XINGHE_ROOF:
+		if st.crops.has(k) and not _owned_by(st.crops[k],token):return deny("只能在自己的農田上加蓋星禾的溫室頂。")
+		if st.ground.has(k) and not _owned_by(st.ground[k],token):return deny(MSG_ROOF_FLOOR)
+	if kind in ["roof", preload("res://scripts/terracotta_roof.gd").KIND] and st.ground.has(k) and not _owned_by(st.ground[k], token):return deny(MSG_ROOF_FLOOR)
 	if blueprint:return blueprint_floor(world, token, p, kind)
 	if kind not in BLUEPRINT_DESIGN.GROUND_KINDS and kind not in BLUEPRINT_DESIGN.ROOF_KINDS:
 		return placement_floor(world,token,p)
@@ -177,24 +183,34 @@ static func blueprint_floor(world, token: String, p: Vector2i, kind: String) -> 
 static func placement_floor(world, token:String, p:Vector2i, blueprint:=false) -> Dictionary:
 	var below = world.state.ground.get(world.key(p))
 	if not below is Dictionary or _owned_by(below,token):return allow()
-	if below.get("type")=="floor":
+	if ENCLOSURE.is_floor_kind(below.get("type")):
 		var access:String=below.get("placement_access","legacy")
 		if access=="owner":return deny(MSG_PRIVATE_FLOOR)
 		if access=="island":return allow()
 	return deny(MSG_BLUEPRINT_FLOOR) if blueprint else allow()
 
-## take: deposit into / withdraw from / configure a box. Shared chests are open.
-static func can_take(token: String, box: Dictionary) -> Dictionary:
-	if str(box.get("type", "")) in PRIVATE_BOXES and not _owned_by(box, token):return deny(MSG_FOREIGN_BOX)
+const MSG_SHARED_CHEST_FLOOR := "這個共用木箱所在的地板僅開放給地板主人及箱主。"
+
+## Members share boxes normally. An owner-only floor limits its shared boxes
+## to the floor owner and box owner, including boxes placed before that change.
+static func can_take(token: String, box: Dictionary, floor:Dictionary={}) -> Dictionary:
+	var kind:String=box.get("type","")
+	if kind=="chest" and floor.get("placement_access","")=="owner" and not _owned_by(floor,token) and not _owned_by(box,token):
+		return deny(MSG_SHARED_CHEST_FLOOR)
+	if kind==Industry.ACORN_CABINET and not box.get("cabinet_shared",false) and not _owned_by(box,token):
+		return deny("這座收納櫃目前只有櫃主能存取。")
+	if kind==Industry.TEA_SNACK_SHELF and not box.get("cabinet_shared",false) and not _owned_by(box,token):
+		return deny("這座點心架目前只有主人能存取。")
+	if kind in PRIVATE_BOXES and not _owned_by(box,token):return deny(MSG_FOREIGN_BOX)
 	return allow()
 
-static func can_deposit(token:String,box:Dictionary) -> Dictionary:
+static func can_deposit(token:String,box:Dictionary,floor:Dictionary={}) -> Dictionary:
 	if box.get("type")=="private_chest" and box.get("guest_deposit",false):return allow()
-	return can_take(token,box)
+	return can_take(token,box,floor)
 
-static func can_withdraw(token:String,box:Dictionary) -> Dictionary:
+static func can_withdraw(token:String,box:Dictionary,floor:Dictionary={}) -> Dictionary:
 	if box.get("type")=="private_chest" and box.get("withdraw_guest")==token:return allow()
-	return can_take(token,box)
+	return can_take(token,box,floor)
 
 static func can_water(world,token:String,plot:Dictionary) -> Dictionary:
 	if world._region==REGIONS.HOME and plot.get("owner_water",false) and not _owned_by(plot,token):
@@ -211,7 +227,7 @@ static func can_harvest(world, token: String, plot: Dictionary, machine := false
 ## protected() is intentionally NOT applied; only the donated kitchen is locked.
 ## Ownership only: "nothing here", crops-with-kind, busy and contents guards stay
 ## in World (returns allow() when there is nothing this rule could refuse).
-static func can_dismantle(world, token: String, p: Vector2i, move := false) -> Dictionary:
+static func can_dismantle(world, token: String, p: Vector2i, move := false, target_layer := "") -> Dictionary:
 	if kitchen_locked(world, p):return deny(PUBLIC_KITCHEN.MSG_LOCKED)
 	var k: String = world.key(p)
 	var st: Dictionary = world.state
@@ -219,10 +235,10 @@ static func can_dismantle(world, token: String, p: Vector2i, move := false) -> D
 		return allow() if _owned_by(st.objects.get(k), token) else deny(MSG_FOREIGN_MOVE)
 	if st.forest.has(k):
 		return allow() if _owned_by(st.forest[k], token) else deny(MSG_FOREIGN_TREE)
-	if st.crops.has(k) and not world.greenhouse_covers(k):
+	if st.crops.has(k) and not world.has_glass_roof(k) and not world.has_hanging_pot(k):
 		# Legacy: an ownerless empty plot is restorable by anyone.
 		return allow() if str(st.crops[k].get("owner", token)) == token else deny(MSG_FOREIGN_PLOT)
-	var layer: String = world._remove_layer(k)
+	var layer: String = world._remove_layer(k) if target_layer=="" else target_layer
 	if layer == "":return allow()
 	var piece:Dictionary=st[layer][k]
 	if layer=="objects" and world._region==REGIONS.HOME and piece.get("guest_remove",false) and piece.get("type") in SHARED_REMOVAL_FURNITURE:

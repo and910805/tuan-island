@@ -6,7 +6,8 @@ const Art=preload("res://scripts/bakery_art.gd")
 const HOST:="bakery-visual"
 const MILL:=Vector2i(40,33)
 const STOVE:=Vector2i(38,33)
-const SEATS:=[Vector2i(37,34),Vector2i(39,34)]
+const SEATS:=[Vector2i(37,34),Vector2i(37,32)]
+const DEMO_CROP_START:=Vector2i(45,35)
 var app
 var world
 var checks:=0
@@ -28,6 +29,8 @@ func shot(name:String)->void:
 func act(action:String,cell:Vector2i,extra:="")->void:
 	var r:Dictionary=world.act(HOST,"bakery-visual-%d"%checks,action,cell,extra)
 	expect(r.ok,"%s %s: %s"%[action,extra,r])
+func build_mill()->void:
+	act("build",MILL,"mill")
 func attach()->void:
 	app.session.profile={"token":HOST}
 	app.session.world=world
@@ -67,9 +70,10 @@ func run()->void:
 	act("kitchen_register",STOVE,World.PUBLIC_KITCHEN.seat_extra(SEATS[0],SEATS[1]))
 	act("kitchen_contribute",STOVE)
 	player=world.state.players[HOST];player.x=40.5;player.y=32.5
-	act("build",MILL,"mill")
+	build_mill()
+	# Keep the demonstration pumpkins outside the larger mill and its entrance.
 	for i in 4:
-		world.state.crops[World.key(Vector2i(40+i,35))]={"kind":"pumpkin","owner":HOST,"wet":true,"growth":[0.0,80.0,190.0,270.0][i],"remaining":1}
+		world.state.crops[World.key(DEMO_CROP_START+Vector2i(i,0))]={"kind":"pumpkin","owner":HOST,"wet":true,"growth":[0.0,80.0,190.0,270.0][i],"remaining":1}
 	await attach()
 	await shot("bakery-world")
 	for size in [Vector2i(1280,800),Vector2i(1024,640)]:

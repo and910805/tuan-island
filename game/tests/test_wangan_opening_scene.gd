@@ -30,6 +30,7 @@ const World=preload("res://scripts/world.gd")
 const Chapter=preload("res://scripts/chapter_one.gd")
 const Opening=preload("res://scripts/wangan_opening.gd")
 const WanganUI=preload("res://scripts/wangan_opening_ui.gd")
+const Shell=preload("res://scripts/life_ui_shell.gd")
 ## Below the plot (plot rows 26-27): with the player-centred camera the whole plot
 ## and its tag sit between the tracker (left) and the weather badge (right).
 const VIEW_SPOT:=Vector2(46.5,30.5)
@@ -54,6 +55,25 @@ func _initialize()->void:run.call_deferred()
 func check(value:bool,message:String)->void:
 	checks+=1
 	if not value:failures+=1;push_error(message)
+
+func check_tools(expected:Array,toggle_visible:bool)->void:
+	var shown:Array=[]
+	for index in Shell.TOOL_IDS.size():
+		if app.tool_buttons[index].visible:shown.append(Shell.TOOL_IDS[index])
+	var toggle:=app.preview_toolbar.find_child("AllToolsToggle",true,false) as Button
+	check(shown==expected and toggle!=null and toggle.visible==toggle_visible,"Correct guided tools for "+step_id())
+	var bar:Control=app.preview_toolbar
+	check(absf(bar.get_global_rect().get_center().x-float(root.size.x)*0.5)<=1.0,"Toolbar stays centered")
+	var shortcuts:Control=app.hud.get_node("LifeShortcuts")
+	check(not shortcuts.get_global_rect().intersects(bar.get_global_rect()),"Shortcuts and tool strip never intersect")
+	var titles:Array=[]
+	for child in shortcuts.get_children():
+		var caption:Label=child.get_node("ShortcutTitle")
+		var key:Label=child.get_node("KeyBadge")
+		var icon:Control=child.get_node("ToolArt")
+		titles.append(caption.text)
+		check(not key.get_global_rect().intersects(icon.get_global_rect()) and not caption.get_global_rect().intersects(icon.get_global_rect()) and key.has_theme_stylebox_override("normal"),"Shortcut icon, label and key use separate, readable lanes")
+	check(titles==["背包","手帳","選單"],"All three shortcuts show clear names")
 
 func finish()->void:
 	if finished:return
@@ -253,11 +273,30 @@ func size_flow(size:Vector2i)->void:
 	# Plot marker through the first crop.
 	await stand(VIEW_SPOT)
 	check(step_id()=="till","At the view spot the step is till (%s): %s"%[tag,step_id()])
+	check_tools(["hoe"],true)
+	var expand:=app.preview_toolbar.find_child("AllToolsToggle",true,false) as Button
+	if expand:
+		expand.pressed.emit()
+		await settle()
+		check_tools(Shell.TOOL_IDS,true)
+		expand.pressed.emit()
+		await settle()
+		check_tools(["hoe"],true)
+	var default_text:int=app.sound.preferred_text_scale
+	app.sound.preferred_text_scale=3
+	app._apply_font_scale_tree()
+	await settle()
+	check_tools(["hoe"],true)
+	await shot("large-shortcuts")
+	app.sound.preferred_text_scale=default_text
+	app._apply_font_scale_tree()
+	await settle()
 	marker_ok(await shot("plot_empty"),"empty "+tag,true)
 	await stand(WORK_SPOT)
 	await perform("hoe",WORK_CELL)
 	await stand(VIEW_SPOT)
 	check(step_id()=="sow","Tilled (%s)"%tag)
+	check_tools(["hoe","seed"],true)
 	marker_ok(await shot("plot_tilled"),"tilled "+tag,true)
 	var bag:Dictionary=person().inventory
 	for item in bag.keys():
@@ -287,12 +326,20 @@ func size_flow(size:Vector2i)->void:
 	await perform("seed",WORK_CELL,"radish")
 	await stand(VIEW_SPOT)
 	check(step_id()=="water","Sown (%s)"%tag)
+	check_tools(["hoe","seed","water"],true)
 	var sown:=await shot("plot_sown")
 	marker_ok(sown,"sown "+tag,true)
 	check(step_corner_visible(sown,WORK_CELL),"The water cue marks the planted tile (%s)"%tag)
 	var cue:Rect2=app.view.first_crop_cue_rect
 	check(cue.has_area() and placements().all(func(entry):return not entry.rect.intersects(cue)),
 		"World labels leave the marked crop visible (%s)"%tag)
+	app.target=WORK_CELL
+	app.view.show_target=true
+	var before_remove: String=app.selected
+	app._select_tool("remove")
+	app._refresh_hud()
+	check("收成後才能恢復草地" in app.selected_label.text,"Removal cursor warns before harvesting (%s)"%tag)
+	app._select_tool(before_remove)
 	await stand(WORK_SPOT)
 	await perform("water",WORK_CELL)
 	await stand(VIEW_SPOT)
@@ -305,35 +352,49 @@ func size_flow(size:Vector2i)->void:
 		w.step(5.0,true)
 	await refresh()
 	check(step_id()=="harvest","Mature (%s)"%tag)
+	check_tools(["hoe","seed","water","harvest"],true)
 	marker_ok(await shot("plot_mature"),"mature "+tag,true)
 	await stand(WORK_SPOT)
 	await perform("harvest",WORK_CELL)
 	await stand(VIEW_SPOT)
 	check(step_id()=="ship","Harvested (%s)"%tag)
 	marker_ok(await shot("plot_harvested"),"harvested "+tag,true)
+	await stand(WORK_SPOT)
+	app.target=WORK_CELL
+	app.view.show_target=true
+	app._select_tool("remove")
+	app._refresh_hud()
+	check(app.selected_label.text=="空農田 · 點擊恢復草地","Empty field offers ground restoration (%s)"%tag)
+	await shot("plot_restore_hint")
+	await perform("remove",WORK_CELL)
+	check(not w.state.crops.has(World.key(WORK_CELL)),"Removing an empty field restores the original ground (%s)"%tag)
+	await shot("plot_restored")
 	await stand(Vector2(42.5,32.5))
 	await perform("ship",World.SHIPPING.cell_for(w.state),JSON.stringify([[["radish",1]],int(World.CROPS.radish.price)]))
 	check(bool(w.state.chapter_one.shipped),"Shipped (%s)"%tag)
 	await stand(VIEW_SPOT)
+	check_tools(Shell.TOOL_IDS,false)
 	marker_ok(await shot("after_ship"),"after ship "+tag,false)
 	check(str(app.objective.text).contains("到公告板按") and app.view.first_crop_cue_rect.has_point(
 		app.view.screen(Vector2(40.5,29.5))),"First shipment points to the board and shows how to contribute (%s)"%tag)
 	await stand(Vector2(40.5,30.5))
 	await shot("bridge_board")
-	person().inventory.merge({"wood":30,"stone":10},true)
+	person().inventory.merge({"wood":34,"stone":12},true)
 	await refresh()
 	app._interact()
 	await settle()
-	var donate:Button=null
-	if is_instance_valid(app.modal):
-		for button:Button in app.modal.find_children("*","Button",true,false):
-			if button.text=="捐入背包裡需要的材料":donate=button
-	check(donate!=null,"Board interaction opens the donation button (%s)"%tag)
+	var donate:Button=app.modal.find_child("BoardDonateBridge",true,false) if is_instance_valid(app.modal) else null
+	check(donate!=null and donate.text=="捐入 木材 30、石材 10","Board gives the capped contribution before confirmation (%s)"%tag)
+	await shot("bridge_contribution")
 	if donate!=null:donate.pressed.emit()
 	await refresh()
+	await settle()
 	var aru:Vector2i=Chapter.STARTER_CELL
 	check(w.state.board and str(app.objective.text).contains("找阿榆") and app.view.first_crop_cue_rect.has_point(
 		app.view.screen(Vector2(aru)+Vector2(0.5,0.5))),"Completing the bridge moves the cue to Aru (%s)"%tag)
+	check(person().inventory.wood==4 and person().inventory.stone==2,"Donation leaves surplus materials in the bag (%s)"%tag)
+	check(is_instance_valid(app.modal) and app.modal.find_child("BoardServePicnic",true,false)!=null,"The board stays open and advances to the next project (%s)"%tag)
+	app._close_modal()
 	await stand(Vector2(aru)+Vector2(0.5,1.5))
 	await shot("irrigation_aru")
 	person().inventory.merge(Chapter.STARTER_COST,true)
@@ -350,9 +411,20 @@ func size_flow(size:Vector2i)->void:
 	check(w.state.chapter_one.starter_claims.has(me) and int(person().inventory.get("sprinkler_kit",0))==1
 		and not app.view.first_crop_cue_rect.has_area() and str(app.objective.text).contains("補滿水桶"),
 		"After the trade the cue switches to connecting the kit (%s)"%tag)
+	var tracker:Button=app.hud.find_child("TrackerNext",true,false)
+	tracker.pressed.emit()
+	await settle()
+	var guide:Button=app.modal.find_child("ChapterStarterIrrigationGuide",true,false)
+	check(guide!=null,"Chapter tracker offers the starter irrigation diagram (%s)"%tag)
+	if guide:
+		guide.pressed.emit()
+		await settle()
+		check(app.modal.get_meta("life_modal_layout","")=="workshop_guide" and app.get_meta("workshop_guide_topic",-1)==3,
+			"Chapter link opens the starter setup, not the pump lesson (%s)"%tag)
+	app._close_modal()
 	await stand(Vector2(46.5,28.5))
 	for entry in [[Vector2i(45,26),"water_tank"],[Vector2i(46,26),"water_pipe"],
-		[Vector2i(47,26),"water_pipe"],[Vector2i(48,26),"sprinkler"]]:
+		[Vector2i(47,26),"water_pipe"],[Vector2i(47,27),"sprinkler"]]:  # (48,26) is the reserved public-mill approach
 		await perform("build",entry[0],entry[1])
 	check(int(person().inventory.tank_kit)==0 and int(person().inventory.pipe_kit)==0
 		and int(person().inventory.sprinkler_kit)==0,"The whole supplied kit is placed (%s)"%tag)
@@ -360,6 +432,12 @@ func size_flow(size:Vector2i)->void:
 	await stand(Vector2(48.5,28.5))
 	await perform("hoe",Vector2i(48,27))
 	await perform("seed",Vector2i(48,27),"radish")
+	await stand(Vector2(47.5,28.5))
+	app._interact()
+	await settle()
+	var dry_supply:Label=app.modal.find_child("SprinklerSupply",true,false)
+	check(dry_supply!=null and dry_supply.text.contains("先給管網補水"),"Empty connected sprinkler sends the player to refill the network (%s)"%tag)
+	app._close_modal()
 	await stand(Vector2(44.5,26.5))
 	app._interact()
 	await settle()
@@ -370,9 +448,12 @@ func size_flow(size:Vector2i)->void:
 	check(refill!=null,"The installed tank can be filled through its panel (%s)"%tag)
 	if refill!=null:refill.pressed.emit()
 	app._close_modal()
-	await stand(Vector2(49.5,26.5))
+	await stand(Vector2(47.5,28.5))
 	app._interact()
 	await settle()
+	var ready_supply:Label=app.modal.find_child("SprinklerSupply",true,false)
+	check(ready_supply!=null and ready_supply.text.contains("水源已接通") and ready_supply.text.contains("啟用後"),
+		"Filled tank changes the sprinkler hint to enabling it (%s)"%tag)
 	var enable:Button=null
 	if is_instance_valid(app.modal):
 		for button:Button in app.modal.find_children("*","Button",true,false):
@@ -433,7 +514,14 @@ func size_flow(size:Vector2i)->void:
 	await settle()
 	var serve:Button=app.modal.find_child("BoardServePicnic",true,false) if is_instance_valid(app.modal) else null
 	check(serve!=null and not serve.disabled,"The board accepts the cooked dishes (%s)"%tag)
+	var portions:Label=app.modal.find_child("PicnicContributionHint",true,false)
+	check(portions!=null and portions.text=="這次端上 %s ×2、%s ×1"%[World.NAMES.soup,World.NAMES.bread],
+		"Cooked dishes are previewed before donating (%s)"%tag)
+	await shot("picnic_contribution")
 	if serve!=null:serve.pressed.emit()
+	await refresh()
+	check(serve.disabled and portions.text.contains("小栗"),"Completed board points to Xiaoli while still open (%s)"%tag)
+	app._close_modal()
 	await refresh()
 	check(w.state.picnic and w.state.picnic_materials.soup==2 and w.state.picnic_materials.bread==1,
 		"The first picnic opens with exactly the requested portions (%s)"%tag)

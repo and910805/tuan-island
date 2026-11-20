@@ -56,7 +56,7 @@ func _initialize() -> void:
 	expect(phase("alice",4.0)=="catch" and state_for("alice",4.0).fish=="carp","Local catch resolves authoritative inventory delta")
 	expect(phase("bob",4.0)=="catch" and state_for("bob",4.0).fish=="","Remote catch does not infer hidden inventory")
 	snapshot(4.3)
-	expect(phase("alice",4.9)=="" and phase("bob",4.9)=="","Catch expires despite repeated snapshots")
+	expect(phase("alice",4.9)=="catch" and phase("alice",5.01)=="" and phase("bob",5.01)=="","Catch lasts through its animation, then expires despite repeated snapshots")
 	var path:=OS.get_environment("TEMP").path_join("fishing-feedback-%s.json"%Crypto.new().generate_random_bytes(8).hex_encode())
 	world.save_path=path
 	expect(world.save(),"Persist gameplay after both catches")

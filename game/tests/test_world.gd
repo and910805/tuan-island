@@ -96,10 +96,10 @@ func _initialize() -> void:
 	w.state.players.alice.y=31.5
 	var wood_before:int=w.state.players.alice.inventory.wood
 	expect(act("donate",Vector2i(40,29)).ok,"donate to shared project")
-	expect(w.state.board,"bridge opens after target")
+	expect(w.state.board,"the bulletin board is repaired after the first donation target")
 	expect(w.state.players.alice.inventory.wood==wood_before-30,"donation only takes required wood")
 	expect(not act("donate",Vector2i(40,29)).ok,"project cannot reward twice")
-	expect(not w.water(Vector2i(55,30)),"bridge is walkable after project")
+	expect(w.water(Vector2i(55,30)) and w.island_project_mask()==0,"Q03 keeps the bridge closed and out of the completed-project list")
 	# Test deterministic collision without trusting client position.
 	w.state.players.alice.x=40.5
 	w.state.players.alice.y=30.5
@@ -224,6 +224,19 @@ func _initialize() -> void:
 	# Persistence round-trip and backup recovery.
 	var path:="user://test-world-isolated-%d.json"%Time.get_ticks_usec()
 	w.save_path=path
+	var stonemason:Dictionary=w.state.players.alice
+	var stone_workbench:=Vector2i(32,36)
+	stonemason.inventory.merge({"wood":68,"stone":40,"rope":4},true)
+	stonemason.x=32.5
+	stonemason.y=37.5
+	for cell:Vector2i in [stone_workbench,stone_workbench+Vector2i.RIGHT]:w.state.removed[World.key(cell)]=true
+	expect(act("build",stone_workbench,World.STONE_WORKSHOP.KIND).ok,"Q03 unlocks construction of a stone workbench")
+	for part in World.STONE_WORKSHOP.FOUNDATIONS_NEEDED:
+		expect(act(World.STONE_WORKSHOP.ACTION,stone_workbench,World.STONE_WORKSHOP.FOUNDATION).ok,"Makes foundation %d"%[part+1])
+	expect(w.water(Vector2i(55,30)) and w.island_project_mask()==0,"Foundations alone do not open or announce the bridge")
+	stonemason.x=40.5
+	stonemason.y=30.5
+	expect(act(World.STONE_WORKSHOP.DONATE_ACTION,Vector2i(40,29)).ok and not w.water(Vector2i(55,30)),"Finishing Q05 opens the bridge")
 	expect(w.island_project_mask()==1,"Only the completed bridge appears as island news")
 	expect(not w.act("alice","news-unfinished","news_read",Vector2i.ZERO,"3").ok,"Cannot mark an unfinished project as read")
 	expect(w.act("alice","news-bridge","news_read",Vector2i.ZERO,"1").ok,"Alice acknowledges the bridge")

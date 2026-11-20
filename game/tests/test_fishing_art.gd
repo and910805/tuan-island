@@ -36,6 +36,18 @@ func frame(phase:String,age:float,clock:float,reduced:bool=false,fish:String="")
 	await RenderingServer.frame_post_draw
 	return viewport.get_texture().get_image()
 
+func splash_coverage(image:Image,sheet:Image,cell:Vector2i,origin:Vector2i)->float:
+	# Share of a splash cell's opaque pixels shown unchanged (line, float, or fish may cover a few).
+	var opaque:=0
+	var shown:=0
+	for y in 32:
+		for x in 32:
+			var color:=sheet.get_pixel(cell.x*32+x,cell.y*32+y)
+			if color.a<1.0:continue
+			opaque+=1
+			if image.get_pixel(origin.x+x,origin.y+y).is_equal_approx(color):shown+=1
+	return float(shown)/maxf(1.0,float(opaque))
+
 func run()->void:
 	if DisplayServer.get_name()=="headless":
 		print("FISHING_ART_TESTS requires native rendering")
@@ -79,7 +91,14 @@ func run()->void:
 	var fish:=await frame("catch",0.15,0.0,false,"carp")
 	var generic:=await frame("catch",0.15,0.0,true)
 	var reel_start:=await frame("catch",0.0,0.0,false,"carp")
-	var reel_end:=await frame("catch",0.35,0.0,false,"carp")
+	var surface_pull:=await frame("catch",0.12,0.0,false,"carp")
+	var mid_lift:=await frame("catch",0.31,0.0,false,"carp")
+	var reel_end:=await frame("catch",0.56,0.0,false,"carp")
+	expect(reel_start.get_region(Rect2i(165,95,45,28)).get_data()!=surface_pull.get_region(Rect2i(165,95,45,28)).get_data()
+		and surface_pull.get_region(Rect2i(155,50,32,33)).get_data()!=mid_lift.get_region(Rect2i(155,50,32,33)).get_data(),
+		"The surface pull and airborne lift render distinct stages")
+	expect(Art.angler_lean({"phase":"catch","age":0.27},0.0,false)<-6.0,
+		"The angler braces against the direction of the pull")
 	expect(reel_start.get_pixel(187,108).a>0.0 and reel_end.get_pixel(187,108).a==0.0 and reel_end.get_pixel(145,60).a>0.0,
 		"Fish starts at the float and finishes by the player")
 	expect(reel_start.get_pixel(166,85).is_equal_approx(Art.LINE_COLOR) and reel_end.get_pixel(166,85).a==0.0,
@@ -91,6 +110,40 @@ func run()->void:
 		"Cancellation retracts an empty line from the former target")
 	expect(cancel_pull.get_used_rect().has_area() and not cancel_reduced.get_used_rect().has_area(),
 		"Reduced motion skips the cancellation effect")
+	# Splash sheet: top row plays on landing, bottom row on the hook-up; cell (16,28) sits on the water point.
+	var sheet:Image=Art.SPLASH_ATLAS.get_image()
+	expect(sheet.get_size()==Vector2i(96,64),"Splash sheet holds six 32px frames")
+	var splash_area:=Rect2i(171,80,32,32)
+	var no_landing:=await frame("wait",0.0,0.8)
+	var landings:Array[Image]=[]
+	for step in 3:
+		sample.state={"phase":"wait","age":0.0,"fish":"","landing_age":Art.Feedback.LANDING_DURATION*(0.1+step/3.0)}
+		sample.elapsed=0.8
+		sample.reduced=false
+		sample.queue_redraw()
+		await process_frame
+		await RenderingServer.frame_post_draw
+		landings.append(viewport.get_texture().get_image())
+	expect(splash_coverage(landings[0],sheet,Vector2i(0,0),splash_area.position)>=0.5
+		and splash_coverage(landings[1],sheet,Vector2i(1,0),splash_area.position)>=0.5
+		and splash_coverage(landings[1],sheet,Vector2i(0,0),splash_area.position)<0.2
+		and splash_coverage(no_landing,sheet,Vector2i(0,0),splash_area.position)<0.2,
+		"Bobber landing plays the top row of the splash sheet")
+	expect(landings[0].get_region(splash_area).get_data()!=landings[1].get_region(splash_area).get_data()
+		and landings[1].get_region(splash_area).get_data()!=landings[2].get_region(splash_area).get_data()
+		and landings[2].get_region(splash_area).get_data()!=no_landing.get_region(splash_area).get_data(),
+		"Landing splash advances through three distinct frames")
+	expect(splash_coverage(reel_start,sheet,Vector2i(0,1),splash_area.position)>=0.5
+		and splash_coverage(reel_start,sheet,Vector2i(0,0),splash_area.position)<0.2,
+		"Hook-up plays the bottom row of the splash sheet")
+	sample.state={"phase":"wait","age":0.0,"fish":"","landing_age":0.02}
+	sample.reduced=true
+	sample.queue_redraw()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var landing_reduced:=viewport.get_texture().get_image()
+	expect(landing_reduced.get_data()==still_water.get_data() and generic.get_region(Rect2i(171,80,32,18)).get_used_rect().size==Vector2i.ZERO,
+		"Reduced motion omits the landing and hook-up splash frames")
 	var cast_back:=await frame("cast",0.10,0.10)
 	var cast_forward:=await frame("cast",0.31,0.31)
 	var rod_area:=Rect2i(110,43,48,45)
@@ -104,8 +157,8 @@ func run()->void:
 		"Waiting breathes gently in both directions")
 	expect(Art.angler_lean({"phase":"wait"},0.87,true)==0.0,
 		"Reduced motion keeps the waiting character still")
-	var flutter_a:=await frame("catch",0.38,0.0,false,"carp")
-	var flutter_b:=await frame("catch",0.53,0.0,false,"carp")
+	var flutter_a:=await frame("catch",0.60,0.0,false,"carp")
+	var flutter_b:=await frame("catch",0.74,0.0,false,"carp")
 	expect(flutter_a.get_region(Rect2i(125,30,45,55)).get_data()!=flutter_b.get_region(Rect2i(125,30,45,55)).get_data(),
 		"Landed catch settles through distinct frames")
 	var trophy:Image=Art.ICONS.get_image().get_region(Rect2i(Art.TROPHY))

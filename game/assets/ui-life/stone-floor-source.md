@@ -1,0 +1,5 @@
+# 石地板像素素材
+
+使用內建 ImageGen 生成。將素材以最鄰近方式縮放至 32×32，再讓四邊灰縫使用同色，能連續鋪設。
+
+> Original game texture for a Taiwanese cozy farming sim. Full-bleed exactly square seamless ground tile, only 32 by 32 effective pixels, drawn as clean hand-pixelled 16-bit pixel art and enlarged with nearest-neighbor. Directly overhead invariant view of carefully laid flat rectangular gray-brown and desaturated warm slate flagstones in four equal horizontal courses, stone faces arranged in subtly offset masonry bonds. Muted teal-gray, sandstone gray, matte cream on a few tiny corners, taupe thin mortar. Tile should read as a smooth interior floor rather than a rough cobblestone path. Low contrast and warm enough under wooden furniture but readable outdoors. Every exterior edge must continue its stone and mortar pattern to the opposite edge, matching opposite edges exactly; for a repeating grid. Entire picture is the repeating floor pattern, no framing, gutters, outlines around the tile, cutaway, 3D perspective, grass, plants, moss, text, lighting gradient or opacity. Keep details very restrained at native 32×32, deliberate crisp pixel edge clusters, one consistent grid.

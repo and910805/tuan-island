@@ -206,6 +206,7 @@ func verify_reaction_events() -> void:
 	actor.x=cell.x+0.5
 	actor.y=cell.y+0.5
 	actor.inventory.feed=1
+	expect(world.act("ranch","adopt-cow","livestock_adopt",cell,"cow").ok,"D07: the cow is adopted before it is fed")
 	var view=preload("res://scripts/world_view.gd").new()
 	root.add_child(view)
 	view.set_process(false)

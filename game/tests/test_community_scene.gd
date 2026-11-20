@@ -186,6 +186,13 @@ func run()->void:
 		var station:Vector2i=World.LIVESTOCK.ANIMALS[id].cell
 		caretaker.x=station.x+0.5
 		caretaker.y=station.y+0.5
+		if World.LIVESTOCK.adoption_required(id):
+			var coins_before:int=int(world.state.players[GUEST].coins)
+			preload("res://scripts/life_ui_almanac.gd").livestock_menu(app,id)
+			var adopt_button:Button=app.modal.find_child("LivestockAdopt",true,false)
+			expect(adopt_button!=null and not adopt_button.disabled and app.modal.find_child("LivestockFeed",true,false)==null,"D07: an unadopted "+id+" offers only the native adopt control")
+			if adopt_button!=null:adopt_button.pressed.emit()
+			expect(world.state.livestock.has(id) and int(world.state.players[GUEST].coins)==coins_before-int(World.LIVESTOCK.ADOPTION_COST[id]),"D07: the native control adopts "+id+" and charges the fee")
 		app.session.perform("livestock_feed",station,id)
 		expect(int(app.view.data.livestock.get(id,{}).get("feed",0))==1,"Animal feed state reaches the live renderer: "+id)
 	caretaker.x=49.5

@@ -51,6 +51,7 @@ func run()->void:
 		expect(button!=null and not button.disabled,"Existing construction button is available: "+part)
 		if button!=null:button.pressed.emit()
 		app.session._send_snapshot(1)
+	app._close_modal()
 	expect(int(person.inventory.wood)==wood-4 and int(person.inventory.fiber)==fiber-3,"Real shelter and mat buttons charge original costs")
 	expect(app.session.snapshot.sheep_comfort_fixtures==3,"Built fixtures reach shared snapshot")
 	if app.arg_value("qa-product","")=="true":

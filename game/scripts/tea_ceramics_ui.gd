@@ -9,16 +9,42 @@ const Shell=preload("res://scripts/life_ui_shell.gd")
 const Helpers=preload("res://scripts/freight_ui.gd")
 const Revisit=preload("res://scripts/tea_revisit_ui.gd")
 const TeawareArt=preload("res://scripts/tea_revisit_art.gd")
+const ChachaHandwrittenMenu=preload("res://scripts/chacha_handwritten_menu.gd")
 const TITLES:={"home":"小栗的茶單與回收","journal":"第二章・茶陶合作手帳","host":"茶茶的合作茶園","potter":"陶師的工作桌","clay":"備土台","kiln":"製罐窯","pick":"茶叢","roast":"茶葉烘焙台","pack":"包裝與寄運","house":"貓空茶屋・茶陶展示桌"}
 const JAR_NAMES:={"tea_jar":"新罐","tea_returned_jar":"回收罐","tea_worn_jar":"磨損罐","tea_spent_jar":"待修罐"}
 const JAR_ORDER:=["tea_worn_jar","tea_returned_jar","tea_jar"]
 const WORKSHOP_ART=preload("res://assets/tea-ceramics/buildings.png")
+# 手帳雙聯插畫（貓空採茶／鶯歌製罐）：執行時才載入，載入失敗就退回沒有插畫的原版面。
+const JOURNAL_ART_PATH:="res://assets/tea-ceramics/tea-to-pottery-journal.png"
 const CREAM:=Color("f9e8be")
 const LINEN:=Color("e2cea9")
 const GOLD:=Color("f0bb72")
 
 static func unlocked(snapshot:Dictionary)->bool:
 	return World.CHAPTER_ONE.phase(snapshot)=="complete"
+
+static func journal_art()->Texture2D:
+	if not ResourceLoader.exists(JOURNAL_ART_PATH,"Texture2D"):return null
+	var texture:=load(JOURNAL_ART_PATH) as Texture2D
+	return texture if texture and texture.get_width()>0 and texture.get_height()>0 else null
+
+# 標題列（關閉鈕所在的那一列）。舊版面沒有獨立標題列時回傳 null，路線按鈕就留在頁面底部。
+static func journal_heading(app,body:Control)->HBoxContainer:
+	if not is_instance_valid(app.modal) or app.modal.get_child_count()==0:return null
+	var shell:=app.modal.get_child(0) as Control
+	if shell==null or shell==body or shell.get_child_count()==0 or body.is_ancestor_of(shell):return null
+	var heading:=shell.get_child(0) as HBoxContainer
+	return heading if heading and heading!=body and not heading.is_ancestor_of(body) else null
+
+# 手帳的主要按鈕（查看路線／小栗的茶單）放在標題列關閉鈕左邊：不隨頁面捲動，大字級小視窗也按得到；
+# 重建頁面時沿用同一顆按鈕，鍵盤焦點因此保留。沒有標題列時照舊放在頁面底部。
+static func journal_action(app,heading:HBoxContainer,actions:HBoxContainer,id:String,title:String,callback:Callable)->void:
+	if heading==null:
+		Helpers.action(app,actions,id,title,callback,true)
+		return
+	if heading.get_node_or_null(id):return
+	var link:=Helpers.action(app,heading,id,title,callback,true)
+	heading.move_child(link,maxi(0,heading.get_child_count()-2))
 
 static func interaction_points(region:String,snapshot:Dictionary={})->Dictionary:
 	var points:Dictionary={}
@@ -58,8 +84,14 @@ static func refresh(app)->void:
 	var tea=World.TEA_CERAMICS
 	var site:String=app.modal.get_meta("tea_site")
 	var cell:Vector2i={"home":tea.RECEIVER,"host":tea.TEA_NPC,"potter":tea.POTTER,"clay":tea.CLAY,"kiln":tea.KILN,"roast":tea.ROASTER,"pack":tea.PACKER,"house":World.TEA_REVISIT.HOUSE_SITE}.get(site,app.modal.get_meta("tea_cell"))
+	# 鶯歌合作陶坊：人在室內時，工作點就是室內那一格（與室外共用同一份茶陶紀錄、庫存、佇列與冷卻）；室外照舊。
+	var room:=World.POTTERY_WORKSHOP_INTERIOR
+	var indoor_cell:=room.station_cell(site)
+	var inside_workshop:=indoor_cell.x>=0 and str(snapshot.get("region_id",""))==room.REGION and room.inside(actor)
+	if inside_workshop:cell=indoor_cell
 	var region:="home" if site=="home" else ("yingge" if site in ["potter","clay","kiln"] else "maokong")
-	var nearby:bool=str(snapshot.get("region_id","home"))==region and not actor.is_empty() and Vector2(actor.x,actor.y).distance_to(Vector2(cell)+Vector2(0.5,0.5))<=3.2
+	var reach:=room.STATION_REACH if inside_workshop else 3.2
+	var nearby:bool=str(snapshot.get("region_id","home"))==region and not actor.is_empty() and Vector2(actor.x,actor.y).distance_to(Vector2(cell)+Vector2(0.5,0.5))<=reach
 	var bag:Dictionary=actor.get("inventory",{})
 	var intro:bool=record.get("intro",false)
 	var chapter_complete:=unlocked(snapshot)
@@ -71,11 +103,25 @@ static func refresh(app)->void:
 	var choice:String=app.modal.get_meta("tea_choice","")
 	var display:Dictionary=snapshot.get(World.TEA_REVISIT.HOUSE_KEY,{})
 	var house_round:=World.TEA_SERVICE.current_round(snapshot,World.TEA_REVISIT.HOUSE_KEY) if site=="house" else {}
-	var fingerprint:=JSON.stringify([record,bag,remaining,nearby,chapter_complete,choice,snapshot.get("resident_memories",[]), snapshot.get("resident_participation",{}),snapshot.get("tea_revisit",{}),display,house_round])
+	var has_menu:=site=="journal" and ChachaHandwrittenMenu.available(snapshot)
+	var fingerprint:=JSON.stringify([record,bag,remaining,nearby,chapter_complete,choice,snapshot.get("resident_memories",[]), snapshot.get("resident_participation",{}),snapshot.get("tea_revisit",{}),display,house_round,has_menu])
 	if app.modal.get_meta("tea_fingerprint","")==fingerprint:return
 	app.modal.set_meta("tea_fingerprint",fingerprint)
 	var height:=318.0
-	if site=="journal":height=568.0 if record.get("comparison_complete",false) else 475.0  # 完成比較後保留茶罐大單進度與路線按鈕。
+	var journal_picture:=journal_art() if site=="journal" else null
+	if site=="journal":
+		height=568.0 if record.get("comparison_complete",false) else 475.0  # 完成比較後保留茶罐大單進度與路線按鈕。
+		# 有插畫時：四個地點排成兩欄、路線按鈕移到標題列，小視窗也不必捲動就能看到配送狀態。
+		if journal_picture:
+			# 高度依字級在「預設」與「最大」兩組實測值之間取值；小視窗一律由版面上限（視窗高 − 48）截住。
+			var grow:=clampf((float(app.font_scale_factor())-1.0)/0.25,0.0,1.0)
+			if not intro:height=lerpf(492.0,566.0,grow)
+			elif record.get("comparison_complete",false):height=lerpf(592.0,676.0,grow)
+			else:height=lerpf(504.0,540.0,grow)
+			if has_menu:height+=lerpf(48.0,54.0,grow)
+			app.modal.set_meta("tea_width",648.0)
+			var frame:=app.modal.get_child(0) as VBoxContainer
+			if frame:frame.add_theme_constant_override("separation",8)
 	elif site=="home" and intro:height=430.0
 	elif site=="kiln":height=418.0 if intro and record.kiln.is_empty() else 278.0
 	elif site=="pack":height=520.0 if not record.returning.is_empty() else 410.0
@@ -102,6 +148,25 @@ static func refresh(app)->void:
 	var page:=VBoxContainer.new()
 	page.add_theme_constant_override("separation",8)
 	card.add_child(page)
+	if has_menu:
+		var menu:=app.button("茶茶手寫茶單",ChachaHandwrittenMenu.open.bind(app,open.bind(app,"journal"),"返回手帳")) as Button
+		menu.name="ChachaMenuBookmark"
+		page.add_child(menu)
+	if journal_picture:
+		page.add_theme_constant_override("separation",6)
+		var picture:=Shell.picture(journal_picture,journal_picture.get_height())
+		picture.name="TeaJournalArt"
+		picture.custom_minimum_size=Vector2(0,journal_picture.get_height())
+		picture.accessibility_name="插畫：貓空茶茶採茶，鶯歌陶師製罐"
+		page.add_child(picture)
+	var heading:=journal_heading(app,body)
+	if heading:
+		var header_id:=("TeaMap" if intro else "TeaHome") if site=="journal" else ""
+		for id:String in ["TeaMap","TeaHome"]:
+			var stale:=heading.get_node_or_null(id)
+			if stale and id!=header_id:
+				heading.remove_child(stale)
+				stale.queue_free()
 	var actions:=HBoxContainer.new()
 	actions.add_theme_constant_override("separation",8)
 	var perform:=func(id:String,title:String,action:String,ready:bool,extra:=""):
@@ -138,10 +203,10 @@ static func refresh(app)->void:
 		if site=="home":perform.call("TeaIntro","收下介紹信","tea_intro",chapter_complete)
 		elif site=="journal":
 			item_line(app,page,"tea_leaf","先到小栗的小店","第一章完成後，靠近小栗並從茶單收下介紹信。")
-			Helpers.action(app,actions,"TeaHome","小栗的茶單",func():open(app,"home"),true)
+			journal_action(app,heading,actions,"TeaHome","小栗的茶單",func():open(app,"home"))
 	elif site=="journal":
-		journal(app,page,record,remaining)
-		Helpers.action(app,actions,"TeaMap","查看路線",app._map_menu,true)
+		journal(app,page,record,remaining,2 if journal_picture else 1)
+		journal_action(app,heading,actions,"TeaMap","查看路線",app._map_menu)
 	elif site=="home":
 		var outbound:Dictionary=record.get("outbound",{})
 		var empties:=int(record.get("empties",0))
@@ -416,6 +481,7 @@ static func kiln_recipe(app,parent:HBoxContainer,id:String,title:String,items:Ar
 static func item_line(app,parent:Control,item:String,title:String,detail:String)->void:
 	var row:=HBoxContainer.new()
 	row.add_theme_constant_override("separation",12)
+	row.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	parent.add_child(row)
 	var texture:=TeawareArt.teaware_texture() if item==World.TEA_REVISIT.TEAWARE_ITEM else Art.icon(item)
 	if not texture:texture=Shell.icon("journal")
@@ -426,17 +492,24 @@ static func item_line(app,parent:Control,item:String,title:String,detail:String)
 	Helpers.text(app,words,title,18)
 	Helpers.text(app,words,detail,15)
 
-static func journal(app,parent:Control,record:Dictionary,remaining:Dictionary)->void:
+static func journal(app,parent:Control,record:Dictionary,remaining:Dictionary,columns:=1)->void:
 	var roast:Dictionary=record.get("roast",{})
 	var outbound:Dictionary=record.get("outbound",{})
 	var returning:Dictionary=record.get("returning",{})
-	item_line(app,parent,"tea_leaf","貓空茶園","採葉、烘焙與包裝。" if roast.is_empty() else ("烘焙可取茶" if remaining.roast==0 else "烘焙剩 %d 秒"%remaining.roast))
-	item_line(app,parent,"tea_jar","鶯歌陶坊","陶師已提供黏土，可到窯邊製罐。" if record.get("potter",false) else "和陶師聊聊，領兩份黏土。")
-	item_line(app,parent,wrap_icon(outbound),"渡口茶單","尚無寄件" if outbound.is_empty() else ("小栗可以收貨" if remaining.outbound==0 else "運送中 · %d 秒"%remaining.outbound))
+	# 有插畫時排兩欄：貓空在左、鶯歌在右，正好對著雙聯畫的左右兩半。
+	var stops:=GridContainer.new()
+	stops.name="TeaJournalStops"
+	stops.columns=columns
+	stops.add_theme_constant_override("h_separation",12)
+	stops.add_theme_constant_override("v_separation",8)
+	parent.add_child(stops)
+	item_line(app,stops,"tea_leaf","貓空茶園","採葉、烘焙與包裝。" if roast.is_empty() else ("烘焙可取茶" if remaining.roast==0 else "烘焙剩 %d 秒"%remaining.roast))
+	item_line(app,stops,"tea_jar","鶯歌陶坊","陶師已提供黏土，可到窯邊製罐。" if record.get("potter",false) else "和陶師聊聊，領兩份黏土。")
+	item_line(app,stops,wrap_icon(outbound),"渡口茶單","尚無寄件" if outbound.is_empty() else ("小栗可以收貨" if remaining.outbound==0 else "運送中 · %d 秒"%remaining.outbound))
 	var reuse:="空罐待寄回 %d 個"%int(record.get("empties",0))
 	if not returning.is_empty():reuse="茶園可領回空罐" if remaining.returning==0 else "回程中 · %d 秒"%remaining.returning
 	if record.get("reused",false):reuse+=" · 已用回收罐送達 %d 次"%int(record.get("reuse_count",0))
-	item_line(app,parent,"tea_jar","空罐回程",reuse)
+	item_line(app,stops,"tea_jar","空罐回程",reuse)
 	comparison(app,parent,record.get("trials",{}))
 	if record.get("comparison_complete",false):
 		Helpers.text(app,parent,"茶茶已記下兩種包裝的配送比較。")

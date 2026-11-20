@@ -16,25 +16,27 @@ static func state(stove:Dictionary,world_time:float) -> Dictionary:
 	return {"working":not job.is_empty() and float(job.get("ready",0))>world_time,
 		"ready":1 if not job.is_empty() and float(job.get("ready",0))<=world_time else 0}
 
-static func draw(view:CanvasItem,at:Vector2,stove:Dictionary,world_time:float,elapsed:float,reduced:bool) -> Dictionary:
+static func draw(view:CanvasItem,at:Vector2,stove:Dictionary,world_time:float,elapsed:float,reduced:bool,large:=false) -> Dictionary:
 	var status:=state(stove,world_time)
 	if status.ready>0:
 		var dish:=ItemArt.icon(ready_dish(stove))
 		if dish!=null:
-			var tray:=at+TRAY_OFFSET
+			var tray:=at+(Vector2(12,25) if large else TRAY_OFFSET)
 			view.draw_rect(Rect2(tray+Vector2(0,8),Vector2(14,5)),Color("5a3928"))
 			view.draw_rect(Rect2(tray+Vector2(1,8),Vector2(12,2)),Color("bd9260"))
 			view.draw_texture_rect(dish,Rect2(tray-Vector2(1,5),Vector2(16,16)),false)
 	if not status.working:return status
 	# Tiny pixel effects overlay the existing stove sprite, never replace it.
 	var frame:=0 if reduced else int(elapsed*4.0)%3
-	view.draw_rect(Rect2(at+Vector2(13,19),Vector2(6,4)),Color("e59b54"))
-	view.draw_rect(Rect2(at+Vector2(14+frame%2,20-frame%2),Vector2(3,3)),Color("ffdc91"))
+	var fire:=at+(Vector2(44,52) if large else Vector2(13,19))
+	view.draw_rect(Rect2(fire,Vector2(6,4)),Color("e59b54"))
+	view.draw_rect(Rect2(fire+Vector2(1+frame%2,1-frame%2),Vector2(3,3)),Color("ffdc91"))
+	var steam:=at+(Vector2(42,18) if large else Vector2(12,-2))
 	for index in 3:
 		var phase:=float(index)/3.0 if reduced else fposmod(elapsed*0.35+float(index)/3.0,1.0)
 		var rise:=floorf(phase*13.0)
 		var drift:=0.0 if reduced else roundf(sin(phase*TAU+float(index))*2.0)
-		var point:=at+Vector2(12+index*3+drift,-2-rise)
+		var point:=steam+Vector2(index*3+drift,-rise)
 		var tint:=Color("fff2d4")
 		tint.a=0.52*(1.0-phase)
 		view.draw_rect(Rect2(point,Vector2(3,2)),tint)

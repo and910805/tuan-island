@@ -38,7 +38,7 @@ func place(state:Dictionary,cell:String,type:String,who:String) -> void:
 
 func _initialize() -> void:
 	path="user://public-kitchen-schema-%d.json"%Time.get_ticks_usec()
-	expect(SaveSchema.VERSION==26 and SaveSchema.PUBLIC_KITCHEN_VERSION==23,"save version 23")
+	expect(SaveSchema.VERSION==27 and SaveSchema.PUBLIC_KITCHEN_VERSION==23,"save version 23")
 	expect(SaveSchema.MATERIAL_SOURCE_VERSION==22 and SaveSchema.PROCESSING_QUEUE_VERSION==21 and SaveSchema.COOKING_QUEUE_VERSION==20 and SaveSchema.BLUEPRINT_HISTORY_VERSION==19,"legacy cutoffs unchanged")
 	expect(SaveSchema.public_kitchen_fresh()=={"stove":"","seats":[],"meals":{"soup":0,"bread":0,"salad":0},"opened":false},"fresh shape matches contract")
 
@@ -79,7 +79,7 @@ func _initialize() -> void:
 		var ok:bool=SaveSchema.validate(parsed,World.CROPS,World.BUILD,World.RECIPES,World.SIZE,World.TREE_TIME)
 		expect(ok,"legacy v%d without field migrates"%old_version)
 		if ok:
-			expect(parsed.version==26,"legacy v%d stamped 23"%old_version)
+			expect(parsed.version==preload("res://scripts/save_schema.gd").VERSION,"legacy v%d stamped 23"%old_version)
 			expect(parsed.public_kitchen==SaveSchema.public_kitchen_fresh(),"legacy v%d gets fresh, not the eligible stove/benches"%old_version)
 		var carrying:Dictionary=legacy.duplicate(true)
 		carrying.public_kitchen=SaveSchema.public_kitchen_fresh()
@@ -190,7 +190,7 @@ func _initialize() -> void:
 	expect(saved.save(),"registered world saves")
 	var loaded=World.new()
 	expect(loaded.load_world(path),"registered world reloads")
-	expect(loaded.state.version==26,"reloaded version 23")
+	expect(loaded.state.version==preload("res://scripts/save_schema.gd").VERSION,"reloaded version 23")
 	expect(loaded.state.public_kitchen=={"stove":"37,33","seats":["36,33","36,34"],"meals":{"soup":2,"bread":1,"salad":0},"opened":false},"public_kitchen survives disk roundtrip")
 	var opened=World.new()
 	opened.state=registered(base,"37,33",["36,33","36,34"],{"soup":4,"bread":2,"salad":2})
@@ -213,7 +213,8 @@ func _initialize() -> void:
 	expect(loaded.load_world(path) and loaded.state.public_kitchen==SaveSchema.public_kitchen_fresh(),"legacy disk save loads unregistered")
 
 	# --- Session transport boundaries --------------------------------------
-	expect(Session.PROTOCOL==45,"protocol 41")
+	var release:Variant=JSON.parse_string(FileAccess.get_file_as_string("res://release.json"))
+	expect(release is Dictionary and int(release.get("protocol",0))==Session.PROTOCOL,"The server and release use the same protocol")
 	for action in [Session.KITCHEN_REGISTER,Session.KITCHEN_CONTRIBUTE]:
 		expect(action in Session.CORRELATED_ACTIONS,"%s correlated"%action)
 		expect(action.length()<24,"%s within action name bound"%action)

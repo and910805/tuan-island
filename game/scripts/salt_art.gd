@@ -644,8 +644,9 @@ static func running_frame(kind: String, phase: int) -> Texture2D:
 
 ## SaltPanUI.art_provider-compatible: func(kind,id)->Texture2D. Current UI calls:
 ## ("portrait","salt_worker"), ("pan", "empty"|"brine"|"salt"), ("status", id),
-## ("heritage","jingzaijiao"). No status icons or heritage picture were
-## delivered, so those return null (UI keeps its own life icons / no picture).
+## ("heritage","jingzaijiao"). No status icons were delivered, so those return
+## null (UI keeps its own life icons); the heritage picture is served by
+## panel_art() / heritage_texture(), not by this scene/inventory provider.
 ## Extra kinds for scene/inventory use: item, terrain, actor|resident,
 ## structure, machine, prop.
 static func provider(kind: String, id: String) -> Texture2D:
@@ -668,15 +669,65 @@ static func provider(kind: String, id: String) -> Texture2D:
 			return prop_texture(id)
 	return null
 
+## Journal illustration(s): whole delivered PNG, shown as-is (no window, no
+## resample here). Game illustration, NOT a historical photo: the UI captions it.
+## Provenance: assets/salt/salt-heritage-jingzaijiao-source.md.
+const HERITAGE := {
+	"jingzaijiao": {"file": "salt-heritage-jingzaijiao.png", "size": Vector2i(288, 192)},
+}
+
+static func has_heritage(id: String) -> bool:
+	return HERITAGE.has(id)
+
+static func heritage_path(id: String) -> String:
+	return base_dir + str(HERITAGE[id]["file"]) if HERITAGE.has(id) else ""
+
+## 288x192 heritage journal illustration. Null (recorded in `errors`, never
+## cached) for unknown ids, a missing/unloadable file or a wrong-size image, so
+## the journal simply keeps its previous picture-less left page.
+static func heritage_texture(id: String = "jingzaijiao") -> Texture2D:
+	if not HERITAGE.has(id):
+		return null
+	var key := "heritage:" + id
+	if cache.has(key):
+		return cache[key]
+	var path := heritage_path(id)
+	var texture: Texture2D = null
+	if path.begins_with("res://") or path.begins_with("user://"):
+		if not ResourceLoader.exists(path):
+			_error("missing heritage art " + path)
+			return null
+		texture = load(path) as Texture2D
+	elif FileAccess.file_exists(path):
+		var image := Image.load_from_file(path)
+		if image != null and not image.is_empty():
+			texture = ImageTexture.create_from_image(image)
+	else:
+		_error("missing heritage art " + path)
+		return null
+	if texture == null:
+		_error("unloadable heritage art " + path)
+		return null
+	if Vector2i(texture.get_size()) != HERITAGE[id]["size"]:
+		_error("wrong size %s %s" % [path, Vector2i(texture.get_size())])
+		return null
+	texture.set_meta("art_key", key)
+	texture.set_meta("source_png", path)
+	cache[key] = texture
+	return texture
+
 ## SaltPanUI.art_provider as wired by main.gd: kind "portrait" id "salt_worker"
 ## -> 阿曬 portrait; kind "pan" id = one of PAN_STATES except brine_alt -> pan
-## preview. Everything else (heritage, status) has no delivered art: null.
+## preview; kind "heritage" id "jingzaijiao" -> the journal illustration.
+## Everything else (other heritage ids, status) has no delivered art: null.
 static func panel_art(kind: String, id: String) -> Texture2D:
 	match kind:
 		"portrait":
 			return portrait_texture() if id == "salt_worker" else null
 		"pan":
 			return pan_texture(id) if id != "brine_alt" else null
+		"heritage":
+			return heritage_texture(id)
 	return null
 
 # ---------------------------------------------------------------- drawing

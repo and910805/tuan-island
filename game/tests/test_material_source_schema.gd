@@ -16,10 +16,10 @@ const Queue=preload("res://scripts/cooking_queue.gd")
 const History=preload("res://scripts/construction_history.gd")
 const A:="material-schema-owner"
 const B:="material-schema-friend"
-const FLOOR:=Vector2i(48,24)
+const FLOOR:=Vector2i(50,26)       # buildable land beside the public mill parcel
 const CHEST:=Vector2i(47,26)       # shared chest, built by A through World.act
 const PRIVATE:=Vector2i(49,27)     # private chest, built by A (last live history entry)
-const SAW_CELL:="49,25"            # sawmill fixture (box_id must never be allowed on it)
+const SAW_CELL:="50,25"            # sawmill fixture (box_id must never be allowed on it)
 const TABLE_CELL:="46,24"          # table fixture (box_id must never be allowed on it)
 const LAN:="lanyang"
 const LAN_CELL:="60,45"            # shared chest fixture, owner B
@@ -139,7 +139,7 @@ func run()->void:
 	path="user://material-source-schema-%d.json"%Time.get_ticks_usec()
 
 	# --- constants / literal cutoffs ---------------------------------------------
-	check(Schema.VERSION==26,"save schema version is 22")
+	check(Schema.VERSION==27,"save schema version is 22")
 	check(Schema.MATERIAL_SOURCE_VERSION==22,"material source cutoff literal is 22")
 	check(Schema.PROCESSING_QUEUE_VERSION==21,"processing queue cutoff literal stays 21")
 	check(Schema.COOKING_QUEUE_VERSION==20,"cooking queue cutoff literal stays 20")
@@ -149,14 +149,14 @@ func run()->void:
 
 	# --- baseline: real builds never inject an id ---------------------------------
 	var base:=fixture()
-	check(int(base.version)==26,"fresh World writes version 22")
+	check(int(base.version)==preload("res://scripts/save_schema.gd").VERSION,"fresh World writes version 22")
 	for where in WHERES:
 		check(box(base,where).type in Schema.BOX_TYPES and not box(base,where).has("box_id"),"%s: no box_id injected by build/fixture"%where)
 	check(base.construction.last.has(A) and base.construction.last[A].status=="live","fixture: A has a live history entry")
 	var base_watch:Dictionary=base.construction.last.get(A,{}).get("watch",{})
 	check(History.watch_matches(base,base_watch),"fixture: live watch matches the fixture state (precondition)")
 	var plain:Dictionary=base.duplicate(true)
-	check(valid(plain) and int(plain.version)==26,"v22 chests without box_id accepted")
+	check(valid(plain) and int(plain.version)==preload("res://scripts/save_schema.gd").VERSION,"v22 chests without box_id accepted")
 	check(box_id_count(plain)==0,"validation never invents box_id")
 	check(live_objects(plain)==live_objects(base),"v22 live objects unchanged by validation")
 	var live=load_real(base)
@@ -168,7 +168,7 @@ func run()->void:
 	var ids:={"home_chest":hid(1),"home_private":hid(2),"lan_chest":hid(3),"jin_private":"0123456789abcdef0123456789abcdef"}
 	var full:=with_ids(base,22,ids)
 	var full_input:Dictionary=full.duplicate(true)
-	check(valid(full) and int(full.version)==26,"v22 box_ids on home + regional chests accepted")
+	check(valid(full) and int(full.version)==preload("res://scripts/save_schema.gd").VERSION,"v22 box_ids on home + regional chests accepted")
 	for where in WHERES:check(box(full,where).get("box_id")==ids[where],"%s: box_id preserved exactly"%where)
 	check(live_objects(full)==live_objects(full_input),"validated v22 live objects byte-identical")
 	var partial:=with_ids(base,22,{"lan_chest":hid(9)})
@@ -247,7 +247,7 @@ func run()->void:
 		var s:=with_ids(base,version,{})
 		var objects_before:=live_objects(s)
 		var history_before:=History.fingerprint(s.construction)
-		check(valid(s) and int(s.version)==26,"v%d save without box_id accepted -> 22"%version)
+		check(valid(s) and int(s.version)==preload("res://scripts/save_schema.gd").VERSION,"v%d save without box_id accepted -> 22"%version)
 		check(box_id_count(s)==0,"v%d: no box_id assigned on load"%version)
 		check(live_objects(s)==objects_before,"v%d: every live object unchanged (no eager migration)"%version)
 		check(History.fingerprint(s.construction)==history_before,"v%d: construction history canonical digest unchanged"%version)
@@ -258,25 +258,25 @@ func run()->void:
 	var v21_objects:=live_objects(v21)
 	var v21_history:=History.fingerprint(v21.construction)
 	var w21=load_real(v21)
-	check(w21!=null and int(w21.state.version)==26,"real World loads v21 file as 22")
+	check(w21!=null and int(w21.state.version)==preload("res://scripts/save_schema.gd").VERSION,"real World loads v21 file as 22")
 	if w21!=null:
 		check(box_id_count(w21.state)==0 and live_objects(w21.state)==v21_objects,"real v21 load: live chests unchanged, no box_id")
 		check(History.fingerprint(w21.state.construction)==v21_history,"real v21 load: history digest unchanged")
 		check(w21.save(),"migrated v21 world saves")
 		check(not FileAccess.get_file_as_string(path).contains("box_id"),"saved migrated file contains no box_id")
 		var re:=fixed_world()
-		check(re.load_world(path) and int(re.state.version)==26,"migrated file reloads at 22")
+		check(re.load_world(path) and int(re.state.version)==preload("res://scripts/save_schema.gd").VERSION,"migrated file reloads at 22")
 		check(live_objects(re.state)==v21_objects and History.fingerprint(re.state.construction)==v21_history,"disk round-trip keeps objects and history digest")
 
 	# --- prior migrations keep their literal cutoffs -------------------------------
 	var proc20:=with_ids(base,20,{});proc20.objects[SAW_CELL].processing=Queue.empty_state()
 	check(not valid(proc20),"processing cutoff unchanged: v20 processing rejected")
 	var proc21:=with_ids(base,21,{});proc21.objects[SAW_CELL].processing=Queue.empty_state()
-	check(valid(proc21) and int(proc21.version)==26,"v21 processing migrates to 22")
+	check(valid(proc21) and int(proc21.version)==preload("res://scripts/save_schema.gd").VERSION,"v21 processing migrates to 22")
 	var cook19:=with_ids(base,19,{});cook19.regions[JIN].objects[JIN_CELL]={"type":"stove","owner":B,"items":{},"cooking":Queue.empty_state()}
 	check(not valid(cook19),"cooking cutoff unchanged: v19 cooking rejected")
 	var cook20:=with_ids(base,20,{});cook20.regions[JIN].objects[JIN_CELL]={"type":"stove","owner":B,"items":{},"cooking":Queue.empty_state()}
-	check(valid(cook20) and int(cook20.version)==26,"v20 cooking migrates to 22")
+	check(valid(cook20) and int(cook20.version)==preload("res://scripts/save_schema.gd").VERSION,"v20 cooking migrates to 22")
 	var v18:=with_ids(base,18,{})
 	var v18_history:Dictionary=v18.construction.duplicate(true)
 	check(valid(v18) and same(v18.construction,v18_history),"v18 undo history preserved to 22")

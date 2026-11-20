@@ -89,6 +89,7 @@ func thumbnail_in(entry: Node) -> Node:
 	return null
 
 func kind_of(entry: Button) -> String:
+	if entry.has_meta("tabletop_recipe"):return str(entry.get_meta("tabletop_recipe"))
 	var thumb := thumbnail_in(entry)
 	if thumb != null and World.BUILD.has(str(thumb.get("kind"))):
 		return str(thumb.get("kind"))
@@ -359,6 +360,45 @@ func verify_thumbnails(case_name: String) -> void:
 			expect(frame.size.x + 0.5 >= width, "%s: %s frame wide enough for the scaled thumbnail" % [case_name, kind])
 		expect(rect.encloses(drawn_rect), "%s: %s complete sprite drawn inside its slot" % [case_name, kind])
 
+## T094 detail stage: every recipe's art extent (BuildThumbnail.art_bounds) sits on
+## whole pixels at a whole-number scale, clear of the stage border. Oversized art
+## is refitted and centred; ordinary cell art keeps the shared 3x placement.
+func verify_detail_stage(case_name: String) -> void:
+	var stage := folio_node("BuildPreview")
+	var sprite := thumbnail_in(stage) as Node2D
+	expect(sprite != null, "%s: detail stage holds a build thumbnail" % case_name)
+	if sprite == null:
+		return
+	var frame := sprite.get_parent() as Control
+	var entries: Dictionary = await press_tab(TABS[0])
+	var refitted := {}
+	for kind: String in entries:
+		entries[kind][0].pressed.emit()
+		await process_frame
+		await process_frame
+		if str(sprite.get("kind")) != kind:
+			expect(false, "%s: detail stage shows %s" % [case_name, kind])
+			continue
+		var zoom := sprite.scale
+		var bounds: Rect2 = BuildThumbnail.art_bounds(kind)
+		var drawn: Rect2 = sprite.get_global_transform() * bounds
+		var clear := stage.get_global_rect().grow(-3.0)
+		expect(zoom.x == zoom.y and zoom.x in [1.0, 2.0, 3.0], "%s: %s detail art at a whole-number scale (%s)" % [case_name, kind, zoom])
+		expect(sprite.position == sprite.position.round() and drawn.position == drawn.position.round(), "%s: %s detail art on whole pixels (%s)" % [case_name, kind, drawn.position])
+		expect(clear.encloses(drawn), "%s: %s detail art inside the stage (%s in %s)" % [case_name, kind, drawn, clear])
+		if bounds == BuildThumbnail.CELL:
+			expect(zoom.x == 3.0 and sprite.position == Vector2.ZERO, "%s: %s keeps the shared 3x cell placement" % [case_name, kind])
+			continue
+		refitted[kind] = zoom.x
+		var offset := (drawn.get_center() - frame.get_global_rect().get_center()).abs()
+		expect(offset.x <= 0.5 and offset.y <= 0.5, "%s: %s oversized art centred in the stage frame (off by %s)" % [case_name, kind, offset])
+		# The largest whole-number scale that fits is used, never a smaller one.
+		var bigger := bounds.size * (zoom.x + 1.0)
+		expect(zoom.x == 3.0 or bigger.x > clear.size.x or bigger.y > frame.size.y, "%s: %s detail art is not shrunk more than needed" % [case_name, kind])
+	for kind: String in ["long_bench", "small_smelter", World.INDUSTRY.HOLLOW_BED, "waterworks", "mine_drill", "ore_display"]:
+		expect(refitted.has(kind), "%s: %s is refitted on the detail stage" % [case_name, kind])
+	expect(refitted.get("long_bench", 0.0) == 2.0 and refitted.get("small_smelter", 0.0) == 3.0, "%s: bench drops to 2x, smelter stays 3x (%s)" % [case_name, refitted])
+
 func verify_layout(case_name: String) -> void:
 	var modal_before = app.modal
 	var selected_name: String = World.BUILD.bench.name
@@ -438,14 +478,23 @@ func run() -> void:
 	await open_folio("open")
 	verify_structure("open")
 	await verify_tabs()
+	await verify_log_cabin()
 	var styles = preload("res://scripts/build_style_catalog.gd")
 	for style_id: String in styles.style_ids():
 		var label_text: String = styles.style(style_id).name
 		var entries: Dictionary = await press_tab(label_text)
-		expect(entries.size()==styles.kinds(style_id).size(),"Style lists only its catalog recipes")
+		var themed:Array=[World.INDUSTRY.COAST_CART,World.INDUSTRY.COAST_REGISTER,World.INDUSTRY.COAST_AWNING,World.INDUSTRY.COAST_FISH_COUNTER,World.INDUSTRY.BEACH_CHAIR,World.INDUSTRY.SHELL_TABLE,World.RESIDENT_GOALS.COAST_WARDROBE,World.WALL_FIXTURES.LIFEBUOY,World.POSTCARDS.RACK,World.OAR_SIGN.KIND,"rope_rack"] if style_id=="coast" else []
+		if style_id=="tea_house":themed=[World.INDUSTRY.BAMBOO_TEA_TABLE,World.RESIDENT_GOALS.BAMBOO_BENCH,World.INDUSTRY.INDIGO_CUSHION,World.WALL_FIXTURES.BAMBOO_CURTAIN,World.INDUSTRY.PAPER_TEA_LAMP,World.INDUSTRY.TEA_DISPLAY_CABINET,World.INDUSTRY.RIVERSIDE_SCREEN,World.WALL_FIXTURES.WATER_LISTENING_CHIME,World.INDUSTRY.BAMBOO_LOUNGER,World.INDUSTRY.TEA_SNACK_SHELF,World.INDUSTRY.IMPERFECT_TEA_PAVILION]
+		var tabletop_items:Array=World.INDUSTRY.SHELL_BOTTLES if style_id=="coast" else [World.INDUSTRY.TEA_SET]
+		expect(entries.size()==styles.kinds(style_id).size()+themed.size()+tabletop_items.size(),"Style lists its construction recipes and tabletop pieces")
 		for kind: String in styles.kinds(style_id):
 			expect(entries.has(kind),"Style exposes "+kind)
+		for kind:String in themed:
+			expect(entries.has(kind),"Coastal shelf exposes the dedicated piece "+kind)
 		expect(recipe_text().contains("搭配建議"),"Style recipe shows its design note")
+		for item:String in tabletop_items:
+			await verify_tabletop(entries,item)
+		await capture("tabletop-"+style_id)
 	var inn_entries:=await press_tab("暖泉旅舍")
 	var inn_order:=["inn_quilt_bed","inn_stone_footbath","inn_lattice_wardrobe","inn_fabric_screen","inn_tea_table",
 		"spring_stone_bench","towel_rack","ceramic_eave_chime","warm_lamp_niche","inn_luggage_rack","spring_pebble_path","inn_welcome_sign"]
@@ -473,6 +522,10 @@ func run() -> void:
 	await verify_locked()
 	await verify_sample_cost()
 	await verify_layout("layout")
+	for extent in EXTENTS + [EXTENTS[0]]:
+		root.size = extent
+		await settle()
+		await verify_detail_stage("detail %s" % extent)
 	await select_recipe("bed")
 	await capture("bed")
 	press_escape()
@@ -483,6 +536,53 @@ func run() -> void:
 	await verify_select_short()
 	await verify_house_round_trip()
 	finish()
+
+func verify_log_cabin()->void:
+	var entries:=await press_tab("原木小屋")
+	var order:=["cedar_bed","rounded_wood_table","chair","master_bench","cotton_double_sofa",
+		"wall_tool_board","grid_bookcase","forest_wardrobe","lamp","braided_round_rug",World.INDUSTRY.TABLE_VASE,"handcarved_home_sign"]
+	expect(entries.size()==order.size(),"The log cabin shelf lists all twelve design items once")
+	for index in order.size():
+		var kind:String=order[index]
+		expect(entries.has(kind),"The log cabin collection includes "+kind)
+		if not entries.has(kind):continue
+		var entry:Button=entries[kind][0]
+		expect(entry.get_index()==index,"Log cabin pieces follow the plan order")
+		if kind==World.INDUSTRY.TABLE_VASE:
+			await verify_tabletop(entries,kind)
+			await capture("tabletop-log-cabin")
+			continue
+		entry.pressed.emit()
+		await process_frame
+		expect(recipe_text().contains(World.BUILD[kind].name),"The shelf opens the actual recipe for "+kind)
+	if not entries.has(World.INDUSTRY.ROUNDED_TABLE):return
+	entries[World.INDUSTRY.ROUNDED_TABLE][0].pressed.emit()
+	await process_frame
+	expect(recipe_text().contains("桌邊花瓶可在木工台製作"),"The table recipe links the crafted tabletop decoration to its placement method")
+	for extent in EXTENTS:
+		root.size=extent
+		await settle()
+		var outer:ScrollContainer=folio_node("ModalScroll") as ScrollContainer
+		var shown:Array[Control]=[tab("原木小屋"),folio_node("BlueprintBook")]
+		for control in shown:
+			expect(outer.get_global_rect().encloses(control.get_global_rect()),"The log cabin tab and blueprint book stay in view at %s"%extent)
+	await capture("log-cabin")
+
+func verify_tabletop(entries:Dictionary,item:String)->void:
+	expect(entries.has(item),"The style shelf has a preview for "+item)
+	if not entries.has(item):return
+	entries[item][0].pressed.emit()
+	await process_frame
+	var preview:TextureRect=folio_node("BuildTabletopPreview") as TextureRect
+	var pixels:Image=preview.texture.get_image() if preview!=null and preview.texture!=null else null
+	expect(preview!=null and preview.is_visible_in_tree() and pixels!=null and not pixels.is_invisible(),
+		"The detail card shows the actual item sprite for "+item)
+	expect(recipe_text().contains(World.NAMES[item].replace("・","\n")) and recipe_text().contains("木工台製作") and recipe_text().contains("擺"),
+		"The detail card identifies the workbench and placement for "+item)
+	for material:String in World.CRAFT[item].ingredients:
+		var held:int=app.session.snapshot.players[app.session.own_id].inventory.get(material,0)
+		expect(count_row(material,held,World.CRAFT[item].ingredients[material]),"The card reads the actual recipe for "+material)
+	expect(place_button().disabled and not place_button().is_visible_in_tree(),"Tabletop items use the actual table interaction")
 
 func finish() -> void:
 	if is_instance_valid(app):

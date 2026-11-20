@@ -80,6 +80,8 @@ func run() -> void:
 	person.inventory.charcoal=1
 	var furnace:=Vector2i(40,34)
 	stand(furnace+Vector2i(1,2))
+	# C11: a new small smelter needs the Q03 board flag and a stone workbench (earned path: test_stone_workbench).
+	preload("res://tests/stone_station_fixture.gd").install(world,token)
 	expect(world.act(token,"build-furnace","build",furnace,"small_smelter").ok,"Build the small smelter")
 	stand(furnace+Vector2i(1,2))
 	app._interact()

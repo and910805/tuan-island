@@ -1,11 +1,15 @@
 extends RefCounted
 
+const Crops=preload("res://scripts/crop_catalog.gd")
+const ViewProjection=preload("res://scripts/view_projection.gd")
 const DURATION:=1.4
 const SPROUT_DURATION:=0.42
+const RIPEN_DURATION:=1.1
 const EVENTS:={"tiller":"last_till","seeder":"last_seed","harvester":"last_harvest"}
 var seen:Dictionary={}
 var operations:Dictionary={}
 var sprouts:Dictionary={}
+var ripened:Dictionary={}
 var initialized:=false
 var last_world_time:=0.0
 
@@ -13,11 +17,14 @@ func reset() -> void:
 	seen.clear()
 	operations.clear()
 	sprouts.clear()
+	ripened.clear()
 	initialized=false
 
-func observe(previous:Dictionary,snapshot:Dictionary,elapsed:float) -> void:
+func observe(previous:Dictionary,snapshot:Dictionary,elapsed:float,own:="") -> void:
 	var world_time:=float(snapshot.get("time",0.0))
 	if world_time<last_world_time:reset()
+	observe_ripening(previous.get("crops",{}),snapshot.get("crops",{}),elapsed,
+		initialized and world_time>last_world_time,ViewProjection.packet_rect(previous),own)
 	for cell in sprouts.keys():
 		if elapsed-float(sprouts[cell])>=SPROUT_DURATION:sprouts.erase(cell)
 	for actor in operations.keys():
@@ -51,6 +58,29 @@ func observe(previous:Dictionary,snapshot:Dictionary,elapsed:float) -> void:
 			"cells":event.cells.duplicate(),"items":items,"origin":Vector2(player.x,player.y)}
 	initialized=true
 	last_world_time=world_time
+
+func observe_ripening(previous:Dictionary,current:Dictionary,elapsed:float,advanced:bool,prior_rect:=Rect2i(),own:="") -> void:
+	for cell in ripened.keys():
+		var crop:Dictionary=current.get(cell,{})
+		var event:Dictionary=ripened[cell]
+		if elapsed-float(event.started)>=RIPEN_DURATION or crop.get("kind","")!=event.kind or float(crop.get("growth",0.0))<float(Crops.CROPS[event.kind].time):
+			ripened.erase(cell)
+	if not advanced:return
+	for cell in current:
+		var old_crop:Dictionary=previous.get(cell,{})
+		var crop:Dictionary=current[cell]
+		var kind:String=crop.get("kind","")
+		if old_crop.get("kind","")!=kind or not Crops.CROPS.has(kind):continue
+		var maturity:=float(Crops.CROPS[kind].time)
+		if float(old_crop.get("growth",0.0))<maturity and float(crop.get("growth",0.0))>=maturity:
+			# A newly loaded plot may have matured any time since it left view.
+			if prior_rect.has_area() and not ViewProjection.exact("crops",old_crop,own) and not prior_rect.has_point(ViewProjection.cell(cell)):continue
+			ripened[cell]={"kind":kind,"started":elapsed}
+
+func ripening_age(cell:String,elapsed:float) -> float:
+	if not ripened.has(cell):return -1.0
+	var age:=elapsed-float(ripened[cell].started)
+	return age if age>=0.0 and age<RIPEN_DURATION else -1.0
 
 func mark_sprout(cell:String,previous:Dictionary,snapshot:Dictionary,elapsed:float) -> void:
 	var before:Dictionary=previous.get("crops",{}).get(cell,{})

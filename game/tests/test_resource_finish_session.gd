@@ -64,7 +64,9 @@ func scenario()->bool:
 		expect(seen,"Observer receives authoritative final-hit animation: "+tool)
 		if not seen:return false
 		expect(server.world.state.removed.has(key),"Server has really removed the resource")
-		expect(int(server.world.state.players[ALPHA].inventory.get(spec[3],0))==amount_before+int(spec[4]),"Authoritative yield unchanged")
+		expect(int(server.world.state.players[ALPHA].inventory.get(spec[3],0))==amount_before,"Inventory has not credited a ground drop")
+		var drops:Dictionary=server.world.region_snapshot("home").get("gather_drops",{})
+		expect(int(drops.get(key,{}).get("items",{}).get(spec[3],0))==int(spec[4]),"Authoritative ground yield unchanged")
 		expect(alpha.feedback.finishes.has(key),"Actor also observes final-hit animation")
 		expect(gamma.feedback.finishes.is_empty(),"Other region receives no resource-ending animation")
 		var began:float=observer.tool_feedback.finishes[key].started

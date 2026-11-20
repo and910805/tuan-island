@@ -132,5 +132,53 @@ func verify_scene(world:World)->void:
 	if not stoves.is_empty():
 		stoves[0].pressed.emit()
 		expect(app.modal is Control and app.modal.get_meta("life_modal_layout","")=="cooking_queue","Shortcut opens the actual stove workbench")
+	app._close_modal()
+	var plot:=Vector2i(48,27)
+	var original_harvests:=int(person.get("harvests",0))
+	person.x=plot.x+0.5
+	person.y=plot.y+1.5
+	person.harvests=9
+	world.state.crops[World.key(plot)]={"kind":"radish","growth":World.CROPS.radish.time,"wet":true,"owner":TOKEN}
+	var earlier:=Book.core_levels(person)
+	var harvest:=world.act(TOKEN,"preview-harvest","harvest",plot)
+	expect(harvest.ok,"The native scene captures the receipt of a real harvest")
+	app.session.snapshot=world.region_snapshot("home")
+	app._state_changed(app.session.snapshot,TOKEN)
+	app._refresh_hud()
+	app._notice(harvest.message+"\n"+Book.advancement(earlier,person),true)
+	await process_frame
+	await process_frame
+	var toast:Label=app.toast
+	expect(toast.is_visible_in_tree() and toast.get_line_count()==2 and toast.get_global_rect().end.y<app.get_viewport_rect().size.y-120,"The unlock and harvest result fit above the tools on separate lines")
+	for arg:String in OS.get_cmdline_user_args():
+		if not arg.begins_with("--advancement-preview="):continue
+		await RenderingServer.frame_post_draw
+		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--advancement-preview="))==OK,"Capture the real advancement notice")
+	await verify_cooperation_page(app,world,person)
+	person.x=position.x
+	person.y=position.y
+	person.harvests=original_harvests
 	app.queue_free()
 	await process_frame
+
+func verify_cooperation_page(app,world:World,person:Dictionary)->void:
+	var companion:="skill-book-companion"
+	var stand_at:=Vector2(34.5,26.5)
+	var tree:=Vector2i(33,28)
+	world.add_player(companion,"採集搭檔",stand_at)
+	person.x=stand_at.x
+	person.y=stand_at.y
+	person.gathering_points=3
+	expect(world.act(TOKEN,"book-assist","axe",tree).ok and world.act(companion,"book-chop","axe",tree).ok and world.act(companion,"book-finish","axe",tree).ok,"A companion finishes the shared tree")
+	app.session.snapshot=world.region_snapshot("home")
+	app._state_changed(app.session.snapshot,TOKEN)
+	app.LifeTasks.skill_book(app)
+	await process_frame
+	await process_frame
+	var labels:Array=app.modal.find_children("*","Label",true,false)
+	expect(labels.any(func(label):return label.text=="採集 · 2 級") and labels.any(func(label):return label.text=="合作採集 1 次"),"The skill page shows the earned level and cooperation count")
+	for arg:String in OS.get_cmdline_user_args():
+		if not arg.begins_with("--cooperation-preview="):continue
+		await RenderingServer.frame_post_draw
+		expect(root.get_texture().get_image().save_png(arg.trim_prefix("--cooperation-preview="))==OK,"Capture earned cooperation in the skill page")
+	app._close_modal()

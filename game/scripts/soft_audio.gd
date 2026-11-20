@@ -4,9 +4,15 @@ extends Node
 # General cues share one debounced voice. World sounds use separate players.
 const RATE:=22050
 const CART_ROLL_SECONDS:=0.44
-const FISHING_CUES:=["fish_cast","fish_bite","fish_catch"]
-const WORLD_CUES:=["machine_start","machine_claim","farm_pass","chicken","cow","sheep","duck","feed_trough","basket","meal_serve","meal_claim","stove_start","stove_claim"]
-const NEARBY_CUES:={"axe":"wood_hit","pick":"stone_hit","harvest":"crop_pick"}
+const FISHING_CUES:=["fish_cast","fish_bite","fish_catch","fish_release","fish_cancel"]
+const FishingFeedback=preload("res://scripts/fishing_feedback.gd")
+const Footsteps=preload("res://scripts/footstep_audio.gd")
+const HAND_CUES:=["hoe_soil","seed_drop","water_pour","wood_hit","stone_hit","crop_pick","build_set","build_lift","door_latch","coins_collect"]
+const PORTER_CUES:=["porter_greet","porter_steps","porter_crate","porter_gift"]
+const JOURNAL_PAGE:="journal_page"
+const MEADOW_WARNING:="meadow_warning"
+const WORLD_CUES:=["machine_start","machine_claim","farm_pass","chicken","cow","sheep","duck","feed_trough","basket","meal_serve","meal_claim","stove_start","stove_claim","meadow_lantern","meadow_gift","guardian_raise","guardian_drop"]+PORTER_CUES
+const NEARBY_TOOLS:=["axe","pick","harvest","hoe","seed","water","build","remove","plant_tree","move_object"]
 const NEARBY_RADIUS:=9.0
 const NEARBY_MAX_GAIN:=0.32
 const ACTION_DELAY_MS:=120
@@ -23,17 +29,23 @@ var ambience_volume:=0.25
 var interface_volume:=0.45
 var activity_captions:=true
 var reduced_motion:=false
+var stroll_dim:=false
 var preferred_zoom:=2
 var forest_tools:=false
 var standard_fishing:=false
 var preferred_text_scale:=1
 var fixed_area_camera:=false
+var display_compatibility:=false
 var player:AudioStreamPlayer
 var ambience:AudioStreamPlayer
 var nearby:AudioStreamPlayer
 var cart_roll:AudioStreamPlayer
+var footstep_voice:AudioStreamPlayer
+var meadow_warning:AudioStreamPlayer
+var footsteps:=Footsteps.new()
 var nearby_gain:=0.0
 var nearby_region:=""
+var nearby_indoor:=""
 var machine:AudioStreamPlayer
 var machine_kind:=""
 var machine_gain:=0.0
@@ -56,20 +68,27 @@ func _ready() -> void:
 	cart_roll=AudioStreamPlayer.new()
 	cart_roll.stream=make_cue("cart_roll")
 	add_child(cart_roll)
+	footstep_voice=AudioStreamPlayer.new()
+	add_child(footstep_voice)
+	meadow_warning=AudioStreamPlayer.new()
+	meadow_warning.stream=make_cue(MEADOW_WARNING)
+	add_child(meadow_warning)
 	machine=AudioStreamPlayer.new()
 	add_child(machine)
 	music=Music.new()
 	add_child(music)
 	music.set_volume(music_volume)
-	for kind in ["action","reward","notice","memorial_bell","ceramic_chime","shell_chime"]+FISHING_CUES+WORLD_CUES+NEARBY_CUES.values():sounds[kind]=make_cue(kind)
+	for kind in ["action","reward","notice","memorial_bell","ceramic_chime","shell_chime","water_chime","warm_lantern",JOURNAL_PAGE]+FISHING_CUES+WORLD_CUES+HAND_CUES:sounds[kind]=make_cue(kind)
+	for surface:String in Footsteps.SURFACES:sounds["step_"+surface]=make_cue("step_"+surface)
 	set_process(false)
 
 func cue_gain(kind:String) -> float:
-	if kind in ["ceramic_chime","shell_chime"]:return master_volume*ambience_volume
+	if kind in ["ceramic_chime","shell_chime","water_chime"]:return master_volume*ambience_volume
 	return master_volume*(interface_volume if kind in ["notice","reward"] else volume)
 
-static func action_cue(action:String,animal:String) -> String:
+static func action_cue(action:String,animal:String,mill_claimed:=false) -> String:
 	match action:
+		World.MILL_RESTORATION.SERVICE:return "machine_claim" if mill_claimed else "machine_start"
 		"assemble", "start_processing", "queue_processing", "toggle_auto_processing", "feed_processing":return "machine_start"
 		"claim_processing", "collect_processing_output":return "machine_claim"
 		"till_area", "seed_area", "harvest_area":return "farm_pass"
@@ -79,39 +98,81 @@ static func action_cue(action:String,animal:String) -> String:
 		"serve_hotpot", "serve_watermelon", "serve_chowder":return "meal_serve"
 		"claim_hotpot", "claim_watermelon", "claim_chowder":return "meal_claim"
 		"cook", "queue_cook":return "stove_start"
+		"hoe":return "hoe_soil"
+		"seed","plant_tree":return "seed_drop"
+		"water":return "water_pour"
+		"axe":return "wood_hit"
+		"pick":return "stone_hit"
+		"harvest":return "crop_pick"
+		"build","build_area","build_edge":return "build_set"
+		"remove","move_object","remove_edge":return "build_lift"
+		"door","toggle_edge":return "door_latch"
+		"market_collect":return "coins_collect"
 		"claim_cook":return "stove_claim"
-		"egg", "livestock_collect", "collector_collect", World.SEAWEED_POINT, World.WANGAN_COAST.SHELL_POINT, World.WANGAN_COAST.STAR_SAND_POINT:return "basket"
+		"porter_offer":return "porter_greet"
+		"porter_wait":return "porter_steps"
+		"porter_deliver":return "porter_crate"
+		"porter_claim":return "porter_gift"
+		"meadow_offer":return "meadow_lantern"
+		"meadow_claim":return "meadow_gift"
+		"egg", "livestock_collect", "collector_collect", World.SEAWEED_POINT, World.WANGAN_COAST.SHELL_POINT, World.WANGAN_COAST.STAR_SAND_POINT, World.WANGAN_COAST.SALT_PARCEL_POINT:return "basket"
 	return ""
 
 func refresh_gains() -> void:
 	if music:music.set_volume(master_volume*music_volume)
 	if ambience:ambience.volume_db=Music.to_db(master_volume*ambience_volume)
-	if nearby:nearby.volume_db=Music.to_db(nearby_gain*master_volume*volume)
+	if nearby:
+		var gain:=master_volume*volume
+		nearby.volume_db=Music.to_db(nearby_gain*gain)
+		if gain<=0.0:stop_nearby_tools()
 	if machine:machine.volume_db=Music.to_db(machine_gain*master_volume*volume)
 	if cart_roll:
 		cart_roll.volume_db=Music.to_db(master_volume*volume*0.75)
 		if master_volume*volume<=0.0:cart_roll.stop()
+	if footstep_voice:
+		footstep_voice.volume_db=Music.to_db(master_volume*volume*0.60)
+		if master_volume*volume<=0.0:footstep_voice.stop()
+	if meadow_warning:
+		meadow_warning.volume_db=Music.to_db(master_volume*volume)
+		if master_volume*volume<=0.0:meadow_warning.stop()
 	if player and player.playing:
 		var gain:=cue_gain(cue_kind)
 		if gain<=0.0:player.stop()
 		else:player.volume_db=Music.to_db(gain)
 
+func update_footsteps(snapshot:Dictionary,id:String,position:Vector2,walking:bool)->void:
+	var surface:=footsteps.advance(snapshot,id,position,walking)
+	if surface.is_empty() or master_volume*volume<=0.0:return
+	footstep_voice.volume_db=Music.to_db(master_volume*volume*0.60)
+	footstep_voice.pitch_scale=0.96 if footsteps.foot==0 else 1.04
+	footstep_voice.stream=sounds["step_"+surface]
+	footstep_voice.play()
+
+func play_meadow_warning()->void:
+	var gain:=master_volume*volume
+	if gain<=0.0:return
+	meadow_warning.volume_db=Music.to_db(gain)
+	meadow_warning.play()
+
 func set_world(snapshot:Dictionary,own_id:String) -> void:
 	music.set_world(snapshot,own_id)
 	var region:=str(snapshot.get("region_id","home"))
+	var person:Dictionary=snapshot.get("players",{}).get(own_id,{})
+	var indoor:=Music.indoor_track(snapshot,region,person)
+	if region!=nearby_region or indoor!=nearby_indoor:stop_nearby_tools()
+	nearby_indoor=indoor
 	if region!=nearby_region:
 		nearby_region=region
-		nearby.stop()
 		cart_roll.stop()
+		if region!=World.MEADOW.REGION:meadow_warning.stop()
 		stop_machine()
 	if DisplayServer.get_name()=="headless":return
-	var person:Dictionary=snapshot.get("players",{}).get(own_id,{})
 	update_machine(snapshot,person)
-	if region==Music.Springs.REGION and Music.Springs.in_inn(person):
+	if not indoor.is_empty():
 		stop_ambience()
 		return
 	var zone:=Music.home_zone(snapshot,Vector2(float(person.get("x",0)),float(person.get("y",0)))) if region=="home" else ""
-	var kind:="cave" if region.begins_with("mine_") else "wind"
+	var kind:="cave" if region.begins_with("mine_") or region==World.PARTY_CART.REGION else "wind"
 	if zone in ["home_coast","home_river",Music.SOUTH_SHORE_TRACK,Music.STAR_SHORE_TRACK] or region in ["toucheng","beimen"]:kind="water"
 	if person.get("at_sea",false):kind="surf"
 	if kind==ambience_kind:return
@@ -160,6 +221,11 @@ func update_machine(snapshot:Dictionary,person:Dictionary) -> void:
 	var now:=float(snapshot.get("time",0.0))
 	var closest:=MACHINE_RADIUS
 	var kind:=""
+	if snapshot.get(World.MILL_RESTORATION.BUSY,false) and snapshot.get(World.MILL_RESTORATION.SITE_VISIBLE,false) and snapshot.get("region_id","home")=="home":
+		var mill_distance:=listener.distance_to(Vector2(World.MILL_RESTORATION.DOOR)+Vector2(0.5,0.5))
+		if mill_distance<closest:
+			closest=mill_distance
+			kind="waterwheel"
 	var objects:Dictionary=snapshot.get("objects",{})
 	for key:String in objects:
 		var profile:=machine_profile(objects[key],now)
@@ -186,23 +252,29 @@ func stop_machine() -> void:
 	machine.stop()
 
 func play_nearby_tools(actors:Array,records:Dictionary,own_id:String,listener:Vector2) -> bool:
-	if nearby.playing or master_volume*volume<=0.0:return false
+	if nearby.playing or master_volume*volume<=0.0 or not listener.is_finite():return false
 	var closest:=NEARBY_RADIUS
 	var cue:=""
 	for actor in actors:
 		if actor==own_id:continue
 		var action:Dictionary=records.get(actor,{})
-		if not NEARBY_CUES.has(action.get("tool","")):continue
-		var distance:=listener.distance_to(Vector2(action.cell)+Vector2(0.5,0.5))
+		var tool:String=action.get("tool","")
+		var cell:Variant=action.get("cell")
+		if tool not in NEARBY_TOOLS or not cell is Vector2i:continue
+		var distance:=listener.distance_to(Vector2(cell)+Vector2(0.5,0.5))
 		if distance>=closest:continue
 		closest=distance
-		cue=NEARBY_CUES[action.tool]
+		cue=action_cue(tool,"")
 	if cue.is_empty():return false
 	nearby_gain=NEARBY_MAX_GAIN*pow(1.0-closest/NEARBY_RADIUS,2.0)
 	nearby.volume_db=Music.to_db(nearby_gain*master_volume*volume)
 	nearby.stream=sounds[cue]
 	nearby.play()
 	return true
+
+func stop_nearby_tools() -> void:
+	nearby_gain=0.0
+	if nearby:nearby.stop()
 
 func set_title() -> void:
 	stop_ambience()
@@ -249,9 +321,15 @@ static func make_cue(kind:String) -> AudioStreamWAV:
 	if kind=="memorial_bell":duration=0.68
 	if kind=="ceramic_chime":duration=0.62
 	if kind=="shell_chime":duration=0.52
-	if kind in FISHING_CUES:duration=float({"fish_cast":0.18,"fish_bite":0.24,"fish_catch":0.30}[kind])
+	if kind=="water_chime":duration=0.58
+	if kind=="warm_lantern":duration=0.48
+	if kind==JOURNAL_PAGE:duration=0.43
+	if kind in FISHING_CUES:duration=float({"fish_cast":FishingFeedback.CAST_DURATION+0.22,"fish_bite":0.24,"fish_catch":0.86,
+		"fish_release":FishingFeedback.RELEASE_LEAP+0.26,"fish_cancel":0.32}[kind])
+	if kind in HAND_CUES:duration=0.22 if kind not in ["water_pour","coins_collect"] else 0.36
+	if kind.begins_with("step_"):duration=0.14
 	if kind in WORLD_CUES:duration=0.36
-	if kind in NEARBY_CUES.values():duration=0.22
+	if kind==MEADOW_WARNING:duration=1.32
 	if kind=="cart_roll":duration=CART_ROLL_SECONDS
 	var samples:=int(RATE*duration)
 	var bytes:=PackedByteArray()
@@ -277,13 +355,41 @@ static func make_cue(kind:String) -> AudioStreamWAV:
 			"shell_chime":
 				wave=note(t,1160.0,0.20)*0.36+note(t-0.06,1485.0,0.24)*0.27+note(t-0.15,970.0,0.27)*0.24
 				envelope=1.0
+			"water_chime":
+				# Two soft, slightly detuned bamboo-and-copper notes.
+				wave=note(t,987.77,0.30)*0.30+note(t-0.09,740.0,0.34)*0.26+note(t-0.20,1318.5,0.30)*0.16
+				envelope=1.0
+			"warm_lantern":
+				var wick:=burst(t,0.088)*(grain(i)*0.071+grain(i>>4)*0.038)
+				wave=wick+note(t-0.04,698.46,0.24)*0.43+note(t-0.11,1046.50,0.36)*0.32
+				envelope=1.0
+			JOURNAL_PAGE:
+				# A short paper lift, followed by the softer edge coming to rest.
+				var fibers:=grain(i)*0.055+grain(i>>3)*0.055
+				wave=burst(t,0.19)*fibers+burst(t-0.16,0.20)*(fibers*0.7+grain(i>>5)*0.03)
+				envelope=1.0
 			"fish_cast":
-				wave=sin(TAU*(310.0*t-510.0*t*t))*0.11+sin(TAU*(710.0*t-1030.0*t*t))*0.022
+				var swish:=burst(t,0.20)
+				wave=swish*(0.07*grain(i)+0.064*sin(TAU*(490.0*t-620.0*t*t)))
+				wave+=splash(t-FishingFeedback.CAST_DURATION,i,0.21)
+				envelope=1.0
 			"fish_bite":
-				wave=note(t,698.46,0.11)+note(t-0.08,880.0,0.14)
+				wave=splash(t,i,0.11)*0.62+note(t,698.46,0.11)+note(t-0.08,880.0,0.14)
 				envelope=1.0
 			"fish_catch":
-				wave=note(t,523.25,0.13)+note(t-0.055,659.25,0.14)+note(t-0.11,783.99,0.19)
+				var taut:=burst(t,0.50)*maxf(0.0,sin(TAU*(16.0*t-5.0*t*t)))
+				var landed:=t-FishingFeedback.REEL_DURATION
+				wave=splash(t,i,0.23)+taut*(0.075*sin(TAU*327.0*t)+0.045*grain(i))
+				wave+=note(landed,523.25,0.13)+note(landed-0.055,659.25,0.14)+note(landed-0.11,783.99,0.19)
+				wave*=0.80
+				envelope=1.0
+			"fish_release":
+				wave=splash(t,i,0.19)*0.70+note(t-0.09,623.0,0.21)*0.38
+				wave+=splash(t-FishingFeedback.RELEASE_LEAP,i,0.25)*0.78
+				envelope=1.0
+			"fish_cancel":
+				var retract:=burst(t,0.30)*maxf(0.0,sin(TAU*14.0*t))
+				wave=retract*(0.08*sin(TAU*279.0*t)+0.038*grain(i))+splash(t,i,0.16)*0.62
 				envelope=1.0
 			"machine_start":
 				wave=note(t,176.0,0.09)+note(t-0.06,268.0,0.11)+note(t-0.14,145.0,0.19)
@@ -312,6 +418,38 @@ static func make_cue(kind:String) -> AudioStreamWAV:
 			"basket":
 				wave=note(t,294.0,0.09)+note(t-0.10,354.0,0.13)
 				envelope=1.0
+			"porter_greet":
+				wave=note(t,810.0,0.085)*0.78+note(t-0.085,1050.0,0.14)*0.62
+				envelope=1.0
+			"porter_steps":
+				var cloth:=grain(i>>4)*burst(t-0.04,0.25)*0.05
+				wave=cloth+note(t,230.0,0.08)*0.85+note(t-0.15,199.0,0.095)*0.74
+				envelope=1.0
+			"porter_crate":
+				wave=burst(t,0.08)*(0.11*sin(TAU*180.0*t)+grain(i>>3)*0.07)
+				wave+=note(t-0.065,442.0,0.15)*0.56
+				envelope=1.0
+			"porter_gift":
+				wave=note(t,523.25,0.17)*0.74+note(t-0.12,783.99,0.23)*0.68
+				envelope=1.0
+			"meadow_warning":
+				wave=note(t,196.0,0.42)*0.9+note(t-0.41,220.0,0.43)*0.9+note(t-0.78,261.63,0.51)*0.9
+				wave+=burst(t,0.5)*sin(TAU*92.0*t)*0.056
+				envelope=1.0
+			"meadow_lantern":
+				wave=burst(t,0.055)*grain(i)*0.14+note(t-0.025,660.0,0.19)*0.7+note(t-0.12,990.0,0.22)*0.49
+				envelope=1.0
+			"meadow_gift":
+				wave=note(t,392.0,0.19)*0.67+note(t-0.066,523.25,0.22)*0.54+note(t-0.15,659.25,0.20)*0.55
+				envelope=1.0
+			"guardian_raise":
+				wave=note(t,233.08,0.16)*0.62+note(t-0.14,311.13,0.20)*0.82
+				wave+=grain(i>>3)*burst(t-0.06,0.18)*0.08
+				envelope=1.0
+			"guardian_drop":
+				wave=burst(t,0.22)*(sin(TAU*(145.0*t-165.0*t*t))*0.18+grain(i>>4)*0.115)
+				wave+=note(t-0.048,111.0,0.24)*0.28
+				envelope=1.0
 			"meal_serve":
 				wave=note(t,260.0,0.10)*0.8+note(t-0.035,730.0,0.14)*0.58+note(t-0.074,1140.0,0.09)*0.28
 				envelope=1.0
@@ -331,6 +469,30 @@ static func make_cue(kind:String) -> AudioStreamWAV:
 			"crop_pick":
 				wave=note(t,420.0,0.11)+note(t-0.05,540.0,0.12)
 				envelope=1.0
+			"hoe_soil":
+				wave=(0.09*sin(TAU*115.0*t)+0.15*grain(i>>2))*burst(t,0.21)
+				envelope=1.0
+			"seed_drop":
+				wave=note(t,395.0,0.047)+note(t-0.052,589.0,0.062)+note(t-0.109,441.0,0.085)
+				envelope=1.0
+			"water_pour":
+				wave=splash(t,i,0.35)*(0.72+0.28*sin(TAU*16.0*t))
+				envelope=1.0
+			"build_set","build_lift":
+				var base:=156.0 if kind=="build_set" else 225.0
+				wave=burst(t,0.18)*(sin(TAU*base*t)*0.105+grain(i>>2)*0.08)+note(t-0.07,base*1.35,0.14)*0.56
+				envelope=1.0
+			"door_latch":
+				var hinge:=burst(t,0.11)*(sin(TAU*(230.0-420.0*t)*t)*0.045+grain(i>>4)*0.039)
+				var click:=burst(t-0.095,0.045)*(grain(i>>1)*0.075+sin(TAU*590.0*t)*0.026)
+				wave=hinge+click
+				envelope=1.0
+			"coins_collect":
+				wave=note(t,1180.0,0.17)+note(t-0.045,1620.0,0.17)*0.7+note(t-0.11,1370.0,0.21)*0.7
+				envelope=1.0
+			"step_grass","step_soil","step_wood","step_stone","step_sand":
+				wave=step_wave(kind,t,i)
+				envelope=1.0
 		bytes.encode_s16(i*2,int(wave*envelope*32767.0))
 	var stream:=AudioStreamWAV.new()
 	stream.format=AudioStreamWAV.FORMAT_16_BITS
@@ -338,6 +500,28 @@ static func make_cue(kind:String) -> AudioStreamWAV:
 	stream.stereo=false
 	stream.data=bytes
 	return stream
+
+static func grain(index:int)->float:
+	var mixed:=index*1103515245+12345
+	return float((mixed ^ (mixed>>11) ^ (mixed>>19))&2047)/1023.5-1.0
+
+static func burst(t:float,length:float)->float:
+	if t<=0.0 or t>=length:return 0.0
+	return minf(1.0,t/0.007)*pow(1.0-t/length,2.0)
+
+static func splash(t:float,i:int,length:float)->float:
+	return burst(t,length)*(grain(i)*0.105+grain(i>>2)*0.060+sin(TAU*(112.0*t+390.0*t*t))*0.043)
+
+static func step_wave(kind:String,t:float,i:int)->float:
+	var low:=grain(i>>3)
+	var high:=grain(i)
+	match kind:
+		"step_grass":return (low*0.060+high*0.084)*burst(t,0.135)
+		"step_soil":return (low*0.10+sin(TAU*107.0*t)*0.088)*burst(t,0.115)
+		"step_wood":return (sin(TAU*192.0*t)*0.123+sin(TAU*367.0*t)*0.037+low*0.039)*burst(t,0.095)
+		"step_stone":return (sin(TAU*281.0*t)*0.103+high*0.090)*burst(t,0.082)
+		"step_sand":return (low*0.076+high*0.11)*burst(t,0.135)*(0.70+0.30*cos(TAU*23.0*t))
+	return 0.0
 
 static func note(t:float,frequency:float,duration:float)->float:
 	if t<0.0 or t>=duration:return 0.0
@@ -353,7 +537,7 @@ func play_cue(kind:String="action",preview:bool=false) -> bool:
 	var gain:=cue_gain(kind)
 	if player==null or gain<=0.0:return false
 	if not preview and not fishing:
-		if player.playing and player.stream in [sounds.fish_cast,sounds.fish_bite,sounds.fish_catch]:return false
+		if player.playing and cue_kind in FISHING_CUES:return false
 		if now-last_cue<120:return false
 	last_cue=now
 	player.stop()
@@ -371,9 +555,9 @@ func play_cart_roll(seconds:float)->void:
 	cart_roll.play()
 
 func defer_action(kind:String)->void:
-	if kind in WORLD_CUES:
+	if kind in WORLD_CUES or kind in HAND_CUES:
 		cancel_pending_action()
-	elif pending_action in WORLD_CUES:
+	elif pending_action in WORLD_CUES or pending_action in HAND_CUES:
 		return
 	if cue_gain(kind)<=0.0 or Time.get_ticks_msec()-last_fishing_cue<FISHING_HOLDOFF_MS:return
 	pending_action=kind
@@ -398,10 +582,16 @@ func close() -> void:
 
 func stop_cues() -> void:
 	cancel_pending_action()
+	if meadow_warning:meadow_warning.stop()
+	footsteps.reset()
+	if footstep_voice:
+		footstep_voice.stop()
+		footstep_voice.stream=null
 	last_cue=-1000
 	last_fishing_cue=-1000
 	nearby_region=""
-	if nearby:nearby.stop()
+	nearby_indoor=""
+	stop_nearby_tools()
 	if cart_roll:cart_roll.stop()
 	if player:
 		player.stop()
@@ -423,6 +613,7 @@ func load_preferences(path:String) -> bool:
 	refresh_gains()
 	var motion=config.get_value("comfort","reduced_motion",false)
 	reduced_motion=motion if motion is bool else true
+	stroll_dim=config.get_value("comfort","stroll_dim",false)==true
 	forest_tools=config.get_value("comfort","forest_tools",false)==true
 	standard_fishing=config.get_value("comfort","standard_fishing",false)==true
 	var zoom=config.get_value("comfort","zoom",2)
@@ -430,6 +621,7 @@ func load_preferences(path:String) -> bool:
 	var text_scale=config.get_value("comfort","text_scale",1)
 	if (text_scale is int or text_scale is float) and int(text_scale) in range(4):preferred_text_scale=int(text_scale)
 	fixed_area_camera=config.get_value("comfort","fixed_area_camera",false)==true
+	display_compatibility=config.get_value("comfort","display_compatibility",false)==true
 	return true
 
 static func read_gain(config:ConfigFile,key:String,fallback:float) -> float:
@@ -439,9 +631,20 @@ static func read_gain(config:ConfigFile,key:String,fallback:float) -> float:
 static func valid_gain(value:Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and float(value)>=0.0 and float(value)<=1.0
 
-func save_preferences(path:String,amount:float,motion:bool,zoom:int,use_forest:Variant=null,track_fish:Variant=null,text_scale:Variant=null,music_amount:Variant=null,levels:Dictionary={},camera_mode:Variant=null) -> bool:
+func save_stroll_dim(path:String,dim:bool) -> bool:
+	var config:=ConfigFile.new()
+	var status:=config.load(path)
+	if status!=OK and status!=ERR_FILE_NOT_FOUND:return false
+	config.set_value("comfort","stroll_dim",dim)
+	if config.save(path)!=OK:return false
+	stroll_dim=dim
+	return true
+
+func save_preferences(path:String,amount:float,motion:bool,zoom:int,use_forest:Variant=null,track_fish:Variant=null,text_scale:Variant=null,music_amount:Variant=null,levels:Dictionary={},camera_mode:Variant=null,display_mode:Variant=null) -> bool:
 	if camera_mode!=null and not camera_mode is bool:return false
+	if display_mode!=null and not display_mode is bool:return false
 	var chosen_camera:bool=fixed_area_camera if camera_mode==null else camera_mode
+	var chosen_display:bool=display_compatibility if display_mode==null else display_mode
 	if music_amount!=null and not (music_amount is float or music_amount is int):return false
 	var chosen_music:=music_volume if music_amount==null else float(music_amount)
 	if not is_finite(chosen_music) or chosen_music<0.0 or chosen_music>1.0:return false
@@ -461,6 +664,7 @@ func save_preferences(path:String,amount:float,motion:bool,zoom:int,use_forest:V
 	config.set_value("comfort","interface_volume",new_interface)
 	config.set_value("comfort","activity_captions",captions)
 	config.set_value("comfort","reduced_motion",motion)
+	config.set_value("comfort","stroll_dim",stroll_dim)
 	config.set_value("comfort","zoom",zoom)
 	var chosen:bool=forest_tools if use_forest==null else use_forest==true
 	config.set_value("comfort","forest_tools",chosen)
@@ -468,6 +672,7 @@ func save_preferences(path:String,amount:float,motion:bool,zoom:int,use_forest:V
 	config.set_value("comfort","standard_fishing",fishing)
 	config.set_value("comfort","text_scale",chosen_text_scale)
 	config.set_value("comfort","fixed_area_camera",chosen_camera)
+	config.set_value("comfort","display_compatibility",chosen_display)
 	if config.save(path)!=OK:return false
 	music_volume=chosen_music
 	master_volume=float(new_master)
@@ -479,6 +684,7 @@ func save_preferences(path:String,amount:float,motion:bool,zoom:int,use_forest:V
 	standard_fishing=fishing
 	preferred_text_scale=chosen_text_scale
 	fixed_area_camera=chosen_camera
+	display_compatibility=chosen_display
 	if cue_gain(pending_action)==0.0:
 		cancel_pending_action()
 	refresh_gains()

@@ -66,6 +66,9 @@ func _initialize() -> void:
 	near("b",Device+Vector2i.LEFT)
 	var key := World.key(Device)
 	check(action("a","build","build",Device,"sprinkler") and world.blocked(Device) and inv.sprinkler_kit==0, "device costs exactly one kit and blocks")
+	var source_field:String=World.INDUSTRY.STARTER_SPRINKLER_FIELD
+	check(world.state.objects[key].sprinkler_daily and world.state.objects[key].get(source_field)==true,
+		"The workbench kit builds a daily sprinkler and remembers its source")
 	check(not action("b","intrude","refill_sprinkler",Device) and not action("b","switch","toggle_sprinkler",Device), "non-owner cannot refill or toggle")
 	check(action("a","fill","refill_sprinkler",Device) and action("a","enable","toggle_sprinkler",Device), "owner refills and enables")
 	var own := Device + Vector2i.UP
@@ -86,8 +89,24 @@ func _initialize() -> void:
 	check(world.state.crops[World.key(own)].wet and not world.state.crops[World.key(other)].wet
 		and not world.state.crops[World.key(empty)].wet and world.state.objects[key].water==11, "only dry owned planted crop costs water")
 	var loaded := World.new()
-	check(loaded.load_world(path) and loaded.state.objects[key].water==11 and loaded.state.crops[World.key(own)].wet,
-		"water and crop are saved together")
+	check(loaded.load_world(path) and loaded.state.objects[key].water==11 and loaded.state.crops[World.key(own)].wet
+		and loaded.state.objects[key].get(source_field)==true, "Water, crop, and the kit source are saved together")
+	var wall_key:=World.EDGE_GRID.key(Device,World.EDGE_GRID.DIRS.find(Vector2i.DOWN),World.SIZE)
+	world.state.crops.erase(World.key(own))
+	world.state.crops.erase(World.key(wet))
+	crop(empty,"a",false)
+	world.state.edges[wall_key]={"type":"edge_wall","owner":"a"}
+	var dawn:float=world.state.objects[key].next_water
+	check(dawn==World.WEATHER.DAY_SECONDS and world.step(dawn-float(world.state.time),true)
+		and not world.state.crops[World.key(empty)].wet and float(world.state.objects[key].next_water)==dawn,
+		"A wall across the only eligible crop blocks the kit sprinkler without spending its daily pass")
+	world.state.edges.erase(wall_key)
+	check(world.step(1.0,true) and world.state.crops[World.key(empty)].wet,
+		"An unspent daily pass can water after the wall is removed")
+	world.state.crops[World.key(empty)].wet=false
+	check(world.step(World.SPRINKLER_INTERVAL+1.0,true) and not world.state.crops[World.key(empty)].wet
+		and float(world.state.objects[key].next_water)==2.0*World.WEATHER.DAY_SECONDS,
+		"The successful pass prevents a second watering on the same day")
 	var new_tile := Device + Vector2i(2,0)
 	var saved_device: Dictionary = world.state.objects[key].duplicate(true)
 	check(action("a","move","move_object",Device,World.key(new_tile)) and world.state.objects[World.key(new_tile)]==saved_device, "moving preserves all sprinkler fields")
@@ -107,13 +126,29 @@ func _initialize() -> void:
 		bad.objects[key][field] = 13 if field=="water" else "invalid"
 		write(fixture,bad)
 		check(not loaded.load_world(fixture), "invalid sprinkler field rejected: "+field)
+	for invalid in [{source_field:false},{source_field:1},{"assembled_sprinkler":true}]:
+		var bad:Dictionary=saved.duplicate(true)
+		bad.objects[key].merge(invalid,true)
+		write(fixture,bad)
+		check(not loaded.load_world(fixture),"Invalid or conflicting kit provenance is rejected")
+	var legacy:Dictionary=saved.duplicate(true)
+	legacy.objects[key].erase(source_field)
+	legacy.objects[key].erase("sprinkler_daily")
+	legacy.objects[key].next_water=legacy.time
+	legacy.crops[World.key(own)].wet=false
+	write(fixture,legacy)
+	check(loaded.load_world(fixture) and not loaded.state.objects[key].has("sprinkler_daily"),
+		"Already placed legacy kit sprinklers still load on their existing interval")
+	check(loaded.step(1.0,true) and loaded.state.crops[World.key(own)].wet
+		and float(loaded.state.objects[key].next_water)==float(loaded.state.time)+World.SPRINKLER_INTERVAL,
+		"Legacy sprinkler still schedules the eight-second interval")
 	saved.objects.erase(key)
 	saved.erase("copper")
 	saved.players.a.erase("crafted_reinforced_pick")
 	write(fixture,saved)
 	check(loaded.load_world(fixture) and loaded.state.copper.ready==0.0 and loaded.state.players.a.crafted_reinforced_pick,
 		"legacy fields restored additively")
-	for file in [fixture,path,path+".bak"]:
+	for file in [fixture,fixture+".bak",path,path+".bak"]:
 		if FileAccess.file_exists(file):DirAccess.remove_absolute(file)
 	print("AUTOMATION_TESTS checks=%d failures=%d" % [checks, failures])
 	quit(0 if failures==0 else 1)

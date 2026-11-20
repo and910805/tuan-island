@@ -1,18 +1,21 @@
 extends "res://tests/test_station_life_journey.gd"
 
-const WORKSHOP := Vector2i(50,26)
-const ORE_CHEST := Vector2i(50,24)
-const ORE_BELT := Vector2i(50,25)
-const WOOD_CHEST := Vector2i(50,28)
-const WOOD_BELT := Vector2i(50,27)
-const OUT_CHEST := Vector2i(48,26)
-const OUT_BELT := Vector2i(49,26)
-const PIPE := Vector2i(51,26)
-const TANK := Vector2i(52,26)
-const PUMP := Vector2i(53,26)
+# The public mill (MillRestoration) permanently reserves its approach cell (48,26), so the
+# output chest can no longer sit there. The whole line sits one column east; the water
+# network turns north because (54,y) is public shore and a pump there is refused.
+const WORKSHOP := Vector2i(51,26)
+const ORE_CHEST := Vector2i(51,24)
+const ORE_BELT := Vector2i(51,25)
+const WOOD_CHEST := Vector2i(51,28)
+const WOOD_BELT := Vector2i(51,27)
+const OUT_CHEST := Vector2i(49,26)
+const OUT_BELT := Vector2i(50,26)
+const PIPE := Vector2i(52,26)
+const TANK := Vector2i(52,25)
+const PUMP := Vector2i(53,25)
 const SPRINKLER := Vector2i(52,27)
 const EXPANSION_PLOT := Vector2i(52,28)
-const BENCH := Vector2i(40,35)
+const BENCH := GARDEN_JOURNEY_BENCH
 const KILN := Vector2i(41,37)
 
 func after_chapter() -> void:
@@ -67,6 +70,7 @@ func after_chapter() -> void:
 	expect(reopened.load_world(world.save_path) and not reopened.recovered_from_backup,"Production and expanded farm reload the primary save")
 	if failed:return
 	world=reopened
+	world.add_player(TOKEN,str(person().name))
 	expect(workbench().type=="waterworks" and output_count()==0 and world.state.crops[World.key(EXPANSION_PLOT)].wet,"Reload keeps the workshop, emptied output and watered expansion")
 	checkpoint("waterworks-reloaded")
 	print("WATERWORKS_NATURAL_LOOP actions=%d walking=%d no_fixture_grants=true accelerated_world_seconds=%.1f" % [actions,walking,world.state.time])
@@ -99,6 +103,3 @@ func workbench() -> Dictionary:
 
 func output_count() -> int:
 	return int(world.state.objects.get(World.key(OUT_CHEST),{}).get("items",{}).get("copper_joint",0))
-
-
-

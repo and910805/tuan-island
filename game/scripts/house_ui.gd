@@ -26,9 +26,9 @@ const PART_NAMES := {"floor": "地板", "wall": "外牆", "door": "門口", "bed
 ## Native BuildThumbnail footprint (one 32px tile wide, tall enough for objects); shown at 1x.
 const THUMB_SIZE := Vector2(32, 48)
 ## %d placeholders are the roof recipe's wood and fiber per tile (see note()).
-const NOTE := "室內至少 2×2 格地板，外圈用牆、窗或門圍好；圍好時自動蓋屋頂（每格木材 %d、纖維 %d，施工者出資）。舊房間或門廊可手動蓋；屋外到門口的路請自己留好。"
+const NOTE := "室內至少 2×2 格地板。圍好時由施工者每格付木材 %d、纖維 %d，自動蓋屋頂。舊屋可手動補蓋，屋外請留走道。"
 const STEPS := {
-	"floor": "鋪木地板，圍出至少 2×2 的室內。",
+	"floor": "鋪木地板或石地板，圍出至少 2×2 的室內。",
 	"wall": "用牆、窗或門補上外圈缺口。",
 	"door": "在外圈放一扇門。",
 	"bed": "在室內放一張小床。",
@@ -253,13 +253,82 @@ static func _part_card(app, result: Dictionary, kind: String, next: String) -> D
 	column.add_child(choose)
 	return {"card": card, "button": choose}
 
+static func guest_room_registered(snapshot:Dictionary) -> bool:
+	return snapshot.get("own_guest_room",false) or snapshot.get("resident_goals",{}).get("nuannuan",{}).get("3",{}).get("state")=="done"
+
+static func _guest_room_tip(result:Dictionary,guest:Dictionary) -> String:
+	if not guest.inside:return "先走進客房，再回到這頁登記。"
+	if not result.complete:return "先補齊上方的小屋結構。"
+	if not guest.furnished.values().all(func(value:bool):return value):return "在房內補上缺的家具。床、燈、座位可以混搭。"
+	if not guest.contributed:return "房間可以一起布置。請至少親手擺放其中一件家具。"
+	return "布置好了。登記後回礁溪找暖暖。"
+
+static func _add_guest_room(app,content:VBoxContainer,result:Dictionary) -> void:
+	var snapshot:Dictionary=app.session.snapshot
+	var guest:=HouseRooms.guest_room(snapshot,result,result.at,app.session.own_id)
+	var paper:=PanelContainer.new()
+	paper.add_theme_stylebox_override("panel",PixelTheme.paper_style())
+	content.add_child(paper)
+	var column:=VBoxContainer.new()
+	column.add_theme_constant_override("separation",4)
+	paper.add_child(column)
+	column.add_child(app.label("暖暖的客房",18))
+	var fixtures:=HBoxContainer.new()
+	fixtures.add_theme_constant_override("separation",12)
+	column.add_child(fixtures)
+	for kind:String in ["bed","lamp","chair"]:
+		var requirement:=HBoxContainer.new()
+		requirement.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		fixtures.add_child(requirement)
+		var icon_holder:=Control.new()
+		icon_holder.custom_minimum_size=Vector2(32,36)
+		requirement.add_child(icon_holder)
+		var art:=BuildThumbnail.new()
+		art.kind=kind
+		art.position.y=-6
+		icon_holder.add_child(art)
+		var ok:bool=guest.furnished[kind]
+		var role:String={"bed":"床鋪","lamp":"照明","chair":"座位"}[kind]
+		var label:Label=app.label(("✓ " if ok else "○ ")+role,15)
+		label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		label.add_theme_color_override("font_color",OK_COLOR if ok else NEED_COLOR)
+		requirement.add_child(label)
+	var footer:=HFlowContainer.new()
+	column.add_child(footer)
+	var tip:Label=app.label(_guest_room_tip(result,guest),14)
+	tip.name="GuestRoomStatus"
+	tip.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	tip.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	footer.add_child(tip)
+	var register_room:Button=app.button("登記這間客房",func():app.session.perform(World.RESIDENT_GOALS.GUEST_ROOM_ACTION,result.at))
+	register_room.name="GuestRoomRegister"
+	register_room.disabled=not guest.ready
+	register_room.tooltip_text=tip.text
+	footer.add_child(register_room)
+	refresh_guest_room(app)
+
+static func refresh_guest_room(app) -> void:
+	if not is_instance_valid(app.modal) or not app.modal.has_meta("house_check"):return
+	var snapshot:Dictionary=app.session.snapshot
+	if not guest_room_registered(snapshot):return
+	var status:=app.modal.find_child("GuestRoomStatus",true,false) as Label
+	if status==null:return
+	var register_room:=app.modal.find_child("GuestRoomRegister",true,false) as Button
+	register_room.hide()
+	var reported:bool=snapshot.get("resident_goals",{}).get("nuannuan",{}).get("3",{}).get("state")=="done"
+	status.text="✓ 暖暖已收到客房紀錄。" if reported else "✓ 已登記。回礁溪找暖暖。"
+	status.add_theme_color_override("font_color",OK_COLOR)
+
 static func open(app) -> void:
 	var result := evaluate(app.session.snapshot, str(app.session.own_id))
+	var snapshot:Dictionary=app.session.snapshot
+	var bond:Dictionary=snapshot.get("resident_bonds",{}).get("nuannuan",{})
+	var show_guest:bool=snapshot.get("region_id","home")=="home" and int(bond.get("stage",0))>=3
 	var content: VBoxContainer = app._open_modal(TITLE)
 	var modal: Control = app.modal
 	modal.set_meta("life_modal_layout", LAYOUT)
 	modal.set_meta("house_check", true)
-	modal.set_meta("house_check_size", SIZE)
+	modal.set_meta("house_check_size", Vector2(690,592) if show_guest else SIZE)
 	modal.set_meta("house_check_result", result)
 	modal.theme = PixelTheme.make(modal.theme if modal.theme else app.theme())
 	modal.add_theme_stylebox_override("panel", PixelTheme.frame_style())
@@ -291,6 +360,7 @@ static func open(app) -> void:
 	facts.autowrap_mode = TextServer.AUTOWRAP_OFF
 	facts.text = "室內 %d 格 · 參與島民 %d 位" % [int(result.area), result.contributors.size()] if result.found else "站到小屋裡或旁邊 8 格內再檢查"
 	heading.add_child(facts)
+	if show_guest:_add_guest_room(app,content,result)
 
 	var cards := HBoxContainer.new()
 	cards.name = "HouseCards"
@@ -301,6 +371,7 @@ static func open(app) -> void:
 	for kind in PARTS:
 		var made := _part_card(app, result, kind, next)
 		cards.add_child(made.card)
+		if show_guest and result.complete:made.button.hide()
 		if kind == next:
 			first = made.button
 
@@ -308,6 +379,7 @@ static func open(app) -> void:
 	guide.name = "HouseNext"
 	guide.add_theme_stylebox_override("panel", PixelTheme.paper_style())
 	content.add_child(guide)
+	guide.visible=not (show_guest and result.complete)
 	var guide_column := VBoxContainer.new()
 	guide_column.add_theme_constant_override("separation", 4)
 	guide.add_child(guide_column)
@@ -320,33 +392,14 @@ static func open(app) -> void:
 	note_label.add_theme_color_override("font_color", NOTE_COLOR)
 	guide_column.add_child(note_label)
 
-	var snapshot:Dictionary=app.session.snapshot
-	var bond:Dictionary=snapshot.get("resident_bonds",{}).get("nuannuan",{})
-	if snapshot.get("region_id","home")=="home" and int(bond.get("stage",0))>=3:
-		var guest:=HouseRooms.guest_room(snapshot,result,result.at,app.session.own_id)
-		var guest_row:=HBoxContainer.new()
-		guest_row.add_theme_constant_override("separation",8)
-		content.add_child(guest_row)
-		var task:Label=app.label("暖暖的客房 · 床 %s　燈 %s　椅 %s"%[
-			"✓" if guest.furnished.bed else "○","✓" if guest.furnished.lamp else "○","✓" if guest.furnished.chair else "○"],15)
-		task.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		task.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-		guest_row.add_child(task)
-		if snapshot.get("own_guest_room",false):
-			guest_row.add_child(app.label("已登記 · 回礁溪找暖暖",14))
-		else:
-			var register_room:Button=app.button("登記這間客房",func():
-				app.session.perform(World.RESIDENT_GOALS.GUEST_ROOM_ACTION,result.at)
-				app._close_modal())
-			register_room.name="GuestRoomRegister"
-			register_room.disabled=not guest.ready
-			register_room.tooltip_text="站在完整的小屋內，至少親手放一件客房家具。"
-			guest_row.add_child(register_room)
-
 	var actions := HBoxContainer.new()
 	actions.name = "HouseFooter"
 	actions.add_theme_constant_override("separation", 8)
-	content.add_child(actions)
+	if is_instance_valid(app.modal_feedback) and modal.is_ancestor_of(app.modal_feedback):
+		var shell:Node=app.modal_feedback.get_parent()
+		shell.add_child(actions)
+		shell.move_child(actions,app.modal_feedback.get_index())
+	else:content.add_child(actions)
 	var again: Button = app.button("重新檢查", func(): open(app))
 	again.name = "HouseRecheck"
 	again.size_flags_horizontal = Control.SIZE_EXPAND_FILL

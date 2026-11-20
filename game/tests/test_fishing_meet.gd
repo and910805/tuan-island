@@ -199,6 +199,7 @@ func run()->void:
 	test_gates()
 	test_solo_round()
 	test_normal_fishing()
+	test_rod_event_fairness()
 	test_cap_and_rejoin()
 	test_timeout_and_payment()
 	test_disconnect_and_travel()
@@ -515,6 +516,26 @@ func test_solo_round()->void:
 	expect(int(meet_of(w).last.round)==1 and int(meet_of(w).last.records)==12,"Round 2 keeps round 1 as last result")
 
 # 6. Joined but outside WATERS, and not joined inside WATERS: ordinary fishing.
+func test_rod_event_fairness()->void:
+	var w:=make_world(["leader","guest"])
+	pl(w,"leader").inventory.precision_rod=1
+	pl(w,"guest").inventory.precision_rod=1
+	var start:=float(w.state.time)
+	ok(w,"leader","fish_meet_start",Meet.SIGN,"0","Start the regular fishing meet")
+	ok(w,"leader","fish_start",CAST,"standard","A participant casts with a precision rod in the bag")
+	var standard:Dictionary=pl(w,"leader").fishing
+	expect(not standard.has("rod") and is_equal_approx(float(standard.ready)-start,3.0) and is_equal_approx(World.FishingTracking.band_half_width(standard),0.22),"Event casts use the same timer and band as the base rod")
+	ok(w,"guest","fish_start",CAST,"","A nonparticipant casts with the upgrade")
+	var guest:Dictionary=pl(w,"guest")
+	expect(guest.fishing.get("rod")=="precision_rod","Nonparticipants keep their upgrades at the same shore")
+	ok(w,"guest","fish_meet_join",Meet.SIGN,"1","Join with a preexisting line")
+	w.state.time=float(guest.fishing.ready)
+	ok(w,"guest","fish_catch",CAST,"","Normalize the preexisting line on the first event attempt")
+	expect(int(meet_of(w).records)==0 and not guest.fishing.has("rod") and is_equal_approx(float(guest.fishing.ready)-float(w.state.time),3.0),"Joining midway cannot carry the old performance advantage into the event")
+	w.state.time=float(guest.fishing.ready)
+	ok(w,"guest","fish_catch",CAST,"","The normalized cast becomes an ordinary event record")
+	expect(int(meet_of(w).records)==1 and not guest.has("fishing"),"Exactly one event record was added")
+
 func test_normal_fishing()->void:
 	var w:=make_world(["ina","out"])
 	ok(w,"ina","fish_meet_start",Meet.SIGN,"0","ina starts")

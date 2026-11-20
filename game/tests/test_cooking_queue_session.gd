@@ -66,7 +66,8 @@ func record(id:String,kind:String,owner:String,times:Dictionary)->Dictionary:
 func _initialize()->void:run.call_deferred()
 
 func run()->void:
-	check(Session.PROTOCOL==45,"Session.PROTOCOL is 39 for cooking queues")
+	var release:Variant=JSON.parse_string(FileAccess.get_file_as_string("res://release.json"))
+	check(release is Dictionary and int(release.get("protocol",0))==Session.PROTOCOL,"The cooking queue uses the current release protocol")
 	await snapshot_section()
 	await action_route_section()
 	print("COOKING_QUEUE_SESSION_TESTS checks=%d failures=%d"%[checks,failures])

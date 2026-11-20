@@ -33,13 +33,17 @@ func run() -> void:
 	assert(not directory.is_empty() and DirAccess.make_dir_recursive_absolute(directory) == OK)
 	assert(app.session.host(0,"渡口旅人",app.arg_value("qa-save","")) == OK)
 	await create_timer(0.3).timeout
+	if is_instance_valid(app.modal):app._close_modal()
+	app.WanganUI.dismiss(app)
 	app.session.set_physics_process(false)
 	token = app.session.peers[1]
 	var world = app.session.world
 	var person: Dictionary = world.state.players[token]
+	var dense_reel:bool=app.arg_value("qa-dense-reel","false")=="true"
 	person.region = "home"
 	person.x = 54.5
 	person.y = 34.5
+	if dense_reel:world.state.time=720.0
 	world.switch_region("home")
 	assert(world.can_stand(Vector2(person.x,person.y)) and world.water(WATER))
 	var initial := fish_count(person)
@@ -119,7 +123,8 @@ func run() -> void:
 		return
 	app.session.perform("fish_start", WATER)
 	assert(person.has("fishing"))
-	for i in range(48):
+	var fishing_frames:=64 if dense_reel else 48
+	for i in range(fishing_frames):
 		var stage := "cast" if i < 5 else ("wait" if i < 30 else ("ready" if i < 36 else "catch"))
 		if i == 36:
 			assert(float(world.state.time) >= float(person.fishing.ready))
@@ -129,7 +134,7 @@ func run() -> void:
 		if i < 36:
 			assert(world.step(0.1,true))
 			app.session._send_snapshot(1)
-		await create_timer(0.1).timeout
+		await create_timer(0.04 if dense_reel and i>=36 else 0.1).timeout
 	assert(world.save())
 	var reopened := World.new()
 	assert(reopened.load_world(world.save_path))
@@ -137,15 +142,15 @@ func run() -> void:
 	app.session.perform("fish_start", WATER)
 	assert(person.has("fishing"))
 	await create_timer(0.6).timeout
-	await capture(48,"before-cancel")
+	await capture(fishing_frames,"before-cancel")
 	world.move_player(token,Vector2.LEFT,0.1)
 	assert(not person.has("fishing") and fish_count(person) == initial+1)
 	app.session._send_snapshot(1)
-	for i in range(49,57):
-		if i==56:await create_timer(0.2).timeout
-		await capture(i,"cancel")
+	for i in range(1,9):
+		if i==8:await create_timer(0.2).timeout
+		await capture(fishing_frames+i,"cancel")
 		await create_timer(0.04).timeout
-	assert(frames[49].actual_phase=="cancel" and frames[56].actual_phase=="")
+	assert(frames[fishing_frames+1].actual_phase=="cancel" and frames[fishing_frames+8].actual_phase=="")
 	var file := FileAccess.open(directory.path_join("sequence.json"),FileAccess.WRITE)
 	assert(file != null)
 	file.store_string(JSON.stringify({"scripted_position":[54.5,34.5],"target":[55,34],"reduced_motion":app.view.reduced_motion,"fish_before":initial,"fish_after":fish_count(person),"reload_preserved":true,"cancel_no_fish":true,"frames":frames}))

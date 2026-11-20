@@ -6,6 +6,8 @@ extends SceneTree
 const World=preload("res://scripts/world.gd")
 const Perm=preload("res://scripts/plot_permissions.gd")
 const Membership=preload("res://scripts/world_membership.gd")
+const StoneStation=preload("res://tests/stone_station_fixture.gd")
+const Session=preload("res://scripts/session.gd")
 var checks:=0
 var failures:=0
 var seq:=0
@@ -43,8 +45,47 @@ func _initialize() -> void:
 	public_build_grants()
 	personal_floor_access()
 	furniture_removal_access()
+	shared_chest_floor_access()
 	print("PLOT_PERMISSIONS_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(1 if failures>0 or checks==0 else 0)
+
+func shared_chest_floor_access() -> void:
+	w=World.new()
+	var actors:=["floor-owner","box-owner","other-member"]
+	var site:=Vector2i(40,24)
+	var station:=site+Vector2i.RIGHT
+	var tile:=World.key(site)
+	var history:=World.SAVE_SCHEMA.CHEST_HISTORY.READ_ACTION
+	for actor:String in actors:
+		w.add_player(actor,actor,Vector2(39.5,25.5))
+		w.state.players[actor].inventory.wood=70
+	w.state.removed[tile]=true
+	expect(act(actors[0],"build",site,"floor").ok and act(actors[1],"build",site,"chest").ok,"Different members can place the floor and box")
+	expect(act(actors[2],"deposit_exact",site,"wood:2").ok and act(actors[2],history,site).ok,"All members use a shared box on a default floor")
+	# A legacy workbench fixture keeps material access independent of today's bench footprint.
+	w.state.objects[World.key(station)]={"type":"bench","owner":actors[0],"items":{}}
+	var prepared:=act(actors[2],"prepare_material_box",station,tile)
+	expect(prepared.ok and not str(prepared.get("source_id","")).is_empty(),"A member prepares the shared box before the floor is locked")
+	expect(act(actors[0],"floor_placement_access",site,"owner").ok,"Floor owner restricts the plot after box placement")
+	expect(act(actors[2],"deposit_exact",site,"wood:1").message==Perm.MSG_SHARED_CHEST_FLOOR,"The floor setting prevents another member depositing")
+	expect(act(actors[2],"withdraw_all",site,"wood").message==Perm.MSG_SHARED_CHEST_FLOOR,"The floor setting prevents another member withdrawing")
+	expect(not act(actors[2],history,site).ok and not act(actors[2],"prepare_material_box",station,tile).ok,"The restricted box exposes neither history nor a new material quote")
+	var prior_quote:=World.MATERIAL_SOURCES.encode("plank",tile,str(prepared.get("source_id","")),"0123456789abcdef")
+	expect(act(actors[2],"craft",station,prior_quote).message==Perm.MSG_SHARED_CHEST_FLOOR,"A previously prepared box cannot be used after access is revoked")
+	var session:=Session.new()
+	session.world=w
+	var view:=session.public_state("home",actors[2])
+	var box:Dictionary=view.objects[tile]
+	expect(box.locked and box.items.is_empty() and not box.has("box_id"),"Restricted snapshots omit the contents and material-source identity")
+	var projected:=session.public_state("home",actors[2],{"layers":["ground"],"rect":Rect2i(0,0,1,1),"own":actors[2]})
+	expect(not projected.ground.has(tile) and projected.objects[tile].items.is_empty() and projected.objects[tile].locked,
+		"With ground outside the subscription, visible chest rows stay redacted")
+	expect(World.MATERIAL_SOURCES.candidates(view.objects,actors[2].sha256_text().left(16),station).is_empty(),"The workbench omits the restricted box from its source options")
+	for actor in actors.slice(0,2):
+		expect(act(actor,history,site).ok and int(session.public_state("home",actor).objects[tile].items.wood)==2,"Floor owner and box owner both retain access")
+	expect(act(actors[0],"floor_placement_access",site,"island").ok,"The floor owner restores shared access")
+	expect(not session.public_state("home",actors[2]).objects[tile].has("locked") and act(actors[2],"withdraw_all",site,"wood").ok,"Restored access reveals the same box and authorizes withdrawal")
+	session.free()
 
 func furniture_removal_access() -> void:
 	w=World.new()
@@ -112,6 +153,8 @@ func personal_floor_access() -> void:
 func public_build_grants() -> void:
 	w=World.new()
 	w.add_player("builder","Builder")
+	# C11: new smelters need the station, otherwise its refusal would mask the footprint/plot rule below.
+	StoneStation.install(w,"builder")
 	var user:Dictionary=w.state.players.builder
 	user.x=39.5
 	user.y=26.5

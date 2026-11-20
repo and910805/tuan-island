@@ -59,6 +59,8 @@ func run() -> void:
 	var site:=Vector2i(40,34)
 	var corner:=site+Vector2i.ONE
 	person.inventory.merge({"stone":25,"copper_ore":25,"iron_ore":20,"charcoal":12},true)
+	# C11: a new small smelter needs the Q03 board flag and a stone workbench (earned path: test_stone_workbench).
+	preload("res://tests/stone_station_fixture.gd").install(world,token)
 	stand(site+Vector2i(0,2))
 	world.state.objects[World.key(corner)]={"type":"lamp","owner":token,"items":{}}
 	expect(not world.act(token,"blocked","build",site,kind).ok and int(person.inventory.stone)==25,"One occupied corner prevents construction without debit")

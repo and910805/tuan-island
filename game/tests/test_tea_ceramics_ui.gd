@@ -309,6 +309,9 @@ func run()->void:
 			check(visible(button),"Tea controls fit %s: %s"%[size,button.name])
 	await press("TeaJournal")
 	check(app.modal.get_meta("tea_site")=="journal","Journal remains available after first loop")
+	var journal_art:=control("TeaJournalArt") as TextureRect
+	check(journal_art!=null and journal_art.texture!=null and journal_art.texture.resource_path=="res://assets/tea-ceramics/tea-to-pottery-journal.png" and app.modal.get_global_rect().encloses(journal_art.get_global_rect()),"Journal shows the delivered tea-to-pottery illustration inside the page")
+	check(visible(control("TeaMap")) and Rect2(Vector2.ZERO,Vector2(root.size)).encloses(control("TeaMap").get_global_rect()),"Route button stays on screen beside the journal illustration at 1024x640")
 	for item in Art.ICONS:check(Art.icon(item)!=null,"Official atlas contains "+item)
 	app._close_modal()
 	app.session.shutdown()

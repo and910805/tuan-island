@@ -250,6 +250,7 @@ func cooking(w:World) -> void:
 	var cow:Vector2i=spec["cell"]
 	put(w,A,Vector2(cow)+Vector2(0.5,1.5)) # PRESET
 	setinv(w,A,"feed",1) # PRESET
+	ok(w,A,"livestock_adopt",cow,"cow","adopt the cow first")
 	ok(w,A,"livestock_feed",cow,"cow","feed the cow")
 	expect(w.step(World.LIVESTOCK.DAY*int(spec.get("days",1)),true),"advance one cow interval through World.step")
 	ok(w,A,"livestock_collect",cow,"cow","collect the milk")

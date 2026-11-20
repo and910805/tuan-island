@@ -29,8 +29,15 @@ func run()->void:
 		expect(stream.mix_rate==Audio.RATE and not stream.stereo and peak>1000 and peak<8000,"Audible headroom for "+cue)
 		expect(pcm.decode_s16(0)==0 and absi(pcm.decode_s16(pcm.size()-2))<=2,"Attack and release taper "+cue)
 		hashes[pcm.hex_encode().sha256_text()]=true
-	var cue_voices:=sound.get_children().filter(func(child:Node):return child is AudioStreamPlayer and child not in [sound.ambience,sound.nearby,sound.machine,sound.cart_roll])
-	expect(hashes.size()==3 and cue_voices==[sound.player],"Three distinct fishing cues share one SFX voice")
+	var cast_pcm:PackedByteArray=sound.sounds.fish_cast.data
+	var water_peak:=0
+	for index in range(roundi(Audio.FishingFeedback.CAST_DURATION*Audio.RATE),cast_pcm.size() >> 1):
+		water_peak=maxi(water_peak,absi(cast_pcm.decode_s16(index*2)))
+	expect(water_peak>1000 and cast_pcm.decode_s16(roundi(0.32*Audio.RATE)*2)==0,"Rod swish gives way to a splash at the animated landing")
+	var reel:PackedByteArray=sound.sounds.fish_catch.data
+	expect(reel.size()/2.0/Audio.RATE>0.80,"Reel includes water, tension and the catch chime")
+	var cue_voices:=sound.get_children().filter(func(child:Node):return child is AudioStreamPlayer and child not in [sound.ambience,sound.nearby,sound.machine,sound.cart_roll,sound.footstep_voice,sound.meadow_warning])
+	expect(hashes.size()==Audio.FISHING_CUES.size() and cue_voices==[sound.player],"Distinct fishing cues share one SFX voice")
 	var snapshot:Dictionary={"region_id":"home","time":10.0,"players":{"local":{"fish_caught":0},"other":{"fish_caught":0}}}
 	var local:Dictionary=snapshot.players.local
 	app.fishing_audio.update(snapshot,"local")

@@ -11,7 +11,7 @@ var elapsed:=0.0
 func _ready()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
-	custom_minimum_size.y=46
+	custom_minimum_size.y=ART_SIZE.y
 	elapsed=0.0 if motion else ARRIVAL_SECONDS
 	set_process(motion)
 
@@ -22,8 +22,8 @@ func _process(delta:float)->void:
 
 func _draw()->void:
 	if size.y<=0:return
-	var scale_factor:=size.y/ART_SIZE.y
-	var art_offset:=Vector2((size.x-ART_SIZE.x*scale_factor)*0.5,0.0)
+	var scale_factor:=maxf(1.0,floorf(minf(size.x/ART_SIZE.x,size.y/ART_SIZE.y)))
+	var art_offset:=((size-ART_SIZE*scale_factor)*0.5).round()
 	draw_set_transform(art_offset,0,Vector2.ONE*scale_factor)
 	draw_texture(HARBOR,Vector2.ZERO)
 	var transit:=smoothstep(0.0,1.55,elapsed)

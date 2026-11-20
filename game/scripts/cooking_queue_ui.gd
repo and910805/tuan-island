@@ -31,9 +31,15 @@ const GOOD:=Color("3e664b")
 static func capacity()->int:
 	return int(World.COOKING_QUEUE.CAPACITY)
 
+## Display name of a stove anchor type (old 小石灶 unless it is the C12 灶台).
+static func station_name(kind:String)->String:
+	if kind==World.INDUSTRY.KITCHEN_STOVE:return str(World.BUILD.get(kind,{}).get("name","公共廚房灶台"))
+	return "小石灶"
+
 ## Entry point used by main.gd (both HUD modes) and life_ui_panels.gd.
 static func open(app,cell:Vector2i)->void:
-	var body:VBoxContainer=app._open_modal("小石灶料理工作台")
+	var kind:=str(app.session.snapshot.get("objects",{}).get(World.key(cell),{}).get("type","stove"))
+	var body:VBoxContainer=app._open_modal(station_name(kind)+"料理工作台")
 	var modal:Control=app.modal
 	modal.name="CookingQueueUI"
 	if not app.village_art_preview:
@@ -163,7 +169,7 @@ class Controller extends Node:
 			pending={}
 			if sourced and refs.has("picker"):refs.picker.release()
 			refresh()
-			_status("還沒收到石灶回應。請確認連線；重試前先看排程是否已更新，以免重複排入。",false)
+			_status("還沒收到灶台回應。請確認連線；重試前先看排程是否已更新，以免重複排入。",false)
 		var icon:TextureRect=refs.get("active_icon")
 		if icon==null:return
 		var motion:bool=app.sound!=null and not app.sound.reduced_motion
@@ -181,7 +187,7 @@ class Controller extends Node:
 	# ----------------------------------------------------------- model helpers
 
 	static func model(stove:Dictionary,now:float)->Dictionary:
-		var out:={"present":str(stove.get("type",""))=="stove","mode":"empty","active":{},"waiting":[],"ready":[],"total":0}
+		var out:={"present":World.INDUSTRY.is_stove(str(stove.get("type",""))),"mode":"empty","active":{},"waiting":[],"ready":[],"total":0}
 		var queue=stove.get("cooking")
 		if queue is Dictionary:
 			out.mode="queue"
@@ -265,11 +271,34 @@ class Controller extends Node:
 		_build_book(_column(root,"CookingCookbook",1.0))
 		_build_station(_column(root,"CookingStation",1.2))
 		var status:Label=app.modal_feedback if is_instance_valid(app.modal_feedback) else _text(body,"",14)
-		status.text="選一道喜歡的料理，讓小石灶暖起來。材料預設只用背包。"
+		status.text="選一道喜歡的料理，讓灶暖起來。材料預設只用背包。"
 		status.name="CookingStatus"
 		status.custom_minimum_size.y=24
 		refs.status=status
-		select(World.RECIPES.keys()[0] if selected.is_empty() else selected)
+		select(recipes().keys()[0] if selected.is_empty() else selected)
+
+	## C12: the recipe table of the stove this workbench belongs to — the early 小石灶 keeps its old numbers,
+	## the 2x2 公共廚房灶台 shows the canonical D01-D16 ones (World.stove_recipes; display only, World decides).
+	func recipes()->Dictionary:
+		var stove:Dictionary=app.session.snapshot.get("objects",{}).get(World.key(cell),{})
+		return World.stove_recipes(str(stove.get("type","stove")))
+
+	## D16 / D11 / D15: this dish is locked on this (C12) stove (festival preparation, or the viewer's own
+	## 熟悉 event). Display only; World re-checks. Name kept for the D16 callers.
+	func festival_locked(kind:String)->bool:
+		var stove:Dictionary=app.session.snapshot.get("objects",{}).get(World.key(cell),{})
+		return World.stove_dish_locked_in(app.session.snapshot,str(stove.get("type","stove")),kind)
+
+	## The gate record ({} when none) of `kind` on this stove: message / button / tip texts.
+	func gate_of(kind:String)->Dictionary:
+		var stove:Dictionary=app.session.snapshot.get("objects",{}).get(World.key(cell),{})
+		return World.KITCHEN_STOVE.gate(str(stove.get("type","stove")),kind)
+
+	## Dish title as the displayed table names it (canonical for the 16-dish table); IDs stay the item IDs.
+	func title_of(kind:String)->String:
+		var entry=recipes().get(kind)
+		if entry is Dictionary and not str(entry.get("name","")).is_empty():return str(entry.name)
+		return dish_name(kind)
 
 	func _column(parent:Control,id:String,ratio:float)->VBoxContainer:
 		var frame:=PanelContainer.new()
@@ -312,7 +341,7 @@ class Controller extends Node:
 		grid.add_theme_constant_override("v_separation",6)
 		column.add_child(grid)
 		var group:=ButtonGroup.new()
-		for id in World.RECIPES:
+		for id in recipes():
 			if id==World.RESIDENT_GOALS.SEAFOOD_RICE and app.session.snapshot.get("resident_goals",{}).get("achao",{}).get("3",{}).get("state")!="done":continue
 			var kind:String=id
 			var button:=Button.new()
@@ -322,7 +351,7 @@ class Controller extends Node:
 			button.button_group=group
 			button.focus_mode=Control.FOCUS_ALL
 			button.custom_minimum_size=Vector2(84,70)
-			button.tooltip_text=dish_name(kind)
+			button.tooltip_text=title_of(kind)
 			var stack:=VBoxContainer.new()
 			stack.mouse_filter=Control.MOUSE_FILTER_IGNORE
 			stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -333,7 +362,7 @@ class Controller extends Node:
 			art.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 			stack.add_child(art)
 			var title:=Label.new()
-			title.text=dish_name(kind)
+			title.text=title_of(kind)
 			title.add_theme_font_size_override("font_size",13)
 			title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 			title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -378,9 +407,9 @@ class Controller extends Node:
 		footer.add_child(picker)
 		refs.picker=picker
 		picker.state_changed.connect(refresh)
-		var enqueue:=_action(footer,"CookingEnqueue","排入石灶",func():
+		var enqueue:=_action(footer,"CookingEnqueue","排入灶台",func():
 			var kind:String=selected
-			submit("queue_cook",kind,"排入"+dish_name(kind),true)
+			submit("queue_cook",kind,"排入"+title_of(kind),true)
 		)
 		enqueue.custom_minimum_size.y=42
 		refs.enqueue=enqueue
@@ -515,18 +544,20 @@ class Controller extends Node:
 	# ------------------------------------------------------------ interaction
 
 	func select(kind:String)->void:
-		if not World.RECIPES.has(kind):return
+		if not recipes().has(kind):return
 		selected=kind
 		for id in recipe_buttons:(recipe_buttons[id] as Button).set_pressed_no_signal(id==kind)
 		ingredient_signature=""
 		if refs.has("hero"):refresh()
+		# A locked dish names exactly what to do (display only; World re-checks and returns the same text).
+		if festival_locked(kind):_status(str(gate_of(kind).message),false)
 
 	## Sends one intent. The caller captured exact IDs when the control was built.
 	## `sourced`: take the wire extra from the material source picker's frozen,
 	## displayed split (plain recipe ID when backpack only). Never retried.
 	func submit(action:String,extra:String,intent:String,sourced:bool=false)->void:
 		if not pending.is_empty():
-			_status("上一個石灶操作還在等待回應，請稍候。",false)
+			_status("上一個灶台操作還在等待回應，請稍候。",false)
 			return
 		var session=app.session
 		var hosting:bool=session.world!=null
@@ -543,7 +574,7 @@ class Controller extends Node:
 				return
 			extra=str(frozen.extra)
 		pending={"action":action,"extra":extra,"intent":intent,"at":Time.get_ticks_msec(),"host":hosting,"sequence":int(session.counter)+1,"sourced":sourced}
-		_status(intent+"……等待石灶回應",true)
+		_status(intent+"……等待灶台回應",true)
 		_sync_buttons()
 		var sequence:int=session.perform(action,cell,extra)
 		if pending.is_empty():return # Host answered synchronously through completion.
@@ -567,7 +598,7 @@ class Controller extends Node:
 
 	func _on_completed(sequence:int,action:String,result:Dictionary)->void:
 		if pending.is_empty() or sequence!=int(pending.sequence) or action!=str(pending.action):return
-		var message:String=str(result.get("message","石灶已回覆。"))
+		var message:String=str(result.get("message","灶台已回覆。"))
 		var success:bool=bool(result.get("ok",false))
 		var sourced:bool=bool(pending.get("sourced",false))
 		pending={}
@@ -603,22 +634,26 @@ class Controller extends Node:
 	func _sync_picker()->void:
 		var picker=refs.get("picker")
 		if picker==null:return
-		picker.set_locked("" if last.present else "小石灶不在這裡")
-		if str(picker.recipe_id)!=selected and not picker.is_frozen():picker.set_recipe(selected,World.RECIPES[selected])
+		picker.set_locked("" if last.present else "灶台不在這裡")
+		if str(picker.recipe_id)!=selected and not picker.is_frozen():picker.set_recipe(selected,recipes()[selected])
 		else:picker.refresh()
 
 	func _update_book(bag:Dictionary)->void:
 		var picker=refs.get("picker")
 		var with_box:bool=picker!=null and not str(picker.get_selected_cell()).is_empty()
 		for id in recipe_buttons:
-			var enough:bool=picker.covers(World.RECIPES[id]) if with_box else _enough(id,bag)
+			var enough:bool=picker.covers(recipes()[id]) if with_box else _enough(id,bag)
 			(refs["recipe_art_"+id] as TextureRect).modulate=Color.WHITE if enough else Color(1,1,1,0.45)
 			(refs["recipe_title_"+id] as Label).add_theme_color_override("font_color",Color("fff0ce") if id==selected else (INK if enough else MUTED))
-			(recipe_buttons[id] as Button).tooltip_text=dish_name(id)+("" if enough else ("（背包和所選箱子食材不足）" if with_box else "（背包食材不足）"))
-		var recipe:Dictionary=World.RECIPES[selected]
+			(recipe_buttons[id] as Button).tooltip_text=title_of(id)+("" if enough else ("（背包和所選箱子食材不足）" if with_box else "（背包食材不足）"))
+			if festival_locked(id):
+				(refs["recipe_art_"+id] as TextureRect).modulate=Color(1,1,1,0.45)
+				(recipe_buttons[id] as Button).tooltip_text=title_of(id)+str(gate_of(id).tip)
+		var recipe:Dictionary=recipes()[selected]
 		(refs.hero as TextureRect).texture=Items.icon(selected)
-		(refs.hero_name as Label).text=dish_name(selected)
+		(refs.hero_name as Label).text=title_of(selected)
 		(refs.hero_info as Label).text="每次製作 %d 份 · %d 秒"%[int(recipe.yield),int(recipe.time)]
+		if festival_locked(selected):(refs.hero_info as Label).text+=" · "+str(gate_of(selected).button)
 		var counts:Array=[selected]
 		for item in recipe.ingredients:counts.append(int(bag.get(item,0)))
 		var signature:=JSON.stringify(counts)
@@ -643,7 +678,7 @@ class Controller extends Node:
 			amount.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
 
 	func _enough(kind:String,bag:Dictionary)->bool:
-		var recipe:Dictionary=World.RECIPES[kind]
+		var recipe:Dictionary=recipes()[kind]
 		for item in recipe.ingredients:
 			if int(bag.get(item,0))<int(recipe.ingredients[item]):return false
 		return true
@@ -671,14 +706,14 @@ class Controller extends Node:
 				slot.add_theme_stylebox_override("panel",slot_styles[entry.state])
 				art.texture=Items.icon(str(entry.kind))
 				art.modulate=Color(1,1,1,0.6) if entry.state=="waiting" else Color.WHITE
-				slot.tooltip_text="%s ×%d · %s · 投入：%s"%[dish_name(str(entry.kind)),int(entry.yield),{"active":"爐上","waiting":"等候中","ready":"完成待領"}[entry.state],who(s,own,str(entry.owner))]
+				slot.tooltip_text="%s ×%d · %s · 投入：%s"%[title_of(str(entry.kind)),int(entry.yield),{"active":"爐上","waiting":"等候中","ready":"完成待領"}[entry.state],who(s,own,str(entry.owner))]
 			else:
 				slot.add_theme_stylebox_override("panel",slot_styles.empty)
 				art.texture=null
 				slot.tooltip_text="空位"
 		(refs.legend as Label).text="完成待領 %d · 爐上 %d · 等候 %d · 空位 %d"%[ready.size(),0 if active.is_empty() else 1,waiting.size(),maxi(0,cap-total)]
 		if not last.present:
-			(refs.legend as Label).text="這座小石灶已經移除或不在目前區域。"
+			(refs.legend as Label).text="這座灶台已經移除或不在目前區域。"
 		# Active pot (in-place updates only).
 		var gauge:ProgressBar=refs.progress
 		if active.is_empty():
@@ -691,13 +726,13 @@ class Controller extends Node:
 			var remaining:=maxf(0.0,float(active.finish)-now)
 			var span:=maxf(0.001,float(active.finish)-float(active.started))
 			(refs.active_icon as TextureRect).texture=Items.icon(str(active.kind))
-			(refs.active_title as Label).text="爐上：%s ×%d"%[dish_name(str(active.kind)),int(active.yield)]
+			(refs.active_title as Label).text="爐上：%s ×%d"%[title_of(str(active.kind)),int(active.yield)]
 			var owner_text:="投入：%s"%who(s,own,str(active.owner))
 			if str(active.owner)!=own:owner_text+=" · 僅投入者可取消"
 			(refs.active_owner as Label).text=owner_text
 			(refs.active_owner as Label).tooltip_text="投入食材："+ingredient_text(active.ingredients)
 			gauge.value=100.0*clampf((now-float(active.started))/span,0.0,1.0)
-			var timing:="已完成，等石灶更新後放上料理架" if remaining<=0.0 else "約剩 %d 秒"%ceili(remaining)
+			var timing:="已完成，等灶台更新後放上料理架" if remaining<=0.0 else "約剩 %d 秒"%ceili(remaining)
 			if bool(active.legacy):timing+=" · 原有料理"
 			(refs.remaining as Label).text=timing
 		(refs.waiting_title as Label).text="等候中（%d）"%waiting.size()
@@ -707,7 +742,7 @@ class Controller extends Node:
 		claim.set_meta("allowed",last.present and claimable)
 		if not ready.is_empty():
 			var oldest:Dictionary=ready[0]
-			claim.text="領取最早完成：%s ×%d"%[dish_name(str(oldest.kind)),int(oldest.yield)]
+			claim.text="領取最早完成：%s ×%d"%[title_of(str(oldest.kind)),int(oldest.yield)]
 		elif claimable:claim.text="領取剛完成的料理"
 		else:claim.text="料理架上還沒有料理"
 		var enqueue:Button=refs.enqueue
@@ -715,12 +750,17 @@ class Controller extends Node:
 		# Enabled when the displayed split (backpack first, then the chosen box) is
 		# complete, even if the backpack alone is short; prepare/lock/no ID disable.
 		var source_ok:bool=picker.can_submit()
-		enqueue.set_meta("allowed",last.present and total<cap and source_ok)
-		if not last.present:enqueue.text="小石灶不在這裡"
+		var festival_hold:bool=festival_locked(selected)
+		enqueue.set_meta("allowed",last.present and total<cap and source_ok and not festival_hold)
+		enqueue.tooltip_text=""
+		if not last.present:enqueue.text="灶台不在這裡"
+		elif festival_hold:
+			enqueue.text=str(gate_of(selected).button)
+			enqueue.tooltip_text=str(gate_of(selected).message)
 		elif total>=cap:enqueue.text="排程已滿 %d／%d，請先領取"%[total,cap]
 		elif not picker.plan_ok():enqueue.text="背包和箱子食材不足" if not str(picker.get_selected_cell()).is_empty() else "背包食材不足"
 		elif not source_ok:enqueue.text=picker.block_reason()
-		else:enqueue.text="排入石灶 · %s%s"%[dish_name(selected)," · 用箱子補足" if picker.uses_box() else ""]
+		else:enqueue.text="排入灶台 · %s%s"%[title_of(selected)," · 用箱子補足" if picker.uses_box() else ""]
 		_rebuild_lists(s,own,now)
 
 	## Rebuilds focusable rows only when the job set, ownership or cancelability changed.
@@ -745,7 +785,7 @@ class Controller extends Node:
 			var legacy:bool=active.legacy
 			var action:="cancel_cook" if legacy else "cancel_queued_cook"
 			var cancel:=_action(refs.active_actions,"CookingCancel_"+("legacy" if legacy else target),"取消",func():
-				submit(action,target,"取消"+dish_name(str(active.kind))))
+				submit(action,target,"取消"+title_of(str(active.kind))))
 			cancel.tooltip_text="取消料理，退回"+ingredient_text(active.ingredients)
 			cancel.set_meta("allowed",last.present and float(active.finish)>now and (legacy or not target.is_empty()))
 			cancel_buttons.append(cancel)
@@ -759,7 +799,7 @@ class Controller extends Node:
 			card.name="CookingWaitingRow_"+str(record.id)
 			card.custom_minimum_size.x=74
 			card.add_theme_stylebox_override("panel",Pixel.texture_style("normal",3,3))
-			card.tooltip_text="#%d · %s ×%d\n投入：%s\n取消退回：%s"%[position,dish_name(str(record.kind)),int(record.yield),who(s,own,str(record.owner)),ingredient_text(record.ingredients)]
+			card.tooltip_text="#%d · %s ×%d\n投入：%s\n取消退回：%s"%[position,title_of(str(record.kind)),int(record.yield),who(s,own,str(record.owner)),ingredient_text(record.ingredients)]
 			refs.waiting.add_child(card)
 			var stack:=VBoxContainer.new()
 			stack.add_theme_constant_override("separation",0)
@@ -778,10 +818,10 @@ class Controller extends Node:
 			if str(record.owner)==own:
 				var target:String=record.id
 				var cancel:=_action(row,"CookingCancel_"+target,"×",func():
-					submit("cancel_queued_cook",target,"取消"+dish_name(str(record.kind))))
+					submit("cancel_queued_cook",target,"取消"+title_of(str(record.kind))))
 				cancel.custom_minimum_size=Vector2(24,24)
 				cancel.theme_type_variation="ItemSlot"
-				cancel.tooltip_text="取消%s，退回%s"%[dish_name(str(record.kind)),ingredient_text(record.ingredients)]
+				cancel.tooltip_text="取消%s，退回%s"%[title_of(str(record.kind)),ingredient_text(record.ingredients)]
 				cancel.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 				cancel.set_meta("allowed",last.present and not target.is_empty())
 				cancel_buttons.append(cancel)
@@ -794,7 +834,7 @@ class Controller extends Node:
 			slot.name="CookingReady_"+(str(record.id) if not str(record.id).is_empty() else "legacy")
 			slot.custom_minimum_size=Vector2(48,52)
 			slot.add_theme_stylebox_override("panel",slot_styles.active if first else slot_styles.ready)
-			slot.tooltip_text="%s%s ×%d · 投入：%s"%["下一份領取 · " if first else "",dish_name(str(record.kind)),int(record.yield),who(s,own,str(record.owner))]
+			slot.tooltip_text="%s%s ×%d · 投入：%s"%["下一份領取 · " if first else "",title_of(str(record.kind)),int(record.yield),who(s,own,str(record.owner))]
 			var next_to_claim:=first
 			first=false
 			var stack:=VBoxContainer.new()
@@ -826,7 +866,7 @@ class Controller extends Node:
 		for button in buttons:
 			if button is Button and is_instance_valid(button):
 				button.disabled=busy or not bool(button.get_meta("allowed",false))
-		if busy and refs.has("enqueue"):(refs.enqueue as Button).text="等待石灶回應……"
+		if busy and refs.has("enqueue"):(refs.enqueue as Button).text="等待灶台回應……"
 
 
 ## Shared helpers reachable from Controller without preloading this script from itself.

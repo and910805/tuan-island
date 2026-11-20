@@ -43,7 +43,7 @@ func _initialize()->void:
 	legacy.regions.erase("tianwei")
 	legacy.erase("salt_pan")
 	legacy.regions.erase("beimen")
-	expect(valid(legacy) and legacy.version==26 and legacy.players.alpha.inventory.wood==12,"v11 migrates without losing inventory")
+	expect(valid(legacy) and legacy.version==preload("res://scripts/save_schema.gd").VERSION and legacy.players.alpha.inventory.wood==12,"v11 migrates without losing inventory")
 	var home:Dictionary=world.state.players.alpha
 	home.x=41.5;home.y=36.5
 	home.inventory.merge(Drill.COST,true)

@@ -16,6 +16,7 @@ extends SceneTree
 ## (world day 2, theme "flower", 240 world seconds before the day-3 boundary);
 ## alpha and beta stand on two distinct standable spots within 3.2 of the stall
 ## cell (cell from MARKET.cell_for on a probe save loaded like the server's);
+## beta also owns an empty whitewood register near the shared plaza.
 ## exact bags alpha {radish 10, soup 1, bluebell 2, egg 1, carrot 1, wood 5,
 ## radish_seed 2}, beta {radish 4, carrot 2, wood 2}; islander "delta" at home
 ## out of reach of the stall, islander "epsilon" in star_garden (wrong region).
@@ -59,6 +60,16 @@ extends SceneTree
 ## remark; shelf + remark_line identical across the case 8 restart; no
 ## shelf/remark/display top-level snapshot key (own_market keys unchanged).
 ## Same-machine single-process evidence only; drawing of the tags is not tested.
+## Stall decor (market_decor, T071 「攤位布置」): alpha alone customises, through real
+## market_decor requests ("cloth|indigo" then "sign|flower") while her stall is open
+## on day 2 (end of case 4, before the first shutdown). Checked: no own_market.decor
+## key for anyone by default / for locked zeta / after any refusal (default-valued,
+## malformed, unknown kind/choice, wrong cell, too far, wrong region, locked); only
+## alpha's own_market gains exactly the key "decor" (never a players entry or a
+## top-level key; beta/others keep OWN_MARKET_KEYS); bag, coins, stock, prices, till,
+## total and the register ownership on disk are unchanged; alpha's open themed
+## remark_line gains World.MARKET_DECOR.remark (beta's does not); decor survives
+## alpha's offline settlement and the case 8 restart (disk market_decor exact).
 ## NOT covered: multiple processes, cross-machine, TLS/wss, latency/packet loss
 ## injection, crash durability (only normal shutdowns with a final save), the
 ## NO_STALL refusal (all four candidate cells occupied) and wallet-cap refusals
@@ -87,6 +98,7 @@ const GARDEN_REGION:="star_garden"
 const EPSILON_AT:=Vector2(30.5,29.5)
 const ALPHA_BAG:={"radish":10,"soup":1,"bluebell":2,"egg":1,"carrot":1,"wood":5,"radish_seed":2}
 const BETA_BAG:={"radish":4,"carrot":2,"wood":2}
+const REGISTER:=Vector2i(37,32)
 const DELTA_BAG:={"radish":2}
 const EPSILON_BAG:={"radish":2}
 const ZETA_BAG:={"radish":2}
@@ -236,6 +248,11 @@ func seed_world(path:String,picnic:bool,people:Dictionary)->bool:
 		p["y"]=at.y
 		p["inventory"]=(spec.inv as Dictionary).duplicate()
 		if spec.has("region"):p["region"]=str(spec.region)
+	if people.has(BETA):
+		for part in range(2):
+			w.state.objects[World.key(REGISTER+Vector2i(part,0))]={
+				"type":World.INDUSTRY.COAST_REGISTER,"owner":BETA,"items":{},"register_part":part,
+			}
 	w.active_tokens.clear()
 	if not w.save():return false
 	var parsed=JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -423,12 +440,12 @@ func refuse(c:Client,action:String,p:Vector2i,extra:String,message:String,label:
 	expect(same,"%s: every bag, coin purse and own_market unchanged in all watching snapshots"%label)
 
 ## Successful stock/take: exact message, exact bag delta, exact stock delta; watchers unchanged.
-func move(c:Client,action:String,item:String,count:int,label:String,watchers:Array)->Dictionary:
+func move(c:Client,action:String,item:String,count:int,label:String,watchers:Array,site:=MARKET.NO_CELL)->Dictionary:
 	await settle([c]+watchers)
 	var bag:=canon(c.bag())
 	var stock:=canon(c.market().get("stock",{}))
 	var others:Array=watchers.map(func(x):return [text(canon(x.bag())),x.coins(),text(mrow(x.market()))])
-	var r:=await act(c,action,stall,"%s:%d"%[item,count])
+	var r:=await act(c,action,stall if site==MARKET.NO_CELL else site,"%s:%d"%[item,count])
 	var stocking:=action=="market_stock"
 	expect(r.ok and r.message==(stock_msg(item,count) if stocking else take_msg(item,count)),"%s: %s %s ×%d over the network (%s)"%[label,action,item,count,r.message])
 	await settle([c]+watchers)
@@ -600,10 +617,10 @@ func want_remark(day:int,stock:Dictionary,opened:bool,stalls:int)->String:
 	if keys.size()>=MarketDisplay.VARIETY_KINDS:return MarketDisplay.REMARK_VARIETY
 	return MarketDisplay.REMARK_OTHER%[label_of(str(keys[posmod(day,keys.size())])),theme_name]
 
-func expect_remark(c:Client,want:String,label:String)->bool:
+func expect_remark(c:Client,want:String,label:String,accent:String="")->bool:
 	var got:String=remark_of(c)
 	var line:String=remark_line_of(c)
-	var want_line:String="" if want.is_empty() else MarketDisplay.REMARK_PREFIX+want+MarketDisplay.REMARK_NOTE
+	var want_line:String="" if want.is_empty() else MarketDisplay.REMARK_PREFIX+want+(" "+accent if not accent.is_empty() else "")+MarketDisplay.REMARK_NOTE
 	return expect(got==want and line==want_line,"%s: %s's stall remark is exactly '%s' (got '%s', line '%s')"%[label,c.label,want,got,line])
 
 ## `reader`'s market fields (minus the reader's own settlement report) never carry
@@ -644,6 +661,62 @@ func expect_no_display_keys(c:Client,label:String)->void:
 	var mk:Array=c.market().keys().map(func(k):return str(k))
 	mk.sort()
 	expect(mk==OWN_MARKET_KEYS,"%s: %s's own_market keys unchanged by the stall display (got %s)"%[label,c.label,str(mk)])
+
+## Everything decor must never change: bag, purse, whole own_market view, prices, till, total.
+static func fp(c:Client,with_decor:bool=true)->String:
+	var m:Dictionary=c.market()
+	var parts:Array=[canon(c.bag()),c.coins(),mrow(m),m.get("prices",null),m.get("till",null),m.get("total",null)]
+	if with_decor:parts.append(m.get("decor","<none>"))
+	return text(parts)
+
+## `want` null = no decor key at all; otherwise own_market has exactly OWN_MARKET_KEYS+"decor" == want.
+## Never a public players field or top-level snapshot key.
+func expect_decor(c:Client,want:Variant,label:String)->void:
+	var m:Dictionary=c.market()
+	var keys:Array=m.keys().map(func(k):return str(k))
+	keys.sort()
+	var want_keys:Array=OWN_MARKET_KEYS.duplicate()
+	if want!=null:want_keys.append("decor")
+	want_keys.sort()
+	var ok:bool=keys==want_keys
+	if want==null:ok=ok and not m.has("decor")
+	else:ok=ok and text(m.get("decor"))==text(want)
+	expect(ok,"%s: %s's own_market decor is %s with keys %s (got %s)"%[label,c.label,text(want),str(want_keys),text(m.get("decor","<none>"))])
+	var people=c.session.snapshot.get("players",{})
+	var clean:=people is Dictionary
+	if clean:
+		for id in people:
+			var person=people[id]
+			if not person is Dictionary or person.has("decor") or person.has("market_decor"):clean=false
+	for k in c.session.snapshot.keys():
+		if str(k).to_lower().contains("decor"):clean=false
+	expect(clean,"%s: %s's snapshot has no decor / market_decor in any players entry or top-level key"%[label,c.label])
+
+## Refused market_decor: reply exact, decor state (absent or not) and everything else unchanged.
+func decor_refuse(c:Client,p:Vector2i,extra:String,message:String,label:String,watchers:Array)->void:
+	var everyone:Array=[c]+watchers
+	await settle(everyone)
+	var marks:Array=everyone.map(func(x):return fp(x))
+	await refuse(c,"market_decor",p,extra,message,label,watchers)
+	var same:=true
+	for i in everyone.size():
+		if fp(everyone[i])!=marks[i]:same=false
+	expect(same,"%s: bag, purse, stock, prices, till, total and decor all unchanged for every client"%label)
+
+## Accepted market_decor: exact message, own decor == want, nothing else changes, watchers get no decor.
+func decor_set(c:Client,extra:String,message:String,want:Dictionary,watchers:Array,label:String)->void:
+	var everyone:Array=[c]+watchers
+	await settle(everyone)
+	var marks:Array=everyone.map(func(x):return fp(x,false))
+	var r:=await act(c,"market_decor",stall,extra)
+	expect(r.replied and r.ok and str(r.message)==message,"%s: '%s' accepted with '%s' (got ok=%s '%s')"%[label,extra,message,str(r.ok),str(r.message)])
+	await settle(everyone)
+	var same:=true
+	for i in everyone.size():
+		if fp(everyone[i],false)!=marks[i]:same=false
+	expect(same,"%s: bag, purse, stock, prices, till and total unchanged for every client"%label)
+	expect_decor(c,want,label)
+	for w:Client in watchers:expect_decor(w,null,label+" watcher (never receives the customiser's decor)")
 
 # --------------------------------------------------------------- scenario --
 
@@ -707,12 +780,13 @@ func scenario()->bool:
 		expect_shelf(c,{},"case 1 fresh")
 		expect_remark(c,"","case 1 fresh (nobody open)")
 		expect_no_display_keys(c,"case 1")
+		expect_decor(c,null,"case 1 fresh (no decor by default)")
 	var coins_a0:=alpha.coins()
 	var coins_b0:=beta.coins()
 
 	# 2. Alpha stocks a crop, a dish, a flower and an egg; only alpha changes.
 	var r_radish:=await move(alpha,"market_stock","radish",3,"case 2 alpha",[beta])
-	await move(alpha,"market_stock","soup",1,"case 2 alpha",[beta])
+	await move(alpha,"market_stock","soup",1,"case 2 alpha uses beta's register",[beta],REGISTER+Vector2i.RIGHT)
 	await move(alpha,"market_stock","bluebell",2,"case 2 alpha",[beta])
 	await move(alpha,"market_stock","egg",1,"case 2 alpha",[beta])
 	expect_row(alpha,want_row(START_DAY,ALPHA_STOCK,false,false,0,0,0,{}),"case 2 alpha after stocking")
@@ -756,7 +830,7 @@ func scenario()->bool:
 
 	# 3a. Beta: open with an empty stall refused; then stock and take back.
 	await refuse(beta,"market_open",S,"",MSG_EMPTY_OPEN,"case 3 beta opens an empty stall",[alpha])
-	await move(beta,"market_stock","radish",3,"case 3 beta",[alpha])
+	await move(beta,"market_stock","radish",3,"case 3 beta uses her register",[alpha],REGISTER)
 	await move(beta,"market_stock","carrot",1,"case 3 beta",[alpha])
 	await move(beta,"market_take","radish",1,"case 3 beta",[alpha])
 	expect_row(beta,want_row(START_DAY,BETA_STOCK,false,false,0,0,0,{}),"case 3 beta after stocking")
@@ -782,6 +856,14 @@ func scenario()->bool:
 	await refuse(beta,"market_take",S,"radish:-1",MSG_BAD_TAKE,"case 3 malformed take extra 'radish:-1'",[alpha])
 	await refuse(beta,"market_open",S,"now",MSG_BAD_OP,"case 3 open with an extra",[alpha])
 	await refuse(beta,"market_collect",S,"all",MSG_BAD_OP,"case 3 collect with an extra",[alpha])
+	# market_decor refusals (default-valued, malformed, unknown, wrong cell): no decor key appears.
+	await decor_refuse(alpha,S,"cloth|natural","攤位已經是「原色棉布」了。","case 3 decor: default cloth again",[beta])
+	await decor_refuse(alpha,S,"sign|plain","攤位已經是「素木招牌」了。","case 3 decor: default sign again",[beta])
+	for bad:Array in [["","請選擇攤位布置。"],["cloth|indigo|x","請選擇攤位布置。"],["roof|indigo","沒有這種布置。"],["cloth|nope","沒有這個樣式。"],["cloth|plain","沒有這個樣式。"],["sign|indigo","沒有這個樣式。"],["cloth|","沒有這個樣式。"]]:
+		await decor_refuse(alpha,S,str(bad[0]),str(bad[1]),"case 3 decor: invalid extra '%s'"%str(bad[0]),[beta])
+	await decor_refuse(alpha,wrong,"cloth|indigo",MARKET.WRONG_CELL,"case 3 decor: wrong cell %s"%str(wrong),[beta])
+	expect_decor(alpha,null,"case 3 alpha after every decor refusal")
+	expect_decor(beta,null,"case 3 beta after alpha's decor refusals")
 	# Too far (delta, home, out of reach) and wrong region (epsilon, star_garden).
 	delta=await join("delta",DELTA,port)
 	epsilon=await join("epsilon",EPSILON,port)
@@ -792,8 +874,11 @@ func scenario()->bool:
 	expect(epsilon.region()==GARDEN_REGION,"case 3 epsilon is in star_garden (%s)"%epsilon.region())
 	await refuse(delta,"market_stock",S,"radish:1",MARKET.TOO_FAR,"case 3 delta stocks from too far",[alpha,beta])
 	await refuse(epsilon,"market_stock",S,"radish:1",MARKET.WRONG_REGION,"case 3 epsilon stocks from star_garden",[alpha,beta])
+	await decor_refuse(delta,S,"cloth|indigo",MARKET.TOO_FAR,"case 3 decor: delta from too far",[alpha,beta])
+	await decor_refuse(epsilon,S,"cloth|indigo",MARKET.WRONG_REGION,"case 3 decor: epsilon from star_garden",[alpha,beta])
 	for c:Client in [delta,epsilon]:
 		expect_row(c,fresh,"case 3 %s after its refusal"%c.label)
+		expect_decor(c,null,"case 3 %s after its decor refusal"%c.label)
 	await leave(delta)
 	await leave(epsilon)
 	delta=null
@@ -876,6 +961,34 @@ func scenario()->bool:
 	await refuse(alpha,"market_collect",S,"",MSG_EMPTY_TILL,"case 4 alpha collects before settlement",[beta])
 	private_check(alpha,[beta],"case 4 alpha")
 	private_check(beta,[alpha],"case 4 beta")
+	# 4b. Alpha customises her open themed stall: only her own_market gains decor.
+	var remark_a4b:String=want_remark(START_DAY,ALPHA_STOCK,true,2)
+	var shown4b:=[var_to_str(guests(alpha)),var_to_str(guests(beta)),text(card(alpha)),text(card(beta)),text(shelf_rows(alpha)),text(shelf_rows(beta))]
+	var decor1:={"cloth":"indigo","sign":"plain"}
+	var decor2:={"cloth":"indigo","sign":"flower"}
+	var accent1:String=World.MARKET_DECOR.remark(decor1)
+	var accent2:String=World.MARKET_DECOR.remark(decor2)
+	expect(not accent1.is_empty() and not accent2.is_empty() and accent1!=accent2,"case 4 fixture: World.MARKET_DECOR has distinct remarks for indigo|plain and indigo|flower")
+	await decor_set(alpha,"cloth|indigo","攤位換成「藍染布」了。",decor1,[beta],"case 4 alpha cloth|indigo")
+	expect_remark(alpha,remark_a4b,"case 4 alpha's open stall with indigo cloth",accent1)
+	expect(remark_line_of(alpha).contains(accent1),"case 4 alpha's open remark_line includes World.MARKET_DECOR.remark (%s)"%remark_line_of(alpha))
+	expect_remark(beta,remark_b4,"case 4 beta's open remark carries no decor accent","")
+	await decor_refuse(alpha,S,"cloth|indigo","攤位已經是「藍染布」了。","case 4 decor: same cloth again",[beta])
+	await decor_set(alpha,"sign|flower","攤位換成「花飾招牌」了。",decor2,[beta],"case 4 alpha sign|flower")
+	expect_remark(alpha,remark_a4b,"case 4 alpha's open stall with indigo cloth and flower sign",accent2)
+	expect(remark_line_of(alpha).contains(accent2) and not remark_line_of(alpha).contains(accent1),"case 4 alpha's remark_line carries the new combination's remark")
+	expect_remark(beta,remark_b4,"case 4 beta still has no decor accent","")
+	var closed_view:Dictionary=alpha.market().duplicate(true)
+	closed_view["open"]=false
+	var closed_plain:Dictionary=closed_view.duplicate(true)
+	closed_plain.erase("decor")
+	expect(MarketDisplay.remark_line(closed_view,World.NAMES)==MarketDisplay.remark_line(closed_plain,World.NAMES),"case 4 the decor accent only shows on an open stall")
+	expect(shown4b==[var_to_str(guests(alpha)),var_to_str(guests(beta)),text(card(alpha)),text(card(beta)),text(shelf_rows(alpha)),text(shelf_rows(beta))],"case 4 decor changes no guest plan, journal card or shelf")
+	expect_row(alpha,want_row(START_DAY,ALPHA_STOCK,true,true,2,0,0,{}),"case 4 alpha after decor")
+	expect_row(beta,want_row(START_DAY,BETA_STOCK,true,true,2,0,0,{}),"case 4 beta after alpha's decor")
+	expect(canon(alpha.bag())==plus(canon(ALPHA_BAG),ALPHA_STOCK,-1) and alpha.coins()==coins_a0 and canon(beta.bag())==plus(canon(BETA_BAG),BETA_STOCK,-1) and beta.coins()==coins_b0,"case 4 decor leaves both bags and purses exact")
+	private_check(alpha,[beta],"case 4 alpha after decor")
+	private_check(beta,[alpha],"case 4 beta after alpha's decor")
 
 	# 6. Alpha goes offline; the day boundary settles both stalls.
 	var bag_a6:=canon(alpha.bag())
@@ -926,6 +1039,8 @@ func scenario()->bool:
 		if not BETA_SOLD.has(item) and beta_text6.contains(label_of(str(item))):leak6.append(item)
 	if coins_a!=coins_b and beta_text6.contains("收入 %d 鈴幣"%coins_a):leak6.append("alpha's coins")
 	expect(cb6.size()==5 and leak6.is_empty(),"case 6 beta's card never shows alpha's report (leaks %s)"%str(leak6))
+	expect_decor(alpha,decor2,"case 6 alpha's decor survives her offline settlement and rejoin")
+	expect_decor(beta,null,"case 6 beta still has no decor")
 	private_check(alpha,[beta],"case 6 alpha after rejoin")
 	private_check(beta,[alpha],"case 6 beta")
 	# Stall display after the midnight settlement: no remark; shelves = remaining stock.
@@ -976,6 +1091,14 @@ func scenario()->bool:
 	expect(text(got_b)==text(want_b),"case 8 save holds beta's exact player.market %s (got %s)"%[text(want_b),text(got_b)])
 	for token in [DELTA,EPSILON]:
 		expect(not disk.players.get(token,{}).has("market"),"case 8 refused islander %s has no market field on disk"%token.get_slice("-",2))
+	expect(text(disk.players.get(ALPHA,{}).get("market_decor",null))==text(decor2),"case 8 save holds alpha's exact market_decor %s"%text(decor2))
+	for token in [BETA,DELTA,EPSILON]:
+		expect(not disk.players.get(token,{}).has("market_decor"),"case 8 save holds no market_decor for %s"%token.get_slice("-",2))
+	var own_ok:=true
+	for part in range(2):
+		var obj=disk.get("objects",{}).get(World.key(REGISTER+Vector2i(part,0)),{})
+		if not obj is Dictionary or str(obj.get("owner",""))!=BETA:own_ok=false
+	expect(own_ok,"case 8 save keeps beta as owner of both register parts (decor changed no ownership)")
 	for token in [ALPHA,BETA]:
 		expect(canon(disk.players.get(token,{}).get("inventory",{}))==final_bags[token],"case 8 save holds %s's exact bag"%token.get_slice("-",2))
 	expect(int(disk.players.get(ALPHA,{}).get("coins",-1))==coins_a0+coins_a and int(disk.players.get(BETA,{}).get("coins",-1))==coins_b0,"case 8 save holds both purses")
@@ -998,6 +1121,8 @@ func scenario()->bool:
 	expect(display(beta)==str(final_displays[BETA]),"case 8 beta's stall shelf and remark line identical after restart (%s)"%display(beta))
 	expect_shelf(alpha,ALPHA_LEFT,"case 8 alpha after restart")
 	expect_shelf(beta,{"radish":1},"case 8 beta after restart")
+	expect_decor(alpha,decor2,"case 8 alpha's decor persists after the restart")
+	expect_decor(beta,null,"case 8 beta still has no decor after the restart")
 	gamma=await join("gamma",GAMMA,port2)
 	expect(joined(gamma),"case 8 late joiner gamma joins with a fresh token")
 	if not joined(gamma):return false
@@ -1014,8 +1139,14 @@ func scenario()->bool:
 	for c:Client in [alpha,beta,gamma]:expect_guests(c,2,"case 8 alpha reopened after restart")
 	var g8:=var_to_str(guests(alpha))
 	expect(var_to_str(guests(beta))==g8 and var_to_str(guests(gamma))==g8,"case 8 alpha's, beta's and late joiner gamma's guest plans are identical")
+	var public_booth:Dictionary=alpha.session.snapshot.get("market_plaza",{})
+	var visible_goods:Array=ALPHA_LEFT.keys()
+	visible_goods.sort()
+	expect(public_booth=={"vendor":alpha.session.own_id,"name":"alpha","style":decor2,"goods":visible_goods},"case 8 public stall shows its owner's saved cloth, sign and product kinds only")
+	for c:Client in [beta,gamma]:expect(c.session.snapshot.get("market_plaza",{})==public_booth,"case 8 %s sees the same public stall without taking ownership of it"%c.label)
 	# Stall display after the restart: alpha's reopened remark, CLOSED for the others.
-	expect_remark(alpha,want_remark(START_DAY+1,ALPHA_LEFT,true,1),"case 8 alpha reopened after restart")
+	expect_remark(alpha,want_remark(START_DAY+1,ALPHA_LEFT,true,1),"case 8 alpha reopened after restart (with her persisted decor accent)",accent2)
+	expect_decor(gamma,null,"case 8 late joiner gamma sees no decor")
 	expect(not remark_of(alpha).is_empty() and remark_of(alpha)!=MarketDisplay.REMARK_CLOSED,"case 8 alpha's reopened remark is non-empty and not CLOSED (%s)"%remark_of(alpha))
 	expect_remark(beta,MarketDisplay.REMARK_CLOSED,"case 8 beta not open on day %d"%(START_DAY+1))
 	expect_remark(gamma,MarketDisplay.REMARK_CLOSED,"case 8 late joiner gamma not open")
@@ -1057,6 +1188,9 @@ func scenario()->bool:
 	await refuse(zeta,"market_stock",lock_stall,"radish:1",MARKET.LOCKED,"case 9 stock before the picnic",[])
 	await refuse(zeta,"market_open",lock_stall,"",MARKET.LOCKED,"case 9 open before the picnic",[])
 	await refuse(zeta,"market_collect",lock_stall,"",MARKET.LOCKED,"case 9 collect before the picnic",[])
+	expect_decor(zeta,null,"case 9 locked zeta has no decor")
+	await decor_refuse(zeta,lock_stall,"cloth|indigo",MARKET.LOCKED,"case 9 decor before the picnic",[])
+	expect_decor(zeta,null,"case 9 locked zeta still has no decor after the refused request")
 	expect(canon(zeta.bag())==canon(ZETA_BAG),"case 9 zeta keeps the exact preset bag")
 	expect(guests(zeta).is_empty() and card(zeta).is_empty(),"case 9 after the LOCKED refusals zeta still draws no guests and no card")
 	expect(shelf_of(zeta).is_empty() and remark_line_of(zeta).is_empty(),"case 9 after the LOCKED refusals zeta still shows no shelf and no remark")
@@ -1064,7 +1198,7 @@ func scenario()->bool:
 	zeta=null
 	expect(await stop_server(),"case 9 picnic-less server shuts down with a final save")
 	var locked=JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	expect(locked is Dictionary and locked.players.has(ZETA) and not locked.players[ZETA].has("market"),"case 9 picnic-less save writes no market field for zeta")
+	expect(locked is Dictionary and locked.players.has(ZETA) and not locked.players[ZETA].has("market") and not locked.players[ZETA].has("market_decor"),"case 9 picnic-less save writes no market or market_decor field for zeta")
 	if locked is Dictionary:
 		expect(canon(locked.players.get(ZETA,{}).get("inventory",{}))==canon(ZETA_BAG),"case 9 picnic-less save keeps zeta's exact bag")
 	return true

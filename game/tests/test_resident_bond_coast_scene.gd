@@ -641,6 +641,7 @@ func run()->void:
 	app=preload("res://main.tscn").instantiate();app.village_art_preview=true;root.add_child(app)
 	app.set_process(false);app.session.set_physics_process(false)
 	if app.session.host(0,"渡口旅人",path)!=OK:check(false,"Host starts");finish();return
+	app.WanganUI.dismiss(app)
 	w=app.session.world;id=app.session.profile.token
 	w.state.time=float(w.state.time)+Village.DAY*2.0  # PRESET: two whole days later
 	for size in [Vector2i(1024,640),Vector2i(1280,800)]:

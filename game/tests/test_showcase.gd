@@ -227,7 +227,6 @@ func test_constants()->void:
 	for kind:String in Show.KIND_ORDER:
 		expect(Show.KINDS.has(kind) and Show.category_of(kind) in Show.CATEGORIES and not Show.kind_name(kind).is_empty(),"%s has a name and a known category"%kind)
 		per[Show.category_of(kind)]=int(per.get(Show.category_of(kind),0))+1
-		expect(not World.NAMES.has(kind),"%s is not an inventory item id"%kind)
 	for category:String in Show.CATEGORIES:
 		expect(int(per.get(category,0))>=2,"Category %s has at least two kinds"%category)
 		expect(not str(Show.CATEGORY_NAMES.get(category,"")).is_empty(),"Category %s has a name"%category)

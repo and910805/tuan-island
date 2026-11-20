@@ -2,7 +2,7 @@
 
 開發版 Windows 安裝包在 `release.json` 使用 `version` 與 `build`。例如主畫面的 `0.50-dev r11` 在簽署更新清單中對應 `0.50.11-dev`，舊版可用原本的數字版號比較辨識新版。發布同一系列時請遞增 `build`，最低版號若要指定 r10 則用 `0.50.10-dev`。多人協定由其獨立欄位決定。
 
-多人協定以 `release.json` 為準；r23、r22 與 r21 均為 48（r20為47），世界伺服器與 Windows 客戶端須使用相容協定。此開發版使用世界存檔格式 26。升級前請停止世界寫入，另存世界主檔、備份檔、名冊與身分資料庫。若要回退舊版，須使用升級前的完整備份。
+本批 r24 封測使用多人協定 53、世界存檔格式 27。部署時以包內的 `release.json` 核對世界伺服器與 Windows 客戶端的協定。升級前請停止世界寫入，另存世界主檔、備份檔、名冊與身分資料庫。若要回退舊版，須使用升級前的完整備份。
 
 八人登入、分區移動、耕種、捐修閘門與跨區轉乘已有本機驗證紀錄。Zeabur 已公告將於 2026 年 12 月 31 日結束營運，雲端發行改以騰訊雲為目標。公開 Windows 客戶端、WSS 登入及重連、持久磁碟重啟後的存檔仍須在目標主機驗收。[Zeabur 遷移時程](https://zeabur.com/en-US/blogs/migration-refunds-and-security-claims)
 
@@ -108,6 +108,8 @@ python work/access/network_identity_docker_restart_050.py --directory --relocate
 演練會建立獨立的測試世界。兩項服務停止後，以 `world_backup.py` 匯出、驗證並還原主檔、備份、名冊和 SQLite，核對世界列表發布新的 WSS 入口，再以原帳號登入。島主會在新環境鋪一格木地板。回退時使用同一工具搬回新環境的最新資料，驗證木地板和扣料都保留。輸出會列出搬移和回退的本機停機時間。
 
 ## 容量與每月費用
+
+封測維運的費用、保存期限、復原目標與事故分工，見專案原始碼的[封測營運方案](../../docs/service-operations-plan.md)。
 
 容量測試從專案根目錄執行 `python work/access/measure_world_capacity.py work/capacity-new --seconds 22`，需要 Python 的 `psutil`。測試使用各自隔離的存檔、Godot 4.7.2 Windows 專服及本機 WebSocket 客戶端。CPU 與記憶體計入 Godot 主程序及 Windows console wrapper；下行資料量由 TCP 轉送器計數，包含 WebSocket 訊框，未含外網 TLS、代理及 IP 層。身分服務、長時間模擬與雲端尖峰須另量。
 

@@ -127,6 +127,3 @@ func run() -> void:
 	DirAccess.remove_absolute(folder)
 	print("ADMISSION_SESSION_TEST checks=%d failures=%d" % [checks,failures])
 	quit(int(failures>0))
-
-
-

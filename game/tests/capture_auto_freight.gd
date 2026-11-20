@@ -46,8 +46,3 @@ func run()->void:
 	if app.arg_value("qa-native","")=="true":await create_timer(600).timeout
 	app._close_modal();app.session.shutdown();await create_timer(0.3).timeout
 	app.queue_free();await process_frame;quit(0)
-
-
-
-
-

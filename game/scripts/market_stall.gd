@@ -174,16 +174,35 @@ static func view(state:Dictionary,token:String,prices:Dictionary={}) -> Dictiona
 	var stock:Dictionary=own.get("stock",{}).duplicate(true) if own.get("stock") is Dictionary else {}
 	var opened:=int(own.get("open_day",-1))==today
 	var stalls:=stalls_on(state,today)
-	var price_view:={}
-	for item:String in sellable_items(table):
-		var category:=category_of(item,table)
-		price_view[item]={"base":int(table[item]),"price":price_for(int(table[item]),category,today),"category":category,"themed":category==theme_of(today)}
+	var price_view:Dictionary=_default_price_view(table,today) if prices.is_empty() else _build_price_view(table,today)
 	var report:Dictionary=own.get("report",{}).duplicate(true) if own.get("report") is Dictionary else {}
 	return {"unlocked":unlocked(state),"day":today,"theme":theme_of(today),"next_theme":theme_of(today+1),
 		"open":opened,"pending":own.get("pending",false)==true,"stalls_today":stalls,
 		"visitors_estimate":visitors_for(maxi(stalls,1)) if opened else visitors_for(stalls+1),
 		"stock":stock,"stock_count":stock_count(stock),"till":int(own.get("till",0)),"total":int(own.get("total",0)),
 		"prices":price_view,"report":report}
+
+static func _build_price_view(table:Dictionary,today:int) -> Dictionary:
+	var price_view:={}
+	for item:String in sellable_items(table):
+		var category:=category_of(item,table)
+		price_view[item]={"base":int(table[item]),"price":price_for(int(table[item]),category,today),"category":category,"themed":category==theme_of(today)}
+	return price_view
+
+## 預設價目表的價格視圖只隨主題（三種）變動；快取一份，每次回傳深拷貝，
+## 呼叫端改動結果不會影響快取。自訂價目表一律重新計算。
+## sale_prices() 的呼叫端原本可改價目表。用獨立副本偵測價格或品項變更。
+static var _price_view_cache:Dictionary={}
+static var _price_view_source:Dictionary={}
+
+static func _default_price_view(table:Dictionary,today:int) -> Dictionary:
+	if _price_view_source!=table:
+		_price_view_cache.clear()
+		_price_view_source=table.duplicate(true)
+	var theme:=theme_of(today)
+	if not _price_view_cache.has(theme):
+		_price_view_cache[theme]=_build_price_view(table,today)
+	return _price_view_cache[theme].duplicate(true)
 
 ## 介面用：這樣東西現在還能不能再擺上攤位（不檢查背包數量）。
 static func stockable(market_view:Dictionary,item:String) -> bool:

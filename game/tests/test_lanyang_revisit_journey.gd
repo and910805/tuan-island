@@ -60,7 +60,7 @@ const HM=preload("res://scripts/history_memory.gd")
 const WEATHER=preload("res://scripts/weather.gd")
 const MKT=preload("res://scripts/market_stall.gd")
 const DOC_GATES:={"spring":[3,2],"summer":[2,1],"autumn":[1,3],"winter":[1,2]}
-const BENCH:=Vector2i(40,35)
+const BENCH:=GARDEN_JOURNEY_BENCH
 const MILL:=Vector2i(40,36)
 const SHOP:=Vector2i(43,29)
 const KILN_CANDIDATES:=[Vector2i(41,37),Vector2i(42,37),Vector2i(43,37),Vector2i(43,36)]
@@ -351,6 +351,12 @@ func network_leg() -> void:
 		if str(c.kind)!="" and float(c.growth)>=float(World.CROPS[c.kind].time):act("harvest",cell)
 	for cell:Vector2i in NEAR+FAR:plant(cell)
 	if failed:return
+	# S1 already spent today's watering on the crops
+	# just harvested, so fresh near crops are re-wetted at the next midnight tick.
+	# Wait to the next dry-weather day's start; the far zone stays cut and empty.
+	var proof_day:=int(WEATHER.day_index(now()))+1
+	if not check(not WEATHER.rains(proof_day,"home"),"the day after the proof day is not rainy (day %d)"%(proof_day+1)):return
+	wait_until(next_midnight(),60.0)
 	var t0:=now()
 	wait_for(150.0,30.0)
 	var near_g:=[]
@@ -364,7 +370,8 @@ func network_leg() -> void:
 	act(IND.GATE_ACTION,GATE,"open")
 	check(zones()=={World.key(S1):IND.ZONE_FULL,World.key(S2):IND.ZONE_FULL},"open: both zones full")
 	wait_for(2*IND.INTERVAL,IND.INTERVAL)
-	check(int(obj(S2).water)==12,"reopened: S2 refilled to 12 from the tank (%d)"%int(obj(S2).water))
+	# The second network tick tops S2 up after the daily watering.
+	check(int(obj(S2).water)==12,"reopened: S2 refilled from the tank (%d)"%int(obj(S2).water))
 	for cell:Vector2i in FAR:check(crop(cell).wet==true,"reopened: far crop %s watered by S2"%str(cell))
 	t0=now()
 	wait_for(150.0,30.0)

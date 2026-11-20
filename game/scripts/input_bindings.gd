@@ -16,7 +16,7 @@ const LABELS := {
 	"till_area": "手推耕田機", "seed_area": "手推播種機", "harvest_area": "手推收割機", "move_object": "搬移家具",
 	"build_menu": "建造目錄", "inventory": "背包", "interact": "互動", "seeds": "選種子",
 	"journal": "島民手帳", "festival": "風鈴接力", "collection": "生活圖鑑", "map": "地圖", "zoom": "切換視野",
-	"fish_catch": "收竿", "area_modifier": "成片施工修飾鍵", "social": "招呼與地圖標記",
+	"fish_catch": "收竿", "area_modifier": "範圍操作修飾鍵", "social": "招呼與地圖標記",
 }
 const GROUPS := {
 	"移動與互動": ["move_up", "move_down", "move_left", "move_right", "interact", "zoom"],

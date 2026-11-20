@@ -293,6 +293,49 @@ func dock_flow()->void:
 		app._close_modal()
 	w.state.dock_stage=0
 
+func follow_home_route(route:Array[Vector2i])->bool:
+	for tile:Vector2i in route.slice(1):
+		var center:=Vector2(tile)+Vector2(0.5,0.5)
+		for tick in range(6):
+			var current:=Vector2(person().x,person().y)
+			if current.distance_to(center)<0.01:break
+			w.move_player(id,(center-current).limit_length(0.216)/0.216,0.06)
+		if Vector2(person().x,person().y).distance_to(center)>0.10:return false
+	return true
+
+func verify_local_walks()->void:
+	var bag:Dictionary=person().inventory.duplicate(true)
+	var wallet:int=person().coins
+	var was_open:bool=w.state.board
+	w.state.board=false
+	await place("home",Vector2(39.5,33.5))
+	app._map_menu()
+	await frames()
+	await press("ForestWalkRoute")
+	var forest:Array[Vector2i]=app.map_view.home_route_cells.duplicate()
+	check(not forest.is_empty() and World.WOODLAND.GROVE.has_point(forest.back()),"Map shows a walk to the woodland")
+	check(follow_home_route(forest),"Actual movement follows the woodland route")
+	app.session._send_snapshot(1)
+	check(str(control("HomeWalkRouteStatus").text).begins_with("已到西北資源林"),"Position updates the route when the islander arrives")
+	await press("RiverWalkRoute")
+	var west:Array[Vector2i]=app.map_view.home_route_cells.duplicate()
+	check(not west.is_empty() and west.back().x==54 and str(control("HomeWalkRouteStatus").text).contains("修好橋"),"A closed bridge guides the player to the west bank")
+	check(follow_home_route(west),"Actual movement from the grove reaches the west bank")
+	w.state.board=true
+	w.state.erase(World.STONE_WORKSHOP.PROJECT_KEY)
+	app.session._send_snapshot(1)
+	var east:Array[Vector2i]=app.map_view.home_route_cells.duplicate()
+	check(not east.is_empty() and east.back().x==57 and east.any(func(tile:Vector2i):return tile.x==55),"A repaired bridge updates the open map to the east bank")
+	check(follow_home_route(east),"Actual movement crosses the indicated bridge")
+	app.session._send_snapshot(1)
+	await press("ForestWalkRoute")
+	var return_route:Array[Vector2i]=app.map_view.home_route_cells.duplicate()
+	check(not return_route.is_empty() and return_route.any(func(tile:Vector2i):return tile.x==55) and follow_home_route(return_route),"The map also routes an actual walk back across the bridge into the woodland")
+	check(person().inventory==bag and int(person().coins)==wallet and person().region=="home","Walking between districts preserves items, coins and island identity")
+	app._close_modal()
+	w.state.board=was_open
+	await place("home",Vector2(39.5,33.5))
+
 func run()->void:
 	create_timer(110.0).timeout.connect(func():
 		check(false,"Watchdog: suite exceeded 110 s")
@@ -308,6 +351,7 @@ func run()->void:
 	no_yilan_home()
 	boat_notes()
 	await place("home",Vector2(39.5,33.5))
+	await verify_local_walks()
 	letter_marker()
 	for size in [Vector2i(1024,640),Vector2i(1280,800)]:await size_flow(size)
 	await dock_flow()

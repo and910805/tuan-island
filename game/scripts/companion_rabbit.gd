@@ -63,7 +63,13 @@ static func act(world,player:Dictionary,action:String,at_site:bool,field:String,
 		if field==FIELD:return world.ok("棉球兔用鼻尖碰了碰你的手。")
 		if field=="companion_fox":return world.ok("葉耳狐把耳朵壓低，親暱地蹭了蹭你。")
 		pet.last_play=action
-		if field=="companion_dog":return world.ok("小柴犬開心地叼起布玩具。" if action=="toy" else "小柴犬放下玩具，搖了搖尾巴。")
+		# N06-3: after 棉棉's toy event the play action uses the toy the player chose (布球 / 布偶).
+		var sewn:=str(world.RESIDENT_GOALS.done(player,"mianmian").get(3,""))
+		var sewn_name:String=world.RESIDENT_GOALS.SHEEP_TOYS.get(sewn,"") if action in ["toy","yarn"] else ""
+		if field=="companion_dog":
+			if not sewn_name.is_empty():return world.ok("小柴犬叼起棉棉縫的%s，抱得緊緊的。"%sewn_name)
+			return world.ok("小柴犬開心地叼起布玩具。" if action=="toy" else "小柴犬放下玩具，搖了搖尾巴。")
+		if not sewn_name.is_empty():return world.ok("圍巾貓抱住棉棉縫的%s，輕輕蹭了蹭。"%sewn_name)
 		return world.ok("圍巾貓追著毛線球跑了兩步。" if action=="yarn" else "圍巾貓抬起尾巴，輕輕喵了一聲。")
 	var following:=action=="follow"
 	if pet.following==following:return world.fail("%s已經在你身旁。"%name if following else "%s已經回小窩休息。"%name)

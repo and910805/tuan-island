@@ -51,7 +51,7 @@ func run() -> void:
 	dir="user://test-construction-undo-world-%d-%d"%[OS.get_process_id(),Time.get_ticks_usec()]
 	expect(DirAccess.make_dir_recursive_absolute(dir)==OK,"isolated test directory created")
 	var probe=World.new()
-	expect(int(probe.state.version)==26,"fresh world version is 20, got %s"%str(probe.state.version))
+	expect(int(probe.state.version)==preload("res://scripts/save_schema.gd").VERSION,"fresh world version is 20, got %s"%str(probe.state.version))
 	expect(probe.has_method("undo_summary"),"World exposes undo_summary(token)")
 	expect(has_prop(probe,"undo_clock_utc") and has_prop(probe,"undo_clock_ticks"),"World exposes undo_clock_utc / undo_clock_ticks")
 	test_no_record()
@@ -68,7 +68,9 @@ func run() -> void:
 	test_dependency_friend_chest_on_floor()
 	test_dependency_chest_aba()
 	test_dependency_door_aba()
+	test_cached_watch_detects_in_place_edit()
 	test_far_friend_build_does_not_block()
+	test_preview_validation_tracks_unrelated_changes()
 	test_occupied_restore()
 	test_paused_inactive()
 	test_auto_roof_closure()
@@ -93,6 +95,7 @@ func test_clock_fraction_and_cache()->void:
 		must(w,A,"remove",o,"","bounded clock cache remove")
 		must(w,A,"build",o,"floor","bounded clock cache build")
 	expect(w._undo_ticks_at.size()<=w.state.players.size(),"clock anchors bounded by current player histories")
+	expect(w._undo_watch_memos.size()<=w.state.players.size(),"watched comparisons bounded by current player histories")
 
 func test_registered_freight_target()->void:
 	var w=new_world()
@@ -379,6 +382,10 @@ func test_build_preserves_later_harvest() -> void:
 	var id:=open_id(summary(w,A),HOME,"after wall")
 	closed(summary(w,B),"other player sees no undo for A's wall",false)
 	for i in 3:must(w,A,"axe",tree,"","chop %d"%i)
+	var farmer:Dictionary=w.state.players[A]
+	farmer.x=tree.x+0.5
+	farmer.y=tree.y+0.5
+	expect(w.step(1.0,true),"collect the fallen wood before checking inventory")
 	var inv1:=inv(w,A)
 	expect(int(inv1.wood)==int(inv0.wood)-3+6,"tree wood gained after build")
 	clock.advance(5.0)
@@ -599,7 +606,7 @@ func test_reload_window() -> void:
 	restarted.ticks=1200  # new process: unrelated monotonic origin
 	var loaded=reload(w.save_path,restarted)
 	if loaded.state.players.is_empty():return
-	expect(int(loaded.state.version)==26,"saved version 20")
+	expect(int(loaded.state.version)==preload("res://scripts/save_schema.gd").VERSION,"saved version 20")
 	var s:=summary(loaded,A)
 	expect(str(s.get("id",""))==id,"record id survives reload")
 	open_id(s,HOME,"reload at +10 s")
@@ -654,6 +661,17 @@ func test_dependency_door_aba() -> void:
 	expect(w.state.objects[World.key(o)]==original,"door content identical after open/close (true ABA)")
 	refuse(w,A,id,o,"door opened and closed")
 
+func test_cached_watch_detects_in_place_edit() -> void:
+	var w=new_world()
+	var site:=find_site(w,HOME,Vector2i.ONE)
+	must(w,A,"build",site,"door","door watched across ticks")
+	expect(summary(w,A).available and summary(w,A).available,"repeated previews allow the unchanged door undo")
+	w.state.objects[World.key(site)].open=true
+	expect(not summary(w,A).available,"a watched row changed in place invalidates the preview")
+	expect(w.step(0.016,true),"periodic observation records the change")
+	w.state.objects[World.key(site)].open=false
+	expect(not summary(w,A).available,"putting the old value back does not resurrect an invalidated record")
+
 func test_far_friend_build_does_not_block() -> void:
 	var w=new_world()
 	if not require(w,"far friend"):return
@@ -681,6 +699,7 @@ func test_occupied_restore() -> void:
 	pose(w,A,near(o))
 	var bob:Dictionary=w.state.players[B]
 	bob.x=o.x+0.5;bob.y=o.y+0.5
+	expect(not summary(w,A).available,"preview checks live player positions even when layer validation is reused")
 	var snap:=view(w)
 	var r:Dictionary=w.act(A,"occupied-1","undo_build",o,id)
 	expect(r.get("ok",true)==false and str(r.get("message","")).length()>0,"restore onto standing player rejected: "+str(r))
@@ -688,6 +707,37 @@ func test_occupied_restore() -> void:
 	expect(not w.state.objects.has(World.key(o)),"player not trapped")
 	r=undo(w,A,id,o,"occupied-1")
 	expect(r.get("ok",false)==true and w.state.objects.has(World.key(o)),"same request succeeds once the cell is clear: "+str(r.get("message","")))
+
+func test_preview_validation_tracks_unrelated_changes() -> void:
+	var w=new_world()
+	var site:=find_site(w,HOME,Vector2i.ONE)
+	var far:=find_site(w,HOME,Vector2i.ONE,site,12.0)
+	must(w,B,"build",far,"wall","far wall")
+	must(w,A,"build",site,"floor","floor to undo")
+	var first:=summary(w,A)
+	expect(first.available,"healthy map permits the undo preview")
+	var other:=summary(w,B)
+	expect(other.available and other.id!=first.id,"second resident sees only their own undo proposal")
+	expect(summary(w,A)==first,"switching residents preserves the first proposal")
+	var wall:Dictionary=w.state.objects[World.key(far)]
+	wall.owner="missing-owner"
+	expect(not summary(w,A).available,"preview rejects an invalid unrelated row changed in place")
+	wall.owner=B
+	expect(summary(w,A).available,"validating the restored owner reopens the preview")
+	var stock:Dictionary=w.state.players[B].inventory
+	var saved:Variant=stock.wood
+	stock.wood="invalid"
+	expect(not summary(w,A).available,"preview detects an in-place inventory shape change")
+	stock.wood=saved
+	expect(summary(w,A).available,"valid inventory reopens the preview")
+	var edge_id:=World.EDGE_GRID.key(far,World.EDGE_GRID.SIDE_N,World.SIZE)
+	var edge:Dictionary={"type":"edge_door","owner":B,"open":false}
+	w.state.edges[edge_id]=edge
+	expect(summary(w,A).available,"a valid distant edge preserves undo")
+	edge.open=0
+	expect(not summary(w,A).available,"preview rejects a distant edge changed to an invalid value type")
+	edge.open=false
+	expect(summary(w,A).available,"restoring the edge value type reopens the preview")
 
 func test_paused_inactive() -> void:
 	var w=new_world()

@@ -15,8 +15,9 @@ const WALLS := [Vector2i(0,0),Vector2i(1,0),Vector2i(3,0),Vector2i(4,0),Vector2i
 # the bed cell (1,1) before the bed exists; all others from non-bed interior cells.
 const WALL_STANDS := {Vector2i(0,0):Vector2i(1,1), Vector2i(1,0):Vector2i(2,1), Vector2i(3,0):Vector2i(3,1), Vector2i(4,0):Vector2i(3,1), Vector2i(0,1):Vector2i(1,2), Vector2i(0,2):Vector2i(1,2), Vector2i(0,3):Vector2i(1,3), Vector2i(4,1):Vector2i(3,1), Vector2i(4,2):Vector2i(3,2), Vector2i(4,3):Vector2i(3,3), Vector2i(0,4):Vector2i(1,3), Vector2i(1,4):Vector2i(1,3), Vector2i(3,4):Vector2i(3,3), Vector2i(4,4):Vector2i(3,3)}
 const BED_CORNER := Vector2i(0,0)
-const EXPECTED_COST := {"wood":96, "fiber":39, "stone":1}
-const WINDOW := Vector2i(2,0)
+const EXPECTED_COST := {"wood":93, "fiber":39}
+# Starter onboarding has no glass (木窗 costs 4 wood + 1 glass), so this cell is a plain wall.
+const NORTH_WALL := Vector2i(2,0)
 const DOOR := Vector2i(2,4)
 const FRONT := Vector2i(2,5)
 const CENTER := Vector2i(2,2)
@@ -25,7 +26,7 @@ const REMOVED_WALL := Vector2i(1,4)
 # Material budget. "roof":9 is NOT built by hand: the closer of the room pays the normal
 # roof recipe for each of the 9 interior tiles automatically, so the gathering budget
 # must still include them.
-const PLAN := {"floor":9,"roof":9,"bed":1,"door":1,"window":1,"wall":14}
+const PLAN := {"floor":9,"roof":9,"bed":1,"door":1,"wall":15}
 const MIN_SCHEMA := 17
 const MAX_GATHER := 60
 const MAX_SITE_RING := 18
@@ -228,7 +229,7 @@ func layout_owned(target) -> bool:
 		if state.ground.get(tile_key,{}).get("type","") != "floor" or state.ground[tile_key].get("owner","") != TOKEN:return false
 		if not is_auto_roof(state.roofs.get(tile_key)):return false
 	if roof_tally(target).any != INTERIOR.size():return false
-	var expected := {BED:"bed", WINDOW:"window", DOOR:"door"}
+	var expected := {BED:"bed", NORTH_WALL:"wall", DOOR:"door"}
 	for offset in WALLS:expected[offset] = "wall"
 	for offset in expected:
 		var tile_key := World.key(spot(offset))
@@ -262,16 +263,16 @@ func build_house() -> void:
 	expect(site_work(site) == 0, "Site cleared by ordinary gathering actions")
 	var cost := plan_cost()
 	var ring := {}
-	for offset in WALLS + [WINDOW, DOOR]:ring[offset] = true
-	var full_ring := ring.size() == 16 and WALLS.size() == int(PLAN.wall)
+	for offset in WALLS + [NORTH_WALL, DOOR]:ring[offset] = true
+	var full_ring := ring.size() == 16 and WALLS.size() + 1 == int(PLAN.wall)
 	for y in range(5):
 		for x in range(5):
 			var edge := x == 0 or y == 0 or x == 4 or y == 4
 			if edge != ring.has(Vector2i(x,y)):full_ring = false
 	for offset in CORNERS:
 		if not WALLS.has(offset):full_ring = false
-	expect(full_ring, "Plan rings the 3x3 interior with 14 walls (incl. 4 corners), window and door")
-	expect(int(cost.wood) == int(EXPECTED_COST.wood) and int(cost.fiber) == int(EXPECTED_COST.fiber) and int(cost.stone) == int(EXPECTED_COST.stone), "Recipe-derived plan cost %s equals 96 wood, 39 fiber, 1 stone" % JSON.stringify(cost))
+	expect(full_ring, "Plan rings the 3x3 interior with 15 walls (incl. 4 corners) and door")
+	expect(int(cost.wood) == int(EXPECTED_COST.wood) and int(cost.fiber) == int(EXPECTED_COST.fiber) and int(cost.stone) == int(EXPECTED_COST.get("stone",0)), "Recipe-derived plan cost %s equals 93 wood, 39 fiber, 0 stone" % JSON.stringify(cost))
 	print("HOUSE_PLAN plan=%s cost=%s" % [JSON.stringify(PLAN), JSON.stringify(cost)])
 	if failed:return
 	gather_item("wood", cost.wood, ["tree"])
@@ -283,7 +284,7 @@ func build_house() -> void:
 	# Build actions, derived from the plan: one floor build_area, door + opening it, one
 	# action per wall, bed and window. No roof action: with automatic roofs this is one
 	# operation fewer than the old manual-roof journey (which had a roof build_area).
-	var expected_ops := 1 + int(PLAN.door) + 1 + int(PLAN.wall) + int(PLAN.bed) + int(PLAN.window)
+	var expected_ops := 1 + int(PLAN.door) + 1 + int(PLAN.wall) + int(PLAN.bed)
 	# Build everything from inside; the door goes in first and is opened so the builder is never sealed in.
 	go_to(spot(CENTER))
 	var a := spot(Vector2i(1,1))
@@ -299,7 +300,7 @@ func build_house() -> void:
 	go_to(spot(CENTER))
 	# The bed is interior furnishing, not a roof prerequisite; placing it early is fine.
 	act("build", spot(BED), "bed")
-	act("build", spot(WINDOW), "window")
+	act("build", spot(NORTH_WALL), "wall")
 	var remaining := []
 	for offset in WALLS:
 		if offset != BED_CORNER:remaining.append(offset)

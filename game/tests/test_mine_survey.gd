@@ -74,7 +74,7 @@ func _initialize() -> void:
 	expect(claim.ok and world.act(ALPHA,"claim","survey_claim",table)==claim,"Claim request replays the original success")
 	expect(not world.act(ALPHA,"again","survey_claim",table).ok and world.state.players[ALPHA].inventory.gold_sample==1,"Fresh claim request cannot award a duplicate")
 	var reopened:=World.new()
-	expect(reopened.load_world(path) and reopened.state.version==26 and Survey.own_record(reopened.state,ALPHA).claimed,"Claim persists in a v14 save")
+	expect(reopened.load_world(path) and reopened.state.version==preload("res://scripts/save_schema.gd").VERSION and Survey.own_record(reopened.state,ALPHA).claimed,"Claim persists in a v14 save")
 	var legacy:=reopened.state.duplicate(true)
 	legacy.version=13;legacy.erase("public_kitchen")
 	# Historical fixture predates the v25 flower chapter.
@@ -83,7 +83,7 @@ func _initialize() -> void:
 	legacy.erase("salt_pan")
 	legacy.regions.erase("beimen")
 	legacy.erase("mine_survey")
-	expect(valid(legacy) and legacy.version==26 and legacy.mine_survey==Survey.fresh(),"v13 migration starts with empty survey records")
+	expect(valid(legacy) and legacy.version==preload("res://scripts/save_schema.gd").VERSION and legacy.mine_survey==Survey.fresh(),"v13 migration starts with empty survey records")
 	var malformed:=reopened.state.duplicate(true)
 	malformed.mine_survey.players[ALPHA].seen.erase("1")
 	expect(not valid(malformed),"Schema rejects a claimed partial survey")

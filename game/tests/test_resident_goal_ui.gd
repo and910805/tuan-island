@@ -374,6 +374,11 @@ func set_need(need:String,on:bool)->void:
 		"aru_rest":
 			if on:person()[Goals.ARU_REST_KEY]=float(app.session.world.state.time)
 			else:person().erase(Goals.ARU_REST_KEY)
+		"diandian_seated":
+			# PRESET: only the private flag. need_met also reads a done diandian 1 and bond stage >= 2; callers seed the bare
+			# stage-1 record with set_done({"diandian":{"1":""}}) (never in set_done({}) sweeps of diandian 1, which must stay open).
+			if on:person()[Goals.DIANDIAN_SEAT_KEY]=true
+			else:person().erase(Goals.DIANDIAN_SEAT_KEY)
 		"sheep_comfort":
 			if on:person()[Goals.SHEEP_SHELTER_KEY]=Goals.SHEEP_COMFORT_MASK
 			else:person().erase(Goals.SHEEP_SHELTER_KEY)
@@ -392,6 +397,9 @@ func set_need(need:String,on:bool)->void:
 		"address_delivered":
 			if on:person()[Goals.ADDRESS_KEY]=Goals.ADDRESS_DELIVERED
 			else:person().erase(Goals.ADDRESS_KEY)
+		"inn_cracks":
+			if on:person()[World.WARM_SPRINGS.CRACK_KEY]=World.WARM_SPRINGS.CRACK_MASK
+			else:person().erase(World.WARM_SPRINGS.CRACK_KEY)
 		"inn_entrance":
 			if on:person()[Goals.INN_CLEAR_KEY]=true
 			else:person().erase(Goals.INN_CLEAR_KEY)
@@ -404,6 +412,10 @@ func set_need(need:String,on:bool)->void:
 		"rest_kit":
 			if on:person()[Goals.REST_KIT_KEY]=Goals.REST_KIT_MASK
 			else:person().erase(Goals.REST_KIT_KEY)
+		"bobo_cart_arrived":
+			# PRESET: the private arrived stage (N03-4); the pushes themselves are tested in test_bobo_empty_cart.gd.
+			if on:person()["bobo_empty_cart_stage"]=7
+			else:person().erase("bobo_empty_cart_stage")
 		"recipe_pages":
 			if on:person()[Goals.RECIPE_PAGE_KEY]=Goals.RECIPE_PAGE_MASK
 			else:person().erase(Goals.RECIPE_PAGE_KEY)
@@ -420,6 +432,9 @@ func set_need(need:String,on:bool)->void:
 			if on:person()[Goals.CROP_TRADE_KEY]=Goals.SEED_BOUGHT
 			elif need=="seed_after_sale":person()[Goals.CROP_TRADE_KEY]=Goals.CROP_SOLD
 			else:person().erase(Goals.CROP_TRADE_KEY)
+		"sheep_step":
+			if on:person()[Goals.SHEEP_STEP_KEY]=maxf(0.0,float(w.state.time)-Goals.SHEEP_STEP_SECONDS)
+			else:person().erase(Goals.SHEEP_STEP_KEY)
 		"chicken_fed":
 			if on:person()[Goals.CHICKEN_FED_KEY]=maxf(0.0,float(w.state.time)-Goals.CHICKEN_APPROACH_SECONDS)
 			else:person().erase(Goals.CHICKEN_FED_KEY)
@@ -432,6 +447,30 @@ func set_need(need:String,on:bool)->void:
 			w.state.festival.round=1 if on else 0
 			w.state.festival.active=false
 		"known_three":set_bonds({} if on else strangers())
+		"postcard_clues":
+			# PRESET: the player's own string array (any three distinct known residents besides 洛洛)
+			if on:person()[Goals.POSTCARD_CLUES_KEY]=["aru","milu","bobo"]
+			else:person().erase(Goals.POSTCARD_CLUES_KEY)
+		"postcard_reported":
+			# FIXTURE: luoluo 2 written as done (not part of set_needs: it would turn the luoluo 2 pages into done pages).
+			var record:Dictionary=person().get(Goals.RECORD_KEY,{})
+			var own:Dictionary=record.get("luoluo",{})
+			if on:own["2"]=""
+			else:own.erase("2")
+			if own.is_empty():record.erase("luoluo")
+			else:record["luoluo"]=own
+			if record.is_empty():person().erase(Goals.RECORD_KEY)
+			else:person()[Goals.RECORD_KEY]=record
+		"memory_shared":
+			# FIXTURE (N10-4): luoluo 3 written as done (stage 3 only); not part of set_needs for the same reason as postcard_reported.
+			var memory_record:Dictionary=person().get(Goals.RECORD_KEY,{})
+			var memory_own:Dictionary=memory_record.get("luoluo",{})
+			if on:memory_own["3"]="aloud"
+			else:memory_own.erase("3")
+			if memory_own.is_empty():memory_record.erase("luoluo")
+			else:memory_record["luoluo"]=memory_own
+			if memory_record.is_empty():person().erase(Goals.RECORD_KEY)
+			else:person()[Goals.RECORD_KEY]=memory_record
 
 ## PRESET world time: whole days forward until home rain matches `rainy`, then a snapshot.
 func weather(rainy:bool)->void:
@@ -444,7 +483,7 @@ func weather(rainy:bool)->void:
 ## PRESET: every needs prerequisite met except `unmet` (bonds are left to the caller;
 ## set_bonds() at 好友 meets known_three).
 func set_needs(unmet:String="")->void:
-	for need:String in ["own_bed","glass_crafted","market_round","festival_done","chicken_fed","shared_meal","crop_sketches","route_marks","recipe_pages","rest_kit","bell_inspected","inn_entrance","guest_room","address_delivered","growth_record","painting_invites","public_mural","tea_setup","tea_chair","sheep_comfort","aru_rest","aru_park_photo","achao_voyage","achao_photo","shared_garden"]:set_need(need,need!=unmet)
+	for need:String in ["own_bed","glass_crafted","market_round","festival_done","chicken_fed","sheep_step","shared_meal","crop_sketches","route_marks","recipe_pages","rest_kit","bell_inspected","inn_entrance","inn_cracks","guest_room","address_delivered","growth_record","painting_invites","public_mural","tea_setup","tea_chair","sheep_comfort","aru_rest","aru_park_photo","achao_voyage","achao_photo","shared_garden","bobo_cart_arrived","postcard_clues","diandian_seated"]:set_need(need,need!=unmet)
 	set_need(unmet if unmet in ["crop_sold","seed_after_sale"] else "seed_after_sale",unmet not in ["crop_sold","seed_after_sale"])
 	if unmet=="known_three":set_need("known_three",false)
 	await weather(unmet=="fair_weather")
@@ -457,7 +496,15 @@ func page_fits(label:String)->void:
 	check(ok,"Modal open (%s)"%label)
 	if not ok:return
 	check(root.get_visible_rect().encloses((app.modal as Control).get_global_rect()),"Modal fits the viewport (%s)"%label)
-	check(str((app.modal as Node).get_meta("life_modal_layout",""))=="community_board","Modal keeps the community_board layout (%s)"%label)
+	var page:Dictionary=(app.modal as Node).get_meta("bond_goal",{})
+	var expected_layout:="community_board"
+	if page.get("id")=="xinghe":
+		match page.get("stage"):
+			2:expected_layout="xinghe_bed_plan"
+			3:expected_layout="xinghe_greenhouse_story"
+	if page.get("id")=="milu" and page.get("stage")==3 and page.get("state")=="open":
+		expected_layout="milu_tasting"
+	check((app.modal as Node).get_meta("life_modal_layout","")==expected_layout,"Modal uses %s layout (%s)"%[expected_layout,label])
 	var scroll:=control("ModalScroll") as ScrollContainer
 	check(scroll!=null and scroll.get_child_count()>0,"Modal has its ModalScroll body (%s)"%label)
 	if scroll==null or scroll.get_child_count()==0:return
@@ -474,7 +521,9 @@ func page_fits(label:String)->void:
 			check(not_cut(c as Label),"Caption not cut or ellipsized: %s (%s)"%[(c as Label).text,label])
 		elif c is Button:
 			check(visible(c) and inside_modal(c),"Button fully on view inside the modal: %s (%s)"%[c.name,label])
-			check(button_not_cut(c as Button),"Button caption not cut: %s %s (%s)"%[c.name,(c as Button).text,label])
+			var button:=c as Button
+			if button.get_theme_color("font_color").a>0:
+				check(button_not_cut(button),"Button caption not cut: %s %s (%s)"%[c.name,button.text,label])
 
 # ------------------------------------------------------------ events page --
 
@@ -690,7 +739,7 @@ func snapshot_keepsakes_ok(claimed:bool,label:String)->void:
 		var entry:=keepsake_in(ours,resident,stage)
 		var ok:bool=str(entry.get("kind",""))==kind and str(entry.get("item",""))==Goals.keepsake_item(kind) and str(entry.get("name",""))==keepsake_name(kind) and entry.get("claimed")==claimed and entry.size()==4
 		check(ok,"Snapshot keepsake of %s %d is {%s, claimed %s} (%s): %s"%[resident,stage,kind,str(claimed),label,str(entry)])
-	check(with_keepsake==17,"Seventeen snapshot rows carry a keepsake (%s): %d"%[label,with_keepsake])
+	check(with_keepsake==18,"Eighteen snapshot rows carry a keepsake (%s): %d"%[label,with_keepsake])
 
 ## Done page keepsake part. Keepsake goal: BondGoalKeepsake row (32×32 icon + text) inside
 ## BondGoalDone and no old 紀念 line; claimed → no claim controls; unclaimed → BondGoalClaim
@@ -702,14 +751,31 @@ func keepsake_done_ok(resident:String,stage:int,claimed:bool,label:String)->void
 	var old:="紀念：%s%s"%[str(entry.keepsake),"" if resident=="milu" and stage==2 else OLD_KEEPSAKE_TAIL]
 	if kind.is_empty():
 		if resident=="aru" and stage==2:old="紀念：%s。師父的長椅已加入家園工坊。"%entry.keepsake
-		var old_line:=find_label("已解鎖休息站便攜箱圖樣。到工作台用木板 4、纖維 2 製作，再從建造目錄放置。" if resident=="bobo" and stage==3 else old)
 		if resident=="lingpopo" and stage<=2:
 			var history:=control("LingpopoHistoryPage") as Button
 			check(history!=null and done!=null and done.is_ancestor_of(history) and history.text=="閱讀"+str(entry.keepsake),"Done page opens the correct history page (%s)"%label)
 		elif resident=="nuannuan" and stage==3:
 			var wardrobe:=control("NuannuanGuestWardrobePattern") as Button
 			check(wardrobe!=null and done!=null and done.is_ancestor_of(wardrobe),"Done page links to the guest wardrobe (%s)"%label)
+		elif resident=="chacha" and stage==1:
+			var tea_pattern:=control("ChachaTeaPatternEntry") as Button
+			check(tea_pattern!=null and done!=null and done.is_ancestor_of(tea_pattern),"Done page links to the tea set pattern (%s)"%label)
+		elif resident=="chacha" and stage==4:
+			var tea_menu:=control("ChachaMenuGoalEntry") as Button
+			check(tea_menu!=null and done!=null and done.is_ancestor_of(tea_menu),"Done page links to Chacha's tea menu (%s)"%label)
+		elif resident=="achao" and stage==3:
+			var voyage_reward:=control("AchaoVoyageRewardEntry") as Button
+			check(voyage_reward!=null and done!=null and done.is_ancestor_of(voyage_reward),"Done page links to Achao's voyage journal (%s)"%label)
+		elif resident=="luoluo" and stage==1:
+			var mailbox_pattern:=control("LuoluoMailboxPattern") as Button
+			check(mailbox_pattern!=null and mailbox_pattern.is_visible_in_tree(),"Done page links to Luoluo's mailbox pattern (%s)"%label)
+		elif (resident=="luoluo" and stage==2) or (resident in ["xinghe","chacha","bobo"] and stage==3):
+			var patterns:Dictionary={"luoluo":["LuoluoPostcardPattern"],"xinghe":["XingheGreenhousePattern","XingheNurseryPattern"],"chacha":["ChachaPavilionPattern"],"bobo":["BoboRestPatternEntry"]}
+			for node_name:String in patterns[resident]:
+				var pattern:=control(node_name) as Button
+				check(pattern!=null and done!=null and done.is_ancestor_of(pattern),"Done page lists %s (%s)"%[node_name,label])
 		else:
+			var old_line:=find_label(old)
 			check(old_line!=null and done!=null and done.is_ancestor_of(old_line),"Done page keeps 「%s」 (%s)"%[old,label])
 		for name:String in ["BondGoalKeepsake","BondGoalKeepsakeText","BondGoalClaim","BondGoalClaimReason"]:
 			check(control(name)==null,"No %s without a keepsake (%s)"%[name,label])
@@ -756,7 +822,25 @@ func complete(resident:String,stage:int,spent:Dictionary,choice:String,label:Str
 	for item:String in Goals.keepsake_items():before[item]=held(item)
 	var title:=str(entry_of(resident,stage).title)
 	if not await press("BondGoalDo",true):return
-	check(not is_instance_valid(app.modal),"BondGoalDo closes the page (%s)"%label)
+	if resident=="xiaoli" and stage==3:
+		var guest:=control("XiaoliReturnGuestArt")
+		check(guest!=null and bool(guest.get("played")) and control("XiaoliMarketReward")!=null,"The completed guest scene plays and shows its reward (%s)"%label)
+	elif resident=="lingpopo" and stage==4:
+		var bell:=control("LingpopoBellScene")
+		check(bell!=null and bool(bell.get("rang")) and control("LingpopoRingAgain")!=null,"Confirmed ring opens the completed replayable scene (%s)"%label)
+	elif resident=="milu" and stage==3:
+		var tasting:=control("MiluTastingScene")
+		check(tasting!=null and str(tasting.get("dish"))==choice,"Confirmed hand-in opens the selected tasting scene (%s)"%label)
+	elif resident=="luoluo" and stage==3:
+		# Like stage 1: the hand-in page stays open on the done page; the memory letter is not auto-played.
+		check(is_instance_valid(app.modal) and goal_open(resident,stage) and control("BondGoalDone")!=null and control("BondGoalDo")==null,"Luoluo 3 stays open on the done page (%s)"%label)
+		check(is_instance_valid(app.modal) and str(app.modal.get_meta("life_modal_layout","")) !="luoluo_memory_letter","Luoluo 3 does not auto-play the memory letter (%s)"%label)
+	elif resident=="diandian" and stage==2:
+		check(goal_open(resident,stage) and control("DiandianBarkFramePattern")!=null,"The completed pose page opens the frame pattern (%s)"%label)
+	elif resident=="nuannuan" and stage==3:
+		check(goal_open(resident,stage) and control("NuannuanGuestCloth")!=null and control("NuannuanGuestWardrobePattern")!=null,"Guest-room report opens the cloth and wardrobe reward (%s)"%label)
+	else:
+		check(not is_instance_valid(app.modal),"BondGoalDo closes the page (%s)"%label)
 	check(toast_text().contains(title) and toast_text().contains(str(entry_of(resident,stage).keepsake)),"Toast tells 〈%s〉 is done (%s): %s"%[title,label,toast_text()])
 	for item:String in before:
 		var delta:=-int(spent.get(item,0))+(1 if item==kit else 0)
@@ -815,13 +899,20 @@ func common_open_ok(resident:String,stage:int,label:String)->void:
 	var back:=control("BondGoalBack") as Button
 	check(back!=null and back.text=="回到關係事件","BondGoalBack reads 回到關係事件 (%s)"%label)
 	var finish_button:=control("BondGoalDo") as Button
-	check(finish_button!=null and finish_button.text==("敲響風鈴" if resident=="lingpopo" and stage==4 else "一起完成"),"BondGoalDo labels the action (%s)"%label)
+	var finish_caption:="一起完成"
+	if resident=="lingpopo" and stage==4:finish_caption="敲響風鈴"
+	if resident=="xiaoli" and stage==3:finish_caption="招呼米露"
+	if resident=="milu" and stage==3:finish_caption="端湯試吃"
+	check(finish_button!=null and finish_button.text==finish_caption,"BondGoalDo labels the action (%s)"%label)
 	if entry.has("options"):
 		for option:Dictionary in entry.options:
 			var b:=control("BondGoalOption_"+str(option.id)) as Button
 			var text:=str(option.label)
 			var own:Dictionary=option.get("items",{})
-			if not own.is_empty():text+="（%s）"%Tasks.goal_items_text(own)
+			if resident=="milu" and stage==3:
+				text="%s ×%d"%[text,int(own.get(str(option.id),0))]
+				check(b!=null and b.icon!=null,"Tasting option %s uses the dish icon (%s)"%[str(option.id),label])
+			elif not own.is_empty():text+="（%s）"%Tasks.goal_items_text(own)
 			check(b!=null and b.toggle_mode and b.text==text,"Option %s reads %s (%s): %s"%[str(option.id),text,label,b.text if b else "?"])
 			check(b!=null and not b.button_pressed,"Option %s not preselected (%s)"%[str(option.id),label])
 	if entry.has("steps"):
@@ -861,26 +952,26 @@ func milu_deliver_flow(label:String)->void:
 
 ## 波波 2 (金瓜石): options + base items.
 func bobo_options_flow(label:String)->void:
-	set_bonds();set_done({});stock({"copper_joint":2,"plank":1})
+	set_bonds();set_done({});stock({"copper_ingot":4,"woodwork_parts":1})
 	await stand("bobo")
 	if not await open_goal("bobo",2,"bobo2 "+label):return
 	var entry:=entry_of("bobo",2)
 	common_open_ok("bobo",2,"bobo2 "+label)
 	check(root.gui_get_focus_owner()==control("BondGoalOption_entrance"),"First option has focus (bobo2 %s)"%label)
 	reason_is("先選一個做法。","bobo2 no option "+label)
-	cost_is({"copper_joint":2,"plank":2},"bobo2 no option "+label)
+	cost_is({"copper_ingot":4,"woodwork_parts":2},"bobo2 no option "+label)
 	page_fits("bobo2 "+label)
 	if not await press("BondGoalOption_siding"):return
 	option_pressed_only(entry,"siding","bobo2 siding "+label)
-	reason_is(short_text("plank",2),"bobo2 short plank "+label)
+	reason_is(short_text("woodwork_parts",2),"bobo2 short woodwork parts "+label)
 	if not await press("BondGoalOption_shed"):return
 	option_pressed_only(entry,"shed","bobo2 shed "+label)
 	if not await press("BondGoalOption_siding"):return
-	stock({"copper_joint":2,"plank":2})
+	stock({"copper_ingot":4,"woodwork_parts":2})
 	await refresh()
 	option_pressed_only(entry,"siding","bobo2 kept after snapshot "+label)
 	reason_is("","bobo2 ready "+label)
-	await complete("bobo",2,{"copper_joint":2,"plank":2},"siding","bobo2 "+label)
+	await complete("bobo",2,{"copper_ingot":4,"woodwork_parts":2},"siding","bobo2 "+label)
 	await done_page_ok("bobo",2,"bobo2 "+label)
 
 ## 米露 3: each option carries its own cost.
@@ -961,8 +1052,16 @@ func luoluo_options_flow(label:String)->void:
 	if not await open_goal("luoluo",3,"luoluo3 "+label):return
 	common_open_ok("luoluo",3,"luoluo3 "+label)
 	cost_is({},"luoluo3 "+label)
+	need_line_is("postcard_reported",false,"luoluo3 no report "+label)
 	reason_is("先選一個做法。","luoluo3 "+label)
 	if not await press("BondGoalOption_letter"):return
+	reason_is(need_reason("postcard_reported"),"luoluo3 letter, report missing "+label)
+	check(need_label("postcard_reported")=="完成洛洛的〈沒有地址的信〉","Report need label (luoluo3 %s): %s"%[label,need_label("postcard_reported")])
+	var page_modal:Variant=app.modal
+	set_need("postcard_reported",true)  # FIXTURE: luoluo 2 written as done
+	await refresh()
+	check(is_instance_valid(app.modal) and app.modal==page_modal and goal_open("luoluo",3),"Same page stays open after the report (luoluo3 %s)"%label)
+	need_line_is("postcard_reported",true,"luoluo3 report "+label)
 	reason_is("","luoluo3 letter "+label)
 	await complete("luoluo",3,{},"letter","luoluo3 "+label)
 	await done_page_ok("luoluo",3,"luoluo3 "+label)
@@ -1027,11 +1126,43 @@ func luoluo_known_flow(label:String)->void:
 	await done_page_ok("luoluo",2,"luoluo2 "+label)
 	set_bonds()
 
+## 洛洛 2: postcard_clues counts 0 → 3 distinct entries of the player's own array (label 「（目前 n／3 位）」),
+## with known_three already met; a duplicate entry counts once. Hand-in still closes the page.
+func luoluo_clues_flow(label:String)->void:
+	set_bonds();set_done({});stock({})
+	await set_needs("postcard_clues")
+	await stand("luoluo")
+	if not await open_goal("luoluo",2,"luoluo2 clues "+label):return
+	common_open_ok("luoluo",2,"luoluo2 clues "+label)
+	cost_is({},"luoluo2 clues "+label)
+	check(need_label("postcard_clues")=="向已認識的居民詢問線索（目前 0／3 位）","Clue label counts 0 (%s): %s"%[label,need_label("postcard_clues")])
+	need_line_is("known_three",true,"luoluo2 clues 0 known met "+label)
+	need_line_is("postcard_clues",false,"luoluo2 clues 0 "+label)
+	reason_is(need_reason("postcard_clues"),"luoluo2 clues 0 "+label)
+	page_fits("luoluo2 clues 0 "+label)
+	var page_modal:Variant=app.modal
+	var steps:Array=[[["aru"],1],[["aru","aru"],1],[["aru","milu"],2],[["aru","milu","bobo"],3]]
+	for step:Array in steps:
+		person()[Goals.POSTCARD_CLUES_KEY]=step[0]
+		await refresh()
+		var shown:int=int(step[1])
+		var tag:="luoluo2 clues %s %s"%[str(step[0]),label]
+		check(is_instance_valid(app.modal) and app.modal==page_modal and goal_open("luoluo",2),"Same page stays open (%s)"%tag)
+		check(need_label("postcard_clues")=="向已認識的居民詢問線索（目前 %d／3 位）"%shown,"Clue label shows %d (%s): %s"%[shown,tag,need_label("postcard_clues")])
+		need_line_is("postcard_clues",shown>=3,tag)
+		reason_is("" if shown>=3 else need_reason("postcard_clues"),tag)
+	page_fits("luoluo2 clues met "+label)
+	await complete("luoluo",2,{},"","luoluo2 clues "+label)
+	await done_page_ok("luoluo",2,"luoluo2 clues "+label)
+	person().erase(Goals.POSTCARD_CLUES_KEY)
+	set_bonds()
+
 ## One need flipped from unmet to met on the open page, then completed (no items):
 ## 棉棉 4 fair_weather (rainy home day → dry day), 小栗 3 market_round, 鈴婆婆 4 festival_done.
 func need_unlock_flow(resident:String,stage:int,need:String,label:String)->void:
 	var tag:="%s%d %s"%[resident,stage,label]
 	set_bonds();set_done({});stock({})
+	if resident=="xiaoli" and stage==3 and need!="xiaoli_cart_plan":set_done({"xiaoli":{"2":"tree"}})
 	await set_needs(need)
 	await stand(resident)
 	if need=="fair_weather":
@@ -1119,7 +1250,7 @@ func privacy_check()->void:
 	check(str(app.session.own_id)==mine,"Host snapshot restored after the OTHER snapshot")
 	var their_goals:Variant=theirs.get("resident_goals")
 	check(their_goals is Dictionary and not (their_goals as Dictionary).is_empty(),"OTHER snapshot carries resident_goals")
-	for pair:Array in [["aru",1,"own_bed"],["xinghe",3,"glass_crafted"],["xiaoli",3,"market_round"],["luoluo",2,"known_three"]]:
+	for pair:Array in [["aru",1,"own_bed"],["xinghe",3,"glass_crafted"],["xiaoli",3,"market_round"],["luoluo",2,"known_three"],["luoluo",2,"postcard_clues"]]:
 		var resident:=str(pair[0])
 		var stage:=int(pair[1])
 		var need:=str(pair[2])
@@ -1170,6 +1301,19 @@ func layout_sweep(label:String)->void:
 		var resident:=str(pair[0])
 		var stage:=int(pair[1])
 		var entry:=entry_of(resident,stage)
+		if resident=="xiaoli" and stage in [2,3,4]:
+			var previous:={"1":""} if stage==2 else ({"2":"tree"} if stage==3 else {"3":""})
+			set_done({"xiaoli":previous})
+			await refresh()
+		if resident=="diandian" and stage==2:
+			set_done({"diandian":{"1":""}})  # FIXTURE: diandian_seated reads the done diandian 1 record
+			await refresh()
+		if resident=="luoluo" and stage==3:
+			set_done({"luoluo":{"2":""}})  # FIXTURE: postcard_reported reads the done luoluo 2 record
+			await refresh()
+		if resident=="luoluo" and stage==4:
+			set_done({"luoluo":{"2":"","3":"aloud"}})  # FIXTURE (N10-4): memory_shared reads the done luoluo 3 record
+			await refresh()
 		await close()
 		Tasks.bond_goal(app,resident,stage)
 		await settle()
@@ -1181,24 +1325,32 @@ func layout_sweep(label:String)->void:
 		page_fits("open %s %d %s"%[resident,stage,label])
 		var options:Array=entry.get("options",[])
 		if not options.is_empty():
-			var last:=control("BondGoalOption_"+str(options.back().id)) as Button
+			# The dedicated tests cover text entry. The sweep selects the blank route.
+			var picked:Dictionary=options.front() if resident=="luoluo" and stage==4 else options.back()
+			var last:=control("BondGoalOption_"+str(picked.id)) as Button
 			if last!=null:
 				last.pressed.emit()
 				await settle()
-				page_fits("open %s %d option %s %s"%[resident,stage,str(options.back().id),label])
+				page_fits("open %s %d option %s %s"%[resident,stage,str(picked.id),label])
 		if entry.has("steps"):
 			for i in range(2):
 				var step:=control("BondGoalStep_%d"%i) as Button
 				if step!=null:step.pressed.emit()
 			await settle()
 			page_fits("open %s %d two steps %s"%[resident,stage,label])
+		if (resident=="xiaoli" and stage in [2,3,4]) or (resident=="luoluo" and stage in [3,4]) or (resident=="diandian" and stage==2):
+			set_done({})
+			await refresh()
 	var all_done:={}
 	for pair:Array in all_goals():
 		var resident:=str(pair[0])
 		var entry:=entry_of(resident,int(pair[1]))
 		var options:Array=entry.get("options",[])
 		var own:Dictionary=all_done.get(resident,{})
-		own[str(pair[1])]=str(options.back().id) if not options.is_empty() else ""
+		# N10-4: luoluo 4 is written done with "blank" (a "write" record would also need its message).
+		var done_option:Dictionary={}
+		if not options.is_empty():done_option=options.front() if resident=="luoluo" and int(pair[1])==4 else options.back()
+		own[str(pair[1])]=str(done_option.get("id","")) if not options.is_empty() else ""
 		all_done[resident]=own
 	set_done(all_done)
 	set_keepsakes(Goals.KEEPSAKE_ORDER)  # PRESET: all 12 紀念小物 claimed
@@ -1216,7 +1368,7 @@ func layout_sweep(label:String)->void:
 		keepsake_done_ok(resident,stage,true,"sweep done %s %d %s"%[resident,stage,label])
 		if not Goals.keepsake_kind(resident,stage).is_empty():with_keepsake+=1
 		page_fits("done %s %d %s"%[resident,stage,label])
-	check(with_keepsake==17,"Done sweep shows 17 keepsake rows (%s): %d"%[label,with_keepsake])
+	check(with_keepsake==18,"Done sweep shows 18 keepsake rows (%s): %d"%[label,with_keepsake])
 	await close()
 	set_done({})
 
@@ -1232,6 +1384,8 @@ func needs_sweep(label:String)->void:
 		for need:String in entry.needs:
 			var tag:="need unmet %s %d %s %s"%[resident,stage,need,label]
 			set_bonds();set_done({});stock(Goals.cost(entry,""))
+			if resident=="xiaoli" and stage==3 and need!="xiaoli_cart_plan":set_done({"xiaoli":{"2":"tree"}})
+			if resident=="diandian" and stage==2:set_done({"diandian":{"1":""}})  # FIXTURE: bare stage-1 record, so the flag is the only unmet part
 			var dock_before:=int(w.state.get("dock_stage",0))
 			if resident=="achao":w.state.dock_stage=1
 			await set_needs(need)
@@ -1240,13 +1394,23 @@ func needs_sweep(label:String)->void:
 			Tasks.bond_goal(app,resident,stage)
 			await settle()
 			check(goal_open(resident,stage),"Goal page opens (%s)"%tag)
+			if need=="xiaoli_first_trade":
+				await press("BondGoalOption_tree",true)
+			if need=="xiaoli_return_guest":
+				await press("BondGoalOption_none",true)
+			if need=="postcard_reported":
+				await press("BondGoalOption_letter",true)
+			if need=="memory_shared":
+				await press("BondGoalOption_blank",true)  # an existing option; the need is validated after option/text
+			if need=="diandian_seated":
+				await press("BondGoalOption_knees",true)
 			page_fits(tag)
 			need_line_is(need,false,tag)
 			needs_before_cost(tag)
-			reason_is(need_reason(need),tag)
+			reason_is(Tasks.BOBO_CART_IDLE if need=="bobo_cart_arrived" else need_reason(need),tag)
 			if resident=="achao":w.state.dock_stage=dock_before
 			swept+=1
-	check(swept==29,"Twenty-nine prerequisites swept unmet (%s): %d"%[label,swept])
+	check(swept==38,"Thirty-eight prerequisites swept unmet (%s): %d"%[label,swept])
 	await close()
 	set_bonds()
 	await set_needs("")
@@ -1265,7 +1429,7 @@ func claim_flow(resident:String,stage:int,label:String)->void:
 	var options:Array=entry.get("options",[])
 	var choice:=""
 	if not options.is_empty():
-		var last:Dictionary=options.back()
+		var last:Dictionary=options.front() if resident=="luoluo" and stage==4 else options.back()  # N10-4: luoluo 4 keeps "blank"
 		choice=str(last.id)
 	set_bonds();stock({})
 	set_done({resident:{str(stage):choice}})  # PRESET: done before batch 3, nothing claimed
@@ -1342,19 +1506,20 @@ func claim_flow(resident:String,stage:int,label:String)->void:
 ## Batch 3 catalog: 12 kinds on the expected goals, names = the goal's keepsake, kit names,
 ## and the inventory panel's static description/value text for every kit.
 func keepsake_catalog_checks()->void:
-	check(Goals.KEEPSAKES.size()==17 and Goals.KEEPSAKE_ORDER.size()==17,"Seventeen 紀念小物")
+	check(Goals.KEEPSAKES.size()==18 and Goals.KEEPSAKE_ORDER.size()==18,"Eighteen 紀念小物")
 	var with_keepsake:=0
 	for pair:Array in all_goals():
 		var resident:=str(pair[0])
 		var stage:=int(pair[1])
 		var kind:=Goals.keepsake_kind(resident,stage)
-		var expected:=int(KEEPSAKE_GOALS.get(resident,-1))==stage or (resident in ["aru","achao","xinghe","lingpopo","nuannuan"] and stage==4)
+		var expected:=int(KEEPSAKE_GOALS.get(resident,-1))==stage or (resident in ["aru","achao","xinghe","lingpopo","nuannuan","bobo"] and stage==4)
 		check((not kind.is_empty())==expected,"%s %d %s a 紀念小物: %s"%[resident,stage,"has" if expected else "has no",kind])
 		if kind.is_empty():continue
 		with_keepsake+=1
 		var kit:=Goals.keepsake_item(kind)
-		check(kind==("keepsake_aru_bird" if resident=="aru" and stage==4 else ("keepsake_achao_oar" if resident=="achao" and stage==4 else ("keepsake_xinghe_sign" if resident=="xinghe" and stage==4 else ("keepsake_lingpopo_memorial" if resident=="lingpopo" and stage==4 else ("keepsake_nuannuan_room" if resident=="nuannuan" and stage==4 else "keepsake_"+resident))))) and kit==kind+"_kit","Kind/item naming %s / %s"%[kind,kit])
-		check(keepsake_name(kind)==str(entry_of(resident,stage).keepsake),"%s name is the goal's keepsake: %s"%[kind,keepsake_name(kind)])
+		check(kind==("keepsake_aru_bird" if resident=="aru" and stage==4 else ("keepsake_achao_oar" if resident=="achao" and stage==4 else ("keepsake_xinghe_sign" if resident=="xinghe" and stage==4 else ("keepsake_lingpopo_memorial" if resident=="lingpopo" and stage==4 else ("keepsake_nuannuan_room" if resident=="nuannuan" and stage==4 else ("keepsake_bobo_cart" if resident=="bobo" and stage==4 else "keepsake_"+resident)))))) and kit==kind+"_kit","Kind/item naming %s / %s"%[kind,kit])
+		if kind=="keepsake_bobo_cart":check(keepsake_name(kind)=="祖父的礦車" and World.NAMES.get(kit)=="祖父的礦車","%s is named 祖父的礦車: %s"%[kind,keepsake_name(kind)])
+		else:check(keepsake_name(kind)==str(entry_of(resident,stage).keepsake),"%s name is the goal's keepsake: %s"%[kind,keepsake_name(kind)])
 		check(World.NAMES.has(kit),"Item name exists: "+kit)
 		var blurb:=str(Goals.KEEPSAKES[kind].blurb)
 		var use:=str(InventoryPanel.use_for(kit))
@@ -1362,16 +1527,19 @@ func keepsake_catalog_checks()->void:
 		var value:=str(InventoryPanel.value_for(kit))
 		var want:="和%s一起做的事的紀念小物 · 不能出售或交易"%npc(resident)
 		check(value==want,"Inventory value text of %s reads %s: %s"%[kit,want,value])
-	check(with_keepsake==17 and all_goals().size()-with_keepsake==31,"17 goals with a 紀念小物, 31 without: %d"%with_keepsake)
+	check(with_keepsake==18 and all_goals().size()-with_keepsake==30,"18 goals with a 紀念小物, 30 without: %d"%with_keepsake)
 
 ## 點點 2 in star_garden: printed only (see header).
 func garden_note(label:String)->void:
-	set_bonds();set_done({});stock({})
+	set_bonds();set_done({"diandian":{"1":""}});stock({})  # FIXTURE: bare stage-1 record (diandian_seated needs it)
+	set_need("diandian_seated",true)
 	await stand("diandian")
 	if not await open_goal("diandian",2,"diandian2 "+label):return
 	if not await press("BondGoalOption_cup"):return
 	reason_is("","diandian2 client ready "+label)
 	if not await press("BondGoalDo",true):return
+	if state_of("diandian",2)=="done":check(not person().has(Goals.DIANDIAN_SEAT_KEY),"diandian2 completion removes the seated flag (%s)"%label)
+	set_need("diandian_seated",false)
 	note("diandian 2 from star_garden (%s): done=%s toast=%s"%[label,str(state_of("diandian",2)=="done"),toast_text()])
 	set_done({})
 	await refresh()
@@ -1405,7 +1573,7 @@ func run()->void:
 		if entry.has("needs"):
 			with_needs+=1
 			for need:String in entry.needs:check(Goals.NEEDS.has(need),"Need %s is known (%s %d)"%[need,str(pair[0]),int(pair[1])])
-	check(with_needs==28,"Twenty-eight goals have needs: %d"%with_needs)
+	check(with_needs==35,"Thirty-five goals have needs: %d"%with_needs)
 	for item:String in goal_items():check(World.NAMES.has(item),"Item name exists: "+item)
 	keepsake_catalog_checks()
 	set_done({})  # PRESET: fresh save, nothing done or claimed
@@ -1424,7 +1592,8 @@ func run()->void:
 		await luoluo_options_flow(tag)
 		await aru_bed_flow(tag)
 		await luoluo_known_flow(tag)
-		await need_unlock_flow("mianmian",4,"fair_weather",tag)
+		await luoluo_clues_flow(tag)
+		await need_unlock_flow("mianmian",4,"sheep_step",tag)
 		await need_unlock_flow("xiaoli",3,"market_round",tag)
 		await need_unlock_flow("lingpopo",4,"festival_done",tag)
 		await xinghe_priority_flow(tag)
@@ -1432,7 +1601,8 @@ func run()->void:
 		await layout_sweep(tag)
 		await needs_sweep(tag)
 		# Batch 3 補領 in four regions: 家園, 金瓜石, 蘭陽, 礁溪.
-		for pair:Array in [["aru",1],["bobo",1],["xinghe",2],["nuannuan",1]]:
+		# N03-4: bobo 4 is claimed too (done without ever pushing the cart).
+		for pair:Array in [["aru",1],["bobo",1],["bobo",4],["xinghe",2],["nuannuan",1]]:
 			await claim_flow(str(pair[0]),int(pair[1]),tag)
 		await garden_note(tag)
 		await close()
@@ -1441,6 +1611,7 @@ func run()->void:
 	set_bed(false)
 	w.state.festival=saved_festival
 	var p:=person()
+	p.erase("bobo_empty_cart_stage")  # the schema only allows it while the 波波 bond is at the fourth stage
 	if saved_market is Dictionary:p.market=saved_market
 	else:p.erase("market")
 	if saved_glass==null:p.erase("greenhouse_glass_crafted")

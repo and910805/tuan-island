@@ -20,9 +20,10 @@ extends RefCounted
 ##   keepsake_xiaoli    短樁上的試寫木片：深色重描的抽象筆畫（不是可讀的字）與一顆栗色圓點
 ##   keepsake_luoluo    柱上的灰青綠小信箱，投信口露出米白信封一角與小紅封蠟，側邊紅色小旗
 ##   keepsake_diandian  摺疊 A 字畫架夾著一張速寫（鉛筆灰的一雙放鬆的手），畫架托板上一支鉛筆
+##   keepsake_bobo_cart 祖父的礦車：展示矮台上的空木礦車（鐵箍、鐵輪、軌條），台前銘牌以深色刻痕示意
 ##   keepsake_nuannuan  短柱上的門牌（深色木框、米白牌面），框頂右側一盞亮著的暖黃小燈與微光
 
-const KINDS:=["keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","keepsake_nuannuan_room"]
+const KINDS:=["keepsake_aru","keepsake_milu","keepsake_bobo","keepsake_chacha","keepsake_achao","keepsake_mianmian","keepsake_xinghe","keepsake_lingpopo","keepsake_xiaoli","keepsake_luoluo","keepsake_diandian","keepsake_nuannuan","keepsake_aru_bird","keepsake_achao_oar","keepsake_xinghe_sign","keepsake_lingpopo_memorial","keepsake_nuannuan_room","keepsake_bobo_cart"]
 const KIT_SUFFIX:="_kit"
 const SHADOW:=Color(0.18,0.13,0.08,0.3)
 const OUTLINE:=Color("3e2a1a")
@@ -183,6 +184,7 @@ static func piece(kind:String) -> Texture2D:
 		"keepsake_diandian":_diandian(img)
 		"keepsake_nuannuan":_nuannuan(img)
 		"keepsake_nuannuan_room":_nuannuan_room(img)
+		"keepsake_bobo_cart":_bobo_cart(img)
 	var texture:=ImageTexture.create_from_image(img)
 	cache[kind]=texture
 	return texture
@@ -255,6 +257,67 @@ static func _bobo(img:Image) -> void:
 	# Tiny green tuft growing out of the right stone.
 	_r(img,26,16,1,3,LEAF)
 	_px(img,25,15,LEAF_LIGHT);_px(img,27,15,LEAF_LIGHT);_px(img,27,17,LEAF)
+
+## 祖父的礦車：展示矮台上的空木礦車（鐵箍、兩只鐵輪、軌條），台前一塊刻痕銘牌。
+static func _bobo_cart(img:Image) -> void:
+	var iron:=Color("5a5a64")
+	var iron_hi:=Color("9a9aa6")
+	var iron_dark:=Color("34343c")
+	_r(img,2,29,28,2,SHADOW)
+	# Exhibition plinth: lit top slab over a darker body.
+	_boxed(img,4,25,24,5,WOOD,OUTLINE)
+	_r(img,5,26,22,1,WOOD_LIGHT)
+	_r(img,5,28,22,1,WOOD_DARK)
+	_boxed(img,2,22,28,4,WOOD_LIGHT,OUTLINE)
+	_r(img,3,23,26,1,WOOD_HI)
+	_r(img,3,25,26,1,WOOD)
+	# Engraved plaque: brass plate, dark chiselled strokes (abstract, not readable).
+	_r(img,8,26,16,3,OUTLINE)
+	_r(img,9,26,14,2,Color("c9a64a"))
+	_r(img,9,26,14,1,Color("e0c273"))
+	var cut:=Color("3a2a14")
+	for s:Array in [[10,27,3],[14,27,2],[17,27,4],[22,27,1]]:_r(img,s[0],s[1],s[2],1,cut)
+	for x:int in [11,15,19]:_px(img,x,26,cut)
+	_px(img,9,26,iron_dark);_px(img,22,27,iron_dark)
+	# Rail strip the cart stands on.
+	_r(img,3,22,26,1,iron)
+	_r(img,3,22,26,1,iron)
+	for x in range(5,28,4):_px(img,x,22,iron_hi)
+	# Coupling hook on the left end.
+	_r(img,1,15,4,1,iron_dark)
+	_px(img,1,16,iron_dark);_px(img,2,16,iron)
+	# Open top: rim, then the dark empty inside.
+	_r(img,3,7,26,1,OUTLINE)
+	_r(img,3,8,26,1,WOOD_HI)
+	_r(img,4,9,24,3,Color("2e1f12"))
+	_r(img,5,9,22,1,Color("46301c"))
+	for p:Array in [[9,11],[14,11],[19,10],[23,11]]:_px(img,p[0],p[1],Color("6a6258"))
+	# Tapered front wall, row by row, with plank seams.
+	for y in range(12,20):
+		var inset:=(y-12)/3
+		var x0:=4+inset
+		var x1:=27-inset
+		_r(img,x0,y,x1-x0+1,1,OUTLINE)
+		_r(img,x0+1,y,x1-x0-1,1,WOOD_LIGHT if y<14 else WOOD)
+		if y==15 or y==18:_r(img,x0+1,y,x1-x0-1,1,WOOD_DARK)
+		_px(img,x0+1,y,WOOD_HI if y<15 else WOOD_LIGHT)
+	_r(img,6,20,20,1,OUTLINE)
+	# Iron rim and two vertical straps with rivets.
+	_r(img,4,12,24,1,iron)
+	_r(img,5,12,6,1,iron_hi)
+	for sx:int in [9,21]:
+		_r(img,sx,12,3,8,iron)
+		_r(img,sx,12,1,8,iron_hi)
+		_r(img,sx+2,13,1,7,iron_dark)
+		_px(img,sx+1,14,iron_hi);_px(img,sx+1,17,iron_hi)
+	# Two small iron wheels sitting on the rail.
+	for wx:int in [10,22]:
+		_disc(img,wx,20,2,iron,iron_dark,false)
+		_px(img,wx,20,iron_hi)
+		_px(img,wx-1,19,iron_hi)
+	# Dust of ore left in one corner and a flake on the plinth top.
+	_px(img,6,10,Color("8a8478"));_px(img,7,11,Color("a39c8e"))
+	_px(img,26,21,Color("6e5e4c"))
 
 static func _chacha(img:Image) -> void:
 	_r(img,2,29,28,2,SHADOW)

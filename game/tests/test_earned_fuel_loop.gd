@@ -1,9 +1,22 @@
 extends "res://tests/test_earned_forestry_journey.gd"
 ## Fully earned fuel return + plank storage, including a stopped belt/reload.
+const Layouts=preload("res://scripts/workshop_layouts.gd")
 var fuel_loop_complete:=false
 var fuel_kiln:=NONE
 var plank_box:=NONE
 var loop_belts:Array[Vector2i]=[]
+
+func site_ok(chest_cell:Vector2i)->bool:
+	if not super.site_ok(chest_cell):return false
+	var lesson:=Layouts.lesson(2)
+	# The sawmill is left of the material chest and at (4,2) in the design.
+	var origin:=chest_cell-Vector2i(5,2)
+	for piece:Dictionary in lesson.design.pieces+lesson.markers:
+		var tile:=origin+Vector2i(piece.x,piece.y)
+		if not world.is_land(tile) or world.water(tile) or world.protected(tile):return false
+		for layer in LAYERS:
+			if world.state[layer].has(World.key(tile)):return false
+	return true
 
 func finish(path:String)->void:
 	expect(fuel_loop_complete,"Earned fuel loop reached the final checkpoint")
@@ -64,6 +77,10 @@ func reload_final()->void:
 		for layer in LAYERS:expect(not world.state[layer].has(World.key(tile)),"Loop does not erase "+str(layer))
 		if failed:return
 		clear_resource(tile)
+	# Gather the construction clearing drops before measuring the automatic loop.
+	for key:String in world.state.get("gather_drops",{}).get(World.REGIONS.HOME,{}).keys():
+		collect_gathered(World.cell(key))
+	if failed:return
 	must("build",fuel_kiln,"charcoal_kiln","Place earned fuel-return kiln")
 	must("build",plank_box,"private_chest","Place earned private board storage")
 	var last_belt:Vector2i=forester+Vector2i(-1,0)

@@ -2,7 +2,7 @@ extends SceneTree
 const Enclosure=preload("res://scripts/room_enclosure.gd")
 var checks:=0
 var failures:=0
-const KEYS:=["cells","boundary","doors","area","gap_count","truncated","sealed"]
+const KEYS:=["cells","boundary","doors","edge_boundary","edge_doors","area","gap_count","truncated","sealed"]
 
 func expect(value:bool,message:String) -> void:
 	checks+=1
@@ -35,10 +35,12 @@ func shape_ok(r:Dictionary) -> bool:
 		if not r.has(key):return false
 	for key in ["cells","boundary","doors"]:
 		if not (r[key] is Array) or r[key].get_typed_builtin()!=TYPE_VECTOR2I:return false
+	for key in ["edge_boundary","edge_doors"]:
+		if not (r[key] is Array) or r[key].get_typed_builtin()!=TYPE_STRING:return false
 	return typeof(r.area)==TYPE_INT and typeof(r.gap_count)==TYPE_INT and typeof(r.truncated)==TYPE_BOOL and typeof(r.sealed)==TYPE_BOOL
 
 func is_empty_result(r:Dictionary) -> bool:
-	return shape_ok(r) and r.cells.is_empty() and r.boundary.is_empty() and r.doors.is_empty() and r.area==0 and r.gap_count==0 and not r.truncated and not r.sealed
+	return shape_ok(r) and r.cells.is_empty() and r.boundary.is_empty() and r.doors.is_empty() and r.edge_boundary.is_empty() and r.edge_doors.is_empty() and r.area==0 and r.gap_count==0 and not r.truncated and not r.sealed
 
 func sorted_yx(a:Array) -> bool:
 	for i in range(1,a.size()):

@@ -137,6 +137,8 @@ func base()->void:
 	w.state.picnic=true  # PRESET
 	w.state.chapter_one.shipped=true  # PRESET
 	w.state.chapter_one.watered=true  # PRESET
+	# PRESET: the 島民第一課 is finished (a fresh Wangan landing starts it and it would own the card).
+	person().erase(World.CHAPTER_ONE.PERSONAL_START)
 	w.state.festival_story_open=true  # PRESET
 	w.state.festival.active=false  # PRESET
 	w.state.time=30.0  # PRESET
@@ -193,7 +195,7 @@ func flow(tag:String)->void:
 	# 4. 風鈴接力 running keeps its own card.
 	w.state.festival.active=true  # PRESET
 	await refresh()
-	check(app._home_memory_hint().is_empty() and text().contains("風鈴接力") and heading().text=="風鈴接力  ▾","風鈴接力 outranks the hints (%s): %s"%[tag,flat()])
+	check(app._home_memory_hint().is_empty() and text().contains("風鈴接力") and heading().text.begins_with("風鈴接力  ") and next_button().text=="查看風鈴接力  →","風鈴接力 outranks the hints (%s): %s"%[tag,flat()])
 	w.state.festival.active=false  # PRESET
 	await refresh()
 	check(text()==UI.TRACKER%1,"Exhibit hint returns after the relay (%s)"%tag)

@@ -47,6 +47,7 @@ const OreRoute=preload("res://scripts/ore_route.gd")
 const Souvenir=preload("res://scripts/souvenir_exchange.gd")
 const Goals=preload("res://scripts/resident_goals.gd")
 const Bond=preload("res://scripts/resident_bond.gd")
+const Shop=preload("res://scripts/xiaoli_shop.gd")
 
 ## 假物品：鈴幣、時間（任何要等、要走、有冷卻或每日上限的來源都吃一份），以及
 ## "@built:<種類>"、"@mine:<層>"、"@hoist" 這些解鎖。
@@ -55,6 +56,11 @@ const TIME:="@time"
 const HOIST:="@hoist"
 const GARDEN_DONE:="@flower_garden"
 const WORKSHOP_DONE:="@workshop_upgrade"
+const BOARD_REPAIRED:="@board_repaired"
+const BRIDGE_FOUNDATION:="@bridge_foundation"
+const BRIDGE_OPEN:="@bridge_open"
+const COW_ADOPTED:="@cow_adopted"
+const XIAOLI_SIGN_HUNG:="@xiaoli_sign_hung"
 const PICK:="reinforced_pick"
 const EPS:=0.000001
 ## certificate() 給每個真實物品的最低價值：讓「沒有價目的東西互相越換越多」也會被抓到。
@@ -69,6 +75,17 @@ const MEMENTO_KITS:=["water_share_plaque_kit","mine_lantern_kit","tea_ware_kit",
 ## world.gd craft 的前置（手抄）：採掘機要先開到第 5 層、水力加工台要先開到第 4 層。
 const CRAFT_NEEDS:={"mine_drill_kit":5,"waterworks_kit":4}
 
+## 持有即可使用的工具。動作不扣除工具，所以不列為消耗或經濟轉換。
+const TOOL_USES:={
+	"pick":World.MINING_PICKS,
+	"axe":World.FORESTRY_AXES,
+	"hoe":World.FARM_HOES,
+	"water":World.WATERING_CANS,
+	"fish":World.FishingTracking.ROD_TIERS,
+	"seed":World.SEED_POUCHES,
+	"harvest":World.HARVEST_SICKLES,
+}
+
 static func built(kind:String) -> String:
 	return "@built:"+kind
 
@@ -80,7 +97,7 @@ static func is_pseudo(item:String) -> bool:
 
 ## 解鎖本身沒有價值、也不會被消耗（只出現在 needs）。
 static func is_gate(item:String) -> bool:
-	return item==HOIST or item.begins_with("@mine:")
+	return item in [HOIST,XIAOLI_SIGN_HUNG] or item.begins_with("@mine:")
 
 static func conv(id:String,kind:String,inputs:Dictionary,outputs:Dictionary,needs:Array=[],timed:bool=false) -> Dictionary:
 	var taken:Dictionary=inputs.duplicate()
@@ -125,7 +142,22 @@ static func conversions() -> Array:
 	# --- 料理（world.gd RECIPES，石灶）---
 	for id:String in World.RECIPES:
 		var recipe:Dictionary=World.RECIPES[id]
-		list.append(conv("cook:"+id,"cook",recipe.ingredients,{id:int(recipe.yield)},[built("stove")]))
+		# C12: D05 / D14 exist only on the 2x2 公共廚房灶台 (their RECIPES numbers are the canonical ones).
+		# The other dishes are modelled with the early stove's numbers; the canonical C12 variants of
+		# D03/D04/D07/D09/D13/D15/D16 (KitchenStove.DISHES) are modelled as `cook_c12:` below.
+		var station:=Industry.KITCHEN_STOVE if id in World.KITCHEN_STOVE.EXCLUSIVE else "stove"
+		list.append(conv("cook:"+id,"cook",recipe.ingredients,{id:int(recipe.yield)},[built(station)]))
+	# C12: the 2x2 公共廚房灶台 cooks the canonical D01-D16 numbers (the very table World.stove_recipes serves). A dish
+	# whose ingredients or yield differ from the early stove's row above is its own conversion, so both are checked.
+	# Seconds are modelled by neither; D05 / D14 are already `cook:` above (their RECIPES row IS the canonical one).
+	var canonical:Dictionary=World.stove_recipes(Industry.KITCHEN_STOVE)
+	for dish:Dictionary in World.KITCHEN_STOVE.DISHES:
+		var dish_id:String=dish.id
+		if dish_id in World.KITCHEN_STOVE.EXCLUSIVE:continue
+		var early:Dictionary=World.RECIPES[dish_id]
+		var c12:Dictionary=canonical[dish_id]
+		if c12.ingredients==early.ingredients and int(c12["yield"])==int(early["yield"]):continue
+		list.append(conv("cook_c12:"+dish_id,"cook",c12.ingredients,{dish_id:int(c12["yield"])},[built(Industry.KITCHEN_STOVE)]))
 	# --- 加工站（industry.gd PROCESS）與種子機（seed_maker.gd）---
 	for id:String in Industry.PROCESS:
 		var recipe:Dictionary=Industry.PROCESS[id]
@@ -142,6 +174,8 @@ static func conversions() -> Array:
 		if kind=="glass_furnace":needs.append(HOIST)
 		if kind==Industry.DYE_TABLE:needs.append(GARDEN_DONE)
 		if kind==Industry.ASSEMBLY_TABLE:needs.append(WORKSHOP_DONE)
+		if kind==Industry.STONE_WORKBENCH:needs.append(BOARD_REPAIRED)
+		if kind in World.STONE_WORKSHOP.STATION_BUILDS:needs.append(built(Industry.STONE_WORKBENCH))
 		list.append(conv("build:"+kind,"build",cost,{built(kind):1},needs))
 		list.append(conv("remove:"+kind,"remove",{built(kind):1},cost))
 	# Kit and metal models return different materials, so each has its own node.
@@ -151,6 +185,10 @@ static func conversions() -> Array:
 	list.append(conv("build:sprinkler_kit","build",kit_cost,{kit_device:1}))
 	list.append(conv("remove:sprinkler_kit","remove",{kit_device:1},kit_cost))
 	list.append(conv("workshop_upgrade","unlock",{},{WORKSHOP_DONE:1},[built("bench")],true))
+	list.append(conv("repair_board","quest",{"wood":30,"stone":10},{BOARD_REPAIRED:1},[],true))
+	list.append(conv("bridge_foundation","quest",World.STONE_WORKSHOP.FOUNDATION_COST,{BRIDGE_FOUNDATION:1},[BOARD_REPAIRED,built(Industry.STONE_WORKBENCH)],true))
+	# Q05 河對岸的鈴聲: the board takes the wood and the hand-woven rope; the 20 stone is only the two foundations above.
+	list.append(conv("bridge_open","quest",{"wood":World.STONE_WORKSHOP.WOOD_NEEDED,"rope":World.STONE_WORKSHOP.ROPE_NEEDED},{BRIDGE_OPEN:1},[BOARD_REPAIRED,BRIDGE_FOUNDATION],true))
 	for kind:String in Industry.assembly_items():
 		var kit:String=Industry.assembly_items()[kind]
 		var station:=built(kit)
@@ -164,6 +202,9 @@ static func conversions() -> Array:
 	for item:String in Flower.MARKET_PRICES:
 		list.append(conv("buy_tianwei:"+item,"buy",{COIN:int(Flower.MARKET_PRICES[item])},{item:1}))
 	list.append(conv("buy:sapling","buy",{COIN:SAPLING_PRICE},{"sapling":1}))
+	list.append(conv("buy:stall_flour","buy",{COIN:World.FLOUR_PRICE},{World.FLOUR_ITEM:1},[],true))
+	list.append(conv("buy:stall_sugar","buy",{COIN:World.SUGAR_PRICE},{World.SUGAR_ITEM:1},[],true))
+	list.append(conv("buy:summer_roots","buy",{COIN:World.SUMMER_MARKET.ROOTS_PRICE},{"radish":1,"carrot":1},[],true))
 	# --- 賣給系統 ---
 	for item:String in prices:
 		list.append(conv("sell:"+item,"sell",{item:1},{COIN:best_sale(item,prices)}))
@@ -186,6 +227,11 @@ static func conversions() -> Array:
 	list.append(conv("lanyang_nursery","other",Lanyang.NURSERY_COST,{"sapling":int(Lanyang.NURSERY_YIELD)}))
 	list.append(conv("handcraft:rope","craft",{"fiber":World.ROPE_FIBER_COST},{"rope":1}))
 	list.append(conv("bobo_sorting","other",{"gold_ore":int(Bobo.INPUT)},{"gold_sample":int(Bobo.OUTPUT)}))
+	var blooms:=World.INDUSTRY.TABLE_VASE_BLOOMS
+	for current:String in blooms:
+		for replacement:String in blooms:
+			if current!=replacement:
+				list.append(conv("table_vase:%s:%s"%[current,replacement],"other",{current:1,blooms[replacement]:1},{replacement:1,blooms[current]:1},[built("table")]))
 	list.append(conv("waterworks","other",Waterworks.INPUTS,{"copper_joint":1},[built("waterworks")]))
 	# --- 礦層工程與升降台（解鎖）---
 	list.append(conv("mine_enter","unlock",{},{mine(1):1},[PICK],true))
@@ -194,6 +240,7 @@ static func conversions() -> Array:
 	list.append(conv("mine_hoist","unlock",Mines.HOIST_COST,{HOIST:1},[mine(int(Mines.HOIST_DEPTH))]))
 	# --- 要花時間的來源（world.gd 採集量為手抄）---
 	list.append(conv("gather:tree","source",{},{"wood":6,"fiber":2,"sapling":1,"resin":1},[],true))
+	list.append(conv("gather:bamboo","source",{},{World.REGIONS.Bamboo.ITEM:World.REGIONS.Bamboo.YIELD},[],true))
 	list.append(conv("gather:planted_tree","source",{"sapling":1},{"wood":6,"fiber":2,"sapling":1,"resin":1,"hardwood":World.HARDWOOD_YIELD},[],true))
 	list.append(conv("gather:rock","source",{},{"stone":5},[],true))
 	list.append(conv("gather:grass","source",{},{"fiber":4},[],true))
@@ -225,11 +272,13 @@ static func conversions() -> Array:
 	list.append(conv("chicken","source",{"feed":1},{"egg":1},[],true))
 	list.append(conv("chicken_quality","source",{"feed":Livestock.BONUS_INTERVAL},
 		{"egg":Livestock.BONUS_INTERVAL,"quality_egg":1},[],true))
+	list.append(conv("adopt:cow","unlock",{COIN:Livestock.ADOPTION_COST.cow},{COW_ADOPTED:1},[],true))
 	for animal:String in Livestock.ANIMALS:
 		var product:=str(Livestock.ANIMALS[animal].item)
-		list.append(conv("livestock:"+animal,"source",{"feed":1},{product:1},[],true))
+		var needs: Array = [COW_ADOPTED] if animal=="cow" else []
+		list.append(conv("livestock:"+animal,"source",{"feed":1},{product:1},needs,true))
 		list.append(conv("livestock_quality:"+animal,"source",{"feed":Livestock.BONUS_INTERVAL},
-			{product:Livestock.BONUS_INTERVAL,"quality_"+product:1},[],true))
+			{product:Livestock.BONUS_INTERVAL,"quality_"+product:1},needs,true))
 	list.append(conv("tea:pick","source",{},{"tea_leaf":2},[],true))
 	list.append(conv("tea:potter_gift","source",{},{"clay":2},[],true))
 	list.append(conv("salt_pan","source",{},{"sea_salt":int(Salt.YIELD)},[],true))
@@ -263,6 +312,9 @@ static func conversions() -> Array:
 		list.append(conv("souvenir:"+id,"reward",{},{id+"_kit":1},[],true))
 	for id:String in Goals.KEEPSAKES:
 		list.append(conv("keepsake:"+id,"reward",{},{id+str(Goals.KIT_SUFFIX):1},[],true))
+	# 前三段為故事前置。此處核對最後一段掛招牌的材料與本人限領一次的獎勵。
+	list.append(conv("xiaoli:hang_sign","quest",Goals.cost(Goals.goal("xiaoli",4),"none"),{XIAOLI_SIGN_HUNG:1},[],true))
+	list.append(conv(Shop.SCALE_ACTION,"reward",{},{Shop.SCALE_ITEM:1},[XIAOLI_SIGN_HUNG],true))
 	for item:String in MEMENTO_KITS:
 		list.append(conv("memento:"+item,"reward",{},{item:1},[],true))
 	return list
@@ -279,6 +331,9 @@ static func demands() -> Array:
 	list.append({"id":"collector_bind","items":{"egg_basket":1}})
 	list.append({"id":"eat_rice_ball","items":{"star_rice_ball":1}})
 	list.append({"id":"drink_ginger_tea","items":{"ginger_tea":1}})
+	# C12 eat_meal (world.gd): one serving of any D01-D16 dish that has no older eating action, taken in a mine.
+	for dish:Dictionary in World.KITCHEN_STOVE.DISHES:
+		if not dish.id in World.KITCHEN_STOVE.LEGACY_EAT:list.append({"id":"eat_meal:"+str(dish.id),"items":{str(dish.id):1}})
 	list.append({"id":"table_warmer","items":TableWarmer.INSTALL_COST})
 	list.append({"id":"lanyang_repair","items":Lanyang.REPAIR_COST})
 	list.append({"id":"station_repair","items":StationLife.REPAIR_COST})
@@ -291,6 +346,7 @@ static func demands() -> Array:
 	for pigment:String in Industry.FURNITURE_DYES:
 		list.append({"id":"dye_furniture:"+pigment,"items":{pigment:1}})
 	list.append({"id":"public_kitchen","items":PublicKitchen.REQUIREMENTS})
+	list.append({"id":"mill_restoration","items":World.MILL_RESTORATION.COST})
 	list.append({"id":"jinguashi_revisit","items":JinguashiRevisit.AMOUNTS})
 	list.append({"id":"tea_revisit","items":{"tea_light":1,"tea_deep":1}})
 	list.append({"id":"salt_revisit","items":{"sea_salt":1}})
@@ -298,6 +354,7 @@ static func demands() -> Array:
 	for item:String in Bond.COMMON_GIFTS:gifts[item]=1
 	list.append({"id":"resident_gifts","items":gifts})
 	list.append({"id":"aru_bench_repair","items":World.RESIDENT_GOALS.cost(World.RESIDENT_GOALS.goal("aru",2),"")})
+	list.append({"id":"chacha_bamboo_blind","items":Goals.cost(Goals.goal("chacha",2),"")})
 	list.append({"id":"lingpopo_memorial_bell","items":World.RESIDENT_GOALS.cost(World.RESIDENT_GOALS.goal("lingpopo",3),"soup")})
 	return list
 

@@ -2,10 +2,8 @@ extends RefCounted
 ## T071 市集攤位「攤位布置」第一批（純呈現、純函式）：把本人擺上攤位的東西畫成攤位
 ## 櫃檯前的小掛牌，並依攤上擺了什麼給一句「客人的話」。
 ##
-## 這裡不決定任何買賣：成交仍只在 World.step 的午夜結算（market_stall.gd）。輸入只有
-## 本人的 snapshot.own_market；不讀別人的攤位內容、不寫入任何狀態、不用亂數、不看
-## 現實時鐘。廣場上的攤位是共用的一座，所以每位玩家在自己的畫面上看到的是自己的
-## 貨；別人的畫面不會出現你的貨（公開快照沒有這些資料）。
+## 成交由 World.step 在午夜結算。櫃檯掛牌接受本人庫存或公開商品圖示，
+## 客人對話使用本人的攤位摘要。這裡只產生呈現資訊。
 ##
 ## 公開 API：
 ##   static func shelf(market_view:Dictionary) -> Array
@@ -19,6 +17,7 @@ extends RefCounted
 ##   static func remark_line(market_view:Dictionary,names:Dictionary={}) -> String
 ##       面板用的整行：「客人的話：…」加上 REMARK_NOTE；沒有話時回傳空字串。
 const Market=preload("res://scripts/market_stall.gd")
+const Decor=preload("res://scripts/market_decor.gd")
 
 const TAG:=Vector2(12,12)
 ## 四個掛牌並排在櫃檯檯面（攤位圖 x=8..56、y=24..36）。這個範圍讓開攤位兩側客人的
@@ -88,4 +87,9 @@ static func remark(market_view:Dictionary,names:Dictionary={}) -> String:
 
 static func remark_line(market_view:Dictionary,names:Dictionary={}) -> String:
 	var said:=remark(market_view,names)
-	return "" if said.is_empty() else REMARK_PREFIX+said+REMARK_NOTE
+	if said.is_empty():return ""
+	var accent:=""
+	var decor:Variant=market_view.get("decor",{})
+	if market_view.get("open",false) and Decor.valid(decor):
+		accent=Decor.remark(decor)
+	return REMARK_PREFIX+said+(" "+accent if not accent.is_empty() else "")+REMARK_NOTE

@@ -47,6 +47,7 @@ const BK_LATE := "bakery-late-member"
 const BK_NONE := Vector2i(-1,-1)
 const BK_LEFT := Vector2i(-1,0)
 const BK_RIGHT := Vector2i(1,0)
+const BK_FAR := Vector2i(2,0)
 const BK_DOWN := Vector2i(0,1)
 const BK_SITE_RING := 12
 const BK_MAX_SITE_TRIES := 24
@@ -142,6 +143,7 @@ func bk_reserved() -> Dictionary:
 	var out := {}
 	for c in [stove, seats[0], seats[1], bed, bk_bench, bk_sawmill, bk_mill, bk_stand]:
 		if c != BK_NONE:out[c] = true
+	if bk_bench != BK_NONE:out[bk_bench + BK_RIGHT] = true
 	return out
 
 # One real World.act; walks the inherited BFS route only when out of reach.
@@ -289,6 +291,7 @@ func bk_gather(item: String, minimum: int, kinds: Array) -> void:
 			bk_run(tool, target)
 			hits += 1
 		expect(world.resource(target) == "", "Natural %s at %s fully gathered in %d hits" % [kind, target, hits])
+		if not failed:collect_gathered(target)
 		bk_gather_hits += hits
 		bk_gather_sources += 1
 
@@ -339,9 +342,12 @@ func bk_premise() -> void:
 	expect("mill_kit" in World.KITCHEN_GATED and "mill" in World.KITCHEN_GATED, "mill_kit and mill are kitchen-gated in data")
 	var pumpkin: Dictionary = World.CROPS.get("pumpkin", {})
 	expect(is_equal_approx(float(pumpkin.get("time",0)), 270.0) and int(pumpkin.get("seed_price",0)) == 70 and int(pumpkin.get("price",0)) == 150 and int(pumpkin.get("yield",0)) == 1, "Contract: pumpkin 270 s, seed 70, price 150, yield 1")
-	var kit: Dictionary = World.CRAFT.get("mill_kit", {})
-	expect(same_inventory(kit.get("ingredients",{}), {"plank":BK_PLANKS, "stone":16, "copper_joint":BK_JOINTS}) and int(kit.get("yield",0)) == 1, "Contract: mill_kit = plank 8 + stone 16 + copper_joint 4, yield 1")
-	expect(World.BUILD.has("mill") and same_inventory(cost_of(World.BUILD.mill), {"mill_kit":1}), "Contract: building a mill consumes one mill_kit")
+	# C13: the 3x3 mill is built from materials; mill_kit is no longer craftable. This journey keeps exercising the
+	# legacy 1x1 placement (plain "mill" build while a kit is held) so its single-cell site layout stays valid; the
+	# 3x3 world/logistics/blueprint/save contracts are covered by test_mill_c13*.gd.
+	expect(not World.CRAFT.has("mill_kit"), "Contract: mill_kit is no longer a bench recipe")
+	expect(World.BUILD.has("mill") and same_inventory(cost_of(World.BUILD.mill), {"wood":25, "stone":15, "woodwork_parts":4}), "Contract: the new mill costs wood 25 + stone 15 + woodwork_parts 4")
+	expect(same_inventory(cost_of(World.LEGACY_MILL_COST), {"mill_kit":1}), "Contract: a legacy 1x1 mill is built from / refunds one mill_kit")
 	var flour: Dictionary = World.INDUSTRY.PROCESS.get("flour", {})
 	expect(flour.get("station","") == "mill" and same_inventory(flour.get("ingredients",{}), {"wheat":2}) and is_equal_approx(float(flour.get("time",0)), 60.0) and int(flour.get("yield",0)) == 1, "Contract: flour at mill, wheat 2, 60 s, yield 1")
 	var pie: Dictionary = World.RECIPES.get(BK_PIE, {})
@@ -367,7 +373,7 @@ func bk_plan_site() -> void:
 		for x in range(stove.x-BK_SITE_RING, stove.x+BK_SITE_RING+1):
 			var c := Vector2i(x,y)
 			var ok := base.has(c + BK_DOWN)
-			for t in [c, c+BK_LEFT, c+BK_RIGHT, c+BK_DOWN]:
+			for t in [c, c+BK_LEFT, c+BK_RIGHT, c+BK_DOWN, c+BK_FAR]: # C08: the workbench is 2x1 (c, c+RIGHT); the mill moves one cell right
 				if not ok:break
 				if taken.has(t) or not free_cell(t):ok = false
 			if ok:cands.append(c)
@@ -375,10 +381,10 @@ func bk_plan_site() -> void:
 	for cand in cands.slice(0, BK_MAX_SITE_TRIES):
 		var c: Vector2i = cand
 		bk_site_checks += 1
-		if layout_ok(base, {c:"bench", c+BK_LEFT:"sawmill", c+BK_RIGHT:"mill"}, kitchen):
+		if layout_ok(base, {c:"bench", c+BK_RIGHT:"bench", c+BK_LEFT:"sawmill", c+BK_FAR:"mill"}, kitchen):
 			bk_bench = c
 			bk_sawmill = c + BK_LEFT
-			bk_mill = c + BK_RIGHT
+			bk_mill = c + BK_FAR
 			bk_stand = c + BK_DOWN
 			break
 	if bk_bench == BK_NONE:
@@ -454,7 +460,7 @@ func bk_materials() -> void:
 	bk_plank_jobs = ceili(float(maxi(0, BK_PLANKS - held("plank"))) / float(World.INDUSTRY.PROCESS.plank["yield"]))
 	var joints := maxi(0, BK_JOINTS - held("copper_joint"))
 	var need := {}
-	var plan := [cost_of(World.BUILD.bench), World.CRAFT.sawmill_kit.ingredients, World.CRAFT.mill_kit.ingredients]
+	var plan := [cost_of(World.BUILD.bench), World.CRAFT.sawmill_kit.ingredients]
 	if bk_need_pick:plan.append(World.CRAFT.reinforced_pick.ingredients)
 	if bk_needs_feed:plan.append(World.RECIPES.feed.ingredients)
 	for part in plan:
@@ -476,7 +482,8 @@ func bk_workshop() -> void:
 		bk_probe("mine_copper", World.COPPER_CELL, "", "Mining copper without a reinforced pick", "強化石鎬")
 	bk_build(bk_bench, "bench")
 	if failed:return
-	bk_probe("craft", bk_bench, "mill_kit", "Crafting mill_kit without planks/joints", "材料不足")
+	bk_probe("craft", bk_bench, "mill_kit", "Crafting mill_kit (no longer a bench recipe)")
+	bk_probe("craft", bk_bench, "woodwork_parts", "Crafting woodwork_parts without planks/hardwood", "材料不足")
 	if bk_need_pick:bk_craft("reinforced_pick", 1)
 	bk_craft("sawmill_kit", 1)
 	bk_build(bk_sawmill, "sawmill")
@@ -524,10 +531,16 @@ func bk_mill_build() -> void:
 		expect_delta(snap, {"plank":int(plank["yield"])}, "Claiming plank job %d" % (j+1))
 		bk_count(bk_made, "plank", int(plank["yield"]))
 	expect(held("plank") >= BK_PLANKS and bk_queue_ids(bk_sawmill).is_empty(), "Sawmill queue drained; %d planks held" % held("plank"))
-	expect(held("copper_joint") >= BK_JOINTS and held("stone") >= 16, "Mill kit materials earned (joint %d, stone %d)" % [held("copper_joint"), held("stone")])
-	bk_craft("mill_kit", 1)
-	bk_build(bk_mill, "mill")
+	expect(held("copper_joint") >= BK_JOINTS, "Copper joints earned (joint %d)" % held("copper_joint"))
+	# FIXTURE (disclosed, C13): one legacy mill_kit, as a pre-C13 player still carries. A plain "mill" build while
+	# a kit is held is the legacy 1x1 placement and consumes exactly that kit.
+	person().inventory.mill_kit = 1
+	bk_stand_at(bk_stand)
+	var kit_snap := bag().duplicate(true)
+	bk_run("build", bk_mill, "mill")
 	if failed:return
+	expect_delta(kit_snap, {"mill_kit":-1}, "Build the legacy 1x1 mill from the kit at %s" % bk_mill)
+	expect(bk_obj(bk_mill).get("type","") == "mill" and bk_obj(bk_mill).get("owner","") == TOKEN and world.blocked(bk_mill) and not bk_obj(bk_mill).has("mill_part"), "Kit mill at %s is owned by the builder, solid and a legacy 1x1" % bk_mill)
 	var mill := bk_obj(bk_mill)
 	expect(not bool(mill.get("auto_enabled", true)) and not mill.has("processing") and not mill.has("job"), "New mill starts idle with automation off")
 	var recipes := World.processing_recipes("mill")
@@ -598,6 +611,7 @@ func bk_pie() -> void:
 	expect(reopened.load_world(world.save_path) and not reopened.recovered_from_backup,"Mid-bake reload opens the primary save")
 	if failed:return
 	world=reopened
+	world.add_player(TOKEN,str(person().name))
 	expect(is_equal_approx(float(world.state.time),saved_time),"Mid-bake reload restores the saved world time")
 	var restored:Dictionary=bk_obj(stove).cooking.active
 	expect(restored.get("id")==job_id and is_equal_approx(float(restored.get("finish",0)),float(active.finish)),"Mid-bake reload preserves the queued pie and deadline")

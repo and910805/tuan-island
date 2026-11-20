@@ -6,6 +6,7 @@ extends RefCounted
 const GROWTH_PATH:="res://assets/bakery/pumpkin-growth.png"
 const ITEMS_PATH:="res://assets/bakery/items.png"
 const MILL_PATH:="res://assets/bakery/mill.png"
+const VILLAGE_MILL_PATHS:=["res://assets/bakery/village-mill-south.png", "res://assets/bakery/village-mill-west.png", "res://assets/bakery/village-mill-north.png", "res://assets/bakery/village-mill-east.png"]
 const GROWTH_CELL:=627
 const ITEM_CELL:=512
 # items.png: 2 columns x 3 rows of 512px cells. Cell (1,2) is unused decoration.
@@ -48,6 +49,11 @@ static func icon(id:String) -> Texture2D:
 static func mill_texture() -> Texture2D:
 	return native("mill",MILL_PATH,Rect2i(0,0,1024,1536),MILL_SIZE)
 
+static func village_mill_texture(facing: int) -> Texture2D:
+	var path: String = VILLAGE_MILL_PATHS[clampi(facing,0,VILLAGE_MILL_PATHS.size()-1)]
+	if not cache.has(path):cache[path] = load(path) as Texture2D
+	return cache[path]
+
 # Stage 0 seed/sprout, 1 vine, 2 flower/unripe, 3 mature (2x2 grid, row-major).
 static func growth_texture(stage:int) -> Texture2D:
 	var s:=clampi(stage,0,3)
@@ -67,15 +73,29 @@ static func draw_mill(canvas:CanvasItem,at:Vector2) -> bool:
 	canvas.draw_texture_rect(texture,Rect2(at+Vector2(0,-16),Vector2(MILL_SIZE)),false)
 	return true
 
+static func mill_label_bounds(at:Vector2,facing:int) -> Rect2:
+	var size:=Vector2(MILL_SIZE)
+	if facing>=0:
+		var texture:=village_mill_texture(facing)
+		if texture!=null:size=texture.get_size()
+	# The ready badge rises above the sprite and may extend one pixel to its right.
+	return Rect2(at+Vector2(0,-24),size+Vector2(2,8))
+
 # Runtime world drawing: the formal mill PNG first (same placement as draw_mill),
 # then tiny overlays described by MillFeedback from the AUTHORITATIVE object
 # snapshot at world time `world_time`; `clock` is the presentation clock. Reads
 # only; never writes the snapshot. If the PNG is missing nothing is drawn (no
 # geometric stand-in) but the classification is still returned for captions.
-static func draw_mill_runtime(canvas:CanvasItem,at:Vector2,obj:Dictionary,world_time:float,clock:float,reduced:bool) -> Dictionary:
+static func draw_mill_runtime(canvas:CanvasItem,at:Vector2,obj:Dictionary,world_time:float,clock:float,reduced:bool,facing:=-1,entry_visible:=false) -> Dictionary:
 	var status:Dictionary=MillFeedback.classify(obj,world_time)
-	if not draw_mill(canvas,at):return status
 	var origin:=at+Vector2(0,-16)
+	if facing < 0:
+		if not draw_mill(canvas,at):return status
+	else:
+		var art := village_mill_texture(facing)
+		if art == null:return status
+		canvas.draw_texture(art,origin,Color(1,1,1,0.55) if entry_visible else Color.WHITE)
+		origin.x += 32
 	var look:Dictionary=MillFeedback.sample(status,clock,reduced)
 	if not look.progress.is_empty():
 		canvas.draw_rect(Rect2(origin+look.progress.track.position,look.progress.track.size),Color(0.18,0.12,0.08,0.82))

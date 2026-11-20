@@ -39,7 +39,7 @@ func _initialize()->void:
 	old.regions.erase("tianwei")
 	old.erase("salt_pan")
 	old.regions.erase("beimen")
-	expect(valid(old) and old.version==26 and old.players.alpha.inventory.wood==12,"v10 retains starting inventory and migrates")
+	expect(valid(old) and old.version==preload("res://scripts/save_schema.gd").VERSION and old.players.alpha.inventory.wood==12,"v10 retains starting inventory and migrates")
 	var objects:Dictionary=world.state.regions.lanyang.objects
 	objects["31,25"]=device("bench","alpha",{})
 	var inv:Dictionary=world.state.players.alpha.inventory

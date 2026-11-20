@@ -168,7 +168,8 @@ func premise() -> void:
 	print("MATERIAL_SOURCE_JOURNEY start inventory=%s" % JSON.stringify(inv))
 
 func site_ok(c: Vector2i) -> bool:
-	for off in [UP, LEFT, Vector2i.ZERO, RIGHT, DOWN, DOWN+LEFT, DOWN+RIGHT]:
+	# C08: the workbench is now 2x1, so the cell right of it (UP+RIGHT) must be clear too.
+	for off in [UP, UP+RIGHT, LEFT, Vector2i.ZERO, RIGHT, DOWN, DOWN+LEFT, DOWN+RIGHT]:
 		var t: Vector2i = c + off
 		if not world.is_land(t) or world.water(t) or world.protected(t) or world.blocked(t) or world.resource(t) != "":return false
 		for layer in LAYERS:
@@ -203,6 +204,7 @@ func gather(item: String, minimum: int, kind: String) -> void:
 			return
 		var n := 3 if kind == "tree" else 2
 		for i in n:must("axe" if kind == "tree" else "pick", t, "", "gather %s at %s" % [kind, t])
+		if not failed:collect_gathered(t)
 		hits += n
 		if kind == "tree":trees += 1
 		else:rocks += 1

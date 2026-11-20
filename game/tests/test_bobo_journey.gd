@@ -2,7 +2,7 @@ extends "res://tests/test_mine_freight_journey.gd"
 
 const POTATO_PLOT := Vector2i(41,35)
 const HOME_STOVE := Vector2i(40,34)
-const HOME_BENCH := Vector2i(40,35)
+const HOME_BENCH := GARDEN_JOURNEY_BENCH
 const HOME_MILL := Vector2i(40,36)
 
 func after_chapter() -> void:

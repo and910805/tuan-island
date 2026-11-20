@@ -140,26 +140,29 @@ func pair_raw() -> Dictionary:
 func single_raw() -> Dictionary:
 	return {"version":1,"name":"單格","width":1,"height":1,"pieces":[{"kind":"floor","x":0,"y":0}]}
 
-func clear_cell(c:Vector2i) -> bool:
-	if not w.is_land(c) or w.water(c) or w.protected(c) or w.blocked(c) or w.resource(c)!="":return false
+func clear_cell(c:Vector2i,allow_natural_resources:=false) -> bool:
+	if not w.is_land(c) or w.water(c) or w.protected(c):return false
+	var resource:String=w.resource(c)
+	if resource.is_empty() and w.blocked(c):return false
+	if not resource.is_empty() and not allow_natural_resources:return false
 	var k:=World.key(c)
 	for f in ["objects","ground","roofs","crops","forest"]:
 		if w.state[f].has(k):return false
 	return true
 
-func site_ok(o:Vector2i,size:Vector2i) -> bool:
+func site_ok(o:Vector2i,size:Vector2i,allow_natural_resources:bool) -> bool:
 	for y in range(o.y,o.y+size.y):
 		if not clear_cell(Vector2i(o.x-1,y)):return false
 		for x in range(o.x,o.x+size.x):
-			if not clear_cell(Vector2i(x,y)):return false
+			if not clear_cell(Vector2i(x,y),allow_natural_resources):return false
 	return true
 
 func zone(o:Vector2i,size:Vector2i) -> Rect2i:
 	return Rect2i(o-Vector2i(3,3),size+Vector2i(6,6))
 
-## Naturally clear home rectangle plus a clear standing column at x-1, away
-## from spawn and every rectangle in `avoid`. Resources are never removed.
-func find_site(size:Vector2i,avoid:Array) -> Vector2i:
+## Find a usable home rectangle and a clear standing column, away from spawn
+## and other tests. Only the synthetic conflict test allows resources inside.
+func find_site(size:Vector2i,avoid:Array,allow_natural_resources:=false) -> Vector2i:
 	for oy in range(2,REGIONS.SIZE.y-size.y-2):
 		for ox in range(3,REGIONS.SIZE.x-size.x-2):
 			var o:=Vector2i(ox,oy)
@@ -171,8 +174,8 @@ func find_site(size:Vector2i,avoid:Array) -> Vector2i:
 				if z.intersects(rect):
 					hit=true
 					break
-			if not hit and site_ok(o,size):return o
-	expect(false,"found a naturally clear %s home site"%size)
+			if not hit and site_ok(o,size,allow_natural_resources):return o
+	expect(false,"found a usable %s home site"%size)
 	return Vector2i(-1,-1)
 
 func stand(o:Vector2i) -> Vector2:
@@ -357,7 +360,7 @@ func setup() -> void:
 	site1=find_site(Vector2i(2,1),[])
 	site2=find_site(Vector2i(2,1),[zone(site1,Vector2i(2,1))])
 	site3=find_site(Vector2i(1,1),[zone(site1,Vector2i(2,1)),zone(site2,Vector2i(2,1))])
-	site4=find_site(Vector2i(10,4),[zone(site1,Vector2i(2,1)),zone(site2,Vector2i(2,1)),zone(site3,Vector2i.ONE)])
+	site4=find_site(Vector2i(10,4),[zone(site1,Vector2i(2,1)),zone(site2,Vector2i(2,1)),zone(site3,Vector2i.ONE)],true)
 	site5=find_site(Vector2i(1,1),[zone(site1,Vector2i(2,1)),zone(site2,Vector2i(2,1)),zone(site3,Vector2i.ONE),zone(site4,Vector2i(10,4))])
 	expect(w.save(),"baseline isolated save written")
 	bclock=Ticks.new()
@@ -383,7 +386,7 @@ func setup() -> void:
 # ------------------------------------------------------------------- tests --
 
 func test_contract() -> void:
-	expect(int(Session.PROTOCOL)==45,"protocol bumped to 39 with the blueprint RPCs (got %d)"%int(Session.PROTOCOL))
+	expect(int(Session.PROTOCOL)>=39,"the protocol supports blueprint RPCs")
 	for sig in s.get_signal_list():
 		if sig.name in ["blueprint_quoted","blueprint_applied"]:
 			expect((sig.args as Array).size()==2,"signal %s has two arguments"%sig.name)
@@ -711,11 +714,14 @@ func test_problems() -> void:
 		expect(false,"problem-cap test needs site4")
 		return
 	var saved:Dictionary=w.state.duplicate(true)
-	# Fixture: B owns floors on all 40 cells (direct write, restored below).
+	# Fixture: prepare the land and put 40 floors under B's ownership.
 	var pieces:=[]
 	for y in 4:
 		for x in 10:
-			w.state.ground[World.key(site4+Vector2i(x,y))]={"type":"floor","owner":B}
+			var cell:=site4+Vector2i(x,y)
+			var tile:=World.key(cell)
+			if not w.resource(cell).is_empty():w.state.removed[tile]=true
+			w.state.ground[tile]={"type":"floor","owner":B}
 			pieces.append({"kind":"floor","x":x,"y":y})
 	var raw:={"version":1,"name":"大地板","width":10,"height":4,"pieces":pieces}
 	pose(stand(site4))

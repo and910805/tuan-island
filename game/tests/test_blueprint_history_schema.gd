@@ -5,7 +5,7 @@ const World=preload("res://scripts/world.gd")
 const Schema=preload("res://scripts/save_schema.gd")
 const History=preload("res://scripts/construction_history.gd")
 const A:="blueprint-history-owner"
-const AT:=Vector2i(48,24)
+const AT:=Vector2i(50,26)
 var checks:=0
 var failures:=0
 
@@ -41,7 +41,7 @@ func with_entry(base:Dictionary,version:int,action,builds,terminal:bool=false,re
 func _initialize()->void:run.call_deferred()
 
 func run()->void:
-	check(Schema.VERSION==26,"save schema version is 21")
+	check(Schema.VERSION==27,"save schema version is 21")
 	check(History.MAX_BLUEPRINT_BUILDS==768,"blueprint history limit is 768")
 	check(History.MAX_AREA==49 and World.BASIC_BUILD_AREA==25,"History accepts up to 49 tiles while base construction stays at 25")
 	check("blueprint" in History.ACTIONS,"blueprint is a whitelisted history action")
@@ -61,7 +61,7 @@ func run()->void:
 	# --- blueprint accepted: live record and terminal record --------------------
 	for n in [1,26,768]:
 		var live:=with_entry(baseline,19,"blueprint",n)
-		check(valid(live) and int(live.version)==26,"live blueprint builds=%d accepted"%n)
+		check(valid(live) and int(live.version)==preload("res://scripts/save_schema.gd").VERSION,"live blueprint builds=%d accepted"%n)
 		check(live.construction.last[A].action=="blueprint" and int(live.construction.last[A].builds)==n and live.construction.last[A].status=="live","live blueprint builds=%d preserved"%n)
 		var trip:Dictionary=JSON.parse_string(JSON.stringify(live))
 		check(valid(trip) and int(trip.construction.last[A].builds)==n,"live blueprint builds=%d survives JSON round-trip"%n)
@@ -117,7 +117,7 @@ func run()->void:
 	var v18_history:Dictionary=v18.construction.duplicate(true)
 	var v18_players:Dictionary=v18.players.duplicate(true)
 	var v18_ground:Dictionary=v18.ground.duplicate(true)
-	check(valid(v18) and int(v18.version)==26,"v18 live history migrates to 20")
+	check(valid(v18) and int(v18.version)==preload("res://scripts/save_schema.gd").VERSION,"v18 live history migrates to 20")
 	# Validation normalises whole JSON floats to int, so compare canonically.
 	check(same(v18.construction,v18_history),"v18 live history preserved exactly on migration")
 	check(v18.construction.last[A].status=="live" and v18.construction.last[A].action=="build","v18 live record still live after migration")
@@ -137,7 +137,7 @@ func run()->void:
 	v17.erase("salt_pan")
 	v17.regions.erase("beimen")
 	v17.erase("construction")
-	check(valid(v17) and int(v17.version)==26 and v17.construction==History.fresh(),"v17 migrates to 20 with fresh (empty) history")
+	check(valid(v17) and int(v17.version)==preload("res://scripts/save_schema.gd").VERSION and v17.construction==History.fresh(),"v17 migrates to 20 with fresh (empty) history")
 	var v17_with:Dictionary=baseline.duplicate(true)
 	v17_with.version=17;v17_with.erase("public_kitchen")
 	v17_with.erase("flower_nursery")

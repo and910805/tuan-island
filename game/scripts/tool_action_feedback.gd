@@ -6,7 +6,7 @@ extends RefCounted
 ## Events exist only after World.act returned ok for a fresh (non-replayed)
 ## request, and a recipient only receives events from its own region. `actor` is
 ## the same public id used as the snapshot player key; no inventory, item counts
-## or messages are carried.
+## or messages are carried. Gather pickups add the public ground item IDs only.
 ##
 ## This observer plays each event once. The first snapshot after a (re)join, a
 ## region change, a different own id or a new server epoch is only a baseline,
@@ -23,7 +23,7 @@ const LIFE_ICONS:="res://assets/ui-life/icons.png"
 ## Same cell order as life_ui_shell.gd ICON_IDS (5 columns of 32 px).
 const LIFE_ICON_IDS:=["hoe","water","harvest","axe","pick","build","remove","fish","map","journal","weather","calendar","settings","bell","letter","home","sign","trophy","blueprint","chest"]
 ## Held-tool icon id in LIFE_ICON_IDS (seed / plant_tree use inventory item icons).
-const HELD_ICON:={"hoe":"hoe","water":"water","harvest":"harvest","axe":"axe","pick":"pick","build":"build","remove":"remove","move_object":"chest"}
+const HELD_ICON:={"hoe":"hoe","water":"water","harvest":"harvest","axe":"axe","pick":"pick","build":"build","remove":"remove","fish":"fish","move_object":"chest"}
 ## Static pose used with reduced motion (and the rest pose at the end of a swing).
 const REST_ANGLE:={"hoe":0.35,"axe":0.35,"pick":0.35,"water":0.8,"seed":0.3,"harvest":-0.3,"build":0.0,"remove":-0.5,"plant_tree":0.6,"move_object":0.0}
 const PARTICLE_COLORS:={"hoe":[Color("8a6142"),Color("a77b52")],"axe":[Color("c99a5b"),Color("e2bd84")],
@@ -45,6 +45,8 @@ var tails:Array[Dictionary]=[]
 const MAX_TAILS:=32
 const FINISH_DURATION:=0.75
 var finishes:Dictionary={}
+const PICKUP_DURATION:=1.18
+var pickups:Dictionary={}
 
 func reset() -> void:
 	epoch=""
@@ -55,6 +57,7 @@ func reset() -> void:
 	actions.clear()
 	tails.clear()
 	finishes.clear()
+	pickups.clear()
 
 ## Returns the actors whose animation started from this snapshot (for tests).
 func observe(previous:Dictionary,snapshot:Dictionary,own_id:String,elapsed:float) -> Array:
@@ -62,14 +65,18 @@ func observe(previous:Dictionary,snapshot:Dictionary,own_id:String,elapsed:float
 	var players:Dictionary=snapshot.get("players",{}) if snapshot.get("players") is Dictionary else {}
 	for key in finishes.keys():
 		if elapsed-float(finishes[key].started)>=FINISH_DURATION:finishes.erase(key)
+	for key in pickups.keys():
+		if not players.has(pickups[key].actor) or elapsed-float(pickups[key].started)>=PICKUP_DURATION:pickups.erase(key)
 	tails=tails.filter(func(record):return players.has(record.actor) and elapsed-float(record.started)<DURATION)
 	for actor in actions.keys():
 		if not players.has(actor) or elapsed-float(actions[actor].started)>=DURATION:actions.erase(actor)
 	var payload=snapshot.get("tool_actions",{})
 	var next_epoch:=""
 	var events:Array=[]
+	var cursor:=0
 	if payload is Dictionary:
 		next_epoch=str(payload.get("epoch",""))
+		if payload.get("cursor") is int:cursor=payload.cursor
 		if payload.get("events") is Array:
 			for event in payload.events:
 				if valid_event(event):events.append(event)
@@ -80,10 +87,11 @@ func observe(previous:Dictionary,snapshot:Dictionary,own_id:String,elapsed:float
 		actions.clear()
 		tails.clear()
 		finishes.clear()
+		pickups.clear()
 		epoch=next_epoch
 		region=next_region
 		own=own_id
-		last_n=int(events.back().n) if not events.is_empty() else 0
+		last_n=maxi(cursor,int(events.back().n) if not events.is_empty() else 0)
 		initialized=true
 		return started
 	for event in events:
@@ -92,6 +100,10 @@ func observe(previous:Dictionary,snapshot:Dictionary,own_id:String,elapsed:float
 		last_n=n
 		var actor:String=event.actor
 		if not players.has(actor):continue
+		if event.tool=="gather_pickup":
+			pickups[n]={"actor":actor,"cell":Vector2i(int(event.x),int(event.y)),"started":elapsed,"items":event.items,"collected":true}
+			if pickups.size()>MAX_TAILS:pickups.erase(pickups.keys()[0])
+			continue
 		var person:Dictionary=players[actor]
 		var cell:=Vector2i(int(event.x),int(event.y))
 		var record:={"tool":String(event.tool),"started":elapsed,"cell":cell,"to":cell,
@@ -103,6 +115,15 @@ func observe(previous:Dictionary,snapshot:Dictionary,own_id:String,elapsed:float
 			var lost_planted:bool=was_planted and not snapshot.get("forest",{}).has(crop_key)
 			var lost_natural:bool=not previous.get("removed",{}).has(crop_key) and snapshot.get("removed",{}).has(crop_key)
 			var resource:="tree" if was_planted else World.base_resource(cell,next_region)
+			if (lost_planted or lost_natural) and not snapshot.has("gather_drops"):
+				var items:Array=[]
+				match resource:
+					"tree":items=["wood","hardwood" if was_planted else "resin"]
+					"rock":items=["stone"]
+					"grass":items=["fiber"]
+				if not items.is_empty():
+					pickups[crop_key]={"actor":actor,"cell":cell,"started":elapsed,"items":items}
+					if pickups.size()>MAX_TAILS:pickups.erase(pickups.keys()[0])
 			if (lost_planted or lost_natural) and resource==("tree" if event.tool=="axe" else "rock"):
 				finishes[crop_key]={"kind":resource,"started":elapsed,"cell":cell}
 				if finishes.size()>MAX_TAILS:finishes.erase(finishes.keys()[0])
@@ -120,6 +141,7 @@ func observe(previous:Dictionary,snapshot:Dictionary,own_id:String,elapsed:float
 			if tails.size()>MAX_TAILS:tails.pop_front()
 		actions[actor]=record
 		if actor not in started:started.append(actor)
+	last_n=maxi(last_n,cursor)
 	return started
 
 static func valid_event(event:Variant) -> bool:
@@ -127,7 +149,12 @@ static func valid_event(event:Variant) -> bool:
 	for field in ["n","x","y"]:
 		if not (event.get(field) is int or event.get(field) is float):return false
 	if not event.get("actor") is String or String(event.actor).length()!=16:return false
-	if not event.get("tool") is String or not String(event.tool) in TOOLS:return false
+	if not event.get("tool") is String:return false
+	if event.tool=="gather_pickup":
+		if not event.get("items") is Array or event.items.is_empty() or event.items.size()>World.SAVE_SCHEMA.GATHER_ITEMS.size():return false
+		for item in event.items:
+			if item not in World.SAVE_SCHEMA.GATHER_ITEMS:return false
+	elif event.tool not in TOOLS:return false
 	if int(event.n)<=0 or absi(int(event.x))>1000 or absi(int(event.y))>1000:return false
 	return true
 
@@ -147,6 +174,15 @@ func resource_finish(cell:Vector2i,elapsed:float,reduced:bool) -> Dictionary:
 	if age<0.0 or age>=FINISH_DURATION:return {}
 	var progress:=clampf((age-DURATION*0.5)/(FINISH_DURATION-DURATION*0.5),0.0,1.0)
 	return {"kind":record.kind,"progress":progress,"alpha":1.0-smoothstep(0.30,1.0,progress)}
+
+static func pickup_pose(age:float,origin:Vector2,collector:Vector2,reduced:bool)->Dictionary:
+	if age<0.36 or age>=PICKUP_DURATION:return {}
+	if reduced:return {"position":origin,"height":0.0,"alpha":1.0}
+	if age<0.64:
+		var fall:=(age-0.36)/0.28
+		return {"position":origin,"height":lerpf(10.0,0.0,fall)+sin(fall*PI)*13.0,"alpha":1.0}
+	var pull:=smoothstep(0.82,PICKUP_DURATION,age)
+	return {"position":origin.lerp(collector,pull),"height":9.0*sin(PI*pull),"alpha":1.0-smoothstep(0.74,1.0,pull)}
 
 ## Resource sprites react to confirmed contact, including interrupted swings.
 ## The world cell/collision stays fixed; callers transform only the existing art.
@@ -183,6 +219,15 @@ func crop_press(cell:Vector2i,elapsed:float,reduced:bool) -> int:
 static func hand_grip(foot:Vector2,pose:Dictionary) -> Vector2:
 	var shoulder:=(Vector2(pose.facing)*float(pose.body_lean)).round()
 	return (foot+pose.hand+pose.lunge+Vector2(0,pose.lift if pose.tool=="move_object" else 0.0)).round()+Vector2(shoulder.x,absf(shoulder.y))
+
+static func harvest_center(cell_at:Vector2,foot:Vector2,pose:Dictionary,progress:float) -> Vector2:
+	var root:=cell_at+Vector2(16,17)
+	if pose.reduced:return root
+	var lift:=smoothstep(0.12,0.40,progress)
+	var travel:=smoothstep(0.34,0.80,progress)
+	# Use the mouth of the existing held basket, rotated with the same grip.
+	var mouth:=hand_grip(foot,pose)+Vector2(0,-10).rotated(float(pose.angle))
+	return (root.lerp(mouth,travel)+Vector2(0,-lift*(1.0-travel)*20.0)).round()
 
 static func facing_toward(origin:Vector2,cell:Vector2i,fallback:Vector2i) -> Vector2i:
 	var towards:=Vector2(cell)+Vector2(0.5,0.5)-origin
@@ -261,10 +306,9 @@ static func plan(tool:String,progress:float,reduced:bool,facing:Vector2i=Vector2
 		# Reach first, then straighten as the crop comes free. Boots stay planted.
 		result.body_lean=roundf(5.0*smoothstep(0.0,0.20,t)*(1.0-smoothstep(0.25,0.64,t)))
 		angle=lerpf(0.0,-0.4,clampf(t/0.3,0.0,1.0))
-		var pop:=smoothstep(0.12,0.56,t)
-		result.lift=-roundf(pop*15.0+smoothstep(0.56,1.0,t)*4.0)
-		result.crop_scale=1.0+0.22*sin(pop*PI)
-		result.alpha=1.0-smoothstep(0.55,1.0,t)
+		var pop:=smoothstep(0.12,0.44,t)
+		result.crop_scale=1.0+0.22*sin(pop*PI)-0.32*smoothstep(0.62,0.86,t)
+		result.alpha=1.0-smoothstep(0.71,0.90,t)
 		if t>=0.3:
 			for i in 3:
 				particles.append({"pos":Vector2(6.0+i*9.0,roundf(10.0-(t-0.3)*14.0+(i%2)*4.0)),"size":Vector2(2,2),"color":colors[i%2]})

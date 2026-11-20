@@ -14,8 +14,8 @@ const Queue=preload("res://scripts/cooking_queue.gd")
 const History=preload("res://scripts/construction_history.gd")
 const A:="processing-schema-owner"
 const B:="processing-schema-friend"
-const FLOOR:=Vector2i(48,24)
-const HOME_CELL:="49,25"      # sawmill, owner A
+const FLOOR:=Vector2i(50,26)
+const HOME_CELL:="50,25"      # sawmill, owner A
 const LAN:="lanyang"
 const LAN_CELL:="60,45"       # charcoal_kiln, owner B
 const JIN:="jinguashi"
@@ -261,7 +261,7 @@ func run()->void:
 	OLD_KILN={"charcoal":{"ingredients":{"wood":3},"time":9.0,"yield":1}}
 
 	# --- constants / literal cutoffs ---------------------------------------------
-	check(Schema.VERSION==26,"save schema version is 21")
+	check(Schema.VERSION==27,"save schema version is 21")
 	check(Schema.PROCESSING_QUEUE_VERSION==21,"processing queue cutoff literal is 21")
 	check(Schema.COOKING_QUEUE_VERSION==20,"cooking queue cutoff literal stays 20")
 	check(Schema.BLUEPRINT_HISTORY_VERSION==19,"blueprint cutoff literal stays 19")
@@ -273,9 +273,9 @@ func run()->void:
 
 	# --- baseline ------------------------------------------------------------------
 	var base:=fixture()
-	check(int(base.version)==26,"fresh World writes version 21")
+	check(int(base.version)==preload("res://scripts/save_schema.gd").VERSION,"fresh World writes version 21")
 	var plain:Dictionary=base.duplicate(true)
-	check(valid(plain) and int(plain.version)==26,"v21 stations without processing accepted")
+	check(valid(plain) and int(plain.version)==preload("res://scripts/save_schema.gd").VERSION,"v21 stations without processing accepted")
 	for where in ["home","lanyang"]:
 		check(not station(plain,where).has("processing"),"%s: missing processing never invented on load"%where)
 	var live=load_real(base)
@@ -291,7 +291,7 @@ func run()->void:
 	station(both,"lanyang").processing=lan_q.duplicate(true)
 	station(both,"jinguashi").cooking=stove_q.duplicate(true)
 	var both_input:Dictionary=both.duplicate(true)
-	check(valid(both) and int(both.version)==26,"home sawmill + regional kiln processing + cooking accepted at v21")
+	check(valid(both) and int(both.version)==preload("res://scripts/save_schema.gd").VERSION,"home sawmill + regional kiln processing + cooking accepted at v21")
 	check(same(station(both,"home").processing,home_q) and same(station(both,"lanyang").processing,lan_q),"validated processing queues unchanged")
 	check(same(station(both,"jinguashi").cooking,stove_q),"cooking queue unchanged next to processing queues")
 	check(int(station(both,"home").input_wood)==5 and same(station(both,"home").items,{"plank":3}) and station(both,"home").auto_enabled==false,"automatic buffer input_wood/items preserved beside manual queue")
@@ -317,7 +317,7 @@ func run()->void:
 		var again:=World.new()
 		check(again.load_world(path),"saved processing file reloads")
 		check(same(again.state.objects.get(HOME_CELL,{}).get("processing"),home_q) and same(again.state.regions[LAN].objects.get(LAN_CELL,{}).get("processing"),lan_q),"saved processing queues reload identically")
-		check(int(again.state.version)==26,"reloaded save is version 21")
+		check(int(again.state.version)==preload("res://scripts/save_schema.gd").VERSION,"reloaded save is version 21")
 
 	# --- capacity -------------------------------------------------------------------
 	for where in ["home","lanyang"]:
@@ -425,7 +425,7 @@ func run()->void:
 		if version==20:station(s,"jinguashi").cooking=cooking_queue(A,970)
 		var players_before:Dictionary=s.players.duplicate(true)
 		var keys_before:Array=s.players[A].inventory.keys();keys_before.sort()
-		check(valid(s) and int(s.version)==26,"v%d legacy processing jobs accepted -> 21"%version)
+		check(valid(s) and int(s.version)==preload("res://scripts/save_schema.gd").VERSION,"v%d legacy processing jobs accepted -> 21"%version)
 		check(same(station(s,"home").job,legacy_job("home",NOW+5.0)),"v%d manual sawmill job preserved exactly"%version)
 		check(same(station(s,"lanyang").job,legacy_job("lanyang",NOW+3.0,true)) and station(s,"lanyang").auto_enabled==true and int(station(s,"lanyang").input_wood)==8,"v%d automatic kiln job/mode/buffer preserved exactly"%version)
 		check(not station(s,"home").has("processing") and not station(s,"lanyang").has("processing"),"v%d legacy jobs not converted at load"%version)
@@ -463,7 +463,7 @@ func run()->void:
 		v20.regions.erase("beimen")
 	station(v20,"home").job=legacy_job("home",NOW+5.0)
 	var w20=load_real(v20)
-	check(w20!=null and int(w20.state.version)==26,"real World loads v20 legacy job as 21")
+	check(w20!=null and int(w20.state.version)==preload("res://scripts/save_schema.gd").VERSION,"real World loads v20 legacy job as 21")
 	if w20!=null:
 		check(same(w20.state.objects[HOME_CELL].job,legacy_job("home",NOW+5.0)) and not w20.state.objects[HOME_CELL].has("processing"),"real load keeps legacy job, no processing field")
 		check(w20.save(),"migrated world saves")
@@ -488,7 +488,7 @@ func run()->void:
 		v20c.erase("salt_pan")
 		v20c.regions.erase("beimen")
 	station(v20c,"jinguashi").cooking=cooking_queue(A,990)
-	check(valid(v20c) and int(v20c.version)==26,"v20 cooking queue migrates to 21")
+	check(valid(v20c) and int(v20c.version)==preload("res://scripts/save_schema.gd").VERSION,"v20 cooking queue migrates to 21")
 	var v18:Dictionary=base.duplicate(true)
 	v18.version=18;v18.erase("public_kitchen")
 	if int(v18.version)<25:
@@ -497,7 +497,7 @@ func run()->void:
 		v18.erase("salt_pan")
 		v18.regions.erase("beimen")
 	var v18_history:Dictionary=v18.construction.duplicate(true)
-	check(valid(v18) and int(v18.version)==26 and same(v18.construction,v18_history),"v18 undo history preserved to 21")
+	check(valid(v18) and int(v18.version)==preload("res://scripts/save_schema.gd").VERSION and same(v18.construction,v18_history),"v18 undo history preserved to 21")
 	var v17:Dictionary=base.duplicate(true)
 	v17.version=17;v17.erase("public_kitchen")
 	if int(v17.version)<25:

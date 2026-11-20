@@ -290,6 +290,10 @@ static func shelter_feet(origin:Vector2)->Vector2:
 static func draw_structure(canvas:CanvasItem,feet:Vector2,id:String)->bool:
 	return SaltArt.draw_anchored(canvas,SaltArt.structure_texture(id),feet,SaltArt.structure_anchor(id))
 
+static func heritage_sign_rect(origin:Vector2)->Rect2:
+	var top:=(feet_of(origin,Salt.HERITAGE_SIGN)-Vector2(SaltArt.structure_anchor("sign"))).round()
+	return Rect2(top,Vector2(SaltArt.structure_texture("sign").get_size()))
+
 ## Tall props and 阿曬 whose feet sit on row `y`, in feet order. Returns the
 ## labels to place as [anchor, site_id] pairs.
 static func draw_row(canvas:CanvasItem,origin:Vector2,y:int,data:Dictionary,elapsed:float,reduced_motion:bool)->Array:
@@ -339,7 +343,7 @@ static func draw_row(canvas:CanvasItem,origin:Vector2,y:int,data:Dictionary,elap
 		draw_structure(canvas,feet,"sign")
 		labels.append([feet-Vector2(0,SaltArt.structure_anchor("sign").y+3),"salt:lot:%d"%Salt.PUBLIC_LOT])
 	if y==Salt.HERITAGE_SIGN.y:
-		var feet:=origin+Vector2(Salt.HERITAGE_SIGN.x+0.5,y+1)*32+Vector2(0,-2)
+		var feet:=feet_of(origin,Salt.HERITAGE_SIGN)
 		draw_structure(canvas,feet,"sign")
 		labels.append([feet-Vector2(0,SaltArt.structure_anchor("sign").y+3),"salt:heritage"])
 	return labels

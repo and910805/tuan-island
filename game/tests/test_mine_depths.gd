@@ -69,7 +69,7 @@ func _initialize()->void:
 	place(world,node)
 	expect(not world.act(Actor,"cooldown","pick",node).ok and world.act(Actor,"gold","mine_extract",node)==mined,"Shared cooldown and replay prevent extra payout")
 	var reload:=World.new()
-	expect(reload.load_world(path) and reload.state.version==26 and reload.state.mine_depths.unlocked==5 and reload.player_region(Actor)=="mine_5","Depth, energy and resources persist")
+	expect(reload.load_world(path) and reload.state.version==preload("res://scripts/save_schema.gd").VERSION and reload.state.mine_depths.unlocked==5 and reload.player_region(Actor)=="mine_5","Depth, energy and resources persist")
 	expect((reload.island_project_mask() & 32)!=0,"Fifth-floor access appears in island news after reload")
 	var schema=preload("res://scripts/save_schema.gd")
 	var invalid:=reload.state.duplicate(true)
@@ -103,25 +103,28 @@ func _initialize()->void:
 	for region in World.REGIONS.ANGLING_RESERVES:legacy.regions.erase(region)
 	for region in World.TRANSIT.TEA_STOPS:legacy.regions.erase(region)
 	for region in World.TRANSIT.LOCAL:legacy.regions.erase(region)
+	legacy.regions.erase(World.PARTY_CART.REGION)
 	legacy.erase("mine_depths")
 	for region in Mines.IDS:legacy.regions.erase(region)
 	legacy.players[Actor].erase("mine_energy")
-	expect(schema.validate(legacy,World.CROPS,World.BUILD,World.RECIPES,World.SIZE,World.TREE_TIME) and legacy.version==26 and legacy.mine_depths==Mines.fresh() and legacy.players[Actor].inventory.gold_ore==4 and legacy.regions.size()==World.REGIONS.ALL.size()-1,"Version five migrates to all current regions and keeps existing inventory")
-	for region in World.REGIONS.ALL:
+	expect(schema.validate(legacy,World.CROPS,World.BUILD,World.RECIPES,World.SIZE,World.TREE_TIME) and legacy.version==preload("res://scripts/save_schema.gd").VERSION and legacy.mine_depths==Mines.fresh() and legacy.players[Actor].inventory.gold_ore==4 and legacy.regions.size()==World.REGIONS.ALL.size()-1,"Version five migrates to all current regions and keeps existing inventory")
+	var simulated_regions:Array=World.REGIONS.ALL.filter(func(region):return region!=World.PARTY_CART.REGION)
+	for region in simulated_regions:
 		var layer:Dictionary=reload.state if region=="home" else reload.state.regions[region]
 		layer.crops["13,20"]={"kind":"radish","wet":false,"growth":0.0,"remaining":1,"owner":Actor}
 		layer.objects["13,21"]={"type":"sprinkler","owner":Actor,"items":{},"water":1,"enabled":true,"next_water":0.0,"last_water":-1.0}
 	var before_tick:=reload.state.duplicate(true)
 	reload.save_path=path.path_join("missing").path_join("file")
-	expect(not reload.step(1,true) and reload.state==before_tick,"All eight region ticks and the clock roll back as one save")
+	expect(not reload.step(1,true) and reload.state==before_tick,"Regional sprinkler ticks and the clock roll back as one save")
 	reload.save_path=path
-	expect(reload.step(1,true) and reload.state.time==before_tick.time+1,"Clock advances exactly once across eight regions")
+	expect(reload.step(1,true) and reload.state.time==before_tick.time+1,"Clock advances exactly once across simulated regions")
 	var watered:=true
-	for region in World.REGIONS.ALL:
+	for region in simulated_regions:
 		var layer:Dictionary=reload.state if region=="home" else reload.state.regions[region]
 		watered=watered and layer.crops["13,20"].wet
-	expect(watered,"Every region ran its real sprinkler step")
-	for region in World.REGIONS.ALL:
+	expect(watered,"Every simulated region ran its real sprinkler step")
+	expect(reload.state.regions[World.PARTY_CART.REGION]==World.REGIONS.fresh(),"The dedicated cart gallery remains an empty persistent region")
+	for region in simulated_regions:
 		var layer:Dictionary=reload.state if region=="home" else reload.state.regions[region]
 		layer.crops.erase("13,20")
 		layer.objects.erase("13,21")

@@ -1,10 +1,7 @@
 extends SceneTree
 
-# Standalone checks for the salt prop adapter (game/scripts/salt_props_art.gd),
-# adapted from work/salt/staged-art/test_salt_props_art.gd: only the adapter
-# load and the byte-identity comparison now point at game/ (res://), and the two
-# root paths are derived from the project instead of env vars. Prints one JSON line
-# "SALT_PROPS_MEASURE {...}" with the quantitative results for result.json.
+# Standalone checks for the salt prop adapter and the exported project's sprite sheet.
+# The recorded source hash lets a clean checkout verify the sheet without work artifacts.
 var Art: GDScript
 var checks := 0
 var failures := 0
@@ -51,16 +48,17 @@ func _initialize() -> void:
 
 func run() -> void:
 	var stage := ProjectSettings.globalize_path("res://assets/salt")
-	var repo := ProjectSettings.globalize_path("res://").trim_suffix("/").get_base_dir()
 	Art = preload("res://scripts/salt_props_art.gd")
 	expect(Art != null, "adapter script loads")
 	if Art == null:
 		finish()
 		return
-	var src_path := repo + "/work/salt/art-source/salt-props-source-v2.png"
+	var src_path := stage.path_join("salt-props.png")
 	var hash_before := FileAccess.get_sha256(src_path)
 	measure["source_sha256"] = hash_before
-	expect(hash_before == FileAccess.get_sha256(stage + "/salt-props.png"), "game res:// copy is byte-identical to selected source")
+	var provenance:Variant=JSON.parse_string(FileAccess.get_file_as_string("res://assets/salt/provenance.json"))
+	var source_hash:String=provenance.get("files",{}).get("salt-props.png",{}).get("source_sha256","") if provenance is Dictionary else ""
+	expect(not source_hash.is_empty() and hash_before==source_hash,"Game sheet matches the recorded source SHA-256")
 
 	# --- default path is the eventual game path, not a machine path ---
 	expect(Art.DEFAULT_SOURCE_PATH == "res://assets/salt/salt-props.png", "default source path is res://assets/salt/salt-props.png")
@@ -69,6 +67,9 @@ func run() -> void:
 	# --- source quantitative checks ---
 	var src := Image.load_from_file(src_path)
 	expect(src != null and src.get_size() == Vector2i(1254, 1254), "source is 1254x1254")
+	if src==null:
+		finish()
+		return
 	expect(src.detect_alpha() != Image.ALPHA_NONE, "source has alpha")
 	src.convert(Image.FORMAT_RGBA8)
 	var measured := {}
@@ -134,7 +135,7 @@ func run() -> void:
 	expect(Art.prop_texture("waterwheel") == null, "missing source -> null")
 	Art.set_source_path("res://assets/salt/missing.png")
 	expect(Art.prop_texture("waterwheel") == null, "missing res:// source -> null")
-	Art.set_source_path(repo + "/game/assets/life-art/characters.png")
+	Art.set_source_path(ProjectSettings.globalize_path("res://assets/life-art/characters.png"))
 	expect(Art.prop_texture("waterwheel") == null, "wrong-size source -> null")
 	expect(Art.cache.is_empty(), "failed loads leave cache empty")
 
@@ -272,7 +273,7 @@ func run() -> void:
 	expect(Art.cache.is_empty(), "clear_cache empties")
 
 	# --- reference character (read-only): main player atlas + flower resident ---
-	var chars := Image.load_from_file(repo + "/game/assets/life-art/characters.png")
+	var chars := Image.load_from_file(ProjectSettings.globalize_path("res://assets/life-art/characters.png"))
 	if chars != null:
 		chars.convert(Image.FORMAT_RGBA8)
 		var pb := bounds(chars, Rect2i(0, 0, 48, 48), Art.ALPHA_VISIBLE)

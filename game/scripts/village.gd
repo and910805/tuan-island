@@ -33,6 +33,7 @@ const QUESTS:={
 		{"title":"收攤以後的位置","goal":"完成渡口野餐，並親手種下至少兩棵樹苗。","items":{},"picnic":true,"counter":"trees_planted","target":2,"coins":100,"reward":{"sapling":1},"line":"野餐那天我早早收了攤，本來還怕沒地方坐。你替我挪了個位置。這棵樹苗種哪都好，反正下回我會知道往哪裡回來。"}
 	]
 }
+const LANYANG_RICE_BATCH:=2
 const ORDERS:=[
 	{"id":"radish","name":"渡口的家常湯","items":{"radish":3},"coins":90},
 	{"id":"fish","name":"小栗的魚貨籃","items":{"carp":1,"minnow":1},"coins":55},
@@ -40,6 +41,7 @@ const ORDERS:=[
 	{"id":"market_jam","name":"市集的草莓果醬","items":{"strawberry_jam":2},"coins":135},
 	{"id":"dock_shrimp","channel":"dock","name":"出航前的潮池蝦籃","items":{"gold_shrimp":2,"seaweed":1},"coins":110},
 	{"id":"dock_glassmakers","channel":"dock","name":"送給修窗師傅的晶砂","items":{"crystal_sand":2,"seashell":1},"coins":92},
+	{"id":"lanyang_rice","channel":"lanyang","name":"水圳旁的第一袋米","items":{"rice":LANYANG_RICE_BATCH},"coins":82},
 ]
 static func ensure_player(p:Dictionary) -> void:
 	if not p.has("stories"):p.stories={"aru":0,"milu":0,"xiaoli":0,"bobo":0}

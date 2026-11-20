@@ -22,6 +22,10 @@ func run() -> void:
 	act("fox_track",tracks[1])
 	act("fox_adopt",World.Fox.SITE)
 	expect(person().get(World.Fox.FIELD,{}).get("following",false),"The fox follows after both observations")
+	var bamboo:=World.REGIONS.Bamboo
+	expect(not bag().has(bamboo.ITEM),"The fresh traveller reaches the grove without bamboo")
+	for index in 3:act("axe",bamboo.CLUMPS[index])
+	expect(int(bag().get(bamboo.ITEM,0))==bamboo.YIELD*3,"The traveller walks to the clumps and collects enough bamboo to build a tea table")
 	travel(World.REGIONS.exit_cell(World.Fox.REGION),Tea.MAOKONG)
 	travel(gate,"home")
 	if failed:return
@@ -35,6 +39,12 @@ func run() -> void:
 	expect(int(bag().get("seaweed",0))==previous+1
 		and not World.Fox.visible_clues(World,world.state,person()).has(World.SEAWEED_CELL),"Following the clue gives seaweed and removes its marker")
 	expect(reload("fox and first seashore haul"),"The fox and shore gather survive reload")
+	expect(int(bag().get(bamboo.ITEM,0))==bamboo.YIELD*3,"The harvest survives the return to Wang'an and reload")
+	var table:=World.INDUSTRY.BAMBOO_TEA_TABLE
+	gather_for_dock("wood","tree","axe",int(World.BUILD[table].wood),3)
+	var table_site:=Vector2i(39,37)
+	act("build",table_site,table)
+	expect(world.state.objects.get(World.key(table_site),{}).get("type")==table and int(bag().get(bamboo.ITEM,0))==0,"The harvested bamboo pays for the built table")
 	expect(bool(person().get(World.Fox.FIELD,{}).get("following",false)) and int(person().fox_tracks)==7,
 		"The complete trail and companion survive the full trip")
 

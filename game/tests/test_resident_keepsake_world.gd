@@ -248,9 +248,9 @@ static func chest_items(w,cell:Vector2i)->Dictionary:
 # ------------------------------------------------------------------ catalog --
 
 func test_catalog()->void:
-	expect(Goals.KEEPSAKE_ORDER.size()==17 and Goals.KEEPSAKES.size()==17,"Seventeen keepsakes in KEEPSAKES and KEEPSAKE_ORDER")
+	expect(Goals.KEEPSAKE_ORDER.size()==18 and Goals.KEEPSAKES.size()==18,"Eighteen keepsakes in KEEPSAKES and KEEPSAKE_ORDER")
 	expect(World.RESIDENT_GOALS.KEEPSAKES==Goals.KEEPSAKES,"World wires the same RESIDENT_GOALS keepsake catalogue")
-	expect(Goals.keepsake_items().size()==17,"keepsake_items() lists seventeen kits")
+	expect(Goals.keepsake_items().size()==18 and Goals.keepsake_items().has("keepsake_bobo_cart_kit"),"keepsake_items() lists eighteen kits including keepsake_bobo_cart_kit")
 	var residents:={}
 	var names:={}
 	var other_names:={}
@@ -269,7 +269,8 @@ func test_catalog()->void:
 		expect(Goals.keepsake_items()[Goals.KEEPSAKE_ORDER.find(kind)]==item,"%s: keepsake_items() keeps KEEPSAKE_ORDER"%kind)
 		expect(resident in Bond.RESIDENTS and Goals.has_goal(resident,stage),"%s belongs to an existing goal %s %d"%[kind,resident,stage])
 		expect(Goals.keepsake_kind(resident,stage)==kind,"%s: keepsake_kind(%s,%d) finds it"%[kind,resident,stage])
-		expect(str(Goals.goal(resident,stage).keepsake)==name,"%s: name equals the goal's journal keepsake text"%kind)
+		if kind=="keepsake_bobo_cart":expect(name=="祖父的礦車","%s is named 祖父的礦車 (the goal's journal text may differ)"%kind)
+		else:expect(str(Goals.goal(resident,stage).keepsake)==name,"%s: name equals the goal's journal keepsake text"%kind)
 		expect(not str(e.blurb).is_empty(),"%s has a blurb"%kind)
 		residents[resident]=true
 		names[name]=true
@@ -288,7 +289,7 @@ func test_catalog()->void:
 		expect(users==1,"%s is consumed by exactly one BUILD recipe (%d)"%[item,users])
 		expect(not other_names.has(name),"%s: name '%s' not used by another BUILD kind or item (%s)"%[kind,name,str(other_names.get(name,""))])
 	expect(residents.size()==12,"All twelve residents have keepsakes (%d residents)"%residents.size())
-	expect(names.size()==17,"Seventeen distinct names")
+	expect(names.size()==18,"Eighteen distinct names")
 	expect(Goals.keepsake_kind("aru",2)=="" and Goals.keepsake_item("bogus")=="" and not Goals.is_keepsake_item("wood") and not Goals.is_keepsake_item("trio_keepsake_kit"),"Negative lookups")
 
 # 2. Not a currency: no price, not tradeable, not stall-listable, no shipping quote.
@@ -312,8 +313,8 @@ func test_placement()->World:
 	w.add_player(BETA,"乙")
 	w.state["picnic"]=true  # PRESET: plaza features (market stall, shipping) open
 	w.state["time"]=START   # PRESET
-	var tiles:Array=free_tiles(w,ORIGIN,20,reserved_cells(w))
-	if not expect(tiles.size()==20,"Twenty free home tiles near %s (%d)"%[str(ORIGIN),tiles.size()]):return null
+	var tiles:Array=free_tiles(w,ORIGIN,21,reserved_cells(w))  # 3 work tiles + one bulk tile per keepsake (18)
+	if not expect(tiles.size()==21,"Twenty-one free home tiles near %s (%d)"%[str(ORIGIN),tiles.size()]):return null
 	build_tile=tiles[0]
 	move_tile=tiles[1]
 	chest_tile=tiles[2]
@@ -393,20 +394,24 @@ func test_actions_not_currency(w)->void:
 # Saves with kits in the bag, in a chest, and placed; reload round trip.
 func test_placement_saves(w)->void:
 	var path:=temp_path("place")
-	# a) All 12 kits in the bag.
+	# a) All kits in the bag.
 	var data:=saved(w,path,"kits in bag")
-	expect(not data.is_empty() and validates(data),"Save with 17 keepsake kits in the bag validates")
-	# b) All 12 kits in the chest.
+	expect(not data.is_empty() and validates(data),"Save with 18 keepsake kits in the bag validates")
+	# b) Check every kit through the real 16-slot chest and a save/reload, in batches.
 	put(w,ALPHA,work_spot)
-	for item:String in Goals.keepsake_items():ok(w,ALPHA,"deposit",chest_tile,item,"deposit %s"%item)
-	for item:String in Goals.keepsake_items():expect(int(chest_items(w,chest_tile).get(item,0))==1 and int(bag(w,ALPHA).get(item,0))==0,"%s sits in the chest"%item)
-	data=saved(w,path,"kits in chest")
-	expect(not data.is_empty() and validates(data),"Save with 17 keepsake kits in a chest validates")
-	var mid:=World.new()
-	expect(mid.load_world(path),"Save with kits in a chest reloads")
-	expect(same(chest_items(mid,chest_tile),chest_items(w,chest_tile)),"Chest contents survive reload (canonical)")
-	for item:String in Goals.keepsake_items():ok(w,ALPHA,"withdraw",chest_tile,item,"withdraw %s"%item)
-	# c) All 12 placed.
+	const CAPACITY=preload("res://scripts/box_capacity.gd").SLOTS
+	var items:=Goals.keepsake_items()
+	for offset in range(0,items.size(),CAPACITY):
+		var batch:=items.slice(offset,offset+CAPACITY)
+		for item:String in batch:ok(w,ALPHA,"deposit",chest_tile,item,"deposit %s"%item)
+		for item:String in batch:expect(int(chest_items(w,chest_tile).get(item,0))==1 and int(bag(w,ALPHA).get(item,0))==0,"%s sits in the chest"%item)
+		data=saved(w,path,"kits in chest")
+		expect(not data.is_empty() and validates(data),"Save with the deposited kits validates")
+		var mid:=World.new()
+		expect(mid.load_world(path),"Save with kits in a chest reloads")
+		expect(same(chest_items(mid,chest_tile),chest_items(w,chest_tile)),"Chest contents survive reload (canonical)")
+		for item:String in batch:ok(w,ALPHA,"withdraw",chest_tile,item,"withdraw %s"%item)
+	# c) All kits placed.
 	var index:=0
 	for kind:String in Goals.KEEPSAKE_ORDER:
 		var tile:Vector2i=bulk[index]
@@ -423,9 +428,9 @@ func test_placement_saves(w)->void:
 	var placed:=0
 	for obj in w.state.objects.values():
 		if obj is Dictionary and Goals.is_keepsake_kind(str(obj.get("type",""))):placed+=1
-	expect(placed==17,"Seventeen keepsakes placed after a world tick (%d)"%placed)
+	expect(placed==18,"Eighteen keepsakes placed after a world tick (%d)"%placed)
 	data=saved(w,path,"kits placed")
-	expect(not data.is_empty() and validates(data),"Save with 17 keepsakes placed validates")
+	expect(not data.is_empty() and validates(data),"Save with 18 keepsakes placed validates")
 	var reloaded:=World.new()
 	if not expect(reloaded.load_world(path),"Fresh world reloads the placement save"):return
 	expect(same(reloaded.state.objects,w.state.objects),"state.objects survives reload (canonical)")

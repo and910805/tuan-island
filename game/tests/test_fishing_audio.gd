@@ -36,7 +36,7 @@ func _initialize() -> void:
 	update()
 	expect(update().is_empty(),"Discarding the cue while muted consumes it")
 	world.move_player("alice",Vector2.LEFT,0.1)
-	expect(update().is_empty(),"Moving away does not play a catch")
+	expect(update()==["fish_cancel"] and update().is_empty(),"Moving away plays one empty-line retract cue")
 
 	expect(world.act("alice","baseline-cast","fish_start",WATER).ok,"Cast before reconnect")
 	tracker.reset()

@@ -102,7 +102,12 @@ func test_regional_weather() -> void:
 		person.y=float(cell.y)+0.5
 		var before:int=person.inventory.fiber
 		var result:Dictionary=world.act("grass-tester","grass-weather","axe",cell)
-		expect(result.ok and int(world.state.players["grass-tester"].inventory.fiber)-before==(6 if day==18.0 else 4),"Hand-gathered grass gains exactly two fiber on the breeze day")
+		var amount:=6 if day==18.0 else 4
+		var drop:Dictionary=world.state.get("gather_drops",{}).get("home",{}).get(World.key(cell),{})
+		expect(result.ok and int(drop.get("items",{}).get("fiber",0))==amount and int(person.inventory.fiber)==before,
+			"Hand-gathered grass first drops the correct fiber amount for the weather")
+		expect(world.step(World.GATHER_DROP_DELAY+0.01,true) and int(person.inventory.fiber)-before==amount,
+			"Picking up the fiber keeps the two-fiber breeze bonus")
 
 func test_season_growth() -> void:
 	expect(Weather.season_on_day(13.0) == "spring" and Weather.season_on_day(14.0) == "summer" and Weather.season_on_day(56.0) == "spring", "Seasons turn after fourteen days and wrap")

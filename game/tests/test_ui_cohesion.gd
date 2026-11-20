@@ -5,6 +5,7 @@ var app
 var world: World
 var checks := 0
 var failures := 0
+var order_capture_dir := ""
 const PLAYER := "cohesion"
 
 func _initialize() -> void:
@@ -69,13 +70,26 @@ func check_modal(name: String, viewport: Rect2, close_after:bool=true) -> void:
 		expect(materials>0, name + " shows current quest materials")
 	if name=="_orders_menu":
 		var scrolls:=panel.find_children("*","ScrollContainer",true,false)
-		var actions:=0
-		for button in panel.find_children("*","Button",true,false):
-			if button.text=="交件":
-				actions+=1
-				expect(not scrolls.is_empty() and scrolls[0].get_global_rect().encloses(button.get_global_rect()),
-					"order delivery visible without scrolling")
-		expect(actions==3,"three daily orders show delivery actions")
+		var deliveries:=panel.find_children("OrderDeliver","Button",true,false)
+		expect(deliveries.size()==1,"only the accepted daily order has a delivery action")
+		if not deliveries.is_empty():
+			var deliver:Button=deliveries[0]
+			expect(deliver.text=="交件" and not deliver.disabled,"the accepted order can be delivered with the stocked bag")
+			expect(not scrolls.is_empty() and scrolls[0].get_global_rect().encloses(deliver.get_global_rect()),
+				"order delivery visible without scrolling")
+		var offered:Array=app.LifeAlmanac.order_board_view(app).rows.filter(func(order):return order.status=="open")
+		var acceptance:=panel.find_children("OrderAccept","Button",true,false)
+		expect(not offered.is_empty() and acceptance.size()==offered.size(),
+			"open orders keep their acceptance actions")
+		for accept:Button in acceptance:
+			expect(not scrolls.is_empty() and scrolls[0].get_global_rect().encloses(accept.get_global_rect()),
+				"today's acceptance button is visible without scrolling")
+		if not order_capture_dir.is_empty():
+			await create_timer(0.3).timeout
+			await RenderingServer.frame_post_draw
+			var size:=Vector2i(viewport.size)
+			expect(root.get_texture().get_image().save_png(order_capture_dir.path_join("orders-%dx%d.png"%[size.x,size.y]))==OK,
+				"saved native order board at %s"%size)
 	if name=="_resident_menu":
 		var deliver:=find_button("交付這段委託")
 		var scrolls:=panel.find_children("*","ScrollContainer",true,false)
@@ -147,6 +161,8 @@ func check_journal() -> void:
 
 func run() -> void:
 	create_timer(12.0).timeout.connect(func(): quit(1))
+	for argument:String in OS.get_cmdline_user_args():
+		if argument.begins_with("--orders-capture-dir="):order_capture_dir=argument.trim_prefix("--orders-capture-dir=")
 	app = load("res://main.tscn").instantiate()
 	root.add_child(app)
 	expect(app.village_art_preview, "finished illustrated UI is enabled by default in the game")
@@ -173,6 +189,13 @@ func run() -> void:
 			["_festival_menu", []], ["_animal_menu", []], ["_orders_menu", []], ["_settings_menu", []],
 			["_map_menu", []], ["_help", []], ["_quarry_menu", []],
 		]:
+			if entry[0]=="_orders_menu":
+				var player:Dictionary=world.state.players[PLAYER]
+				player.inventory.radish=3
+				player.orders={"active":{"radish":{"accepted":0.0,"due":3*World.Village.DAY}},"done":[],"day":0}
+				world.state.board=true
+				app.session.snapshot.order_board=world.order_board(PLAYER)
+				world.state.board=false
 			app.callv(entry[0], entry[1])
 			await frames()
 			await check_modal(entry[0], viewport)
@@ -198,4 +221,3 @@ func run() -> void:
 	await process_frame
 	print("UI_COHESION_TESTS checks=%d failures=%d" % [checks, failures])
 	quit(0 if failures == 0 else 1)
-

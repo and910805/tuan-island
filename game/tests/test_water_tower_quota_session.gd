@@ -14,9 +14,9 @@ extends SceneTree
 ## SEEDED FIXTURE (disclosed): built offline in a World before the server starts and
 ## validated with SaveSchema. EARNED there through World.act: the canal repair, alpha's
 ## first 分水 memory, the plaque and the Lanyang revisit (same seed as
-## test_water_tower_session.gd, unlocking the tower recipe), alpha's workbench at (50,27),
-## the tower-kit craft, and the builds of the tank (49,24), the tower (48,24) and a small
-## sprinkler (47,24) (placed disabled, as every new sprinkler is).
+## test_water_tower_session.gd, unlocking the tower recipe), alpha's workbench at (50,22),
+## the tower-kit craft, and the builds of the tank (49,22), the tower (48,22) and a small
+## sprinkler (47,22) (placed disabled, as every new sprinkler is).
 ## WRITTEN DIRECTLY: repair materials, wood/stone for the bench, alpha's bag set to exactly
 ## plank 6 / copper_joint 2 / stone 6 / tank_kit 1 / sprinkler_kit 1 (all spent by the
 ## seed), every standing spot (Lanyang spots for the seed actions; home spots next to the
@@ -47,13 +47,13 @@ const KEY:="water-tower-quota-session"
 const ALPHA:="tower-quota-alpha-token"
 const BETA:="tower-quota-beta-token"
 const GAMMA:="tower-quota-gamma-token"
-const BENCH:=Vector2i(50,27)
-const TANK:=Vector2i(49,24)
-const TOWER:=Vector2i(48,24)
-const SPRK:=Vector2i(47,24)
-const TANK_KEY:="49,24"
-const TOWER_KEY:="48,24"
-const SPRK_KEY:="47,24"
+const BENCH:=Vector2i(50,22)
+const TANK:=Vector2i(49,22)
+const TOWER:=Vector2i(48,22)
+const SPRK:=Vector2i(47,22)
+const TANK_KEY:="49,22"
+const TOWER_KEY:="48,22"
+const SPRK_KEY:="47,22"
 const A_SPOT:=Vector2(32.5,24.5)
 const B_SPOT:=Vector2(32.5,30.5)
 const TOTAL:=48

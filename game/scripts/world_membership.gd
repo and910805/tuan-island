@@ -336,4 +336,3 @@ func publish_snapshot(online: Array) -> Dictionary:
 	return {"revision": candidate.revision, "name": candidate.world_name, "members": members,
 		"online": online.filter(func(account): return candidate.members.has(account)),
 		"invite": {"digest": invite.digest, "generation": int(invite.generation), "expires": int(invite.expires)}}
-

@@ -8,12 +8,16 @@ const Pixel=preload("res://scripts/inventory_pixel_theme.gd")
 const ArrivalScene=preload("res://scripts/wangan_arrival_scene.gd")
 const CARD:="WanganArrival"
 const CARD_WIDTH:=520.0
+const CTA_DOCK:="去小栗留的田"
+const CTA_AWAY:="回小栗留的田"
 const ROPE:=Color("c9a46a")
 const ROPE_SHADE:=Color("6f5236")
 const STAKE:=Color("a8794a")
 const STAKE_CAP:=Color("e0b97f")
 const STAKE_OUTLINE:=Color("4a3626")
 const SOIL_HINT:=Color(0.55,0.38,0.22,0.16)
+const DOCK_ROUTE:=[Vector2i(52,30),Vector2i(52,29),Vector2i(52,28),Vector2i(52,27),Vector2i(51,27),Vector2i(50,27),Vector2i(49,27),Vector2i(48,27)]
+const EdgeSweep=preload("res://scripts/edge_foot_sweep.gd")
 
 # ---------- 下船卡 ----------
 
@@ -78,8 +82,7 @@ static func show_arrival(app) -> void:
 		picture.mouse_filter=Control.MOUSE_FILTER_IGNORE
 		picture.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 		quote_row.add_child(picture)
-	# Verbatim line; the break between its two sentences keeps 出貨箱 on one line.
-	var quote:Label=app.label("「"+Opening.OPENING_LINE.replace("。先","。\n先")+"」",16)
+	var quote:Label=app.label("「"+Opening.line_for(app.session.snapshot).replace("。先","。\n先")+"」",16)
 	quote.name="ArrivalLine"
 	quote.custom_minimum_size.x=260
 	quote_row.add_child(quote)
@@ -90,7 +93,7 @@ static func show_arrival(app) -> void:
 	hint.name="ArrivalHint"
 	hint.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	footer.add_child(hint)
-	var go:Button=app.button("出發去找小栗",func():dismiss(app))
+	var go:Button=app.button(cta_text(app),func():dismiss(app))
 	go.name="ArrivalClose"
 	go.focus_mode=Control.FOCUS_NONE
 	go.custom_minimum_size=Vector2(0,36)
@@ -111,6 +114,13 @@ static func show_arrival(app) -> void:
 		panel.modulate.a=0.0
 		var tween:=panel.create_tween()
 		tween.tween_property(panel,"modulate:a",1.0,0.2).set_trans(Tween.TRANS_SINE)
+
+## The card button names the plot, not 小栗: the first step only needs the player
+## beside the plot. Away from the starting dock (e.g. a card shown at World.SPAWN)
+## it says 回 instead of 去.
+static func cta_text(app) -> String:
+	var person:Dictionary=app.session.snapshot.get("players",{}).get(app.session.own_id,{})
+	return CTA_AWAY if not person.is_empty() and not ChapterOne.at_starting_dock(person) else CTA_DOCK
 
 static func close_hint(app) -> String:
 	return "%s／Esc 收起這張卡"%app.binding_label("interact")
@@ -167,14 +177,20 @@ static func show_personal_help(app)->void:
 
 static func tracker_text(app,step:Dictionary) -> String:
 	var text:=str(step.get("text",""))
+	var heading:=Opening.heading(app.session.snapshot)
 	match str(step.get("id","")):
-		"find":return "%s\n%s\n%s 移動"%[Opening.HEADING,text,app.movement_hint()]
-		"till":return "%s\n%s\n%s 鋤頭 · 點草地"%[Opening.HEADING,text,app.binding_label("hoe")]
-		"buy_seed":return "%s\n%s\n靠近種子攤按 %s"%[Opening.HEADING,text,app.binding_label("interact")]
-		"sow":return "%s\n%s\n%s 播種 · %s 換種子"%[Opening.HEADING,text,app.binding_label("seed"),app.binding_label("seeds")]
-		"water":return "%s\n%s\n%s 澆水 · 點那一格"%[Opening.HEADING,text,app.binding_label("water")]
-		"wait":return "%s\n%s\n成熟前可以先逛逛"%[Opening.HEADING,text]
-		"harvest":return "%s\n%s\n%s 採收 · 點成熟的作物"%[Opening.HEADING,text,app.binding_label("harvest")]
+		"find":return "%s\n%s"%[heading,text]
+		"till":return "%s\n%s\n%s 鋤頭 · 點草地"%[heading,text,app.binding_label("hoe")]
+		"buy_seed":return "%s\n%s\n靠近種子攤按 %s"%[heading,text,app.binding_label("interact")]
+		"sow":
+			var seed:=str(step.get("seed","radish"))
+			if seed!=str(app.crop):
+				var name:String=ChapterOne.STARTER_CROPS.get(seed,preload("res://scripts/crop_catalog.gd").CROPS[seed].name)
+				return "%s\n先按 %s 選%s種子\n%s 播種 · 點翻好的土"%[heading,app.binding_label("seeds"),name,app.binding_label("seed")]
+			return "%s\n%s\n%s 播種 · %s 換種子"%[heading,text,app.binding_label("seed"),app.binding_label("seeds")]
+		"water":return "%s\n%s\n%s 澆水 · 點那一格"%[heading,text,app.binding_label("water")]
+		"wait":return "%s\n%s\n成熟前可以先逛逛"%[heading,text]
+		"harvest":return "%s\n%s\n%s 採收 · 點成熟的作物"%[heading,text,app.binding_label("harvest")]
 		"ship":return "✓ 第一株收成了\n%s\n靠近出貨箱按 %s"%[text,app.binding_label("interact")]
 	return ""
 
@@ -185,8 +201,51 @@ static func tracker_text(app,step:Dictionary) -> String:
 static func draw_plot(view,s:Dictionary,owner:String,step:Dictionary) -> Rect2:
 	if step.is_empty():return Rect2()
 	if Opening.plot_usable(s,owner):draw_plot_fence(view,s)
+	if not view.photograph_mode and not view.hide_interaction_prompt and view.label_hide_rects.is_empty():
+		draw_dock_directions(view,dock_directions(s,owner,step))
 	if step.get("id","")=="buy_seed":return Rect2()
 	return draw_step_cue(view,step)
+
+static func dock_directions(snapshot:Dictionary,owner:String,step:Dictionary)->Array[Vector2i]:
+	var markers:Array[Vector2i]=[]
+	if step.get("id")!="find":return markers
+	var person:Dictionary=snapshot.get("players",{}).get(owner,{})
+	if person.is_empty():return markers
+	var at:=Vector2(person.x,person.y)
+	var closest:=-1
+	var distance:=1.8
+	for index in DOCK_ROUTE.size()-1:
+		var center:=Vector2(DOCK_ROUTE[index])+Vector2(0.5,0.5)
+		var span:=at.distance_to(center)
+		if span<distance:
+			closest=index
+			distance=span
+	if closest<0:return markers
+	var objects:Dictionary=snapshot.get("objects",{})
+	var forest:Dictionary=snapshot.get("forest",{})
+	var edges:Dictionary=snapshot.get("edges",{})
+	var world=preload("res://scripts/world.gd")
+	for index in range(closest,DOCK_ROUTE.size()-1):
+		var a:Vector2i=DOCK_ROUTE[index]
+		var b:Vector2i=DOCK_ROUTE[index+1]
+		var tile:=world.key(b)
+		var start:=Vector2(a)+Vector2(0.5,0.5)
+		var end:=Vector2(b)+Vector2(0.5,0.5)
+		if objects.has(tile) or forest.has(tile) or EdgeSweep.blocks_axis(start,end,edges,world.SIZE,world.INDUSTRY.FOOT_BOX):return []
+	for index in range(closest,mini(closest+4,DOCK_ROUTE.size())):
+		markers.append(DOCK_ROUTE[index])
+	return markers
+
+static func draw_dock_directions(view,markers:Array[Vector2i])->void:
+	for tile:Vector2i in markers:
+		var index:=DOCK_ROUTE.find(tile)
+		if index==-1 or index>=DOCK_ROUTE.size()-1:continue
+		var forward:=Vector2(DOCK_ROUTE[index+1]-tile)
+		var side:=forward.orthogonal()
+		var at:Vector2=view.screen(Vector2(tile)+Vector2(0.5,0.65)).round()
+		var arrow:=PackedVector2Array([at-forward*2.0+side*4.0,at+forward*3.0,at-forward*2.0-side*4.0])
+		view.draw_polyline(arrow,STAKE_OUTLINE,4.0)
+		view.draw_polyline(arrow,Color("#f6d88a"),2.0)
 
 static func draw_step_cue(view,step:Dictionary) -> Rect2:
 	if view.photograph_mode or view.hide_interaction_prompt:return Rect2()
@@ -194,11 +253,14 @@ static func draw_step_cue(view,step:Dictionary) -> Rect2:
 	if target==ChapterOne.NO_PLOT_CELL:return Rect2()
 	var at:Vector2=view.screen(Vector2(target)).round()
 	var bounds:=Rect2(at,Vector2(32,32))
-	if step.get("id","") in ["buy_seed","works","starter_kit","tea_intro"]:
+	var step_id:String=step.get("id","")
+	if step_id in ["buy_seed","works","starter_kit","tea_intro"]:
 		bounds=Rect2(at+Vector2(-8,-21),Vector2(48,54))
 	var inner:=bounds.grow(-3.0)
-	# Four short corner marks leave the crop and the tool cursor readable.
-	for start:Vector2 in [inner.position,Vector2(inner.end.x,inner.position.y),Vector2(inner.position.x,inner.end.y),inner.end]:
+	var corners:=[inner.position,Vector2(inner.end.x,inner.position.y),Vector2(inner.position.x,inner.end.y),inner.end]
+	# The ripe-crop sparkle occupies the top-right corner of the tile.
+	if step_id=="harvest":corners.remove_at(1)
+	for start:Vector2 in corners:
 		var direction:Vector2=(inner.get_center()-start).sign()
 		for offset in [Vector2(direction.x*6,0),Vector2(0,direction.y*6)]:
 			view.draw_line(start+Vector2.ONE,start+Vector2.ONE+offset,STAKE_OUTLINE,2.0)

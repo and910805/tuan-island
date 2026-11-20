@@ -3,6 +3,25 @@ extends RefCounted
 const World=preload("res://scripts/world.gd")
 const Collection=World.Collections
 
+static func core_levels(person:Dictionary)->Vector3i:
+	return Vector3i(World.farming_level(person),World.gathering_level(person),World.crafting_level(person))
+
+static func advancement(previous:Vector3i,person:Dictionary)->String:
+	var current:=core_levels(person)
+	if current==previous:return ""
+	var messages:=PackedStringArray()
+	var entries:=skills(person)
+	for index in range(3):
+		if current[index]<=previous[index]:continue
+		var skill:=entries[index]
+		var message:="%s升到 %d 級"%[skill.title,current[index]]
+		var rewards:=PackedStringArray()
+		for unlock:Array in skill.unlocks:
+			if int(unlock[0])>previous[index] and int(unlock[0])<=current[index]:rewards.append(str(unlock[1]))
+		if not rewards.is_empty():message+="・解鎖「%s」"%"、".join(rewards)
+		messages.append(message)
+	return "；".join(messages)
+
 static func skills(person:Dictionary)->Array[Dictionary]:
 	var exploration:=int(person.get("exploration_points",World.exploration_points(person)))
 	return [

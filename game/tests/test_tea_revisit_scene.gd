@@ -454,7 +454,10 @@ func tea_flow()->void:
 	app._close_modal()
 
 func tea_house_flow()->void:
-	var stand_at:=Vector2(TR.HOUSE_SITE)+Vector2(-0.5,1.5)
+	# Directly below the table (same cell World.move_player uses as "by_table"): table 1.0 away, the tea
+	# house door (19,22) 1.41 away, so the nearest-point rule in main._interact picks the table. The old
+	# spot (-0.5,+1.5) was 1.0 from the door and 1.41 from the table, so E walked into the house.
+	var stand_at:=Vector2(TR.HOUSE_SITE+Vector2i.DOWN)+Vector2(0.5,0.5)
 	await stand(stand_at,"maokong")
 	check(not w.act(id,"house-before-"+tag,TR.HOUSE_DISPLAY,TR.HOUSE_SITE).ok,"The unfinished festival keeps the tea house project locked (%s)"%tag)
 	w.state.festival_story_open=true  # PRESET: this suite starts after the festival.
@@ -467,7 +470,9 @@ func tea_house_flow()->void:
 	await stand(stand_at,"maokong")
 	await refresh()
 	await interact()
-	check(app.modal.get_meta("tea_site","")=="house","Interacting at the table opens the tea house panel (%s)"%tag)
+	var panel_open:=is_instance_valid(app.modal) and str((app.modal as Node).get_meta("tea_site",""))=="house"
+	check(panel_open,"Interacting at the table opens the tea house panel (%s)"%tag)
+	if not panel_open:return
 	await press("TeaHouseDisplay")
 	check(int(bag().get(TR.TEAWARE_ITEM,0))==0 and w.state.get(TR.HOUSE_KEY,{}).get("lender")==id,
 		"Loaning moves the earned tea ware to the shared display (%s)"%tag)

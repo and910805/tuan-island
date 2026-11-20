@@ -45,6 +45,10 @@ func _initialize() -> void:
 		expect(ready_tea.site=="roast" and ready_tea.title.contains("淺焙" if style=="light" else "深焙"),"Ready roast identifies its style")
 	expect(step(basic,{"tea_light":1,"fiber":1}).title=="用纖維包裝","Fiber route can package without any jar")
 	expect(step(basic,{"tea_deep":1}).title=="準備包材","Missing wrapping gives a concrete alternative")
+	expect(step(basic,{"tea_deep":1,"stone":2}).title=="到備土台交換黏土","Ready clay exchange does not show a zero-second cooldown")
+	expect(step(basic,{"tea_deep":1,"clay":2,"stone":2}).site=="kiln","Owned clay points to firing instead of another exchange")
+	var cooling:=step({"intro":true,"potter":true,"clay_ready":25.0},{"tea_deep":1,"stone":2},Tea.YINGGE)
+	expect(cooling.title=="備土台補貨中" and cooling.text.contains("5 秒"),"Actual clay cooldown is shown when wrapping must wait")
 	expect(step(basic,{"tea_deep":1,"tea_returned_jar":1}).title=="用回收罐裝茶","Returned jar can be used for the new batch")
 	var packed:={"style":"light","wrap":"fiber"}
 	expect(step({"intro":true,"packed":packed,"returning":{"ready":30.0}}).title=="把茶寄給小栗","Waiting return does not block shipping")

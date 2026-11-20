@@ -7,6 +7,7 @@ const Opening=preload("res://scripts/wangan_opening.gd")
 const CanalArt=preload("res://scripts/lanyang_life_art.gd")
 const Revisit=World.LANYANG_REVISIT
 const OreRoute=World.ORE_ROUTE
+const BoboCart=World.BOBO_EMPTY_CART
 const CartArt=preload("res://scripts/ore_route_art.gd")
 const PanArt=preload("res://scripts/gold_panning_art.gd")
 const Salt=World.SALT_PAN
@@ -22,7 +23,9 @@ const Bamboo=World.REGIONS.Bamboo
 const StarGarden=World.REGIONS.StarGarden
 const Memory=World.WANGAN_MEMORY
 const Coast=World.WANGAN_COAST
+const MineLayout := preload("res://scripts/mine_layout.gd")
 const SCALE:=7.0
+const TRANSIT_WALKWAY_COLOR:=Color("ead29a")
 const RETURN_SIGN_LEVEL:=3
 const WANGAN_STOPS:=[
 	[Vector2i(Coast.FERRY_LANDING),"靠岸碼頭"],
@@ -128,11 +131,17 @@ static func canal_revisit(snapshot:Dictionary) -> Dictionary:
 static func mine_route(snapshot:Dictionary) -> Dictionary:
 	var stage:=OreRoute.stage(snapshot)
 	var delivered:=OreRoute.count_today(snapshot)
+	# T066 波波的「最後一趟空車」：只有本人正在推的時候，地圖上的台車才換成劇情空車（不是礦料、不計工資）。
+	var story:int=BoboCart.stage(snapshot)
+	if BoboCart.active(snapshot):
+		return {"cell":BoboCart.cart_cell(snapshot),"loaded":false,"delivered":delivered,"story":true,
+			"note":"波波的空車・已推 %d／%d 段"%[story-1,OreRoute.PUSHES],"arrived":false}
+	var arrived:=story==OreRoute.LAST
 	var note:="先到坑口裝礦"
 	if stage==OreRoute.LAST:note="台車已到站，請卸礦"
 	elif stage>0:note="沿軌道推車・%d／%d 段"%[stage-1,OreRoute.PUSHES]
 	elif delivered>=OreRoute.DAILY:note="今天已送完，明天再來"
-	return {"cell":OreRoute.cart_cell(stage),"loaded":stage>0,"delivered":delivered,"note":note}
+	return {"cell":OreRoute.cart_cell(stage),"loaded":stage>0,"delivered":delivered,"note":note,"story":false,"arrived":arrived}
 
 static func salt_landmarks(snapshot:Dictionary,owner:String="") -> Dictionary:
 	var own:Dictionary=snapshot.get("salt_pan",{}).get("own",{})
@@ -173,14 +182,28 @@ static func tea_map_guide(snapshot:Dictionary,owner:String) -> Dictionary:
 	return {"target":step.cell if destination==region else World.TRANSIT.STATIONS[region].cell,
 		"title":step.title,"destination":str(TeaGuide.PLACES[destination]),"travelling":destination!=region}
 
-func draw_return_sign(origin:Vector2,at:Vector2,hint:String) -> void:
+func draw_return_sign(origin:Vector2,at:Vector2,hint:String,hint_y:=67.0) -> void:
 	draw_texture_rect(Shell.icon("home"),Rect2(at+Vector2(-11,-34),Vector2(22,22)),false)
-	draw_string(font,origin+Vector2(12,67),hint,HORIZONTAL_ALIGNMENT_LEFT,530,14,Color("244847"))
+	draw_string(font,origin+Vector2(12,hint_y),hint,HORIZONTAL_ALIGNMENT_LEFT,530,14,Color("244847"))
 var data:Dictionary={}
 const SignalLabels=preload("res://scripts/session.gd").MAP_SIGNALS
 const SIGNAL_COLORS:={"wood":Color("895633"),"meet":Color("3d6778"),"build":Color("735078")}
 var own_id:=""
 var font:FontVariation
+signal oar_target_selected(cell:Vector2i)
+var oar_focus:=World.OAR_SIGN.NO_CELL
+var oar_candidate:=World.OAR_SIGN.NO_CELL
+var oar_world:World
+var oar_base:=Vector2.ZERO
+var oar_scale:=0.0
+var oar_cells:=Rect2i()
+var reduced_motion:=false
+var oar_pin_tween:Tween
+var oar_pin_pulse:=0.0
+var home_route:=""
+var home_route_cells:Array[Vector2i]=[]
+var home_route_stamp:Array=[]
+signal home_route_hint(message:String)
 func _ready() -> void:
 	custom_minimum_size=Vector2(560,420)
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -188,7 +211,116 @@ func _ready() -> void:
 func update_world(snapshot:Dictionary,id:String) -> void:
 	data=snapshot
 	own_id=id
+	if oar_world!=null:
+		oar_world.state=snapshot
+		oar_world._region=str(snapshot.get("region_id","home"))
+	refresh_home_route()
 	queue_redraw()
+
+func select_home_route(destination:String)->void:
+	home_route="" if home_route==destination else destination
+	home_route_stamp.clear()
+	refresh_home_route()
+	queue_redraw()
+
+func refresh_home_route()->void:
+	if home_route.is_empty() or data.get("region_id","home")!="home":
+		home_route_cells.clear()
+		home_route_hint.emit("選一個地點，看看可以怎麼走。")
+		return
+	var viewer:Dictionary=data.get("players",{}).get(own_id,{})
+	if viewer.is_empty():return
+	var start:=Vector2i(Vector2(viewer.x,viewer.y).floor())
+	var bridge:=World.STONE_WORKSHOP.bridge_open(data)
+	var mill_visible:bool=data.get(World.MILL_RESTORATION.SITE_VISIBLE,false)
+	var loan_cell:=World.PUBLIC_TILLER.loan_cell(data) if home_route=="tiller" else World.PUBLIC_TILLER.NO_SITE
+	var signature:=[start,own_id,bridge,mill_visible,loan_cell,hash(data.get("objects",{})),hash(data.get("edges",{})),
+		hash(data.get("ground",{})),hash(data.get("forest",{})),hash(data.get("removed",{}))]
+	if signature==home_route_stamp:return
+	home_route_stamp=signature
+	var goals:Array[Vector2i]=[]
+	var summary:="西北資源林"
+	if home_route=="forest":
+		var area:=World.WOODLAND.GROVE
+		for y in range(area.position.y,area.end.y):goals.append(Vector2i(area.end.x-1,y))
+		if area.has_point(start):goals.append(start)
+	elif home_route=="mill":
+		summary="渡口磨坊" if mill_visible else "公告板・磨坊代辦"
+		goals.append(World.MILL_RESTORATION.APPROACH if mill_visible else World.MILL_RESTORATION.BOARD+Vector2i.DOWN)
+	elif home_route=="tiller":
+		summary="公告板借用處" if loan_cell==World.PUBLIC_TILLER.DESK else "渡口農機架"
+		if loan_cell!=World.PUBLIC_TILLER.NO_SITE:
+			for offset:Vector2i in [Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT]:goals.append(loan_cell+offset)
+	else:
+		summary="河灣橋・東岸" if bridge else "河灣橋・西岸"
+		for y in range(29,32):goals.append(Vector2i(57 if bridge else 54,y))
+	var local:=World.new()
+	local.state=data
+	home_route_cells=local.walk_route(own_id,start,goals,Rect2i(Vector2i.ZERO,World.SIZE))
+	if not home_route_cells.is_empty():home_route_cells.push_front(start)
+	var guidance:="已到%s"%summary if start in goals else ("%s · 步行 %d 格"%[summary,home_route_cells.size()-1] if not home_route_cells.is_empty() else "目前沒有通往%s的路。"%summary)
+	if home_route=="river" and not bridge:guidance+=" · 修好橋後可往東岸"
+	home_route_hint.emit(guidance)
+
+func draw_home_route(origin:Vector2)->void:
+	if home_route_cells.size()<2:return
+	var points:=PackedVector2Array()
+	for cell:Vector2i in home_route_cells:points.append(origin+(Vector2(cell)+Vector2(0.5,0.5))*SCALE)
+	draw_polyline(points,Color("365352"),5.0)
+	draw_polyline(points,Color("edc85f"),2.0)
+	draw_circle(points[-1],5.0,Color("365352"))
+	draw_circle(points[-1],3.0,Color("ffe6a2"))
+
+func configure_oar(site:Vector2i,editable:bool)->void:
+	oar_focus=site
+	if editable:
+		oar_world=World.new()
+		update_world(data,own_id)
+		mouse_filter=Control.MOUSE_FILTER_STOP
+		focus_mode=Control.FOCUS_ALL
+	queue_redraw()
+
+func _gui_input(event:InputEvent)->void:
+	if oar_world==null or oar_scale<=0.0:return
+	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
+		var cell:=Vector2i(((event.position-oar_base)/oar_scale).floor())
+		if try_oar_cell(cell):grab_focus()
+		accept_event()
+		return
+	if not event.is_pressed():return
+	var step:=Vector2i.ZERO
+	if event.is_action_pressed("ui_left"):step=Vector2i.LEFT
+	elif event.is_action_pressed("ui_right"):step=Vector2i.RIGHT
+	elif event.is_action_pressed("ui_up"):step=Vector2i.UP
+	elif event.is_action_pressed("ui_down"):step=Vector2i.DOWN
+	if step==Vector2i.ZERO:return
+	var saved:Dictionary=data.get("objects",{}).get(World.key(oar_focus),{})
+	var cell:=oar_candidate if oar_candidate!=World.OAR_SIGN.NO_CELL else World.OAR_SIGN.cell(saved.get(World.OAR_SIGN.FIELD))
+	if not oar_cells.has_point(cell):cell=oar_focus
+	while true:
+		cell+=step
+		if not oar_cells.has_point(cell) or try_oar_cell(cell):break
+	accept_event()
+
+func try_oar_cell(cell:Vector2i)->bool:
+	if oar_world==null or not oar_cells.has_point(cell) or not oar_world.is_land(cell) or oar_world.water(cell):return false
+	if cell!=oar_candidate and reduced_motion:
+		if oar_pin_tween:oar_pin_tween.kill()
+		set_oar_pin_pulse(0.0)
+	elif cell!=oar_candidate:
+		if oar_pin_tween:oar_pin_tween.kill()
+		set_oar_pin_pulse(1.0)
+		oar_pin_tween=create_tween()
+		oar_pin_tween.tween_method(set_oar_pin_pulse,1.0,0.0,0.32)
+	oar_candidate=cell
+	oar_target_selected.emit(cell)
+	queue_redraw()
+	return true
+
+func set_oar_pin_pulse(value:float)->void:
+	oar_pin_pulse=value
+	queue_redraw()
+
 func _draw() -> void:
 	if data.is_empty() or font==null:return
 	var region:=str(data.get("region_id","home"))
@@ -197,6 +329,7 @@ func _draw() -> void:
 	local_world._region=region
 	var viewer:Dictionary=data.players.get(own_id,{})
 	var show_resources:=World.gathering_level(viewer)>=World.RESOURCE_MAP_LEVEL
+	var has_walkway:=World.REGIONS.TRANSIT_WALKWAYS.has(region)
 	var origin:=Vector2((size.x-560)/2,0)
 	if region.begins_with("mine_"):
 		draw_mine_map(origin,region)
@@ -228,6 +361,7 @@ func _draw() -> void:
 			var tint:=Color("b8a596") if region=="jinguashi" else Color("bad298")
 			if data.crops.has(k):tint=Color("9e7b55")
 			elif data.ground.has(k):tint=Color("d5b27e")
+			elif has_walkway and World.REGIONS.transit_walkway(p,region):tint=TRANSIT_WALKWAY_COLOR
 			elif region==Flower.REGION:
 				if Flower.NURSERY_BEDS.has_point(p):tint=Color("d6ac7b")
 				elif Flower.SHED.has_point(p):tint=Color("a48468")
@@ -263,6 +397,18 @@ func _draw() -> void:
 			draw_return_sign(origin,origin+(Vector2(sign_info.cell)+Vector2(0.5,0.5))*SCALE,sign_info.hint)
 	# Landmarks are separate from player markers so nobody's location is hidden.
 	if region=="home":
+		draw_home_route(origin)
+		if home_route=="tiller":
+			var loan_cell:=World.PUBLIC_TILLER.loan_cell(data)
+			if loan_cell!=World.PUBLIC_TILLER.NO_SITE:
+				var loan_pin:=origin+(Vector2(loan_cell)+Vector2(0.5,0.5))*SCALE
+				draw_circle(loan_pin,6,Color("34554d"))
+				draw_circle(loan_pin,4,Color("e9bf60"))
+				draw_texture_rect(Items.icon(World.PUBLIC_TILLER.ITEM),Rect2(loan_pin+Vector2(8,0),Vector2(22,22)),false)
+		var grove:=World.WOODLAND.GROVE
+		var grove_mark:=origin+Vector2(grove.end.x-0.5,grove.get_center().y+0.5)*SCALE
+		mark(grove_mark,Color("527e4f"),false)
+		draw_string(font,grove_mark+Vector2(9,4),"西北資源林",HORIZONTAL_ALIGNMENT_LEFT,-1,13,Color("35533f"))
 		if data.has("can_build_public_plot"):
 			var plot:=World.PUBLIC_BUILD_PLOT
 			var bounds:=Rect2(origin+Vector2(plot.position)*SCALE,Vector2(plot.size)*SCALE)
@@ -276,9 +422,13 @@ func _draw() -> void:
 		mark(origin+Vector2(54.5,25.5)*SCALE,Color("8b9386"),false)
 		draw_string(font,origin+Vector2(49,22)*SCALE,"採石／運入礦料",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color("35533f"))
 		draw_string(font,origin+Vector2(58,30)*SCALE,"河灣橋",HORIZONTAL_ALIGNMENT_LEFT,-1,15,Color("35533f"))
-		if not data.board:draw_string(font,origin+Vector2(58,33)*SCALE,"待修復",HORIZONTAL_ALIGNMENT_LEFT,-1,13,Color("617964"))
+		if not World.STONE_WORKSHOP.bridge_open(data):draw_string(font,origin+Vector2(58,33)*SCALE,"待修復",HORIZONTAL_ALIGNMENT_LEFT,-1,13,Color("617964"))
 		draw_wangan_stops(origin)
 		draw_fox_finds(origin,viewer)
+		if data.get(World.MILL_RESTORATION.SITE_VISIBLE,false):
+			var mill_at:=origin+(Vector2(World.MILL_RESTORATION.DOOR)+Vector2(0.5,0.5))*SCALE
+			mark(mill_at,Color("9f664b"),false)
+			draw_string(font,mill_at+Vector2(7,-10),"渡口磨坊",HORIZONTAL_ALIGNMENT_LEFT,-1,13,Color("35533f"))
 		var kitchen_tile:=public_kitchen_marker(data)
 		if kitchen_tile!=World.PUBLIC_KITCHEN.NO_CELL:
 			var kitchen_at:=origin+(Vector2(kitchen_tile)+Vector2(0.5,0.5))*SCALE
@@ -290,6 +440,10 @@ func _draw() -> void:
 		var star_point:=origin+(Vector2(star_cell)+Vector2(0.5,0.5))*SCALE
 		mark(star_point,Color("567c70"),false)
 		draw_string(font,star_point+Vector2(-126,-9),"星砂潮池・晶砂" if star_open else "星砂步道待修",HORIZONTAL_ALIGNMENT_LEFT,-1,13,Color("244847"))
+		if star_open:
+			var parcel_point:=origin+(Vector2(Coast.SALT_PARCEL)+Vector2(0.5,0.5))*SCALE
+			mark(parcel_point,Color("8f8a6c"),false)
+			draw_string(font,parcel_point+Vector2(-126,-9),"北門海鹽包",HORIZONTAL_ALIGNMENT_LEFT,-1,13,Color("244847"))
 	var fishing_sites:Dictionary={World.SALT_PAN.REGION:World.SALT_PAN.FISHING_SPOTS,World.REGIONS.Springs.REGION:World.REGIONS.Springs.POOLS,World.REGIONS.Bamboo.REGION:World.REGIONS.Bamboo.POOLS,World.REGIONS.StarGarden.REGION:World.REGIONS.StarGarden.POOLS}
 	if fishing_sites.has(region):
 		var spots:Dictionary=fishing_sites[region]
@@ -308,6 +462,11 @@ func _draw() -> void:
 		var texture:Texture2D=Items.icon(landmark.item) if not str(landmark.item).is_empty() else Shell.icon("journal")
 		draw_texture_rect(texture,Rect2(at-Vector2(10,24),Vector2(20,20)),false)
 		draw_string(font,at+Vector2(-18,-29),landmark.label,HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color("35533f"))
+	if region==Bamboo.REGION:
+		var bamboo_at:=origin+(Vector2(Bamboo.CLUMPS[1])+Vector2(0.5,0.5))*SCALE
+		mark(bamboo_at,Color("4f704d"),false)
+		draw_texture_rect(Items.icon(Bamboo.ITEM),Rect2(bamboo_at+Vector2(-25,-44),Vector2(22,22)),false)
+		draw_string(font,bamboo_at+Vector2(-2,-28),"竹材採集區",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color("35533f"))
 	for id in data.players:
 		var person:Dictionary=data.players[id]
 		var at:=origin+Vector2(person.x,person.y)*SCALE
@@ -323,7 +482,8 @@ func _draw() -> void:
 				draw_circle(point,5.0,Color("fff0ad"),false,2.0)
 			draw_texture_rect(Shell.icon("letter"),Rect2(point-Vector2(12,38 if letter.plot else 30),Vector2(24,24)),false)
 			draw_string(font,origin+Vector2(12,26),str(letter.text),HORIZONTAL_ALIGNMENT_LEFT,530,15,Color("35533f"))
-		draw_string(font,origin+Vector2(12,47),"澎湖・望安 · 風鈴渡口",HORIZONTAL_ALIGNMENT_LEFT,530,15,Color("35533f"))
+		draw_string(font,origin+Vector2(12,47),"澎湖・望安 · 風鈴渡口",HORIZONTAL_ALIGNMENT_LEFT,270,15,Color("35533f"))
+		draw_string(font,origin+Vector2(285,47),"潭門港與網垵口地景縮編",HORIZONTAL_ALIGNMENT_RIGHT,255,14,Color("5d543b"))
 	elif region.begins_with("mine_"):
 		var depth:=int(region.trim_prefix("mine_"))
 		draw_string(font,origin+Vector2(12,26),"金瓜石合作礦場・地下第 %d 層"%depth,HORIZONTAL_ALIGNMENT_LEFT,530,15,Color("35533f"))
@@ -388,6 +548,9 @@ func _draw() -> void:
 	if show_resources:
 		draw_string(font,origin+Vector2(12,334),"採集標記 · 深綠 林木　藍灰 石材　金棕 纖維",HORIZONTAL_ALIGNMENT_LEFT,530,14,Color("244847"))
 	draw_string(font,origin+Vector2(12,415),"紅點是你 · 藍點是朋友 · 棕色是農田與建物",HORIZONTAL_ALIGNMENT_LEFT,530,14,Color("35533f"))
+	if has_walkway:
+		draw_rect(Rect2(origin+Vector2(433,405),Vector2(10,10)),TRANSIT_WALKWAY_COLOR)
+		draw_string(font,origin+Vector2(449,415),"公共步道",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color("35533f"))
 	draw_map_signals(origin,origin,SCALE)
 
 func draw_jinguashi_route(origin:Vector2) -> void:
@@ -411,9 +574,20 @@ func draw_jinguashi_route(origin:Vector2) -> void:
 	draw_circle(cart_at,6.5,Color("ffe9ad"))
 	draw_circle(cart_at,4.5,Color("92512b"),false,2.0)
 	draw_texture_rect(cart_icon,Rect2(cart_at+Vector2(-12,-28),Vector2(24,24)),false)
+	if route.arrived:
+		# 抵達後短暫標在展覽位置，用不同的點和文字，不當成運礦台車。
+		var exhibit_at:=center+Vector2(OreRoute.STOPS[-1])*SCALE
+		draw_circle(exhibit_at+Vector2(0,10),4.5,Color("c9dfd0"))
+		draw_circle(exhibit_at+Vector2(0,10),3.0,Color("55785c"))
+		draw_string(font,exhibit_at+Vector2(-40,25),"波波的空車",HORIZONTAL_ALIGNMENT_LEFT,-1,12,INK)
 	var pan_at:=center+Vector2(World.GOLD_PANNING.SITE)*SCALE
 	draw_texture_rect(PanArt.pan_texture(5),Rect2(pan_at+Vector2(-10,0),Vector2(20,20)),false)
 	draw_string(font,pan_at+Vector2(14,14),"淘砂處",HORIZONTAL_ALIGNMENT_LEFT,-1,13,INK)
+	var gallery_at:=center+Vector2(World.PARTY_CART.SURFACE_PORTAL)*SCALE
+	var gallery_open:bool=data.get("party_cart_unlocked",false)
+	mark(gallery_at,Color("55785c") if gallery_open else Color("9a6646"),false)
+	draw_string(font,gallery_at+Vector2(11,-4),"礦車搬運活動" if gallery_open else "礦車維修中",
+		HORIZONTAL_ALIGNMENT_LEFT,-1,13,INK)
 	for site in World.JINGUASHI.NODES:
 		var at:=center+Vector2(site)*SCALE
 		draw_circle(at,2.5,Color("556c74"))
@@ -421,8 +595,8 @@ func draw_jinguashi_route(origin:Vector2) -> void:
 	draw_style_box(preload("res://scripts/inventory_pixel_theme.gd").paper_style(),Rect2(sidebar,Vector2(151,112)))
 	draw_string(font,sidebar+Vector2(10,25),"運礦路線",HORIZONTAL_ALIGNMENT_LEFT,-1,16,INK)
 	draw_string(font,sidebar+Vector2(10,52),route.note,HORIZONTAL_ALIGNMENT_LEFT,-1,13,INK)
-	draw_string(font,sidebar+Vector2(10,76),"今日交運 %d／%d 車"%[route.delivered,OreRoute.DAILY],HORIZONTAL_ALIGNMENT_LEFT,-1,13,INK)
-	draw_string(font,sidebar+Vector2(10,99),"金環 台車・藍灰 礦點",HORIZONTAL_ALIGNMENT_LEFT,-1,12,INK)
+	draw_string(font,sidebar+Vector2(10,76),"紀念空車・不計運礦工資" if route.story else "今日交運 %d／%d 車"%[route.delivered,OreRoute.DAILY],HORIZONTAL_ALIGNMENT_LEFT,-1,13,INK)
+	draw_string(font,sidebar+Vector2(10,99),"金環 空車・藍灰 礦點" if route.story else "金環 台車・藍灰 礦點",HORIZONTAL_ALIGNMENT_LEFT,-1,12,INK)
 
 func draw_canal_revisit(origin:Vector2,markers:Array) -> void:
 	for point:Dictionary in markers:
@@ -563,7 +737,7 @@ func draw_tea_map(origin:Vector2,region:String) -> void:
 		var person:Dictionary=data.players[id]
 		mark(base+Vector2(person.x,person.y)*scale_value,Color("c96755") if id==own_id else Color("537ea4"),true)
 	draw_string(font,origin+Vector2(18,403),"紅點是你 · 藍點是朋友 · 褐色環標出下一站",HORIZONTAL_ALIGNMENT_LEFT,524,14,ink)
-	draw_map_signals(origin,base,scale_value)
+	draw_map_signals(origin,base,scale_value,Rect2i(8,12,30,19))
 
 func draw_transit_map(origin:Vector2,region:String)->void:
 	var plaza:Rect2i=World.TRANSIT.PLAZA
@@ -594,7 +768,7 @@ func draw_transit_map(origin:Vector2,region:String)->void:
 		draw_return_sign(origin,base+(Vector2(sign_info.cell)+Vector2(0.5,0.5))*scale_value,sign_info.hint)
 	draw_string(font,origin+Vector2(18,381),"依站牌轉乘 · 棕色建物 · 綠色停靠區",HORIZONTAL_ALIGNMENT_LEFT,-1,15,Color("314e40"))
 	draw_string(font,origin+Vector2(18,403),"紅點是你 · 藍點是朋友",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color("314e40"))
-	draw_map_signals(origin,base,scale_value)
+	draw_map_signals(origin,base,scale_value,plaza)
 
 static func springs_sites(indoor:bool,bath_ready:bool) -> Array:
 	if indoor:
@@ -647,9 +821,9 @@ func draw_springs_map(origin:Vector2,viewer:Dictionary) -> void:
 		if clue.is_empty():clue=World.Collections.water_clues(Springs.REGION,viewer)
 		draw_string(font,origin+Vector2(18,357),clue,HORIZONTAL_ALIGNMENT_LEFT,524,14,Color("324b3e"))
 	draw_string(font,origin+Vector2(18,400),"紅點是你 · 藍點是同一區域的朋友",HORIZONTAL_ALIGNMENT_LEFT,524,14,Color("324b3e"))
-	draw_map_signals(origin,base,scale_value)
+	draw_map_signals(origin,base,scale_value,area)
 
-func draw_map_signals(origin:Vector2,base:Vector2,cell_scale:float) -> void:
+func draw_map_signals(origin:Vector2,base:Vector2,cell_scale:float,cells:=Rect2i(Vector2i.ZERO,World.SIZE)) -> void:
 	var slots:Dictionary={}
 	for entry:Dictionary in data.get("map_signals",[]):
 		var kind:String=entry.kind
@@ -671,6 +845,37 @@ func draw_map_signals(origin:Vector2,base:Vector2,cell_scale:float) -> void:
 		draw_rect(Rect2(left,above,width,20),tint)
 		draw_rect(Rect2(left,above,width,20),ink,false,1.0)
 		draw_string(font,Vector2(left+6,above+15),caption,HORIZONTAL_ALIGNMENT_LEFT,-1,14,ink)
+	oar_base=base
+	oar_scale=cell_scale
+	oar_cells=cells
+	if oar_focus!=World.OAR_SIGN.NO_CELL:
+		var sign:Dictionary=data.get("objects",{}).get(World.key(oar_focus),{})
+		var target:=oar_candidate if oar_candidate!=World.OAR_SIGN.NO_CELL else World.OAR_SIGN.cell(sign.get(World.OAR_SIGN.FIELD))
+		var source:=oar_point(oar_focus)
+		var source_visible:=cells.has_point(oar_focus)
+		if cells.has_point(target):
+			var pin:=oar_point(target)
+			if source_visible and source!=pin:draw_dashed_line(source,pin,Color("254a49"),2.0,5.0)
+			if not reduced_motion and oar_pin_pulse>0.0:
+				draw_arc(pin,9.0+roundf(8.0*(1.0-oar_pin_pulse)),0.0,TAU,12,Color(1.0,0.95,0.8,oar_pin_pulse),2.0)
+			draw_oar_pin(pin)
+		if source_visible:draw_texture_rect(Shell.icon("sign"),Rect2(source-Vector2(8,17),Vector2(16,16)),false)
+	else:
+		var shown:={}
+		for obj:Dictionary in data.get("objects",{}).values():
+			if obj.get("type")!=World.OAR_SIGN.KIND or obj.get("owner")!=own_id:continue
+			var target:=World.OAR_SIGN.cell(obj.get(World.OAR_SIGN.FIELD))
+			if cells.has_point(target) and not shown.has(target):
+				shown[target]=true
+				draw_oar_pin(oar_point(target))
+
+func oar_point(cell:Vector2i)->Vector2:
+	return (oar_base+(Vector2(cell)+Vector2(0.5,0.5))*oar_scale).round()
+
+func draw_oar_pin(at:Vector2)->void:
+	draw_circle(at,8.0,Color("fff1cd"))
+	draw_circle(at,5.5,Color("235b62"))
+	draw_circle(at,2.0,Color("fff1cd"))
 
 func mark(at:Vector2,color:Color,person:bool) -> void:
 	if person:
@@ -680,25 +885,35 @@ func mark(at:Vector2,color:Color,person:bool) -> void:
 		draw_rect(Rect2(at-Vector2(5,5),Vector2(10,10)),Color("fff7e4"))
 		draw_rect(Rect2(at-Vector2(3,3),Vector2(6,6)),color)
 
-func mine_map_point(origin:Vector2,cell:Vector2) -> Vector2:
-	return origin+Vector2(63,86)+(cell-Vector2(9,16))*14.0
-
 func draw_mine_map(origin:Vector2,region:String) -> void:
 	var depth:=int(region.trim_prefix("mine_"))
 	draw_rect(Rect2(origin,Vector2(560,420)),Color("e8d9b5"))
 	draw_string(font,origin+Vector2(24,32),"金瓜石合作礦場・地下第 %d 層礦道圖"%depth,HORIZONTAL_ALIGNMENT_LEFT,510,19,Color("4b4539"))
 	draw_string(font,origin+Vector2(24,56),"往左回上一層，往右到礦務站整備。",HORIZONTAL_ALIGNMENT_LEFT,510,14,Color("635944"))
-	draw_rect(Rect2(origin+Vector2(55,78),Vector2(450,198)),Color("494548"))
-	for y in range(16,29):
-		for x in range(9,40):
-			var cell:=Vector2i(x,y)
-			var at:=mine_map_point(origin,Vector2(cell))
-			var tint:=Color("b5a18a")
-			if depth==3 and World.MINES.POOL.has_point(cell):tint=Color("588e9a")
-			draw_rect(Rect2(at,Vector2(14,14)),tint)
-			if data.get("objects",{}).has(World.key(cell)):draw_rect(Rect2(at+Vector2(4,4),Vector2(6,6)),Color("75543e"))
+	var cells := MineLayout.bounds(depth)
+	var diagram := Rect2(origin+Vector2(45,78),Vector2(470,208))
+	var map_scale := minf(14.0, minf(diagram.size.x/cells.size.x, diagram.size.y/cells.size.y))
+	var first := (diagram.get_center()-Vector2(cells.size)*map_scale*0.5).round()
+	var base := first-Vector2(cells.position)*map_scale
+	var project := func(cell: Vector2) -> Vector2:
+		return (base+cell*map_scale).round()
+	var terrain := Rect2(first, (Vector2(cells.size)*map_scale).round())
+	draw_rect(terrain.grow(5.0),Color("494548"))
+	for y in range(cells.position.y,cells.end.y):
+		for x in range(cells.position.x,cells.end.x):
+			var cell := Vector2i(x,y)
+			if not MineLayout.land(cell,depth):
+				continue
+			var at: Vector2 = project.call(Vector2(cell))
+			var corner: Vector2 = project.call(Vector2(cell+Vector2i.ONE))
+			var tint := Color("b5a18a") if MineLayout.BASE_RECT.has_point(cell) else Color("baa081")
+			if depth==3 and World.MINES.POOL.has_point(cell):
+				tint=Color("588e9a")
+			draw_rect(Rect2(at,corner-at),tint)
+			if data.get("objects",{}).has(World.key(cell)):
+				draw_rect(Rect2((at+corner)*0.5-Vector2(3,3),Vector2(6,6)),Color("75543e"))
 	for node in World.MINES.NODES:
-		var at:=mine_map_point(origin,Vector2(node)+Vector2(0.5,0.5))
+		var at: Vector2 = project.call(Vector2(node)+Vector2(0.5,0.5))
 		draw_texture_rect(Shell.icon("pick"),Rect2(at-Vector2(10,10),Vector2(20,20)),false)
 	var stations:=[World.MINES.UP,World.MINES.REST,World.MINES.SERVICE]
 	var labels:=["返回山城" if depth==1 else "回到第 %d 層"%(depth-1),"休息補水","礦務工程"]
@@ -709,16 +924,16 @@ func draw_mine_map(origin:Vector2,region:String) -> void:
 		stations.append(World.MINES.LIFT)
 		labels.append("升降台回山城")
 	for index in range(stations.size()):
-		var at:=mine_map_point(origin,Vector2(stations[index])+Vector2(0.5,0.5))
+		var at: Vector2 = project.call(Vector2(stations[index])+Vector2(0.5,0.5))
 		draw_circle(at,10,Color("614c37"))
 		draw_string(font,at+Vector2(-4,5),str(index+1),HORIZONTAL_ALIGNMENT_LEFT,20,14,Color("fff0cb"))
 		var legend:=origin+Vector2(35+(index%2)*270,305+(index/2)*30)
 		draw_string(font,legend,"%d  %s"%[index+1,labels[index]],HORIZONTAL_ALIGNMENT_LEFT,240,15,Color("4b4539"))
 	for id in data.players:
 		var person:Dictionary=data.players[id]
-		mark(mine_map_point(origin,Vector2(person.x,person.y)),Color("c96755") if id==own_id else Color("537ea4"),true)
+		mark(project.call(Vector2(person.x,person.y)),Color("c96755") if id==own_id else Color("537ea4"),true)
 	var sign_info:=return_sign(region,int(data.players.get(own_id,{}).get("exploration_points",0)))
 	if not sign_info.is_empty():
-		draw_return_sign(origin,mine_map_point(origin,Vector2(sign_info.cell)+Vector2(0.5,0.5)),sign_info.hint)
+		draw_return_sign(origin,project.call(Vector2(sign_info.cell)+Vector2(0.5,0.5)),sign_info.hint,405.0)
 	draw_string(font,origin+Vector2(24,383),"紅點是你 · 藍點是朋友 · 鎬頭是礦料點",HORIZONTAL_ALIGNMENT_LEFT,510,14,Color("635944"))
-	draw_map_signals(origin,mine_map_point(origin,Vector2.ZERO),14.0)
+	draw_map_signals(origin,base,map_scale,cells)

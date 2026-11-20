@@ -51,7 +51,7 @@ static func status(state:Dictionary,actor:String)->Dictionary:
 	var target:=matching(state.objects,route.target,actor)
 	var available:=maxi(0,int(source.items.get(route.item,0))-int(route.reserve))
 	if target.is_empty():return hint("missing_target","目的箱不在原位或已更換；放回原箱或重新設定。",available)
-	if not Freight.can_fit(target.items,{route.item:int(route.batch)}):return hint("target_full","目的箱空間不足，貨物留在來源箱。",available)
+	if not Freight.can_fit_chest(target.items,{route.item:int(route.batch)}):return hint("target_full","目的箱空間不足（滿 1,000,000,000 件或 16 格已滿），貨物留在來源箱。",available)
 	if available<int(route.batch):return hint("waiting","等來源箱存足下一批。",available)
 	return hint("ready","已備齊下一批貨物。",available)
 
@@ -68,6 +68,7 @@ static func step(state:Dictionary)->bool:
 		var item:String=route.item
 		source.items[item]-=quantity
 		if source.items[item]==0:source.items.erase(item)
+		Freight.record_history(source,{item:quantity},false,float(state.time))
 		state.mine_freight.jobs[actor]={"status":"transit","items":{item:quantity},"target":route.target.duplicate(true),"ready":float(state.time)+Freight.TRANSIT}
 		changed=true
 	return changed

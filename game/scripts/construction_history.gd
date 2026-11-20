@@ -13,7 +13,8 @@ const Industry=preload("res://scripts/industry.gd")
 ## }
 ## entry = {
 ##   "id": "c<n>", "region": region id,
-##   "action": build|build_area|remove|move_object|blueprint (blueprint: save v19+),
+##   "action": build|build_area|remove|move_object|blueprint (blueprint: save v19+)|
+##             build_edge (builds 1)|remove_edge (builds 0),
 ##   "label": short public text, "created_utc": float, "expires_utc": created+30,
 ##   "status": live|invalid|consumed|expired, "reason": code ("" while live),
 ##   "builds": builds-counter delta to reverse (build 1, build_area 1..49,
@@ -36,6 +37,11 @@ const Industry=preload("res://scripts/industry.gd")
 ##      logistics device, else null) for every member of the connected same-owner
 ##      water network before AND after, plus each member's 4 expansion cells, and
 ##      the 4 neighbours of any logistics endpoint/belt the record changes.
+##   e  grid-line edge row "e:x,y,N|W" (canonical EdgeGrid key; fingerprint {"e": row-or-null},
+##      so a door `open` flip or any placement/removal invalidates) for every edge the record
+##      changes and every edge bounding the analysed room component(s) before AND after.
+##      The "t" value additionally carries the rows on the 4 sides of the cell (key "e", only
+##      when a row exists), and edge changes seed "t" watches on both adjacent in-map cells.
 ## Unrelated distant tiles are never watched.
 
 const UNDO := preload("res://scripts/construction_undo.gd")
@@ -53,12 +59,22 @@ const MAX_WATCH := 4096
 const MAX_AREA := 49
 ## Save v19: one whole blueprint transaction (16x16 footprint x 3 layers).
 const MAX_BLUEPRINT_BUILDS := 768
+const MAX_EDGE_BLUEPRINT_BUILDS := 1312
 const UTC_TOLERANCE := 0.01
-const ACTIONS := ["build","build_area","remove","move_object","blueprint"]
+## build_edge (builds 1) / remove_edge (builds 0): grid-line edge rows only. There is no generic
+## door-toggle action, and an edge change that only flips a door's `open` is never valid history.
+const ACTIONS := ["build","build_area","remove","move_object","blueprint","build_edge","remove_edge","edge_blueprint"]
 const STATUSES := ["live","invalid","consumed","expired"]
 const ENTRY_KEYS := ["action","builds","created_utc","expires_utc","id","label","reason","record","region","status","watch"]
-const TILE_LAYERS := ["ground","objects","roofs","crops","forest","removed","damage"]
-const TOPOLOGY := ["floor","wall","window","door"]
+## "edges" is keyed by canonical EdgeGrid keys, not tiles: the "f" tier skips it (legacy f
+## fingerprints stay byte-identical) and edge rows are watched by the "e" tier instead.
+const TILE_LAYERS := ["ground","objects","roofs","crops","forest","removed","damage","edges"]
+const EDGE_LAYER := "edges"
+const EdgeGrid := preload("res://scripts/edge_grid.gd")
+## C09: floor kinds come from the shared helper. The "t" tier fingerprint keeps the RAW ground type
+## ("floor" stays "floor", so entries created before stone_floor existed hash exactly as before;
+## "stone_floor" hashes differently, so swapping floor material still invalidates a watch).
+const TOPOLOGY := ["floor","stone_floor","wall","window","door"]
 const BOUNDARY := ["wall","window","door"]
 const NETWORK := INDUSTRY.NETWORK
 const LOGISTICS := ["conveyor","private_chest","forester","sawmill","charcoal_kiln","waterworks","mine_drill","mill"]
@@ -126,18 +142,32 @@ static func _layer(layers: Dictionary, name: String) -> Dictionary:
 	var layer = layers.get(name, {})
 	return layer if layer is Dictionary else {}
 
-static func _tier_value(layers: Dictionary, tier: String, tile: String) -> Variant:
+static func _tier_value(layers: Dictionary, tier: String, tile: String, cell:Vector2i) -> Variant:
 	match tier:
 		"f":
 			var all := {}
-			for name in TILE_LAYERS:all[name] = _layer(layers, name).get(tile)
+			for name in TILE_LAYERS:
+				if name != EDGE_LAYER:all[name] = _layer(layers, name).get(tile)
 			return all
 		"t":
 			var g = _layer(layers, "ground").get(tile)
 			var o = _layer(layers, "objects").get(tile)
 			var gt := str(g.get("type", "")) if g is Dictionary else ""
 			var ot := str(o.get("type", "")) if o is Dictionary else ""
-			return {"g":gt, "b":ot if ot in BOUNDARY else "", "r":_layer(layers, "roofs").get(tile)}
+			var value := {"g":gt, "b":ot if ot in BOUNDARY else "", "r":_layer(layers, "roofs").get(tile)}
+			# Rows on the 4 sides of the cell (N,E,S,W). Key only present when a row exists, so
+			# fingerprints of cells without adjacent edges equal the legacy ones.
+			var edges := _layer(layers, EDGE_LAYER)
+			if not edges.is_empty():
+				var rows := {}
+				for side in EdgeGrid.SIDE_COUNT:
+					var ek := EdgeGrid.key(cell, side, UNDO.EDGE_LIMITS)
+					if ek != "" and edges.get(ek) != null:rows[ek] = edges[ek]
+				if not rows.is_empty():value["e"] = rows
+			return value
+		"e":
+			# tile is the canonical edge key itself: the single row (null when absent).
+			return {"e":_layer(layers, EDGE_LAYER).get(tile)}
 		"n":
 			var o = _layer(layers, "objects").get(tile)
 			if o is Dictionary and (str(o.get("type", "")) in NETWORK or str(o.get("type", "")) in LOGISTICS):return {"o":o}
@@ -147,15 +177,20 @@ static func _tier_value(layers: Dictionary, tier: String, tile: String) -> Varia
 static func tile_fingerprint(layers: Dictionary, watch_key: String) -> String:
 	var parsed := parse_watch_key(watch_key)
 	if not parsed.ok:return ""
-	return fingerprint(_tier_value(layers, parsed.tier, parsed.tile))
+	return fingerprint(_tier_value(layers, parsed.tier, parsed.tile, parsed.cell))
 
 ## {ok, tier, tile, cell}. Canonical "x,y" only.
 static func parse_watch_key(key: String) -> Dictionary:
 	var bad := {"ok":false}
 	if key.length() < 5 or key.length() > 32 or key[1] != ":":return bad
 	var tier := key[0]
-	if tier not in ["f","t","n"]:return bad
+	if tier not in ["f","t","n","e"]:return bad
 	var tile := key.substr(2)
+	if tier == "e":
+		# "e:x,y,N|W": cell is the canonical owner cell of the edge (may sit on the map rim).
+		var d := EdgeGrid.decode(tile, UNDO.EDGE_LIMITS)
+		if d.is_empty():return bad
+		return {"ok":true, "tier":tier, "tile":tile, "cell":d.cell}
 	var c := parse_tile(tile)
 	if not c.ok:return bad
 	return {"ok":true, "tier":tier, "tile":tile, "cell":c.cell}
@@ -178,8 +213,21 @@ static func _key(c: Vector2i) -> String:
 ## before/after: region layer dicts (TILE_LAYERS) bracketing ONE construction
 ## transaction; changes: construction_undo record["changes"]. Fingerprints are
 ## taken from `after`. Returns {ok, watch} (watch empty on failure).
-static func build_watch(before: Dictionary, after: Dictionary, changes: Dictionary) -> Dictionary:
+## `size` (optional) is the region size: edge-derived topology seeds are then limited to in-map
+## cells so every emitted watch cell stays inside the -1..size window _entry_valid accepts.
+## Edge support: a record's changes.edges adds an "e:<edge key>" watch per changed edge, topology
+## ("t") seeds on both adjacent in-map cells, and "e:" watches for the edge boundary of every
+## analysed room component (before AND after). When either snapshot carries an "edges" layer,
+## the tiles with a full ("f") watch that lie in the topology set also get a "t" watch so
+## placements/removals on their sides by others invalidate the entry. Without any edge input the
+## result is identical to the legacy one.
+static func build_watch(before: Dictionary, after: Dictionary, changes: Dictionary, size: Vector2i = Vector2i.ZERO) -> Dictionary:
 	var full := {}
+	var edge_aware: bool = before.has(EDGE_LAYER) or after.has(EDGE_LAYER)
+	var edge_watch := {}
+	var raw_edge_changes = changes.get(EDGE_LAYER, {})
+	if not raw_edge_changes is Dictionary:return {"ok":false, "watch":{}}
+	if changes.has(EDGE_LAYER) and raw_edge_changes.is_empty():return {"ok":false, "watch":{}}
 	var topo_seeds: Array[Vector2i] = []
 	var net_seeds: Array = []
 	var logistics: Array[Vector2i] = []
@@ -201,18 +249,30 @@ static func build_watch(before: Dictionary, after: Dictionary, changes: Dictiona
 				if auto_roof or (layer != "roofs" and kind in TOPOLOGY):topo_seeds.append(c)
 				if layer == "objects" and kind in NETWORK:net_seeds.append([c, str(entry.get("owner", ""))])
 				if layer == "objects" and kind in LOGISTICS:logistics.append(c)
+	for ek in raw_edge_changes:
+		var edge_key := str(ek)
+		if typeof(ek) != TYPE_STRING or not EdgeGrid.is_valid_key(edge_key, UNDO.EDGE_LIMITS):return {"ok":false, "watch":{}}
+		var echange = raw_edge_changes[ek]
+		if not echange is Dictionary:return {"ok":false, "watch":{}}
+		edge_watch[edge_key] = true
+		for cell in EdgeGrid.cells_of(edge_key, UNDO.EDGE_LIMITS):
+			if cell.x < 0 or cell.y < 0:continue
+			if size != Vector2i.ZERO and (cell.x >= size.x or cell.y >= size.y):continue
+			topo_seeds.append(cell)
 	var topo := {}
 	var net := {}
 	for snapshot in [before, after]:
 		var ground := _layer(snapshot, "ground")
 		var objects := _layer(snapshot, "objects")
+		var edge_rows := _layer(snapshot, EDGE_LAYER)
 		var seen := {}
 		for origin in topo_seeds:
 			for start in [origin, origin + DIRS[0], origin + DIRS[1], origin + DIRS[2], origin + DIRS[3]]:
 				topo[start] = true
 				if seen.has(start):continue
-				var comp: Dictionary = ENCLOSURE.analyze({"ground":ground, "objects":objects}, start)
+				var comp: Dictionary = ENCLOSURE.analyze({"ground":ground, "objects":objects, "edges":edge_rows}, start)
 				if comp.truncated:return {"ok":false, "watch":{}}
+				for ek in comp.edge_boundary:edge_watch[ek] = true
 				var inside := {}
 				for cell in comp.cells:
 					inside[cell] = true
@@ -229,14 +289,15 @@ static func build_watch(before: Dictionary, after: Dictionary, changes: Dictiona
 	var watch := {}
 	for c in full:watch["f:" + _key(c)] = ""
 	for c in topo:
-		if not full.has(c):watch["t:" + _key(c)] = ""
+		if not full.has(c) or edge_aware:watch["t:" + _key(c)] = ""
 	for c in net:
 		if not full.has(c):watch["n:" + _key(c)] = ""
+	for ek in edge_watch:watch["e:" + str(ek)] = ""
 	if watch.is_empty() or watch.size() > MAX_WATCH:return {"ok":false, "watch":{}}
 	for k in watch.keys():
 		var parsed := parse_watch_key(k)
 		if not parsed.ok:return {"ok":false, "watch":{}}
-		watch[k] = fingerprint(_tier_value(after, parsed.tier, parsed.tile))
+		watch[k] = fingerprint(_tier_value(after, parsed.tier, parsed.tile, parsed.cell))
 	return {"ok":true, "watch":watch}
 
 ## Same-owner water network containing `start` (mirrors industry.gd components):
@@ -269,6 +330,36 @@ static func watch_matches(layers: Dictionary, watch: Dictionary) -> bool:
 		var expected = watch[k]
 		if typeof(expected) != TYPE_STRING or expected == "":return false
 		if tile_fingerprint(layers, k) != expected:return false
+	return true
+
+## Used by periodic observation and the HUD. Exact bytes only reuse a previous
+## successful comparison. A change is always judged by the persisted hash rules.
+static func watch_matches_cached(layers:Dictionary,watch:Dictionary,memo:Dictionary) -> bool:
+	if watch.is_empty():return false
+	var watch_key:=var_to_bytes(watch)
+	if watch_key.is_empty():return watch_matches(layers,watch)
+	var same_watch:bool=memo.get("watch")==watch_key
+	var checks:Array[Dictionary]=[]
+	if same_watch:
+		checks=memo.checks
+	else:
+		for key in watch:
+			if not key is String or not watch[key] is String or watch[key].is_empty():return false
+			var check:=parse_watch_key(key)
+			if not check.ok:return false
+			check.expected=watch[key]
+			checks.append(check)
+	var values:Array=[]
+	for check:Dictionary in checks:
+		values.append(_tier_value(layers,check.tier,check.tile,check.cell))
+	var values_key:=var_to_bytes(values)
+	if same_watch and not values_key.is_empty() and memo.get("values")==values_key:return true
+	for index in checks.size():
+		if fingerprint(values[index])!=checks[index].expected:return false
+	if not values_key.is_empty():
+		memo["watch"]=watch_key
+		memo["checks"]=checks
+		memo["values"]=values_key
 	return true
 
 ## True when an explicitly used tile (machine/bench/pipe/belt use that may not
@@ -323,10 +414,11 @@ static func id_serial(id) -> int:
 static func builds_valid(action, builds) -> bool:
 	if not action is String or action not in ACTIONS:return false
 	match action:
-		"build":return _whole(builds, 1.0) and int(builds) == 1
+		"build","build_edge":return _whole(builds, 1.0) and int(builds) == 1
 		"build_area":return _whole(builds, float(MAX_AREA)) and int(builds) >= 1
 		"blueprint":return _whole(builds, float(MAX_BLUEPRINT_BUILDS)) and int(builds) >= 1
-		"remove","move_object":return _whole(builds, 0.0)
+		"edge_blueprint":return _whole(builds, float(MAX_EDGE_BLUEPRINT_BUILDS)) and int(builds) >= 1
+		"remove","move_object","remove_edge":return _whole(builds, 0.0)
 	return false
 
 ## Minimal shape a runtime caller needs before reading an entry (no record check).
@@ -354,6 +446,9 @@ static func validate(s: Dictionary, size: Vector2i, build: Dictionary, regions: 
 	# which do not appear in the current construction catalog.
 	var materials := {"sprinkler_kit":true,"ochre_earth":true}
 	for kit: String in Industry.SPRINKLER_KITS.values():materials[kit]=true
+	if build.has(Industry.MILL):
+		for item: String in Industry.LEGACY_MILL_COST:
+			if item != "name":materials[item]=true
 	for kind in build:
 		for item in build[kind]:
 			if item != "name":materials[item] = true
@@ -405,10 +500,29 @@ static func _entry_valid(entry, token: String, serial: int, size: Vector2i, buil
 				if e == null:continue
 				var kind = e.get("type")
 				if not build.has(kind) or not players.has(e.get("owner")):return false
-				if layer == "ground" and kind not in ["floor","path","spring_pebble_path"]:return false
-				if layer == "roofs" and kind not in ["roof","greenhouse_roof"]:return false
-				if layer == "objects" and kind in ["floor","path","spring_pebble_path","roof","greenhouse_roof"]:return false
-	if full < 1:return false
+				if layer == "ground" and kind not in ["floor","stone_floor","path","spring_pebble_path",Industry.LEAF_MAT]:return false
+				if layer == "roofs" and kind not in ["roof","greenhouse_roof",preload("res://scripts/greenhouse_glass.gd").XINGHE_ROOF,preload("res://scripts/terracotta_roof.gd").KIND]:return false
+				if layer == "objects" and kind in ["floor","stone_floor","path","spring_pebble_path",Industry.LEAF_MAT,"roof","greenhouse_roof",preload("res://scripts/greenhouse_glass.gd").XINGHE_ROOF,preload("res://scripts/terracotta_roof.gd").KIND]:return false
+	var edge_changes: Dictionary = record.changes.get(EDGE_LAYER, {})
+	var edge_total := 0
+	for ekey in edge_changes:
+		if not EdgeGrid.is_valid_key(ekey, size) or not watch.has("e:" + ekey):return false
+		edge_total += 1
+		var change: Dictionary = edge_changes[ekey]
+		var eb = change["before"]
+		var ea = change["after"]
+		for e in [eb, ea]:
+			if e != null and not players.has(e.get("owner")):return false
+		# A door `open` flip (same type and owner, nothing else different) is never undoable.
+		if eb != null and ea != null and eb.get("type") == ea.get("type") and eb.get("owner") == ea.get("owner"):return false
+		if entry.action == "build_edge" and (eb != null or ea == null):return false
+		if entry.action == "remove_edge" and (eb == null or ea != null):return false
+	if entry.action in ["build_edge","remove_edge"]:
+		if edge_total < 1:return false
+		# Edge actions may only touch edges plus (automatic) roofs; no tile ground/object edits.
+		if not record.changes["ground"].is_empty() or not record.changes["objects"].is_empty():return false
+	if full + edge_total < 1:return false
+	if entry.action=="edge_blueprint" and edge_total<1:return false
 	for owner in record.inventory_deltas:
 		if not players.has(owner):return false
 		for item in record.inventory_deltas[owner]:

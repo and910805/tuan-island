@@ -10,7 +10,9 @@ const Slot = preload("res://scripts/item_slot.gd")
 const LifeTheme = preload("res://scripts/life_ui_theme.gd")
 const PixelTheme = preload("res://scripts/inventory_pixel_theme.gd")
 const FurnitureArt = preload("res://scripts/furniture_sprite_art.gd")
+const ControllerScroll = preload("res://scripts/controller_scroll_container.gd")
 const CATEGORIES := ["全部", "田園", "漁獲", "採集", "料理"]
+const CATEGORY_ICONS := ["backpack", "radish", "carp", "wood", "soup"]
 
 var inventory: Dictionary = {}
 var prices: Dictionary = {}
@@ -41,6 +43,7 @@ var notice: Label
 var empty_label: Label
 var coins := 0
 var ready_to_ship := true
+var layout_bounds:=Vector2.ZERO
 
 func text_label(value: String, font_size: int = 17) -> Label:
 	var result := Label.new()
@@ -87,8 +90,6 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	balance = text_label("", 18)
 	header.add_child(balance)
 	header.add_child(button("返回 Esc", func(): close_requested.emit()))
-	var subtitle := text_label("把今天的收穫，換成明天的種子。", 16)
-	body.add_child(subtitle)
 	var content := HBoxContainer.new()
 	content.add_theme_constant_override("separation", 16)
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -102,7 +103,7 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	left.add_child(tab_bar)
 	for index in CATEGORIES.size():
 		var tab := button(CATEGORIES[index], select_category.bind(index))
-		tab.icon = ItemArt.icon(["backpack", "radish", "carp", "wood", "soup"][index])
+		tab.icon = ItemArt.icon(CATEGORY_ICONS[index])
 		tab.expand_icon = true
 		tab.add_theme_constant_override("icon_max_width", 24)
 		tab.toggle_mode = true
@@ -152,6 +153,7 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	detail_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	description.add_child(detail_name)
 	detail_price = text_label("", 16)
+	detail_price.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	description.add_child(detail_price)
 	var amount_row := HBoxContainer.new()
 	amount_row.add_theme_constant_override("separation", 8)
@@ -182,9 +184,8 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	receipt_heading.add_child(receipt_title)
 	clear_button = button("清空", clear_cart)
 	receipt_heading.add_child(clear_button)
-	receipt_scroll = ScrollContainer.new()
+	receipt_scroll = ControllerScroll.new()
 	receipt_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	receipt_scroll.follow_focus = true
 	receipt_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right.add_child(receipt_scroll)
 	receipt = VBoxContainer.new()
@@ -197,22 +198,31 @@ func setup(snapshot: Dictionary, own_id: String, base_theme: Theme) -> void:
 	total_row.add_child(icon(ItemArt.icon("coins"), 32))
 	total_label = text_label("預計收入  0", 22)
 	total_row.add_child(total_label)
-	right.add_child(text_label("收入放進你的錢包 · 確認後即出售", 14))
+	right.add_child(text_label("右搖桿／PgUp・PgDn 閱讀明細", 14))
 	confirm_button = button("核對出貨", confirm)
 	confirm_button.custom_minimum_size.y = 48
 	right.add_child(confirm_button)
-	notice = text_label("挑選物品後按 ＋ 放入出貨籃。手把 X 可前往數量操作。", 15)
+	notice = text_label("選物後按 X 或 Enter 前往數量，再核對出貨。", 15)
 	notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	notice.custom_minimum_size.y = 40
 	body.add_child(notice)
 	refresh(snapshot, own_id)
 	select_category(0)
+	var starter_step:=World.CHAPTER_ONE.first_crop_step(snapshot,own_id)
+	if starter_step.get("id")=="ship" and ready_to_ship:
+		var crop_id:=str(starter_step.get("item",""))
+		if slots.has(crop_id) and slots[crop_id].visible:
+			select_item(crop_id)
+			notice.text="第一次出貨｜按 ＋ 放入一份%s，再核對並確認出貨。"%World.NAMES.get(crop_id,"收成")
 	update_cart()
 	var first:Control=slots.get(selected_id,tabs[0])
 	first.grab_focus.call_deferred()
+	minimum_size_changed.connect(_fit_panel)
 
 func _input(event:InputEvent) -> void:
-	if not is_visible_in_tree() or not event is InputEventJoypadButton or not event.pressed or event.button_index!=JOY_BUTTON_X:return
+	if not is_visible_in_tree():return
+	var shortcut:bool=event is InputEventJoypadButton and event.pressed and event.button_index==JOY_BUTTON_X
+	if not shortcut and not event.is_action_pressed("ui_accept"):return
 	if selected_id.is_empty() or get_viewport().gui_get_focus_owner()!=slots.get(selected_id):return
 	var action:=plus if not plus.disabled else minus
 	if action.disabled:return
@@ -227,12 +237,19 @@ func _unhandled_input(event:InputEvent) -> void:
 		close_requested.emit()
 
 func layout_for(viewport_size: Vector2) -> void:
-	size = Vector2(minf(960, viewport_size.x - 32), minf(500, viewport_size.y - 32))
-	position = ((viewport_size - size) / 2).floor()
-	var columns:=5 if size.x>=940 else 4
+	layout_bounds=viewport_size
+	var width:=minf(960,viewport_size.x-32)
+	for index in tabs.size():tabs[index].icon=ItemArt.icon(CATEGORY_ICONS[index]) if width>=900 else null
+	var columns:=5 if width>=940 else 4
 	if grid.columns!=columns:
 		grid.columns=columns
 		link_stock_focus()
+	_fit_panel()
+
+func _fit_panel() -> void:
+	if layout_bounds==Vector2.ZERO:return
+	size=Vector2(minf(960,layout_bounds.x-32),minf(560,layout_bounds.y-32))
+	position=((layout_bounds-size)/2).floor()
 
 func link_stock_focus() -> void:
 	var entries:Array[Control]=[]
@@ -297,7 +314,7 @@ func select_item(id: String) -> void:
 	selected_id = id
 	for item in slots: slots[item].set_selected(item == id)
 	update_selection()
-	var selected:Control=slots.get(selected_id,tabs[category])
+	var selected:Control=slots.get(selected_id,tabs[category] if confirm_button.disabled else confirm_button)
 	tabs[category].focus_neighbor_bottom=tabs[category].get_path_to(selected)
 	plus.focus_neighbor_top=plus.get_path_to(selected)
 
@@ -312,6 +329,13 @@ func update_selection() -> void:
 	plus.disabled = pending or selected_id.is_empty() or amount >= mini(held, Shipping.MAX_QUANTITY)
 	all_button.disabled = pending or selected_id.is_empty() or held <= 0 or amount == mini(held, Shipping.MAX_QUANTITY)
 	clear_button.disabled = pending or cart.is_empty()
+	if not pending and is_inside_tree():
+		var focused:=get_viewport().gui_get_focus_owner()
+		if focused in [minus,plus,all_button] and focused.disabled:
+			var next:Control=slots.get(selected_id,tabs[category])
+			if not plus.disabled:next=plus
+			elif not minus.disabled:next=minus
+			next.grab_focus()
 
 func change_amount(delta: int) -> void:
 	if pending or selected_id.is_empty(): return

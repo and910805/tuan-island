@@ -65,4 +65,3 @@ func _initialize()->void:
 	DirAccess.remove_absolute(folder)
 	print("ADMISSION_RETENTION_TEST checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0))
-

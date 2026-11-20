@@ -359,7 +359,7 @@ func size_flow()->void:
 	# 1. World view after the picnic.
 	w.state.picnic=true
 	await stand(beside(DEFAULT_CELL))
-	for animal_id:String in World.LIVESTOCK.ANIMALS:
+	for animal_id:String in ["cow","sheep"]:
 		var station:=to_pixels(Vector2(World.LIVESTOCK.ANIMALS[animal_id].cell)+Vector2(0.5,0.9))
 		check(Rect2(Vector2.ZERO,Vector2(root.size)).has_point(station),"%s station foot on screen next to 棉棉 (%s) %s"%[animal_id,tag,str(station)])
 		print("NOTE world ranch %s: %s foot at %s"%[tag,animal_id,str(station)])

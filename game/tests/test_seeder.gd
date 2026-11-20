@@ -110,5 +110,25 @@ func _initialize() -> void:
 	after.players.farmer.erase("last_seed")
 	expect(valid(after), "older save can omit seed event")
 	DirAccess.remove_absolute(world.save_path)
+	check_hand_greenhouse()
 	print("SEEDER_TESTS checks=%d failures=%d" % [checks, failures])
 	quit(int(failures > 0))
+
+func check_hand_greenhouse()->void:
+	var world:World=fresh()
+	var inventory:Dictionary=world.state.players.farmer.inventory
+	inventory.copper_seed_pouch=1
+	inventory.radish_seed=3
+	var center:=World.key(CENTER)
+	var left:=World.key(CENTER+Vector2i.LEFT)
+	var right:=World.key(CENTER+Vector2i.RIGHT)
+	world.state.roofs[center]={"type":World.GREENHOUSE_GLASS.LEGACY_ROOF,"owner":"farmer"}
+	world.state.roofs[left]={"type":World.GREENHOUSE_GLASS.XINGHE_ROOF,"owner":"farmer"}
+	world.state.roofs[right]={"type":"roof","owner":"farmer"}
+	var preview:=world.hand_seed_plan("farmer",CENTER,"copper_seed_pouch","radish")
+	expect(preview.cells==[center,left] and preview.skipped[right]=="先移開障礙","A hand pouch can sow under glass and skips an ordinary roof")
+	world.save_path="user://missing-hand-seeder-directory-%d/world.json"%Time.get_ticks_usec()
+	var before:Dictionary=world.state.duplicate(true)
+	expect(not world.act("farmer","pouch-no-save","seed",CENTER,"spread:radish").ok and world.state==before,"A failed hand sowing save rolls back all seeds and crops")
+	world.save_path=""
+	expect(world.act("farmer","pouch-under-glass","seed",CENTER,"spread:radish").ok and world.state.crops[center].kind=="radish" and world.state.crops[left].kind=="radish" and world.state.crops[right].kind.is_empty(),"The authoritative spread matches the greenhouse preview")

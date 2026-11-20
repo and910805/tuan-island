@@ -47,7 +47,7 @@ func run() -> void:
 		await process_frame
 		var chat := find_button(app.modal, "和小栗聊聊")
 		expect(chat != null and chat.is_visible_in_tree(), "shop has Xiao-Li dialogue at %s" % resolution)
-		expect(find_button(app.modal, "買種子") != null and find_button(app.modal, "出售") != null, "shop keeps both trading tabs")
+		expect(find_button(app.modal, "買種子與材料") != null and find_button(app.modal, "出售") != null, "shop keeps both trading tabs")
 		expect(root.get_visible_rect().encloses(app.modal.get_rect()), "shop stays in viewport")
 		expect(app.modal.size.y <= 500, "shop remains a short catalog")
 		if chat == null:

@@ -19,10 +19,10 @@ func leaks(data:Variant,secrets:Array)->Array:
 	return found
 func _initialize()->void:run.call_deferred()
 func run()->void:
-	check(Session.PROTOCOL==45,"Protocol 39 retains construction undo summaries and adds blueprint RPC")
+	check(Session.PROTOCOL>=39,"protocol supports construction undo summaries and blueprint RPC")
 	var session:=Session.new();root.add_child(session);session.set_physics_process(false)
 	session.world=World.new();var world:World=session.world
-	check(int(world.state.version)==26,"New world modelled through core at version 20")
+	check(int(world.state.version)==preload("res://scripts/save_schema.gd").VERSION,"New world modelled through core at version 20")
 	check(world.state.has("construction"),"Core world carries construction history state")
 	for actor in [ALPHA,BETA,OFFLINE]:world.add_player(actor,actor.left(12))
 	# OFFLINE has saved state and history but no live peer.
@@ -56,8 +56,9 @@ func run()->void:
 	check(keys==SUMMARY_KEYS,"Own summary exposes only safe fields: %s"%[keys])
 	check(own==world.undo_summary(ALPHA),"Own summary matches core summary for recipient token")
 	var other_keys:=[]
+	check(snap.get("edge_construction") is bool,"Edge construction capability is only a Boolean")
 	for field in snap.keys():
-		if String(field).contains("construction") and field!="own_construction_undo":other_keys.append(field)
+		if String(field).contains("construction") and field not in ["own_construction_undo","edge_construction"]:other_keys.append(field)
 	check(other_keys.is_empty(),"No other construction summaries in snapshot: %s"%[other_keys])
 	var snap_leaks:=leaks(snap,all_secrets)
 	check(snap_leaks.is_empty(),"Recipient snapshot leaks raw tokens/history ids: %s"%[snap_leaks])

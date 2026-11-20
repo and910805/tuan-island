@@ -52,8 +52,7 @@ const TO_WEST:=[Vector2(52.5,LANE_Y),Vector2(34.5,LANE_Y),WEST]
 const TREE_DROP:={"wood":6,"fiber":2,"sapling":1,"resin":1}
 const ROCK_DROP:={"stone":5}
 const QUARRY_DROP:={"stone":6}
-const TREE_WIN:="採集完成！木材 +6、纖維 +2、樹苗 +1、樹脂 +1"
-const ROCK_WIN:="採集完成！石材 +5"
+const GROUND_DROP:="材料掉到地上了，走近就能撿起"
 const QUARRY_WIN:="石材 +6！新的石層約 45 秒後就緒，可和朋友輪流採集"
 const GONE:="這裡沒有可採集的資源"
 const QUARRY_WAIT:="採石點正在露出新石層"
@@ -64,8 +63,12 @@ class Client:
 	var branch:Node
 	var session
 	var notices:Array=[]
+	var assist_notices:Array[String]=[]
 	var changes:=0
 	func on_notice(message:String,success:bool)->void:
+		if success and message.begins_with("記下了一次合作採集。"):
+			assist_notices.append(message)
+			return
 		notices.append([message,success])
 	func on_changed(_data:Dictionary,_id:String)->void:
 		changes+=1
@@ -83,6 +86,8 @@ class Client:
 		return inv if inv is Dictionary else {}
 	func points()->int:
 		return int(me().get("gathering_points",0))
+	func assists()->int:
+		return int(me().get("gathering_assists",0))
 	func epoch()->int:
 		return int(me().get("travel_epoch",0))
 	func removed()->Dictionary:
@@ -127,6 +132,7 @@ func _watchdog()->void:
 
 func run()->void:
 	var started:=Time.get_ticks_msec()
+	check_assist_boundaries()
 	var completed:=await scenario()
 	expect(completed,"scenario ran to completion without an aborted wait")
 	await teardown()
@@ -147,6 +153,26 @@ static func tile(p:Vector2i)->String:
 
 static func center(p:Vector2i)->Vector2:
 	return Vector2(p)+Vector2(0.5,0.5)
+
+func check_assist_boundaries()->void:
+	for scenario:String in ["expired","distant","other-region","offline","save-failure","success"]:
+		var w:=World.new()
+		for token:String in [ALPHA,BETA,"observer"]:w.add_player(token,token,WEST)
+		expect(w.act(BETA,"assist-start","axe",TREE).ok and w.act(ALPHA,"actor-start","axe",TREE).ok,"%s: real hits build shared progress"%scenario)
+		match scenario:
+			"expired":w.step(World.GATHER_ASSIST_WINDOW+0.1,true)
+			"distant":w.state.players[BETA].x=50.5
+			"other-region":w.state.players[BETA].region="lanyang"
+			"offline":w.active_tokens.erase(BETA)
+			"save-failure":
+				w.save_path="user://missing-gather-assist-folder-%d/world.json"%Time.get_ticks_usec()
+				expect(not w.act(ALPHA,"finish","axe",TREE).ok and not w.state.players[BETA].has("gathering_assists"),"A failed save does not commit cooperation credit")
+				w.save_path=""
+		var result:=w.act(ALPHA,"finish","axe",TREE)
+		var assist:int=1 if scenario in ["save-failure","success"] else 0
+		expect(result.ok and int(w.state.players[BETA].get("gathering_assists",0))==assist,"%s: only timely and nearby online helpers earn credit"%scenario)
+		expect(int(w.state.players.observer.get("gathering_points",0))==0,"%s: a nearby bystander earns no progress"%scenario)
+		expect(w.act(ALPHA,"finish","axe",TREE)==result and int(w.state.players[BETA].get("gathering_assists",0))==assist,"%s: replaying the receipt cannot award credit twice"%scenario)
 
 func seed_fixture()->bool:
 	folder=OS.get_environment("TEMP").path_join("shared-resource-race-%s"%Crypto.new().generate_random_bytes(8).hex_encode())
@@ -310,26 +336,28 @@ func delta_of(after:Dictionary,before:Dictionary)->Dictionary:
 func view(c:Client)->Dictionary:
 	var p:=c.me()
 	return {"region":c.region(),"x":float(p.get("x",0)),"y":float(p.get("y",0)),
-		"inventory":ints(c.bag()),"coins":int(p.get("coins",-1)),"points":c.points()}
+		"inventory":ints(c.bag()),"coins":int(p.get("coins",-1)),"points":c.points(),"assists":c.assists()}
 
 func same_view(a:Dictionary,b:Dictionary)->bool:
-	return a.region==b.region and absf(a.x-b.x)<0.001 and absf(a.y-b.y)<0.001 and a.inventory==b.inventory and a.coins==b.coins and a.points==b.points
+	return a.region==b.region and absf(a.x-b.x)<0.001 and absf(a.y-b.y)<0.001 and a.inventory==b.inventory and a.coins==b.coins and a.points==b.points and a.assists==b.assists
 
 ## Replays `sequence` from `c` with matching region/epoch: the server must drop
 ## it silently (sequence already used) and nothing may change.
 func replay(c:Client,sequence:int,action:String,p:Vector2i,label:String)->void:
 	var marks:=[alpha.notices.size(),beta.notices.size()]
+	var assist_marks:=[alpha.assists(),beta.assists(),alpha.assist_notices.size(),beta.assist_notices.size()]
 	var bags:=[ints(alpha.bag()),ints(beta.bag())]
 	c.session.request_action.rpc_id(1,sequence,action,p,"",c.region(),c.epoch())
 	await pause(0.6)
 	await settle([alpha,beta])
 	expect(alpha.notices.size()==marks[0] and beta.notices.size()==marks[1],"%s: replayed winning sequence %d dropped silently"%[label,sequence])
 	expect(ints(alpha.bag())==bags[0] and ints(beta.bag())==bags[1],"%s: replay paid nothing"%label)
+	expect([alpha.assists(),beta.assists(),alpha.assist_notices.size(),beta.assist_notices.size()]==assist_marks,"%s: replay adds no cooperation credit or notice"%label)
 
 ## Checks one final-hit race. `drop` is what the single winner must gain,
 ## `loser_prefix` the start of the loser's refusal, `gains_point` whether the
 ## winner earns one gathering point.
-func judge(label:String,outcome:Array,before:Array,points_before:Array,win_msg:String,loser_prefix:String,drop:Dictionary,gains_point:bool)->int:
+func judge(label:String,outcome:Array,before:Array,points_before:Array,win_msg:String,loser_prefix:String,drop:Dictionary,gains_point:bool,prior_hitters:Array=[])->int:
 	expect(outcome.size()==2,"%s: both racers answered"%label)
 	if outcome.size()!=2:return -1
 	var oks:=[bool(outcome[0].ok),bool(outcome[1].ok)]
@@ -350,8 +378,47 @@ func judge(label:String,outcome:Array,before:Array,points_before:Array,win_msg:S
 		var was:=int(before[0].get(item,0))+int(before[1].get(item,0))
 		expect(total==was+int(drop[item]),"%s: %s total across both clients rose by exactly %d"%[label,item,int(drop[item])])
 	expect(people[w].points()==int(points_before[w])+(1 if gains_point else 0),"%s: winner gathering points %+d"%[label,1 if gains_point else 0])
-	expect(people[l].points()==int(points_before[l]),"%s: loser gathering points unchanged"%label)
+	var qualifies:=l in prior_hitters
+	expect(people[l].points()==int(points_before[l])+(1 if qualifies else 0),"%s: only a helper with a prior hit gains an assist point"%label)
 	return w
+
+func collect_raced_drop(target:Vector2i,items:Dictionary,before:Array,winner:int,approach:Array,wait_for_release:=false)->void:
+	var people:=[alpha,beta]
+	var cell_key:=tile(target)
+	for c in people:
+		var visible:Dictionary=c.session.snapshot.get("gather_drops",{}).get(cell_key,{})
+		expect(visible.get("items",{})==items and not visible.has("reserved_for") and not visible.has("reserved"),"%s sees the same bundle without the reservation token"%c.label)
+		var expected_release:=float(visible.get("ready_at",0.0))+World.GATHER_RESERVATION_SECONDS
+		var correct_view:bool=not visible.has("public_at") if c==people[winner] else is_equal_approx(float(visible.get("public_at",0.0)),expected_release)
+		expect(correct_view,"%s receives the countdown only when the bundle is held for the other player"%c.label)
+	var saved:=World.new()
+	var owner_token:String=ALPHA if winner==0 else BETA
+	expect(saved.load_world(save_path) and saved.state.get("gather_drops",{}).get(Regions.HOME,{}).get(cell_key,{}).get("reserved_for","")==owner_token,
+		"the reserved bundle survives reloading the primary save")
+	var route:=approach+[center(target)]
+	var visitor:Client=people[1-winner]
+	expect(await walk([[visitor,route]]),"the other player can walk onto the drop first")
+	await settle(people)
+	expect(delta_of(visitor.bag(),before[1-winner]).is_empty() and visitor.session.snapshot.get("gather_drops",{}).has(cell_key),
+		"the other player cannot collect reserved items")
+	if wait_for_release:
+		# Advance the real World clock without moving either client. Its normal
+		# pickup logic grants the bundle to the waiting visitor after release.
+		expect(server.world.step(World.GATHER_RESERVATION_SECONDS,true),"advance world time to end the reservation")
+		await settle(people)
+		expect(delta_of(visitor.bag(),before[1-winner])==items,"the same visitor can collect after release")
+	else:
+		expect(await walk([[people[winner],route]]),"the gatherer can walk onto the reserved drop")
+		await settle(people)
+		expect(delta_of(people[winner].bag(),before[winner])==items,"the gatherer picks up the reserved bundle")
+	var total:={}
+	for index in people.size():
+		var delta:=delta_of(people[index].bag(),before[index])
+		expect(delta==items or delta.is_empty(),"each bag received either the bundle or nothing")
+		for item in delta:total[item]=int(total.get(item,0))+int(delta[item])
+		expect(not people[index].session.snapshot.get("gather_drops",{}).has(cell_key),"collected bundle disappears from both clients")
+	expect(total==items,"both bags combined gain exactly one copy of the bundle")
+	expect(await walk([[alpha,[WEST]],[beta,[WEST]]]),"both return to the original tool range")
 
 # --------------------------------------------------------------- scenario --
 
@@ -387,8 +454,13 @@ func scenario()->bool:
 	var pts:=[alpha.points(),beta.points()]
 	var coins:=[int(alpha.me().coins),int(beta.me().coins)]
 	var outcome:=await race(alpha,beta,"axe",TREE)
-	var w:=judge("tree_race",outcome,before,pts,TREE_WIN,GONE,TREE_DROP,true)
+	var w:=judge("tree_race",outcome,before,pts,GROUND_DROP,GONE,{},true,[0,1])
 	if w<0:return false
+	var people:=[alpha,beta]
+	expect(people[1-w].assists()==1 and people[1-w].assist_notices.size()==1 and people[w].assists()==0 and people[w].assist_notices.is_empty(),"Only the helper receives a private assistance notice and tally")
+	var visible_helper:Dictionary=people[w].session.snapshot.players[people[1-w].session.own_id]
+	expect(not visible_helper.has("gathering_assists"),"Other players do not receive the helper tally in their snapshot")
+	await collect_raced_drop(TREE,TREE_DROP,before,w,[Vector2(34.5,28.5)])
 	expect(int(alpha.me().coins)==coins[0] and int(beta.me().coins)==coins[1],"tree_race: coins unchanged for both")
 	for c in [alpha,beta]:
 		expect(c.removed().get(tile(TREE),false)==true and not c.damage().has(tile(TREE)),"%s sees the tree removed and its damage cleared"%c.label)
@@ -406,9 +478,12 @@ func scenario()->bool:
 	before=[alpha.bag().duplicate(true),beta.bag().duplicate(true)]
 	expect(ints(before[0])==after_tree[0] and ints(before[1])==after_tree[1],"retries and the pre-hit changed no bag")
 	pts=[alpha.points(),beta.points()]
+	var prior_beta:=beta.assists()
 	outcome=await race(alpha,beta,"pick",ROCK)
-	w=judge("rock_race",outcome,before,pts,ROCK_WIN,GONE,ROCK_DROP,true)
+	w=judge("rock_race",outcome,before,pts,GROUND_DROP,GONE,{},true,[1])
 	if w<0:return false
+	expect(beta.assists()==prior_beta+(1 if w==0 else 0),"Rock credit belongs only to the helper who struck before completion")
+	await collect_raced_drop(ROCK,ROCK_DROP,before,w,[Vector2(35.5,26.5)],true)
 	for c in [alpha,beta]:
 		expect(c.removed().get(tile(ROCK),false)==true and not c.damage().has(tile(ROCK)),"%s sees the rock removed and its damage cleared"%c.label)
 	await replay([alpha,beta][w],int(outcome[w].sequence),"pick",ROCK,"rock_race")
@@ -462,6 +537,7 @@ func scenario()->bool:
 		var person:Dictionary=disk.players.get(token,{})
 		var want:Dictionary=final[token]
 		expect(ints(person.get("inventory",{}))==want.inventory and int(person.get("coins",-1))==want.coins and int(person.get("gathering_points",0))==want.points,"save holds %s's inventory/coins/gathering points"%token.left(18))
+		expect(int(person.get("gathering_assists",0))==want.assists,"save holds %s's cooperation count"%token.left(18))
 	var port2:=start_server()
 	expect(port2>0,"a new server Session hosts the same save")
 	if port2==0:return false

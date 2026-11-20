@@ -24,6 +24,8 @@ func _initialize() -> void:
 	var convs:Array=Audit.conversions()
 	test_model_shape(convs)
 	test_coverage(convs)
+	test_xiaoli_scale_and_tool_uses(convs)
+	test_c12_dishes(convs)
 	test_reachability(convs)
 	test_unlock_order(convs)
 	test_certificate(convs)
@@ -150,6 +152,9 @@ func test_coverage(convs:Array) -> void:
 	var ids:={}
 	var produced:={}
 	var consumed:={}
+	var retained_tools:={}
+	for tools:Array in Audit.TOOL_USES.values():
+		for item:String in tools:retained_tools[item]=true
 	for entry:Dictionary in convs:
 		ids[entry.id]=true
 		for item:String in entry.out:produced[item]=true
@@ -168,16 +173,74 @@ func test_coverage(convs:Array) -> void:
 	for item:String in Audit.sale_table():expect(ids.has("sell:"+item),"sale of %s is modelled"%item)
 	for depth in range(1,Mines.MAX_DEPTH+1):expect(ids.has("mine:%d"%depth),"mine floor %d is modelled"%depth)
 	for item:String in World.NAMES:
+		if item=="mill_kit":
+			expect(not produced.has(item) and World.LEGACY_MILL_COST.get(item)==1,"the original mill kit is tied to old saves and is never newly produced")
+			continue
 		expect(produced.has(item),"item has a source in the model: %s"%item)
 	# 每個物品不是賣得掉、就是有地方用（裝飾套件用在建造）。
 	for item:String in World.NAMES:
-		expect(consumed.has(item) or item==Audit.PICK or item in ["tiller","seeder","harvester"],"item is used or sold somewhere: %s"%item)
+		# These tabletop pieces can move back to the backpack without being consumed.
+		expect(consumed.has(item) or retained_tools.has(item) or item in ["tiller","seeder","harvester",World.INDUSTRY.TEA_SET,World.XIAOLI_SHOP.SCALE_ITEM] or item in World.INDUSTRY.SHELL_BOTTLES or (item=="mill_kit" and World.LEGACY_MILL_COST.get(item)==1),"item is used, collected or sold somewhere: %s"%item)
+
+func test_xiaoli_scale_and_tool_uses(convs:Array) -> void:
+	var shop=World.XIAOLI_SHOP
+	var path:=convs.filter(func(entry:Dictionary):return entry.id in ["xiaoli:hang_sign",shop.SCALE_ACTION])
+	expect(path.size()==2,"Scale model contains the sign and the separate reward claim")
+	expect(not Audit.reachable(path,[Audit.TIME]).have.has(shop.SCALE_ITEM),"Time alone does not make the scale available")
+	expect(Audit.reachable(path,[Audit.TIME,"plank"]).have.has(shop.SCALE_ITEM),"The plank path unlocks the scale")
+	for entry:Dictionary in path:
+		if entry.id==shop.SCALE_ACTION:
+			expect(entry.needs==[Audit.XIAOLI_SIGN_HUNG] and entry.out=={shop.SCALE_ITEM:1} and entry.timed,"The finished sign gives access to one personal story reward")
+		else:
+			expect(entry["in"]=={"plank":2,Audit.TIME:1} and entry.out=={Audit.XIAOLI_SIGN_HUNG:1},"The sign uses the two planks from Xiaoli's final story stage")
+	for action:String in Audit.TOOL_USES:
+		for item:String in Audit.TOOL_USES[action]:
+			var equipped:=World.active_mining_pick({item:1}) if action=="pick" else World.gathering_tool_upgrade(action,{item:1})
+			expect(World.NAMES.has(item) and equipped==item,"Holding %s enables its %s action"%[item,action])
+
+## C12: each D01-D16 dish is modelled with its canonical numbers on the 2x2 stove (its own `cook_c12:` conversion
+## wherever they differ from the early stove's row), and every dish eaten through eat_meal has a real sink.
+func test_c12_dishes(convs:Array) -> void:
+	var by_id:={}
+	for entry:Dictionary in convs:by_id[entry.id]=entry
+	var sinks:={}
+	for demand:Dictionary in Audit.demands():sinks[demand.id]=demand
+	var big:=Audit.built(Industry.KITCHEN_STOVE)
+	var distinct:=0
+	for dish:Dictionary in World.KITCHEN_STOVE.DISHES:
+		var id:String=dish.id
+		var early:Dictionary=World.RECIPES[id]
+		var same:bool=early.ingredients==dish.ingredients and int(early["yield"])==int(dish["yield"])
+		if id in World.KITCHEN_STOVE.EXCLUSIVE:
+			var only:Dictionary=by_id.get("cook:"+id,{})
+			expect(not only.is_empty() and only["in"]==dish.ingredients and only.out=={id:int(dish["yield"])} and only.needs==[big],"%s exists only on the 2x2 stove with its canonical numbers"%id)
+			expect(not by_id.has("cook_c12:"+id),"%s needs no second conversion"%id)
+			continue
+		var legacy:Dictionary=by_id.get("cook:"+id,{})
+		expect(not legacy.is_empty() and legacy["in"]==early.ingredients and legacy.out=={id:int(early["yield"])} and legacy.needs==[Audit.built("stove")],"%s keeps the early stove's conversion"%id)
+		if same:
+			expect(not by_id.has("cook_c12:"+id),"%s has the same numbers on both stoves, so one conversion"%id)
+			continue
+		distinct+=1
+		var canonical:Dictionary=by_id.get("cook_c12:"+id,{})
+		expect(not canonical.is_empty() and canonical["in"]==dish.ingredients and canonical.out=={id:int(dish["yield"])} and canonical.needs==[big] and not canonical.timed,"%s is modelled with its canonical C12 numbers on the 2x2 stove"%id)
+	expect(distinct>0,"at least one dish differs between the stoves")
+	# Independent of the data tables: D04 bread is one flour (not the early two wheat).
+	var bread:Dictionary=by_id.get("cook_c12:bread",{})
+	expect(not bread.is_empty() and bread["in"]=={"flour":1} and bread.out=={"bread":1},"D04 bread is one flour on the 2x2 stove")
+	for dish:Dictionary in World.KITCHEN_STOVE.DISHES:
+		var id:String=dish.id
+		if id in World.KITCHEN_STOVE.LEGACY_EAT:
+			continue
+		expect(sinks.has("eat_meal:"+id) and sinks["eat_meal:"+id].items=={id:1},"%s is consumed by eat_meal"%id)
+	expect(sinks.has("eat_meal:forest_mushroom_soup") and sinks.has("eat_meal:rainbow_skewer"),"both C12-only dishes have an eating sink")
+	expect(sinks.has("eat_rice_ball") and sinks.has("drink_ginger_tea"),"the two dishes with older eating actions keep their sinks")
 
 func test_reachability(convs:Array) -> void:
 	var reach:Dictionary=Audit.reachable(convs,Audit.start_items())
 	var have:Dictionary=reach.have
 	for item:String in World.NAMES:
-		expect(have.has(item),"obtainable from a fresh character: %s"%item)
+		expect(have.has(item)==(item!="mill_kit"),"fresh character item sources respect acquisition rules: %s"%item)
 	for entry:Dictionary in convs:
 		expect(reach.fired.has(entry.id),"conversion can eventually be used: %s"%entry.id)
 	for kind:String in World.BUILD:
@@ -199,18 +262,18 @@ func test_reachability(convs:Array) -> void:
 	expect(frugal.have.has(Audit.COIN),"coins can be earned without spending any")
 	var needs_shop:=[]
 	for item:String in World.NAMES:
-		if not frugal.have.has(item):needs_shop.append(item)
+		if item!="mill_kit" and not frugal.have.has(item):needs_shop.append(item)
 	needs_shop.sort()
 	print("ECON NOTE items that need a first purchase (%d): %s"%[needs_shop.size(),", ".join(needs_shop)])
 	# 沒有起始背包（把起始種子與樹苗用光之後）也回得來。
 	var empty_start:Dictionary=Audit.reachable(convs,[Audit.COIN,Audit.TIME])
 	for item:String in World.NAMES:
-		expect(empty_start.have.has(item),"obtainable after the starter items are gone: %s"%item)
+		expect(empty_start.have.has(item)==(item!="mill_kit"),"acquisition rules after using the starter items: %s"%item)
 	# 連鈴幣也花光：能再賺到鈴幣，全部都還拿得到。
 	var broke:Dictionary=Audit.reachable(convs,[Audit.TIME])
 	expect(broke.have.has(Audit.COIN),"a broke character can earn coins again")
 	for item:String in World.NAMES:
-		expect(broke.have.has(item),"obtainable from nothing but time: %s"%item)
+		expect(broke.have.has(item)==(item!="mill_kit"),"acquisition rules with a broke character: %s"%item)
 
 ## 解鎖鏈：拿掉某一層的來源，後面該鎖的就要鎖起來（確認模型真的有依賴）。
 func test_unlock_order(convs:Array) -> void:
@@ -372,11 +435,17 @@ func test_farming_and_prices() -> void:
 	for item:String in prices:
 		expect(int(prices[item])>0,"%s sale price is positive"%item)
 		expect(World.NAMES.has(item),"priced item exists: %s"%item)
-	# 用鈴幣買得到的東西都賣不掉。
+	# 單品購買：買得到的東西都賣不掉。組合購買（如根菜組）：整組賣出的總收入必須低於購買價。
 	for entry:Dictionary in Audit.conversions():
 		if entry.kind!="buy":continue
-		for item:String in entry.out:
-			expect(Audit.best_sale(item)==0,"bought item cannot be sold back: %s"%item)
+		if entry.out.size()==1 and int(entry.out.values()[0])==1:
+			for item:String in entry.out:
+				expect(Audit.best_sale(item)==0,"bought item cannot be sold back: %s"%item)
+			continue
+		var revenue:=0
+		for item:String in entry.out:revenue+=Audit.best_sale(item)*int(entry.out[item])
+		var cost:=int(entry["in"].get(Audit.COIN,0))
+		expect(cost>0 and revenue<cost,"bundle %s sale revenue %d is below purchase %d"%[entry.id,revenue,cost])
 
 ## 不算失敗、給平衡檢查看的清單。
 func report(convs:Array) -> void:

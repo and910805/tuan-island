@@ -17,5 +17,7 @@ static func valid(lines:Variant) -> bool:
 
 static func decode(payload:String) -> Array:
 	if payload.length()>MAX_BYTES or payload.to_utf8_buffer().size()>MAX_BYTES:return []
-	var lines=JSON.parse_string(payload)
+	var parser:=JSON.new()
+	if parser.parse(payload)!=OK:return []
+	var lines:Variant=parser.data
 	return lines if valid(lines) else []

@@ -50,6 +50,7 @@ func check_layout(world:World,depth:int) -> void:
 			var old_land:=Layout.BASE_RECT.has_point(cell)
 			var pool:bool=depth==3 and MINES.POOL.has_point(cell)
 			var protected:bool=cell in [MINES.UP,MINES.DOWN,MINES.REST,MINES.SERVICE,Vector2i(12,20)] or cell in MINES.NODES
+			if region==MINES.MUD_REGION and cell.y<MINES.MUD_ALCOVE_EDGE and land:protected=true
 			if old_land and not land:original_cells_preserved=false
 			if world.water(cell)!=(not land or pool):expected_water=false
 			if world.protected(cell)!=protected:expected_protection=false
@@ -61,7 +62,7 @@ func check_layout(world:World,depth:int) -> void:
 				if World.INDUSTRY.near_river(world,cell):new_pump_sites+=1
 	expect(original_cells_preserved and new_land>0,"B%d retains base land and adds side cave land"%depth)
 	expect(expected_water and boundary_blocked,"B%d retains water and blocks off-map movement"%depth)
-	expect(expected_protection,"B%d retains only original protected tiles"%depth)
+	expect(expected_protection,"B%d protects only the listed mine features and encounters"%depth)
 	expect(new_pump_sites==0,"B%d side cave has no pump source"%depth)
 
 	var reached:Dictionary={MINES.UP:true}

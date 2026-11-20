@@ -1,0 +1,7 @@
+# 小型觀賞魚缸素材來源
+
+以內建 ImageGen 生成透明原圖。原圖 SHA-256 為 `a1172166a80d25a38251af7ac0ae77a4e380baf16d7633d8726fb51e2056b0254`。兩座魚缸以最近鄰裁成 64×48 與 32×80 透明圖格。紅尾小鯉以 15×9 像素保留兩個朝向，遊戲以漸進位置與換向呈現游動。
+
+## 生成提示詞
+
+An original pixel-art sprite sheet with three clearly separated sprites on transparent alpha for a cozy 2D Taiwan farming RPG. Wide horizontal layout with equal-width thirds and a very generous fully transparent gutter between each third. LEFT third contains a wide small copper-rimmed glass freshwater fish tank on a low weathered walnut stand, 2 game tiles wide, camera orthographic from slightly above the front. Seafoam and deep teal blue fresh water, pale stone and two tiny water-plant stems near the bottom. Keep the central water open to overlay a fish in the game. MIDDLE third contains the same tank rotated north-south, drawn narrower and deeper, seen from the same orthographic front tilt. RIGHT third contains exactly one small isolated side-facing pale golden carp pointing right with a distinct rusty red fan-shaped tail at left, red-orange dorsal fin, darker outline and a readable eye, native size around 15 x 9 pixels with no bubbles or shadows. All three use sharp square hand-placed 32px game-scale pixel clusters, muted colors, dark earthy outlines, copper and walnut shared with cozy handmade greenhouse furniture. No people, no ground, no outer shadows, no labels, no text, no gradients, no fish inside either tank, no diagonal isometric angle.

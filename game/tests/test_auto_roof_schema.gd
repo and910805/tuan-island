@@ -174,7 +174,7 @@ func _initialize() -> void:
 	expect_rejected(live,bad,"auto flag on wall object")
 	bad=control.duplicate(true);bad.ground["35,30"].auto=true
 	expect_rejected(live,bad,"auto flag on path")
-	expect(live.state.roofs==expected_roofs and int(live.state.version)==26,"live world still holds original roof contents")
+	expect(live.state.roofs==expected_roofs and int(live.state.version)==preload("res://scripts/save_schema.gd").VERSION,"live world still holds original roof contents")
 
 	# Unrelated objects: manual v17 roof with unknown owner and no floor keeps old semantics.
 	var manual_unknown:Dictionary=fresh.duplicate(true)

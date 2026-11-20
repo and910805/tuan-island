@@ -177,6 +177,7 @@ func run()->void:
 		await tap_pad(JOY_BUTTON_X)
 		expect(not person.has("fishing") and fish_count(person)==previous_catch+1,"X reels the active cast even after aiming elsewhere")
 		expect("十字鍵" in app.selected_label.text,"Controller hint immediately returns to cast guidance")
+	if failures==0:await verify_rod_preview(world,person)
 	app.session.shutdown()
 	await create_timer(0.3).timeout
 	app.queue_free()
@@ -184,3 +185,31 @@ func run()->void:
 	for suffix in ["",".bak",".writer-lock",".bindings",".settings"]:DirAccess.remove_absolute(path+suffix)
 	print("FISHING_INPUT_TESTS checks=%d failures=%d"%[checks,failures])
 	quit(int(failures>0))
+
+func verify_rod_preview(world:World,person:Dictionary)->void:
+	app.session.rates[1].clear()
+	app.sound.standard_fishing=true
+	person.inventory.precision_rod=1
+	app.controller_aim=false
+	app.controller_navigation=false
+	app.session._send_snapshot(1)
+	app._refresh_hud()
+	var rod_button:Button=app.preview_toolbar.find_child("FishingSlot",true,false)
+	expect(rod_button.tooltip_text.begins_with("精製釣竿") and app.selected_label.text.contains("精製釣竿"),"The action hint and slot show the equipped rod")
+	await click(WATER)
+	var cast:Dictionary=person.get("fishing",{})
+	expect(cast.get("rod")=="precision_rod" and is_equal_approx(float(cast.get("ready",-1.0))-float(world.state.time),1.8),"The real world click starts a precision cast")
+	if cast.is_empty():return
+	world.state.time=float(cast.ready)+0.5
+	app.session._send_snapshot(1)
+	app.view.selected="fish"
+	app.view.hide_interaction_prompt=false
+	app.toast_time=0.0
+	app.toast.hide()
+	app.activity_caption_time=0.0
+	app.activity_caption.hide()
+	app.view.queue_redraw()
+	for arg:String in OS.get_cmdline_user_args():
+		if arg.begins_with("--rod-preview=") and DisplayServer.get_name()!="headless":
+			await RenderingServer.frame_post_draw
+			expect(root.get_texture().get_image().save_png(arg.trim_prefix("--rod-preview="))==OK,"Capture the precision tracking band")

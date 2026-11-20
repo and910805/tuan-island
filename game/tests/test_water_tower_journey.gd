@@ -281,15 +281,20 @@ func tw_closed_leg() -> void:
 	if not tw_check(not proof.is_empty(),"reached a dry day beyond the far sprinkler's own 12"):return
 	tw_check(int(proof.far_wet)==FAR.size() and int(proof.tower)>0,"day %d: far crops watered although S2's own 12 was used up (%d used so far), tower %d"%[proof.day,used_far-TW_FAR_NEED,proof.tower])
 	tw_info.proof_day=proof.day
-	# Replant the far zone on that day; the new crops grow to maturity on tower water.
+	# A sprinkler that already watered today waits until midnight. Replant
+	# before a dry morning so rain cannot stand in for the tower.
+	if WEATHER.rains(WEATHER.day_index(now())+1.0,"home"):
+		prev=tw_day(prev,"出水，等待晴天")
+	if not tw_check(not WEATHER.rains(WEATHER.day_index(now())+1.0,"home"),"replanting leads into a dry morning"):return
 	for cell:Vector2i in FAR:
 		var c:=crop(cell)
 		tw_check(str(c.kind)!="" and float(c.growth)>=float(World.CROPS[c.kind].time),"far crop %s mature before replanting (%s %.0f)"%[str(cell),str(c.kind),float(c.growth)])
 		act("harvest",cell)
 	for cell:Vector2i in FAR:plant(cell)
 	if failed:return
-	var t0:=now()
 	var tower0:=int(obj(TW).water)
+	wait_until(next_midnight(),60.0)
+	var t0:=now()
 	wait_for(200.0,20.0)
 	var grown:=[]
 	for cell:Vector2i in FAR:

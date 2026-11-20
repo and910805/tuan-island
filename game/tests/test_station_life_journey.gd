@@ -70,6 +70,7 @@ func after_chapter() -> void:
 	expect(reopened.load_world(world.save_path) and not reopened.recovered_from_backup,"Station journey reloads the primary save")
 	if failed:return
 	world=reopened
+	world.add_player(TOKEN,str(person().name))
 	expect(stage()==4 and world.player_region(TOKEN)=="home" and int(person().coins)==before+80 and int(bag().sapling)==saplings+1,"Reload preserves personal completion, reward, and free return")
 	for stop in STOPS:
 		expect(world.state.station_life.repairs.get(stop,false),"Public repair survives reload at "+stop)

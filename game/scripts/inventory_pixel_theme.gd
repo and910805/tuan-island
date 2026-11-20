@@ -35,4 +35,3 @@ static func texture_style(asset:String,border:int,inset:int) -> StyleBoxTexture:
 		style.set_texture_margin(side,border)
 		style.set_content_margin(side,inset)
 	return style
-

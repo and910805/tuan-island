@@ -89,6 +89,3 @@ func run()->void:
 	if session.join("127.0.0.1",int(args[1]),args[2],"garden-test")!=OK:quit(1);return
 	await create_timer(45).timeout
 	quit(1)
-
-
-

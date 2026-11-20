@@ -75,6 +75,11 @@ static func season_on_day(day: float) -> String:
 static func season_label(time: float) -> String:
 	return SEASON_LABELS[season_on_day(day_index(time))] + "季"
 
+static func grow_during_day(growth:float,need:float,seconds:float,season:String,seasons:Array,greenhouse:bool) -> float:
+	if need>0.0 and growth<need and seconds>0.0 and (greenhouse or seasons.is_empty() or season in seasons):
+		return minf(growth+seconds,need)
+	return growth
+
 ## Empty seasons preserves the warm-season prototype. A greenhouse bypasses
 ## seasonal dormancy, while soil still needs water and dries at midnight.
 static func advance_plot(wet: bool, exposed: bool, growth: float, need: float, start: float, dt: float, seasons: Array = [], greenhouse := false) -> Dictionary:
@@ -90,8 +95,8 @@ static func advance_plot(wet: bool, exposed: bool, growth: float, need: float, s
 	while true:
 		var boundary := (day + 1.0) * DAY_SECONDS
 		var seg_end := minf(boundary, end)
-		if wet and growing and seg_end > cursor and (greenhouse or seasons.is_empty() or season_on_day(day) in seasons):
-			growth = minf(growth + (seg_end - cursor), need)
+		if wet and growing and seg_end > cursor:
+			growth = grow_during_day(growth,need,seg_end-cursor,season_on_day(day),seasons,greenhouse)
 			growing = growth < need
 		if boundary > end:break
 		# Midnight at `boundary` (<= end): dry, then re-wet if exposed and raining.

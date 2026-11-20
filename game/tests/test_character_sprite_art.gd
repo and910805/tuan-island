@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Art=preload("res://scripts/character_sprite_art.gd")
+const CourierCap=preload("res://scripts/luoluo_courier_cap_art.gd")
 var checks:=0
 var failures:=0
 
@@ -14,7 +15,7 @@ func expect(condition:bool,description:String) -> void:
 		push_error(description)
 
 func run() -> void:
-	var directions:=[Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP]
+	var directions:Array[Vector2i]=[Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP]
 	for row in range(directions.size()):
 		var facing:Vector2i=directions[row]
 		expect(Art.frame_selection("farmer",facing,PI*0.5,false,false)==Vector2i(0,row),"Idle keeps its facing")
@@ -36,6 +37,43 @@ func run() -> void:
 				var used:=frame.get_used_rect()
 				expect(used.has_area() and used.position.x>0 and used.position.y>0 and used.end.x<48 and used.end.y<48,"Frame %s has a transparent margin"%Vector2i(column,row))
 				expect(used.position.x<=Art.FOOT.x and used.end.x>Art.FOOT.x and absi(used.end.y-Art.FOOT.y)<=2,"Frame %s stays aligned to the foot baseline"%Vector2i(column,row))
+	for resident in Art.RESIDENT_ATLASES:
+		var strip:Image=Art.RESIDENT_ATLASES[resident].get_image()
+		expect(strip.get_size()==Vector2i(192,48),"%s supplies four directional frames"%resident)
+		for column in 4:
+			var bounds:=strip.get_region(Rect2i(column*48,0,48,48)).get_used_rect()
+			expect(bounds.position.x<Art.FOOT.x and bounds.end.x>Art.FOOT.x and bounds.end.y==Art.FOOT.y,
+				"%s direction %d has visible art centered on the foot baseline"%[resident,column])
+	var apron:Image=Art.APRON_ATLAS.get_image()
+	expect(apron.get_size()==Vector2i(144,192),"Apron covers all twelve player frames")
+	for row in 4:
+		for column in 3:
+			var apron_rect:=apron.get_region(Rect2i(column*48,row*48,48,48)).get_used_rect()
+			expect(apron_rect.has_area() and apron_rect.position.y>=25 and apron_rect.end.y<=38,
+				"Apron stays inside the torso area in frame %s"%Vector2i(column,row))
+	verify_headwear(directions)
 	print("CHARACTER_SPRITE_ART checks=%d failures=%d"%[checks,failures])
 	quit(1 if failures else 0)
 
+func verify_headwear(directions:Array[Vector2i])->void:
+	for artwork in [CourierCap.FRONT,CourierCap.LEFT,CourierCap.BACK]:
+		expect(artwork.size()==CourierCap.HEIGHT and artwork.all(func(row:String):return row.length()==CourierCap.WIDTH),"Every cap row fits the texture dimensions")
+	var images:Dictionary[Vector2i,Image]={}
+	for facing in directions:
+		var image:=CourierCap.texture(facing).get_image()
+		images[facing]=image
+		expect(image.get_size()==Vector2i(27,15) and image.get_used_rect().has_area(),"Cap fits its artwork anchor for %s"%facing)
+	var left:Image=images[Vector2i.LEFT]
+	expect(left.get_data()!=images[Vector2i.RIGHT].get_data(),"Side silhouettes face opposite ways")
+	left.flip_x()
+	expect(left.get_data()==images[Vector2i.RIGHT].get_data(),"The visor mirrors across both sides")
+	var paper:=CourierCap.PALETTE.E
+	var front_badge:=false
+	var rear_badge:=false
+	for y in CourierCap.HEIGHT:
+		for x in CourierCap.WIDTH:
+			front_badge=front_badge or images[Vector2i.DOWN].get_pixel(x,y).is_equal_approx(paper)
+			rear_badge=rear_badge or images[Vector2i.UP].get_pixel(x,y).is_equal_approx(paper)
+	expect(front_badge and not rear_badge,"Only the front-facing cap shows its full envelope")
+	expect(CourierCap.texture()==CourierCap.texture(Vector2i.DOWN),"The handbook keeps the front-facing icon")
+	expect(Art.head_shift(Vector2i.UP,3.0)==Vector2(0,3) and Art.head_shift(Vector2i.LEFT,3.0)==Vector2(-3,0),"Headwear moves with the same lean as the head")

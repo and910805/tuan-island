@@ -61,7 +61,7 @@ const NOT_RIPE_DRY:="還沒成熟，先澆點水吧"
 const NO_CROP:="這裡沒有作物"
 const H1_MSG:="收成了！太陽番茄 +2。太陽番茄還能再收 2 次，記得重新澆水"
 const H2_MSG:="收成了！太陽番茄 +2。太陽番茄還能再收 1 次，記得重新澆水"
-const H3_MSG:="收成了！太陽番茄 +2。可以出售或帶去做料理"
+const H3_MSG:="收成了！太陽番茄 +2。可以出售或帶去做料理\n農耕升到 2 級"
 
 class Client:
 	var label:=""

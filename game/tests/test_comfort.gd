@@ -25,6 +25,11 @@ func run() -> void:
 	expect(loaded.save_preferences(path,0.4,false,2,null,null,null,null,{},true),"Fixed-area choice saves")
 	expect(sound.load_preferences(path) and sound.fixed_area_camera,"Fixed-area choice survives reload")
 	expect(not loaded.save_preferences(path,0.4,false,2,null,null,null,null,{},"fixed") and loaded.fixed_area_camera,"Invalid camera values leave the setting intact")
+	expect(not loaded.display_compatibility,"Older preferences use standard display mode")
+	expect(loaded.save_preferences(path,0.4,false,2,null,null,null,null,{},null,true),"Display compatibility saves")
+	expect(sound.load_preferences(path) and sound.display_compatibility,"Display compatibility survives a reload")
+	expect(not loaded.save_preferences(path,0.4,false,2,null,null,null,null,{},null,"yes") and loaded.display_compatibility,"Invalid display setting does not apply")
+	expect(not loaded.save_preferences("user://missing-comfort-test/settings.cfg",0.4,false,2,null,null,null,null,{},null,false) and loaded.display_compatibility,"Display mode changes only after successful save")
 	verify_camera()
 	expect(loaded.play_cue("reward",true),"preview plays a generated cue")
 	expect(not loaded.play_cue("action"),"rapid actions do not stack sound")
@@ -40,9 +45,11 @@ func run() -> void:
 	bad.set_value("comfort","volume","loud")
 	bad.set_value("comfort","reduced_motion",99)
 	bad.set_value("comfort","zoom",-5)
+	bad.set_value("comfort","display_compatibility","yes")
 	bad.save(path)
 	var safe=Audio.new();root.add_child(safe);safe.load_preferences(path)
 	expect(safe.volume==0.45 and safe.reduced_motion and safe.preferred_zoom==2,"malformed preference values preserve safe defaults")
+	expect(not safe.display_compatibility,"malformed display preference retains standard mode")
 	DirAccess.remove_absolute(path)
 	sound.close();loaded.close();safe.close()
 	await create_timer(0.15).timeout
@@ -67,18 +74,18 @@ func verify_camera() -> void:
 	var original:=view.camera
 	actor.x+=1.0
 	view.update_snapshot(world.state.duplicate(true),"camera-test")
-	view._process(0.1)
+	advance_camera(view)
 	expect(view.camera==original,"A one-tile walk leaves the background stationary")
 	actor.x+=2.0
 	view.update_snapshot(world.state.duplicate(true),"camera-test")
-	view._process(0.1)
+	advance_camera(view)
 	expect(view.camera.x>original.x and view.camera.y==original.y,"Crossing the edge follows only along the moving axis")
 	expect(view.camera==view.camera.round(),"Fixed-area offsets land on whole pixels")
 	var chosen:=Vector2(44.5,35.5)
 	expect(view.to_cell(view.screen(chosen)*view.view_zoom())==Vector2i(44,35),"Screen picking stays attached to the same world cell")
 	actor.x+=0.25
 	view.update_snapshot(world.state.duplicate(true),"camera-test")
-	view._process(0.1)
+	advance_camera(view)
 	var moved:=Vector2(actor.x,actor.y)
 	var anchor:=view.get_viewport_rect().size*0.5+Vector2(0,40)
 	view.zoom=1.0
@@ -97,6 +104,13 @@ func verify_camera() -> void:
 	actor.x+=1.0
 	mine_snapshot.players["camera-test"]=actor.duplicate()
 	view.update_snapshot(mine_snapshot,"camera-test")
-	view._process(0.1)
-	expect((view.screen(Vector2(actor.x,actor.y))*view.view_zoom()).distance_to(anchor)<=1.0,"Direct mode follows a one-tile move immediately")
+	view._process(1.0/60.0)
+	expect((view.screen(view.display_positions["camera-test"])*view.view_zoom()).distance_to(anchor)<=1.0,"Direct mode follows the drawn player on the first movement frame")
+	advance_camera(view)
+	expect((view.screen(Vector2(actor.x,actor.y))*view.view_zoom()).distance_to(anchor)<=1.0,"Direct mode stays centered after the motion settles")
 	view.queue_free()
+
+func advance_camera(view:View) -> void:
+	# A server snapshot can arrive ahead of the drawn actor. Let up to one
+	# simulated second of normal rendering elapse before checking settled offsets.
+	for frame in 60:view._process(1.0/60.0)

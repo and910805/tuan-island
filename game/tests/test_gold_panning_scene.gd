@@ -611,8 +611,12 @@ func panel_flow()->void:
 	var locked_note:=control("MineHistoryPanning") as Label
 	check(locked_note!=null and "完成一盤淘洗" in locked_note.text,"The memory starts with a fieldwork clue (%s)"%tag)
 	var source_links:Array=app.modal.find_children("*","LinkButton",true,false)
-	check(source_links.size()==2 and source_links[0].uri.begins_with("https://www.gep.ntpc.gov.tw/")
-		and source_links[1].uri.begins_with("https://tcmb.culture.tw/"),"The history page links the museum and cultural archive (%s)"%tag)
+	var sources:Array[String]=[]
+	for source_link:LinkButton in source_links:sources.append(source_link.uri)
+	check(sources.has("https://www.gep.ntpc.gov.tw/xmdoc/cont?xsmsid=0Q018377887368898201")
+		and sources.has("https://tcmb.culture.tw/zh-tw/detail?id=561386&indexCode=Culture_Event")
+		and sources.has("https://twh.boch.gov.tw/taiwan/intro.aspx?id=6&lang=zh_tw"),
+		"The history page links the museum, cultural archive, and mining heritage (%s)"%tag)
 	var history_scroll:=app.modal.find_child("ModalScroll",true,false) as ScrollContainer
 	check(history_scroll!=null and history_scroll.get_v_scroll_bar().max_value<=history_scroll.get_v_scroll_bar().page+1.0,
 		"The historical notes and credits fit the whole page (%s)"%tag)
@@ -642,9 +646,11 @@ func panel_flow()->void:
 	check(int(bag().get(Gold.ITEM,0))==1,"Server bag +1 gold_ore after the first pan (%s): %d"%[tag,int(bag().get(Gold.ITEM,0))])
 	check(snap_ore()==1,"Snapshot inventory +1 gold_ore after the first pan (%s): %d"%[tag,snap_ore()])
 	await press("GpHistory")
-	var panning_note:=control("MineHistoryPanning") as Label
+	var panning_date:=control("MineHistoryPanningDate1890") as Label
+	var outcrop_date:=control("MineHistoryPanningDate1894") as Label
 	var hauling_note:=control("MineHistoryHauling") as Label
-	check(panning_note!=null and "1894 年" in panning_note.text and hauling_note!=null and "沿軌道" in hauling_note.text,
+	check(panning_date!=null and panning_date.is_visible_in_tree() and outcrop_date!=null and outcrop_date.is_visible_in_tree()
+		and hauling_note!=null and hauling_note.is_visible_in_tree() and "沿軌道" in hauling_note.text,
 		"Finishing the pan unlocks the river entry only (%s)"%tag)
 	await shot("jinguashi_history_panned")
 	await press("JinguashiHistoryBack")
@@ -671,8 +677,8 @@ func panel_flow()->void:
 	preload("res://scripts/history_ui.gd").open(app)
 	await settle()
 	await press("JinguashiHistoryJournal")
-	var saved_note:=control("MineHistoryPanning") as Label
-	check(saved_note!=null and "1894 年" in saved_note.text,"The earned history is readable from the home journal (%s)"%tag)
+	var saved_date:=control("MineHistoryPanningDate1894") as Label
+	check(saved_date!=null and saved_date.is_visible_in_tree(),"The earned history is readable from the home journal (%s)"%tag)
 	app._close_modal()
 	await settle()
 
